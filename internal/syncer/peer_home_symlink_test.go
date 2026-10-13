@@ -2,11 +2,13 @@ package syncer
 
 import (
 	"context"
-	"golang.org/x/sys/unix"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
 
 func writePeerHomeLink(t *testing.T, home, rel, target string) {
@@ -264,5 +266,84 @@ func TestPeerHomeSymlinkRemoteInventoryIgnoresUnknownFIFO(t *testing.T) {
 	}
 	if _, err := peerHomeRemoteInventory(context.Background(), peerScheduleRunner(false), cfg, []string{"skills"}, map[string]Fingerprint{"skills/fifo": {Size: 4}}, false); err == nil || !strings.Contains(err.Error(), "non-regular on the peer") {
 		t.Fatalf("actual-rsync baseline FIFO transition accepted: %v", err)
+	}
+}
+
+func TestPeerHomeAncestorCommandsLargeFlatTree(t *testing.T) {
+	var rels []string
+	for i := 0; i < 10000; i++ {
+		rels = append(rels, fmt.Sprintf("skills/%s-%05d", strings.Repeat("f", 40), i))
+	}
+	if len(strings.Join(rels, " ")) < 128*1024 {
+		t.Fatal("fixture must exceed a single-argument limit")
+	}
+	commands, err := peerHomeAncestorCommands(rels)
+	if err != nil || len(commands) != 1 {
+		t.Fatalf("flat tree commands=%d, %v", len(commands), err)
+	}
+	if len(commands[0]) > peerHomePreflightCommandLimit || !strings.HasSuffix(commands[0], " "+shellQuote(rels[0])) {
+		t.Fatalf("flat parent did not use a bounded representative: %s", commands[0])
+	}
+	// Even a duplicate-parent input must still have its own path validated.
+	if _, err := peerHomeAncestorCommands(append(rels, "skills/../escape")); err == nil {
+		t.Fatal("deduplication bypassed path validation")
+	}
+}
+
+func TestPeerHomeAncestorCommandsBoundDistinctParents(t *testing.T) {
+	var rels []string
+	for i := 0; i < 1500; i++ {
+		parent := fmt.Sprintf("skills/parent-%04d-%s'quoted", i, strings.Repeat("p", 90))
+		rels = append(rels, parent+"/first", parent+"/second")
+	}
+	commands, err := peerHomeAncestorCommands(rels)
+	if err != nil || len(commands) < 2 {
+		t.Fatalf("distinct-parent batches=%d, %v", len(commands), err)
+	}
+	joined := strings.Join(commands, "\n")
+	for _, command := range commands {
+		if len(command) > peerHomePreflightCommandLimit {
+			t.Fatalf("command exceeds bound: %d", len(command))
+		}
+	}
+	for i, rel := range rels {
+		count := strings.Count(joined, " "+shellQuote(rel))
+		want := 1
+		if i%2 == 1 {
+			want = 0
+		}
+		if count != want {
+			t.Fatalf("parent representative coverage %q=%d, want%d", rel, count, want)
+		}
+	}
+	if _, err := peerHomeAncestorCommands([]string{"skills/" + strings.Repeat("p", peerHomePreflightCommandLimit) + "/file"}); err == nil {
+		t.Fatal("oversized single argument accepted")
+	}
+}
+
+func TestPeerHomeAncestorPreflightLargeTrees(t *testing.T) {
+	cfg, _, _, peer := peerHomeTrackedFixture(t, "skills\n")
+	writePeerHomeFile(t, peer, "skills/keep", "keep", peerHomeFixedTime)
+	baseline := map[string]Fingerprint{}
+	for i := 0; i < 10000; i++ {
+		baseline[fmt.Sprintf("skills/%s-%05d", strings.Repeat("f", 40), i)] = Fingerprint{Size: 4}
+	}
+	snap, err := peerHomeRemoteInventory(context.Background(), peerScheduleRunner(false), cfg, []string{"skills"}, baseline, false)
+	if err != nil || !snap["skills/keep"].Present {
+		t.Fatalf("actual-rsync large flat baseline inventory=%+v, %v", snap, err)
+	}
+	var rels []string
+	for i := 0; i < 1500; i++ {
+		rels = append(rels, fmt.Sprintf("skills/parent-%04d-%s/file", i, strings.Repeat("p", 90)))
+	}
+	if err := preflightPeerHomeAncestors(context.Background(), peerScheduleRunner(false), cfg, rels); err != nil {
+		t.Fatalf("safe distinct-parent batches: %v", err)
+	}
+	// The unsafe parent is deliberately in the final batch. The later check
+	// must still run, even when all prior batches successfully inspected home.
+	unsafe := filepath.Dir(rels[len(rels)-1])
+	writePeerHomeLink(t, peer, unsafe, t.TempDir())
+	if err := preflightPeerHomeAncestors(context.Background(), peerScheduleRunner(false), cfg, rels); err == nil {
+		t.Fatal("late-batch symlink ancestor bypassed safety coverage")
 	}
 }

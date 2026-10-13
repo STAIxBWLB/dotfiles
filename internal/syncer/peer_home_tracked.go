@@ -257,19 +257,49 @@ for rel do
   done
 done`
 
-func preflightPeerHomeAncestors(ctx context.Context, runner *exec.Runner, cfg *Config, rels []string) error {
-	if len(rels) == 0 {
-		return nil
-	}
-	command := "sh -c " + shellQuote(homeAncestorsPreflightScript) + " sh"
+// Bound the single remote-command argument well below platform argv limits.
+// Siblings share the same ancestor check, so send only one representative.
+const peerHomePreflightCommandLimit = 32 * 1024
+
+func peerHomeAncestorCommands(rels []string) ([]string, error) {
+	prefix := "sh -c " + shellQuote(homeAncestorsPreflightScript) + " sh"
+	command := prefix
+	seen := map[string]bool{}
+	var commands []string
 	for _, rel := range rels {
 		if err := validateTombstoneRel(rel); err != nil {
-			return err
+			return nil, err
 		}
-		command += " " + shellQuote(rel)
+		separator := strings.LastIndexByte(rel, '/')
+		if separator < 0 || seen[rel[:separator]] {
+			continue
+		}
+		seen[rel[:separator]] = true
+		argument := " " + shellQuote(rel)
+		if len(prefix)+len(argument) > peerHomePreflightCommandLimit {
+			return nil, fmt.Errorf("peer home ancestor preflight: path %q exceeds command limit", rel)
+		}
+		if len(command)+len(argument) > peerHomePreflightCommandLimit {
+			commands = append(commands, command)
+			command = prefix
+		}
+		command += argument
 	}
-	if _, err := runner.Run(ctx, "ssh", "-o", "BatchMode=yes", cfg.Target.Host, command); err != nil {
-		return fmt.Errorf("peer home ancestor preflight: %w", err)
+	if command != prefix {
+		commands = append(commands, command)
+	}
+	return commands, nil
+}
+
+func preflightPeerHomeAncestors(ctx context.Context, runner *exec.Runner, cfg *Config, rels []string) error {
+	commands, err := peerHomeAncestorCommands(rels)
+	if err != nil {
+		return err
+	}
+	for _, command := range commands {
+		if _, err := runner.Run(ctx, "ssh", "-o", "BatchMode=yes", cfg.Target.Host, command); err != nil {
+			return fmt.Errorf("peer home ancestor preflight: %w", err)
+		}
 	}
 	return nil
 }
