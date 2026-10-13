@@ -260,6 +260,9 @@ func peerFilesEqual(a PeerFile, aOK bool, b PeerFile, bOK bool) bool {
 }
 
 func peerFingerprintEqual(a, b Fingerprint) bool {
+	if strings.HasPrefix(a.Sha, "link:") != strings.HasPrefix(b.Sha, "link:") {
+		return false
+	}
 	if a.Sha != "" && b.Sha != "" {
 		return a.Sha == b.Sha
 	}

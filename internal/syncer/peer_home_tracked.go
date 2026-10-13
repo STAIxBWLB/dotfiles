@@ -101,10 +101,10 @@ func readPeerHomeTrackedEntries(path string) ([]string, error) {
 }
 
 // inventoryPeerHomeTracked walks only the tracked entries under home and
-// fingerprints every regular file beneath them, keyed home-relative. The
+// fingerprints every regular file and symlink beneath them, keyed home-relative. The
 // tracked list is the entire filter: no workspace filter chain applies to
 // paths outside the workspace. Symlinks are never followed, matching the
-// rsync passes' treatment of them as non-payload.
+// rsync passes' link-preserving treatment of them.
 func inventoryPeerHomeTracked(home string, entries []string) (PeerSnapshot, error) {
 	home = strings.TrimRight(home, "/")
 	rootInfo, err := os.Lstat(home)
@@ -124,6 +124,9 @@ func inventoryPeerHomeTracked(home string, entries []string) (PeerSnapshot, erro
 		return nil
 	}
 	for _, entry := range entries {
+		if err := validatePeerHomeAncestors(home, []string{entry}); err != nil {
+			return nil, err
+		}
 		abs := filepath.Join(home, filepath.FromSlash(entry))
 		info, err := os.Lstat(abs)
 		if os.IsNotExist(err) {
@@ -134,10 +137,7 @@ func inventoryPeerHomeTracked(home string, entries []string) (PeerSnapshot, erro
 		if err != nil {
 			return nil, fmt.Errorf("peer home inventory: %w", err)
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			continue
-		}
-		if info.Mode().IsRegular() {
+		if info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 			if err := addFile(abs, entry); err != nil {
 				return nil, fmt.Errorf("peer home inventory: %w", err)
 			}
@@ -165,14 +165,14 @@ func inventoryPeerHomeTracked(home string, entries []string) (PeerSnapshot, erro
 				}
 				return nil
 			}
-			if d.IsDir() || d.Type()&os.ModeSymlink != 0 {
+			if d.IsDir() {
 				return nil
 			}
 			info, err := d.Info()
 			if err != nil {
 				return err
 			}
-			if !info.Mode().IsRegular() {
+			if !info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
 				return nil
 			}
 			return addFile(p, rel)
@@ -213,6 +213,65 @@ func underTrackedEntry(rel string, entries []string) bool {
 		}
 	}
 	return false
+}
+
+// Leaf links are payloads; a link in any parent would escape the home tree.
+// Missing parents are legitimate creates/deletes and stop this walk.
+func validatePeerHomeAncestors(home string, rels []string) error {
+	for _, rel := range rels {
+		if err := validateTombstoneRel(rel); err != nil {
+			return err
+		}
+		parts := strings.Split(rel, "/")
+		path := home
+		for _, part := range parts[:len(parts)-1] {
+			path = filepath.Join(path, part)
+			info, err := os.Lstat(path)
+			if os.IsNotExist(err) {
+				break
+			}
+			if err != nil {
+				return err
+			}
+			if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+				return fmt.Errorf("peer home path %q: unsafe ancestor %s", rel, path)
+			}
+		}
+	}
+	return nil
+}
+
+const homeAncestorsPreflightScript = `set -eu
+for rel do
+  parent=${rel%/*}
+  [ "$parent" != "$rel" ] || continue
+  while :; do
+    path=$HOME/$parent
+    if [ -L "$path" ] || { [ -e "$path" ] && [ ! -d "$path" ]; }; then
+      echo "unsafe peer home ancestor: $path" >&2
+      exit 43
+    fi
+    next=${parent%/*}
+    [ "$next" != "$parent" ] || break
+    parent=$next
+  done
+done`
+
+func preflightPeerHomeAncestors(ctx context.Context, runner *exec.Runner, cfg *Config, rels []string) error {
+	if len(rels) == 0 {
+		return nil
+	}
+	command := "sh -c " + shellQuote(homeAncestorsPreflightScript) + " sh"
+	for _, rel := range rels {
+		if err := validateTombstoneRel(rel); err != nil {
+			return err
+		}
+		command += " " + shellQuote(rel)
+	}
+	if _, err := runner.Run(ctx, "ssh", "-o", "BatchMode=yes", cfg.Target.Host, command); err != nil {
+		return fmt.Errorf("peer home ancestor preflight: %w", err)
+	}
+	return nil
 }
 
 // peerHomeScopedDir returns where the tracked pass stages its per-run list
@@ -342,6 +401,15 @@ func peerHomeRemoteInventory(ctx context.Context, runner *exec.Runner, cfg *Conf
 	if cfg == nil || !cfg.Target.IsSSH() {
 		return nil, fmt.Errorf("peer home inventory: target is not SSH")
 	}
+	check := append([]string(nil), entries...)
+	for rel := range baseline {
+		if underTrackedEntry(rel, entries) {
+			check = append(check, rel)
+		}
+	}
+	if err := preflightPeerHomeAncestors(ctx, runner, cfg, check); err != nil {
+		return nil, err
+	}
 	listFile, cleanup, err := writePeerHomeList(cfg, "home-tracked-inventory.dyn", entries, dryRun)
 	if err != nil {
 		return nil, err
@@ -353,8 +421,8 @@ func peerHomeRemoteInventory(ctx context.Context, runner *exec.Runner, cfg *Conf
 	}
 	defer os.RemoveAll(root)
 
-	args := []string{"-r", "-8", "--dry-run", "--no-links", "--ignore-missing-args", "--from0",
-		"--out-format=@@%l\t%M\t%n", "--files-from=" + listFile}
+	args := []string{"-r", "-l", "-8", "--dry-run", "--ignore-missing-args", "--from0",
+		"--out-format=@@%i\t%l\t%M\t%n\t%L", "--files-from=" + listFile}
 	remoteRsync := cfg.RemoteRsyncPath
 	if remoteRsync == "" {
 		remoteRsync = "rsync"
@@ -367,7 +435,51 @@ func peerHomeRemoteInventory(ctx context.Context, runner *exec.Runner, cfg *Conf
 	if err != nil {
 		return nil, fmt.Errorf("peer home inventory: %w", err)
 	}
-	return parsePeerRemoteInventory(res.Stdout, time.UTC, baseline, false)
+	return parsePeerHomeRemoteInventory(res.Stdout, baseline)
+}
+
+// Home inventories carry the item type and %L separately from %n. Parsing a
+// "name -> target" string would confuse a legal filename containing " -> ".
+// Escaped targets fail closed instead of hashing rsync's display spelling.
+func parsePeerHomeRemoteInventory(stdout string, baseline map[string]Fingerprint) (PeerSnapshot, error) {
+	out := PeerSnapshot{}
+	for _, raw := range strings.Split(stdout, "\n") {
+		if raw == "" {
+			continue
+		}
+		if !strings.HasPrefix(raw, "@@") {
+			// Reuse the workspace warning validation: unknown sockets/FIFOs
+			// are omitted, but a baseline payload becoming non-regular or
+			// unexpected output still makes the inventory incomplete.
+			if _, err := parsePeerRemoteInventory(raw, time.UTC, baseline, false); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		parts := strings.Split(strings.TrimPrefix(raw, "@@"), "\t")
+		if len(parts) != 5 || len(parts[0]) < 2 {
+			return nil, fmt.Errorf("peer home inventory: malformed rsync record %q", raw)
+		}
+		one, err := parsePeerRemoteInventory("@@"+strings.Join(parts[1:4], "\t"), time.UTC, baseline, false)
+		if err != nil {
+			return nil, err
+		}
+		for rel, file := range one {
+			if _, duplicate := out[rel]; duplicate {
+				return nil, fmt.Errorf("peer home inventory: duplicate path %q", rel)
+			}
+			if parts[0][1] == 'L' {
+				if !strings.HasPrefix(parts[4], " -> ") || rsyncEscapeRe.MatchString(parts[4]) {
+					return nil, fmt.Errorf("peer home inventory: unsafe link target for %q", rel)
+				}
+				file.FP = fingerprintLinkTarget(strings.TrimPrefix(parts[4], " -> "), file.FP.Mtime)
+			} else if parts[0][1] != 'f' {
+				return nil, fmt.Errorf("peer home inventory: unsupported payload type for %q", rel)
+			}
+			out[rel] = file
+		}
+	}
+	return out, nil
 }
 
 // peerHomeTransferArgs are the shared flags for the tracked pull and push.
@@ -392,6 +504,12 @@ func peerHomeRemoteRoot(cfg *Config) string { return cfg.Target.Host + ":" }
 func pullPeerHomePaths(ctx context.Context, runner *exec.Runner, cfg *Config, rels []string, dryRun bool) error {
 	if len(rels) == 0 {
 		return nil
+	}
+	if err := validatePeerHomeAncestors(cfg.HomeDir(), rels); err != nil {
+		return err
+	}
+	if err := preflightPeerHomeAncestors(ctx, runner, cfg, rels); err != nil {
+		return err
 	}
 	list, cleanup, err := writePeerHomeList(cfg, "peer-home-pull.dyn", rels, dryRun)
 	if err != nil {
@@ -439,6 +557,12 @@ func pushPeerHomePlan(ctx context.Context, runner *exec.Runner, cfg *Config, pla
 func pushPeerHomePass(ctx context.Context, runner *exec.Runner, cfg *Config, rels []string, stamp string, backup, dryRun bool) error {
 	if len(rels) == 0 {
 		return nil
+	}
+	if err := validatePeerHomeAncestors(cfg.HomeDir(), rels); err != nil {
+		return err
+	}
+	if err := preflightPeerHomeAncestors(ctx, runner, cfg, rels); err != nil {
+		return err
 	}
 	list, cleanup, err := writePeerHomeList(cfg, "peer-home-push.dyn", rels, dryRun)
 	if err != nil {
@@ -509,6 +633,9 @@ func propagatePeerHomeDeletes(ctx context.Context, runner *exec.Runner, cfg *Con
 	if err := checkTombstoneCap(cfg, tombstones); err != nil {
 		return err
 	}
+	if err := preflightPeerHomeAncestors(ctx, runner, cfg, tombstones); err != nil {
+		return err
+	}
 	baselineFile := peerHomeBaselineFile(cfg.LocalPaths)
 	baseline, err := LoadBaselineManifest(baselineFile)
 	if err != nil {
@@ -565,7 +692,7 @@ func peerHomeDeletePassArgs(cfg *Config, listFile, sourceRoot, stamp string, dry
 		"-r",
 		"--human-readable",
 		"--stats",
-		"--no-links",
+		"--links",
 		"--files-from=" + listFile,
 		"--from0",
 		"--ignore-missing-args",
@@ -585,6 +712,9 @@ func peerHomeDeletePassArgs(cfg *Config, listFile, sourceRoot, stamp string, dry
 // unlinking the local payload: it is renamed under the local home's
 // .dot-peer-conflicts, mirroring DeletePeerLocal with the home as root.
 func deletePeerHomeLocal(cfg *Config, stamp string, rels []string, dryRun bool) error {
+	if err := validatePeerHomeAncestors(cfg.HomeDir(), rels); err != nil {
+		return err
+	}
 	root := strings.TrimRight(cfg.HomeDir(), "/")
 	rootInfo, err := os.Lstat(root)
 	if err != nil {
@@ -605,7 +735,7 @@ func deletePeerHomeLocal(cfg *Config, stamp string, rels []string, dryRun bool) 
 		if err != nil {
 			return fmt.Errorf("peer home local delete %s: %w", rel, err)
 		}
-		if info.IsDir() || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		if !info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
 			return fmt.Errorf("peer home local delete %s: refusing non-regular payload", rel)
 		}
 		if dryRun {
@@ -681,6 +811,15 @@ func planPeerHomeTracked(ctx context.Context, probe *exec.Runner, cfg *Config, p
 	}
 	local, err := inventoryPeerHomeTracked(cfg.HomeDir(), entries)
 	if err != nil {
+		return nil, err
+	}
+	var baselineRels []string
+	for rel := range baseline {
+		if underTrackedEntry(rel, entries) {
+			baselineRels = append(baselineRels, rel)
+		}
+	}
+	if err := validatePeerHomeAncestors(cfg.HomeDir(), baselineRels); err != nil {
 		return nil, err
 	}
 	remote, err := peerHomeRemoteInventory(ctx, probe, cfg, entries, baseline, dryRun)
