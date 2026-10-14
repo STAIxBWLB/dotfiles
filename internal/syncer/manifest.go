@@ -22,8 +22,8 @@ import (
 type FingerprintMode int
 
 const (
-	// FingerprintFast records (size, mtime) only — matches rsync's
-	// natural change-detection. Default.
+	// FingerprintFast records (size, mtime) for regular files, matching
+	// rsync's natural change-detection. Links always carry a target hash.
 	FingerprintFast FingerprintMode = iota
 	// FingerprintStrict additionally records sha256, catching the
 	// content-changed-but-mtime-preserved case (rare in practice but
@@ -41,7 +41,7 @@ const fingerprintNoSha = "-"
 type Fingerprint struct {
 	Size  int64
 	Mtime time.Time
-	Sha   string // empty in fast mode; lowercase hex sha256 in strict
+	Sha   string // regular: empty in fast mode or hex sha256; link: "link:" + hex sha256
 }
 
 // Encode renders the trailing 3 columns of a manifest line:
@@ -107,14 +107,22 @@ func parseFingerprintTime(s string) (time.Time, error) {
 	return time.Parse(time.RFC3339, s)
 }
 
-// FingerprintFile stat's path and (in strict mode) hashes its content.
+// FingerprintFile lstats path and (in strict mode) hashes regular content.
+// Links always hash their target string, including dangling links.
 func FingerprintFile(path string, mode FingerprintMode) (Fingerprint, error) {
-	info, err := os.Stat(path)
+	info, err := os.Lstat(path)
 	if err != nil {
 		return Fingerprint{}, err
 	}
 	if info.IsDir() {
 		return Fingerprint{}, fmt.Errorf("fingerprint: %s is a directory", path)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		target, err := os.Readlink(path)
+		if err != nil {
+			return Fingerprint{}, err
+		}
+		return fingerprintLinkTarget(target, info.ModTime()), nil
 	}
 	fp := Fingerprint{Size: info.Size(), Mtime: info.ModTime().UTC()}
 	if mode == FingerprintStrict {
@@ -127,11 +135,21 @@ func FingerprintFile(path string, mode FingerprintMode) (Fingerprint, error) {
 	return fp, nil
 }
 
+// The prefix separates link targets from regular-file content hashes while
+// retaining the existing manifest columns and tombstone encoding.
+func fingerprintLinkTarget(target string, mtime time.Time) Fingerprint {
+	sum := sha256.Sum256([]byte(target))
+	return Fingerprint{Size: int64(len(target)), Mtime: mtime.UTC(), Sha: "link:" + hex.EncodeToString(sum[:])}
+}
+
 // FingerprintsCompatible compares a manifest entry to a freshly-stat'd
 // fingerprint. When one side has a sha and the other doesn't, the
 // missing side is hashed lazily off the supplied path so fast and
 // strict manifests interoperate.
 func FingerprintsCompatible(manifest, current Fingerprint, currentPath string) bool {
+	if strings.HasPrefix(manifest.Sha, "link:") != strings.HasPrefix(current.Sha, "link:") {
+		return false
+	}
 	if manifest.Sha != "" && current.Sha != "" {
 		return manifest.Sha == current.Sha
 	}

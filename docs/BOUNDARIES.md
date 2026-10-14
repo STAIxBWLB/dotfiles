@@ -350,6 +350,26 @@ tool):
   (`dot peer git status`, default `realign`, `--dry-run`) writes nothing;
   linked worktrees and locked, staged, conflicting or in-progress
   repositories are never touched.
+- home paths the operator lists in the peer store's
+  `home-paths-tracked.txt`, on both machines: regular files and symlinks
+  (including dangling links and links to directories) may be created,
+  replaced or removed by the baseline-aware tracked pass of `dot peer sync`.
+  Link targets are fingerprinted as strings and are never followed; symlink
+  ancestors observed by preflight are refused. This is the existing path-based
+  transport, with the concurrent-directory mutation window documented in
+  `docs/CEILINGS.md`. Simultaneous conflicting edits and
+  accepted deletions preserve the receiving payload under
+  `~/.dot-peer-conflicts/<timestamp>/from-peer/`. The peer store's
+  `baseline-home.manifest`, `baseline-home.peer-target` and `tombstones.log`
+  record the tracked transaction. Existing provenance, propagation policy,
+  deletion caps and dry-run restrictions apply to regular files and links.
+  This allowance requires explicit tracked-path selection; it does not grant
+  skill installation or ownership of a link's target tree. The additive
+  `home-paths.txt` list does not authorize deletion propagation.
+  Explicitly selected tool skill roots may participate in this peer filesystem
+  transport. This is a transport exception to the direct-write prohibition
+  below, not generic skill deployment: sources, installer bundles, registry
+  entries and per-target ownership remain managed by their existing owners.
 - host files the operator lists under `host_merge` in the peer config (for
   example `~/.claude.json`), on both machines: before the additive
   host-path pass of a two-way `dot peer sync`, the entries of the listed
@@ -381,7 +401,8 @@ tool):
 
 ## dotfiles-v2 Must Not Write Directly
 
-- anything under any tool skill root (`~/.claude/skills/**`,
+- anything under any tool skill root outside the explicit peer filesystem
+  transport above (`~/.claude/skills/**`,
   `~/.codex/skills/**`, `~/.agents/skills/**`, `~/.gemini/skills/**`,
   `~/.gemini/antigravity/skills/**`, `~/.kimi-code/skills/**`,
   `~/.qwen/skills/**`, `~/.grok/skills/**`, `~/.config/opencode/skills/**`,

@@ -349,3 +349,16 @@ func TestClearImportsAndTombstones(t *testing.T) {
 		t.Errorf("tombstones.log not cleared: %v", tomb)
 	}
 }
+
+func TestFingerprintsCompatibleRejectsLinkFileTypeAlias(t *testing.T) {
+	link := fingerprintLinkTarget("same", time.Unix(100, 0))
+	regular := Fingerprint{Size: link.Size, Mtime: link.Mtime}
+	for _, pair := range [][2]Fingerprint{{link, regular}, {regular, link}} {
+		if FingerprintsCompatible(pair[0], pair[1], filepath.Join(t.TempDir(), "missing")) {
+			t.Fatal("equal-size same-mtime link/file fingerprints considered compatible")
+		}
+	}
+	if !FingerprintsCompatible(link, link, "") {
+		t.Fatal("identical links must remain compatible")
+	}
+}

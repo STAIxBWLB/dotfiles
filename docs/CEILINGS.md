@@ -127,6 +127,23 @@ conflict and loss risk. The window is one sync interval, and the workspace
 rule of pushing on every commit keeps it small. Replace this limit only if a
 safe machine-to-machine state channel is ever designed.
 
+## Tracked-home directory mutation window
+
+`internal/syncer/peer_home_tracked.go` validates local and peer ancestors before
+inventory, transfer and quarantine, and revalidates local destinations before
+receiving planned changes. It retains the existing path-based rsync and rename
+protocol: a different process under the same user can replace a checked
+directory after the check and before the filesystem operation. Preflight is
+not a descriptor-based containment boundary or an atomic lock shared with native
+installers. This window also existed for regular tracked-home files.
+
+The personal peer fleet uses owner-controlled home trees. Static symlink
+ancestors and observed stale destinations fail closed, while native writers
+do not participate in dot's transaction lock. Replace this transport with
+descriptor-anchored local operations and a corresponding remote protocol if
+directory replacement during sync is observed, or if multi-user/adversarial
+filesystem containment becomes a requirement.
+
 ## host_merge read-merge-write race
 
 `internal/syncer/peer_host_merge.go` (`mergePeerHostFiles`) reads both copies

@@ -636,6 +636,24 @@ secrets:
 
 `dot peer` keeps its settings in `<workspace>/.dotfiles/peer/config.yaml`, one per machine (the store is gitignored). Keys besides those `dot peer init` writes:
 
+Tracked home paths in `home-paths-tracked.txt` include regular files and symlinks,
+including dangling links and links to directories. Links are compared by the
+SHA-256 of their target string and are never followed. Link deletion and
+retargeting use the same baseline, tombstones, conflict quarantine and
+`max_delete` limit as regular files. Workspace payloads remain regular-file-only.
+Populated-directory versus link replacements stop during planning; resolve the
+node-type conflict explicitly before retrying. Pathnames containing control
+characters retain the existing inventory restrictions. Ancestor preflight and
+destination revalidation catch changes observed before transfer; the existing
+path-based rsync protocol does not make checks atomic with a different process
+replacing directories during the operation (see `docs/CEILINGS.md`).
+Upgrade both peers before relying on link deletion propagation. Existing home
+baselines contain no link history: the first complete sync records the current
+links using the normal first-seen reconciliation rules; it cannot infer links
+deleted before that baseline was recorded. Delete an unwanted link after this
+first sync to propagate its removal. If both peers hold different previously
+untracked targets, normal conflict quarantine preserves the losing copy.
+
 | Key | Description |
 |-----|-------------|
 | `host_merge` | Host files (relative to `$HOME`) whose listed top-level JSON keys are merged from both Macs before the additive host pass of a two-way `dot peer sync`, e.g. `host_merge: {.claude.json: [mcpServers, projects]}`: every entry either copy has survives, the newer copy wins an entry both have and every other key. Without it the newer file wins whole; `dot peer diff --list` marks such hot files and warns about entries newest-wins would drop. The merge is a union: an entry removed on one Mac comes back from the other, so remove it on both. It applies to files the additive host list (`home-paths.txt`) covers, not tracked ones or files under a tool skill root. A listed file never goes through newest-wins: a regular file on a single Mac is created on the other where it is absent (rsync `--ignore-existing`), one on both is merged. A copy it cannot merge (a symlink, a directory, not a JSON object) stops a two-way run before anything moves, and `peer diff --list` shows why. A `--push-only` or `--pull-only` run merges nothing: it holds a listed file present on both Macs and says so. The config is per machine and only the coordinator's applies: set it on both Macs so it survives a handover, and upgrade dot on both first, since an older dot drops the key when it saves. |
