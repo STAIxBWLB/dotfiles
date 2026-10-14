@@ -354,8 +354,10 @@ tool):
   `home-paths-tracked.txt`, on both machines: regular files and symlinks
   (including dangling links and links to directories) may be created,
   replaced or removed by the baseline-aware tracked pass of `dot peer sync`.
-  Link targets are fingerprinted as strings and are never followed; paths
-  through symlink ancestors are refused. Simultaneous conflicting edits and
+  Link targets are fingerprinted as strings and are never followed; symlink
+  ancestors observed by preflight are refused. This is the existing path-based
+  transport, with the concurrent-directory mutation window documented in
+  `docs/CEILINGS.md`. Simultaneous conflicting edits and
   accepted deletions preserve the receiving payload under
   `~/.dot-peer-conflicts/<timestamp>/from-peer/`. The peer store's
   `baseline-home.manifest`, `baseline-home.peer-target` and `tombstones.log`

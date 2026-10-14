@@ -60,6 +60,9 @@ func TestCeilingsDoc(t *testing.T) {
 	if !strings.Contains(doc, "## Container translation table") || !strings.Contains(doc, "## Container DNS injection") {
 		t.Error("container ceilings (#223) missing from docs/CEILINGS.md")
 	}
+	if !strings.Contains(doc, "## Tracked-home directory mutation window") {
+		t.Error("tracked-home directory mutation ceiling (#249) missing from docs/CEILINGS.md")
+	}
 
 	for _, path := range []string{
 		"internal/syncer/manifest.go",

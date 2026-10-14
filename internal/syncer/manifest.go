@@ -147,6 +147,9 @@ func fingerprintLinkTarget(target string, mtime time.Time) Fingerprint {
 // missing side is hashed lazily off the supplied path so fast and
 // strict manifests interoperate.
 func FingerprintsCompatible(manifest, current Fingerprint, currentPath string) bool {
+	if strings.HasPrefix(manifest.Sha, "link:") != strings.HasPrefix(current.Sha, "link:") {
+		return false
+	}
 	if manifest.Sha != "" && current.Sha != "" {
 		return manifest.Sha == current.Sha
 	}

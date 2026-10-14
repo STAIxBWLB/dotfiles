@@ -641,6 +641,12 @@ including dangling links and links to directories. Links are compared by the
 SHA-256 of their target string and are never followed. Link deletion and
 retargeting use the same baseline, tombstones, conflict quarantine and
 `max_delete` limit as regular files. Workspace payloads remain regular-file-only.
+Populated-directory versus link replacements stop during planning; resolve the
+node-type conflict explicitly before retrying. Pathnames containing control
+characters retain the existing inventory restrictions. Ancestor preflight and
+destination revalidation catch changes observed before transfer; the existing
+path-based rsync protocol does not make checks atomic with a different process
+replacing directories during the operation (see `docs/CEILINGS.md`).
 Upgrade both peers before relying on link deletion propagation. Existing home
 baselines contain no link history: the first complete sync records the current
 links using the normal first-seen reconciliation rules; it cannot infer links

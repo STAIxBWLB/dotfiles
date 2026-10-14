@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -141,7 +143,7 @@ func TestPeerHomeSymlinkNoTraversal(t *testing.T) {
 		t.Fatal("tracked entry traversed symlink parent")
 	}
 	cfg := &Config{Home: home}
-	if err := deletePeerHomeLocal(cfg, "2026-01-02T03-04-05.000000Z", []string{"skills/directory/keep"}, false); err == nil {
+	if err := deletePeerHomeLocal(cfg, "2026-01-02T03-04-05.000000Z", []string{"skills/directory/keep"}, false, nil); err == nil {
 		t.Fatal("local delete traversed symlink parent")
 	}
 	if body, err := os.ReadFile(filepath.Join(outside, "keep")); err != nil || string(body) != "outside" {
@@ -345,5 +347,236 @@ func TestPeerHomeAncestorPreflightLargeTrees(t *testing.T) {
 	writePeerHomeLink(t, peer, unsafe, t.TempDir())
 	if err := preflightPeerHomeAncestors(context.Background(), peerScheduleRunner(false), cfg, rels); err == nil {
 		t.Fatal("late-batch symlink ancestor bypassed safety coverage")
+	}
+}
+
+func TestPeerHomeTombstoneWriteFailurePrecedesDelete(t *testing.T) {
+	cfg, _, local, peer := peerHomeTrackedFixture(t, "skills\n")
+	for _, home := range []string{local, peer} {
+		writePeerHomeFile(t, home, "skills/keep", "keep", peerHomeFixedTime)
+		writePeerHomeLink(t, home, "skills/tool", "missing")
+	}
+	run := func() error {
+		_, _, err := peerHomeTrackedSync(context.Background(), peerScheduleRunner(false), peerScheduleRunner(false), cfg, nil, false, false, false)
+		return err
+	}
+	if err := run(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(local, "skills/tool")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(cfg.LocalPaths.TombstonesFile, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(); err == nil || !strings.Contains(err.Error(), "recording home tombstones") {
+		t.Fatalf("audit write failure=%v", err)
+	}
+	if target, err := os.Readlink(filepath.Join(peer, "skills/tool")); err != nil || target != "missing" {
+		t.Fatalf("unrecorded peer deletion occurred: %q, %v", target, err)
+	}
+	if _, err := os.Lstat(filepath.Join(peer, homeConflictDirName)); !os.IsNotExist(err) {
+		t.Fatalf("audit failure still created peer quarantine: %v", err)
+	}
+	baseline, err := LoadBaselineManifest(peerHomeBaselineFile(cfg.LocalPaths))
+	if err != nil || baseline["skills/tool"].Sha == "" {
+		t.Fatalf("audit failure retired baseline evidence=%+v, %v", baseline, err)
+	}
+	if err := os.Remove(cfg.LocalPaths.TombstonesFile); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	tombs, err := LoadTombstones(cfg.LocalPaths.TombstonesFile)
+	if err != nil || len(tombs) != 1 || tombs[0].RelPath != "skills/tool" {
+		t.Fatalf("retry tombstones=%+v, %v", tombs, err)
+	}
+}
+
+func TestPeerHomeTombstoneRetainedWhenDeleteFails(t *testing.T) {
+	cfg, _, local, peer := peerHomeTrackedFixture(t, "skills\n")
+	for _, home := range []string{local, peer} {
+		writePeerHomeFile(t, home, "skills/keep", "keep", peerHomeFixedTime)
+		writePeerHomeLink(t, home, "skills/tool", "missing")
+	}
+	run := func() error {
+		_, _, err := peerHomeTrackedSync(context.Background(), peerScheduleRunner(false), peerScheduleRunner(false), cfg, nil, false, false, false)
+		return err
+	}
+	if err := run(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(local, "skills/tool")); err != nil {
+		t.Fatal(err)
+	}
+	originalPath := os.Getenv("PATH")
+	rsync := cfg.rsyncBin()
+	// Config resolves the binary through PATH, so pin the real path before
+	// placing a failure stub ahead of it.
+	realRsync, err := osexec.LookPath(rsync)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	writeStub(t, filepath.Join(bin, "rsync"), "#!/bin/sh\ncase \"$*\" in *--delete-missing-args*) exit 23;; esac\nexec "+shellQuote(realRsync)+" \"$@\"\n")
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+originalPath)
+	if err := run(); err == nil {
+		t.Fatal("delete failure not propagated")
+	}
+	tombs, err := LoadTombstones(cfg.LocalPaths.TombstonesFile)
+	if err != nil || len(tombs) != 1 || tombs[0].RelPath != "skills/tool" {
+		t.Fatalf("failed delete lacks durable detected evidence=%+v, %v", tombs, err)
+	}
+	baseline, err := LoadBaselineManifest(peerHomeBaselineFile(cfg.LocalPaths))
+	if err != nil || baseline["skills/tool"].Sha == "" {
+		t.Fatalf("failed delete retired baseline=%+v, %v", baseline, err)
+	}
+	t.Setenv("PATH", originalPath)
+	if err := run(); err != nil {
+		t.Fatalf("delete retry: %v", err)
+	}
+	tombs, err = LoadTombstones(cfg.LocalPaths.TombstonesFile)
+	if err != nil || len(tombs) < 1 || tombs[0].RelPath != "skills/tool" {
+		t.Fatalf("retry lost detected evidence=%+v, %v", tombs, err)
+	}
+}
+
+func TestPeerHomeLocalRetargetAfterPlanRefused(t *testing.T) {
+	cfg, _, local, peer := peerHomeTrackedFixture(t, "skills\n")
+	writePeerHomeLink(t, local, "skills/tool", "original")
+	writePeerHomeLink(t, peer, "skills/tool", "original")
+	seedPeerHomeBaseline(t, cfg, map[string]Fingerprint{"skills/tool": peerHomeFP(t, local, "skills/tool")})
+	writePeerHomeLink(t, peer, "skills/tool", "peer edit")
+	tp, err := planPeerHomeTracked(context.Background(), peerScheduleRunner(false), cfg, nil, false)
+	if err != nil || len(tp.plan.Pull) != 1 {
+		t.Fatalf("pull plan=%+v, %v", tp, err)
+	}
+	// Retarget during the remote ancestor probe, after planning and before
+	// pull's final destination validation.
+	originalSSH, err := osexec.LookPath("ssh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	path := filepath.Join(local, "skills/tool")
+	writeStub(t, filepath.Join(bin, "ssh"), "#!/bin/sh\ncase \"$*\" in *\"unsafe peer home ancestor\"*) rm -- "+shellQuote(path)+"; ln -s 'late edit' "+shellQuote(path)+";; esac\nexec "+shellQuote(originalSSH)+" \"$@\"\n")
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if err := pullPeerHomePaths(context.Background(), peerScheduleRunner(false), cfg, tp.plan, false); err == nil || !strings.Contains(err.Error(), "changed after planning") {
+		t.Fatalf("late retarget overwrite not refused: %v", err)
+	}
+	if target, err := os.Readlink(filepath.Join(local, "skills/tool")); err != nil || target != "late edit" {
+		t.Fatalf("late edit overwritten=%q, %v", target, err)
+	}
+	if err := deletePeerHomeLocal(cfg, "2026-01-02T03-04-05.000000Z", []string{"skills/tool"}, false, tp.plan.LocalBefore); err == nil || !strings.Contains(err.Error(), "changed after planning") {
+		t.Fatalf("late retarget deletion not refused: %v", err)
+	}
+}
+
+func TestPeerHomeTopologyConflictsRefusedBeforeEffects(t *testing.T) {
+	for _, localLink := range []bool{true, false} {
+		t.Run(fmt.Sprintf("local-link=%v", localLink), func(t *testing.T) {
+			cfg, _, local, peer := peerHomeTrackedFixture(t, "skills\n")
+			linkHome, dirHome := local, peer
+			if !localLink {
+				linkHome, dirHome = peer, local
+			}
+			writePeerHomeLink(t, linkHome, "skills/tool", "missing")
+			writePeerHomeFile(t, dirHome, "skills/tool/keep", "must survive", peerHomeFixedTime)
+			// A nearby sortable sibling must not hide the descendant search.
+			writePeerHomeFile(t, local, "skills/tool.", "nearby", peerHomeFixedTime)
+			if _, _, err := peerHomeTrackedSync(context.Background(), peerScheduleRunner(false), peerScheduleRunner(false), cfg, nil, false, false, false); err == nil || !strings.Contains(err.Error(), "topology") {
+				t.Fatalf("topology conflict not refused: %v", err)
+			}
+			if body, err := os.ReadFile(filepath.Join(dirHome, "skills/tool/keep")); err != nil || string(body) != "must survive" {
+				t.Fatalf("populated directory mutated=%q, %v", body, err)
+			}
+			if target, err := os.Readlink(filepath.Join(linkHome, "skills/tool")); err != nil || target != "missing" {
+				t.Fatalf("link mutated=%q, %v", target, err)
+			}
+		})
+	}
+}
+
+func TestPeerHomePreflightBoundsConnectionAndDeadline(t *testing.T) {
+	bin := t.TempDir()
+	log := filepath.Join(bin, "argv")
+	writeStub(t, filepath.Join(bin, "ssh"), "#!/bin/sh\nprintf '%s\\n' \"$@\" > "+shellQuote(log)+"\n")
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	cfg := &Config{Target: Target{Kind: TargetSSH, Host: "fake-peer"}}
+	if err := runPeerHomePreflight(context.Background(), peerScheduleRunner(false), cfg, "true"); err != nil {
+		t.Fatal(err)
+	}
+	argv, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, option := range []string{"ConnectTimeout=5", "ServerAliveInterval=5", "ServerAliveCountMax=2"} {
+		if !strings.Contains(string(argv), option+"\n") {
+			t.Fatalf("bounded probe missing %q: %s", option, argv)
+		}
+	}
+	writeStub(t, filepath.Join(bin, "ssh"), "#!/bin/sh\nexec /bin/sleep 2\n")
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	if err := runPeerHomePreflight(ctx, peerScheduleRunner(false), cfg, "true"); err == nil || time.Since(start) > time.Second {
+		t.Fatalf("probe did not honor caller deadline: %v, elapsed=%v", err, time.Since(start))
+	}
+}
+
+func TestPeerHomeEscapedSymlinkTargetsActualRsync(t *testing.T) {
+	cfg, _, local, peer := peerHomeTrackedFixture(t, "skills\n")
+	targets := []string{"has\ttab", "has\nnewline", "has\rcarriage", `literal\#012target`, `literal\#12`, "대상/도구"}
+	for i, target := range targets {
+		writePeerHomeLink(t, peer, fmt.Sprintf("skills/link%d", i), target)
+	}
+	snap, err := peerHomeRemoteInventory(context.Background(), peerScheduleRunner(false), cfg, []string{"skills"}, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, target := range targets {
+		rel := fmt.Sprintf("skills/link%d", i)
+		want := fingerprintLinkTarget(target, peerHomeFixedTime)
+		if snap[rel].FP.Sha != want.Sha || snap[rel].FP.Size != want.Size {
+			t.Fatalf("target %q fingerprint=%+v, want=%+v", target, snap[rel].FP, want)
+		}
+	}
+	if complete, _, err := peerHomeTrackedSync(context.Background(), peerScheduleRunner(false), peerScheduleRunner(false), cfg, nil, false, false, false); err != nil || !complete {
+		t.Fatalf("escaped-target pull: %v, complete=%v", err, complete)
+	}
+	for i, target := range targets {
+		got, err := os.Readlink(filepath.Join(local, fmt.Sprintf("skills/link%d", i)))
+		if err != nil || got != target {
+			t.Fatalf("target byte preservation=%q, want%q, %v", got, target, err)
+		}
+	}
+}
+
+func TestPeerHomeLinkTargetDecoderRejectsMalformed(t *testing.T) {
+	for _, test := range []struct {
+		raw  string
+		size int64
+	}{
+		{`bad\#888`, 4}, {`bad\#777`, 4}, {`bad\#000`, 4}, {"has\ttab", 99}, {`literal\#134#012`, 1},
+	} {
+		if _, err := decodePeerHomeLinkTarget(test.raw, test.size); err == nil {
+			t.Fatalf("malformed target accepted: %+v", test)
+		}
+	}
+}
+
+func TestPeerHomeRemoteParserStillRejectsFilenameTabs(t *testing.T) {
+	raw := "@@>f+++++++++\t4\t2026/02/03-04:05:06\tskills/has\ttab\t"
+	if _, err := parsePeerHomeRemoteInventory(raw, nil); err == nil {
+		t.Fatal("TAB in regular filename accepted as a shortened path")
+	}
+}
+
+func TestPeerHomeTopologyBaselineLinkVersusDescendants(t *testing.T) {
+	baseline := map[string]Fingerprint{"skills/tool": fingerprintLinkTarget("old", peerHomeFixedTime)}
+	snapshot := PeerSnapshot{"skills/tool/keep": {Present: true, FP: Fingerprint{Size: 4, Mtime: peerHomeFixedTime}}}
+	if err := validatePeerHomeTopology(baseline, snapshot); err == nil {
+		t.Fatal("baseline link versus populated directory transition accepted")
 	}
 }
