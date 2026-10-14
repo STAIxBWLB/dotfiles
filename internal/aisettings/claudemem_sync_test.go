@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -660,5 +661,31 @@ func TestOpenSyncDBReadOnly_MissingFileErrors(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("read-only open created the file: %v", err)
+	}
+}
+
+func TestImportSessionWithUnassignedMemoryID(t *testing.T) {
+	for _, incomingID := range []any{nil, "sender-memory"} {
+		t.Run(fmt.Sprint(incomingID), func(t *testing.T) {
+			receiver := newTestSyncDB(t)
+			execIns(t, receiver, `INSERT INTO sdk_sessions (content_session_id, memory_session_id, project, platform_source, started_at, started_at_epoch) VALUES ('pending-content', NULL, 'proj', 'claude', '2026-09-20', 0)`)
+			bundle := &Bundle{Sessions: []map[string]any{{"content_session_id": "pending-content", "memory_session_id": incomingID, "platform_source": "claude"}}}
+			for pass := 0; pass < 2; pass++ {
+				result, err := receiver.Import(bundle)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if result.Sessions != 0 || result.RelinkedObservations != 0 || result.RelinkedSummaries != 0 {
+					t.Fatalf("pending session changed: %+v", result)
+				}
+			}
+			var count int
+			if err := receiver.db.QueryRow(`SELECT COUNT(*) FROM sdk_sessions WHERE memory_session_id IS NULL`).Scan(&count); err != nil {
+				t.Fatal(err)
+			}
+			if count != 1 {
+				t.Fatalf("unassigned receiver sessions=%d, want 1", count)
+			}
+		})
 	}
 }

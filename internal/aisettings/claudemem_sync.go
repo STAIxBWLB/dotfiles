@@ -511,9 +511,7 @@ func importSession(tx *sql.Tx, receiverCols map[string]bool, row map[string]any,
 				rows.Close()
 				return "", false, err
 			}
-			if id.Valid && id.String != "" {
-				matches = append(matches, id.String)
-			}
+			matches = append(matches, id.String)
 		}
 		if err := rows.Err(); err != nil {
 			rows.Close()
