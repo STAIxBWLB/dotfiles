@@ -54,6 +54,11 @@ type ImportResult struct {
 	Skipped              []string `json:"skipped,omitempty"`
 }
 
+// NeedsBackfill includes session repairs that make existing content searchable.
+func (r *ImportResult) NeedsBackfill() bool {
+	return r != nil && r.Obs+r.Sums+r.Sessions+r.Repaired+r.RelinkedObservations+r.RelinkedSummaries > 0
+}
+
 // TableCounts is the serve `count` op and the status row's per-side view.
 type TableCounts struct {
 	Obs               int `json:"obs"`

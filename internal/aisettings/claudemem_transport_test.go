@@ -425,3 +425,45 @@ func TestSSHTransportHonorsThePin(t *testing.T) {
 		t.Fatalf("the pin was not probed and run:\n%s", body)
 	}
 }
+
+func TestServeOpSessionRelinkBackfill(t *testing.T) {
+	dst := newTestSyncDB(t)
+	seedSession(t, dst, "same-content", "receiver-memory", "2026-09-20T10:00:00.000Z")
+	seedObs(t, dst, "sender-memory", "2026-09-20T11:00:00.000Z", "known-orphan")
+	home := t.TempDir()
+	kicks := make(chan struct{}, 2)
+	worker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/api/admin/restart" {
+			kicks <- struct{}{}
+		}
+	}))
+	defer worker.Close()
+	mustWriteJSON(t, filepath.Join(home, ".claude-mem", "settings.json"), map[string]string{"CLAUDE_MEM_WORKER_PORT": strings.TrimPrefix(worker.URL, "http://127.0.0.1:")})
+	body, err := json.Marshal(serveRequest{Bundle: &Bundle{Sessions: []map[string]any{{"memory_session_id": "sender-memory", "content_session_id": "same-content", "platform_source": "claude"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for pass := 0; pass < 2; pass++ {
+		var out bytes.Buffer
+		if err := ServeOp(context.Background(), dst.Path, home, "import", bytes.NewReader(body), &out); err != nil {
+			t.Fatal(err)
+		}
+		var response serveResponse
+		if err := json.Unmarshal(out.Bytes(), &response); err != nil {
+			t.Fatal(err)
+		}
+		if response.Error != "" {
+			t.Fatal(response.Error)
+		}
+		if response.Result.Obs != 0 || response.Result.Sums != 0 || response.Result.Sessions != 0 {
+			t.Fatalf("unexpected inserted rows: %+v", response.Result)
+		}
+		wantRelinks := 1 - pass
+		if response.Result.RelinkedObservations != wantRelinks {
+			t.Fatalf("pass %d result: %+v", pass, response.Result)
+		}
+	}
+	if len(kicks) != 1 {
+		t.Fatalf("worker got %d backfill kicks, want one relink kick and no idempotent kick", len(kicks))
+	}
+}

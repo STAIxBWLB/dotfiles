@@ -235,7 +235,7 @@ func ServeOp(ctx context.Context, dbPath, home, op string, stdin io.Reader, stdo
 		// Backfill kick on the importing side whenever content rows landed.
 		// Settings live under the caller's home regardless of any custom
 		// --remote-db path.
-		if home != "" && resp.Result.Obs+resp.Result.Sums > 0 {
+		if home != "" && resp.Result.NeedsBackfill() {
 			_ = KickWorkerRestart(ctx, home, nil)
 		}
 	case "count":

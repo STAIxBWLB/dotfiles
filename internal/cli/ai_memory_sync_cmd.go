@@ -114,7 +114,7 @@ func runAIMemorySync(cmd *cobra.Command, args []string) error {
 
 	// Backfill kick on this side when a pull added content rows (the serve
 	// side kicks its own worker after a push).
-	if report.Pulled != nil && report.Pulled.Obs+report.Pulled.Sums > 0 {
+	if report.Pulled.NeedsBackfill() {
 		_ = aisettings.KickWorkerRestart(cmd.Context(), home, nil)
 	}
 	if err := aisettings.SaveSyncState(aisettings.SyncStatePath(home), peer.Target, aisettings.SyncStateEntry{
