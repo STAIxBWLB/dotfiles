@@ -41,15 +41,17 @@ type Bundle struct {
 	Cutoff       string           `json:"cutoff"`
 }
 
-// ImportResult counts what one import added. Skipped names the columns the
-// bundle carried but the receiver lacks (plugin version skew); the caller
-// logs each once.
+// ImportResult counts rows added and references relinked by one import.
+// Skipped names the columns the bundle carried but the receiver lacks (plugin
+// version skew); the caller logs each once.
 type ImportResult struct {
-	Obs      int      `json:"obs"`
-	Sums     int      `json:"sums"`
-	Sessions int      `json:"sessions"`
-	Repaired int      `json:"repaired"`
-	Skipped  []string `json:"skipped,omitempty"`
+	Obs                  int      `json:"obs"`
+	Sums                 int      `json:"sums"`
+	Sessions             int      `json:"sessions"`
+	Repaired             int      `json:"repaired"`
+	RelinkedObservations int      `json:"relinked_observations,omitempty"`
+	RelinkedSummaries    int      `json:"relinked_summaries,omitempty"`
+	Skipped              []string `json:"skipped,omitempty"`
 }
 
 // TableCounts is the serve `count` op and the status row's per-side view.
@@ -349,6 +351,7 @@ func (d *SyncDB) Import(b *Bundle) (*ImportResult, error) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	res := &ImportResult{}
+	sessionIDMap := map[string]string{}
 	skewed := map[string]bool{}
 	logSkew := func(cols []string) {
 		for _, c := range cols {
@@ -361,12 +364,39 @@ func (d *SyncDB) Import(b *Bundle) (*ImportResult, error) {
 		return nil, err
 	}
 	for _, row := range b.Sessions {
-		added, err := importSession(tx, sessionCols, row, logSkew)
+		canonicalID, added, err := importSession(tx, sessionCols, row, logSkew)
 		if err != nil {
 			return nil, fmt.Errorf("importing sdk_sessions: %w", err)
 		}
 		if added {
 			res.Sessions++
+		}
+		incomingID := rowString(row, "memory_session_id")
+		if incomingID != "" && canonicalID != "" && incomingID != canonicalID {
+			if previous, exists := sessionIDMap[incomingID]; exists && previous != canonicalID {
+				return nil, fmt.Errorf("incoming memory session %q maps to multiple receiver sessions", incomingID)
+			}
+			sessionIDMap[incomingID] = canonicalID
+		}
+	}
+	for from, to := range sessionIDMap {
+		result, err := tx.Exec("UPDATE observations SET memory_session_id = ? WHERE memory_session_id = ?", to, from)
+		if err != nil {
+			return nil, fmt.Errorf("relinking observations for session %q: %w", from, err)
+		}
+		if n, err := result.RowsAffected(); err != nil {
+			return nil, fmt.Errorf("counting relinked observations for session %q: %w", from, err)
+		} else {
+			res.RelinkedObservations += int(n)
+		}
+		result, err = tx.Exec("UPDATE session_summaries SET memory_session_id = ? WHERE memory_session_id = ?", to, from)
+		if err != nil {
+			return nil, fmt.Errorf("relinking summaries for session %q: %w", from, err)
+		}
+		if n, err := result.RowsAffected(); err != nil {
+			return nil, fmt.Errorf("counting relinked summaries for session %q: %w", from, err)
+		} else {
+			res.RelinkedSummaries += int(n)
 		}
 	}
 	obsCols, err := d.tableColumns("observations")
@@ -374,7 +404,8 @@ func (d *SyncDB) Import(b *Bundle) (*ImportResult, error) {
 		return nil, err
 	}
 	for _, row := range b.Observations {
-		added, repaired, err := importObservation(tx, obsCols, row, logSkew)
+		mapped := remapSessionRow(row, sessionIDMap)
+		added, repaired, err := importObservation(tx, obsCols, mapped, logSkew)
 		if err != nil {
 			return nil, fmt.Errorf("importing observations: %w", err)
 		}
@@ -388,7 +419,8 @@ func (d *SyncDB) Import(b *Bundle) (*ImportResult, error) {
 		return nil, err
 	}
 	for _, row := range b.Summaries {
-		added, err := importDeduped(tx, sumCols, "session_summaries", "request", row, logSkew)
+		mapped := remapSessionRow(row, sessionIDMap)
+		added, err := importDeduped(tx, sumCols, "session_summaries", "request", mapped, logSkew)
 		if err != nil {
 			return nil, fmt.Errorf("importing session_summaries: %w", err)
 		}
@@ -438,20 +470,105 @@ func insertRow(tx *sql.Tx, table string, cols []string, row map[string]any) (boo
 	return err == nil, err
 }
 
-func importSession(tx *sql.Tx, receiverCols map[string]bool, row map[string]any, logSkew func([]string)) (bool, error) {
-	var n int
-	err := tx.QueryRow(`SELECT COUNT(1) FROM sdk_sessions
-		WHERE (platform_source = ? AND content_session_id = ?) OR memory_session_id = ?`,
-		rowString(row, "platform_source"), rowString(row, "content_session_id"), rowString(row, "memory_session_id")).Scan(&n)
+func importSession(tx *sql.Tx, receiverCols map[string]bool, row map[string]any, logSkew func([]string)) (string, bool, error) {
+	incomingID := rowString(row, "memory_session_id")
+	incomingPlatform := rowString(row, "platform_source")
+	incomingContentID := rowString(row, "content_session_id")
+	if incomingID != "" {
+		var platform, contentID sql.NullString
+		err := tx.QueryRow(`SELECT platform_source, content_session_id FROM sdk_sessions WHERE memory_session_id = ?`, incomingID).Scan(&platform, &contentID)
+		if err == nil {
+			if incomingPlatform == "" || incomingContentID == "" {
+				return "", false, fmt.Errorf("memory session %q has an incomplete platform/content identity", incomingID)
+			}
+			if !platform.Valid || !contentID.Valid || platform.String != incomingPlatform || contentID.String != incomingContentID {
+				return "", false, fmt.Errorf("memory session %q already exists with a different platform/content identity", incomingID)
+			}
+			return incomingID, false, nil
+		}
+		if err != sql.ErrNoRows {
+			return "", false, err
+		}
+	}
+
+	// Only a complete identity can establish equivalence. Blank or NULL fields
+	// are deliberately left unmapped because they cannot safely identify a session.
+	if incomingPlatform != "" && incomingContentID != "" {
+		rows, err := tx.Query(`SELECT memory_session_id FROM sdk_sessions
+			WHERE platform_source = ? AND content_session_id = ?`, incomingPlatform, incomingContentID)
+		if err != nil {
+			return "", false, err
+		}
+		var matches []string
+		for rows.Next() {
+			var id sql.NullString
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return "", false, err
+			}
+			if id.Valid && id.String != "" {
+				matches = append(matches, id.String)
+			}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return "", false, err
+		}
+		if err := rows.Close(); err != nil {
+			return "", false, err
+		}
+		if len(matches) > 1 {
+			return "", false, fmt.Errorf("platform/content identity matches multiple receiver sessions")
+		}
+		if len(matches) == 1 {
+			return matches[0], false, nil
+		}
+	}
+
+	keep, skewed := intersect(row, receiverCols)
+	logSkew(skewed)
+	added, err := insertRowStrict(tx, "sdk_sessions", keep, row)
+	if err != nil {
+		return "", false, err
+	}
+	if incomingID == "" {
+		return "", added, nil
+	}
+	return incomingID, added, nil
+}
+
+// insertRowStrict is used for backing sessions: silently treating a unique
+// collision as a duplicate could leave incoming content pointing at no session.
+func insertRowStrict(tx *sql.Tx, table string, cols []string, row map[string]any) (bool, error) {
+	marks := strings.TrimSuffix(strings.Repeat("?,", len(cols)), ",")
+	stmt := `INSERT INTO ` + table + ` (` + strings.Join(cols, ", ") + `) VALUES (` + marks + `)`
+	args := make([]any, len(cols))
+	for i, col := range cols {
+		args[i] = row[col]
+	}
+	result, err := tx.Exec(stmt, args...)
 	if err != nil {
 		return false, err
 	}
-	if n > 0 {
-		return false, nil
+	n, err := result.RowsAffected()
+	if err != nil {
+		return false, err
 	}
-	keep, skewed := intersect(row, receiverCols)
-	logSkew(skewed)
-	return insertRow(tx, "sdk_sessions", keep, row)
+	return n > 0, nil
+}
+
+func remapSessionRow(row map[string]any, sessionIDMap map[string]string) map[string]any {
+	from := rowString(row, "memory_session_id")
+	to := sessionIDMap[from]
+	if from == "" || to == "" || from == to {
+		return row
+	}
+	remapped := make(map[string]any, len(row))
+	for col, value := range row {
+		remapped[col] = value
+	}
+	remapped["memory_session_id"] = to
+	return remapped
 }
 
 // importObservation dedupes on (created_at, title); a dedupe hit runs the
