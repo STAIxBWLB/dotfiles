@@ -1,8 +1,10 @@
 package aisettings
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -204,6 +206,201 @@ func TestSyncRoundTrip(t *testing.T) {
 	}
 	if res2.Obs != 0 || res2.Sums != 0 || res2.Sessions != 0 {
 		t.Fatalf("second import = %#v, want all zero", res2)
+	}
+}
+
+func equivalentSessionRow(memID, contentID, platform string) map[string]any {
+	return map[string]any{
+		"memory_session_id": memID, "content_session_id": contentID,
+		"platform_source": platform, "project": "proj",
+		"started_at": "2026-09-20T10:00:00.000Z", "started_at_epoch": 0,
+		"status": "active",
+	}
+}
+
+func TestImportSessionsRelinksExistingReferences(t *testing.T) {
+	receiver := newTestSyncDB(t)
+	seedSession(t, receiver, "content-1", "receiver-id", "2026-09-20T10:00:00.000Z")
+	seedObs(t, receiver, "incoming-id", "2026-09-20T10:01:00.000Z", "orphan observation")
+	seedSummary(t, receiver, "incoming-id", "2026-09-20T10:02:00.000Z", "orphan summary")
+	bundle := &Bundle{Sessions: []map[string]any{equivalentSessionRow("incoming-id", "content-1", "claude")}}
+	before, err := json.Marshal(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := receiver.Import(bundle)
+	if err != nil {
+		t.Fatalf("Import sessions: %v", err)
+	}
+	if result.Sessions != 0 || result.RelinkedObservations != 1 || result.RelinkedSummaries != 1 {
+		t.Fatalf("result = %#v, want one relink per content table and no new session", result)
+	}
+	for _, table := range []string{"observations", "session_summaries"} {
+		var got string
+		if err := receiver.db.QueryRow("SELECT memory_session_id FROM " + table).Scan(&got); err != nil || got != "receiver-id" {
+			t.Fatalf("%s memory_session_id = %q, err = %v", table, got, err)
+		}
+	}
+	var sessionCount int
+	if err := receiver.db.QueryRow("SELECT COUNT(*) FROM sdk_sessions").Scan(&sessionCount); err != nil || sessionCount != 1 {
+		t.Fatalf("sdk_sessions count = %d, err = %v", sessionCount, err)
+	}
+	unknown := "unknown-history"
+	seedObs(t, receiver, unknown, "2026-09-20T10:03:00.000Z", "unknown observation")
+	result, err = receiver.Import(bundle)
+	if err != nil {
+		t.Fatalf("second Import sessions: %v", err)
+	}
+	if result.RelinkedObservations != 0 || result.RelinkedSummaries != 0 {
+		t.Fatalf("second import relink counts = %#v, want zero", result)
+	}
+	var unknownID string
+	if err := receiver.db.QueryRow("SELECT memory_session_id FROM observations WHERE title = 'unknown observation'").Scan(&unknownID); err != nil || unknownID != unknown {
+		t.Fatalf("unknown reference changed to %q, err = %v", unknownID, err)
+	}
+	after, err := json.Marshal(bundle)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatalf("Import mutated caller bundle: err=%v", err)
+	}
+}
+
+func TestImportMapsIncomingContentToEquivalentSession(t *testing.T) {
+	receiver := newTestSyncDB(t)
+	seedSession(t, receiver, "content-1", "receiver-id", "2026-09-20T10:00:00.000Z")
+	observation := map[string]any{
+		"memory_session_id": "incoming-id", "project": "proj", "type": "discovery",
+		"title": "incoming observation", "created_at": "2026-09-20T10:01:00.000Z",
+		"created_at_epoch": 0, "content_hash": "incoming-hash",
+	}
+	summary := map[string]any{
+		"memory_session_id": "incoming-id", "project": "proj", "request": "incoming summary",
+		"created_at": "2026-09-20T10:02:00.000Z", "created_at_epoch": 0,
+	}
+	bundle := &Bundle{
+		Sessions:     []map[string]any{equivalentSessionRow("incoming-id", "content-1", "claude")},
+		Observations: []map[string]any{observation},
+		Summaries:    []map[string]any{summary},
+	}
+	before, err := json.Marshal(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := receiver.Import(bundle)
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	if result.Obs != 1 || result.Sums != 1 || result.Sessions != 0 {
+		t.Fatalf("result = %#v", result)
+	}
+	for _, table := range []string{"observations", "session_summaries"} {
+		var got string
+		if err := receiver.db.QueryRow("SELECT memory_session_id FROM " + table).Scan(&got); err != nil || got != "receiver-id" {
+			t.Fatalf("%s memory_session_id = %q, err = %v", table, got, err)
+		}
+	}
+	after, err := json.Marshal(bundle)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatalf("Import mutated caller bundle: err=%v", err)
+	}
+	result, err = receiver.Import(bundle)
+	if err != nil {
+		t.Fatalf("second Import: %v", err)
+	}
+	if result.Obs != 0 || result.Sums != 0 || result.RelinkedObservations != 0 || result.RelinkedSummaries != 0 {
+		t.Fatalf("second import was not idempotent: %#v", result)
+	}
+}
+
+func TestImportDoesNotMapBlankOrCrossPlatformIdentity(t *testing.T) {
+	receiver := newTestSyncDB(t)
+	seedSession(t, receiver, "content-1", "receiver-id", "2026-09-20T10:00:00.000Z")
+	bundle := &Bundle{
+		Sessions: []map[string]any{
+			equivalentSessionRow("cross-platform-id", "content-1", "gemini"),
+			equivalentSessionRow("blank-identity-id", "", ""),
+		},
+		Observations: []map[string]any{
+			{"memory_session_id": "cross-platform-id", "project": "proj", "type": "discovery", "title": "cross-platform", "created_at": "2026-09-20T10:01:00.000Z", "created_at_epoch": 0},
+			{"memory_session_id": "blank-identity-id", "project": "proj", "type": "discovery", "title": "blank-identity", "created_at": "2026-09-20T10:02:00.000Z", "created_at_epoch": 0},
+		},
+	}
+	if _, err := receiver.Import(bundle); err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	for title, want := range map[string]string{"cross-platform": "cross-platform-id", "blank-identity": "blank-identity-id"} {
+		var got string
+		if err := receiver.db.QueryRow("SELECT memory_session_id FROM observations WHERE title = ?", title).Scan(&got); err != nil || got != want {
+			t.Errorf("%s memory_session_id = %q, err = %v", title, got, err)
+		}
+	}
+}
+
+func TestImportConflictingMemoryIdentityFails(t *testing.T) {
+	receiver := newTestSyncDB(t)
+	seedSession(t, receiver, "content-1", "existing-id", "2026-09-20T10:00:00.000Z")
+	bundle := &Bundle{Sessions: []map[string]any{
+		equivalentSessionRow("new-id", "content-2", "claude"),
+		equivalentSessionRow("existing-id", "different-content", "claude"),
+	}}
+	if _, err := receiver.Import(bundle); err == nil {
+		t.Fatal("Import accepted an existing memory ID with a different identity")
+	}
+	var count int
+	if err := receiver.db.QueryRow("SELECT COUNT(*) FROM sdk_sessions WHERE memory_session_id = 'new-id'").Scan(&count); err != nil || count != 0 {
+		t.Fatalf("earlier session insert survived rollback: count=%d err=%v", count, err)
+	}
+	if _, err := receiver.Import(&Bundle{Sessions: []map[string]any{
+		equivalentSessionRow("existing-id", "", ""),
+	}}); err == nil {
+		t.Fatal("Import accepted an incomplete identity for an existing memory ID")
+	}
+}
+
+func TestImportAmbiguousSessionIdentityFails(t *testing.T) {
+	receiver := newTestSyncDB(t, "DROP INDEX ux_sdk_sessions_platform_content")
+	seedSession(t, receiver, "content-1", "receiver-one", "2026-09-20T10:00:00.000Z")
+	seedSession(t, receiver, "content-1", "receiver-two", "2026-09-20T10:01:00.000Z")
+	bundle := &Bundle{Sessions: []map[string]any{
+		equivalentSessionRow("incoming-id", "content-1", "claude"),
+	}}
+	if _, err := receiver.Import(bundle); err == nil {
+		t.Fatal("Import accepted an ambiguous platform/content identity")
+	}
+	var count int
+	if err := receiver.db.QueryRow("SELECT COUNT(*) FROM sdk_sessions WHERE memory_session_id = 'incoming-id'").Scan(&count); err != nil || count != 0 {
+		t.Fatalf("ambiguous import inserted a session: count=%d err=%v", count, err)
+	}
+}
+
+func TestImportRelinkUniqueConflictRollsBack(t *testing.T) {
+	receiver := newTestSyncDB(t)
+	seedSession(t, receiver, "content-1", "receiver-id", "2026-09-20T10:00:00.000Z")
+	seedObs(t, receiver, "receiver-id", "2026-09-20T10:01:00.000Z", "canonical")
+	execIns(t, receiver, "UPDATE observations SET content_hash = 'same-hash' WHERE title = 'canonical'")
+	seedObs(t, receiver, "incoming-id", "2026-09-20T10:02:00.000Z", "orphan")
+	execIns(t, receiver, "UPDATE observations SET content_hash = 'same-hash' WHERE title = 'orphan'")
+	bundle := &Bundle{Sessions: []map[string]any{
+		equivalentSessionRow("new-id", "content-2", "claude"),
+		equivalentSessionRow("incoming-id", "content-1", "claude"),
+	}}
+	if _, err := receiver.Import(bundle); err == nil {
+		t.Fatal("Import accepted a relink that violates the observation session/hash index")
+	}
+	var got string
+	if err := receiver.db.QueryRow("SELECT memory_session_id FROM observations WHERE title = 'orphan'").Scan(&got); err != nil || got != "incoming-id" {
+		t.Fatalf("failed relink changed orphan reference to %q, err=%v", got, err)
+	}
+	var count int
+	if err := receiver.db.QueryRow("SELECT COUNT(*) FROM sdk_sessions WHERE memory_session_id = 'new-id'").Scan(&count); err != nil || count != 0 {
+		t.Fatalf("earlier session insert survived rollback: count=%d err=%v", count, err)
+	}
+}
+
+func TestSyncReportSummarizesRelinkedReferences(t *testing.T) {
+	report := &SyncReport{Direction: "sessions", Pulled: &ImportResult{RelinkedObservations: 73, RelinkedSummaries: 2}}
+	if got, want := report.Summarize(), "relinked 73 obs + 2 summaries"; !strings.Contains(got, want) {
+		t.Fatalf("Summarize() = %q, want it to include %q", got, want)
 	}
 }
 
@@ -464,5 +661,65 @@ func TestOpenSyncDBReadOnly_MissingFileErrors(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("read-only open created the file: %v", err)
+	}
+}
+
+func TestImportSessionWithUnassignedMemoryID(t *testing.T) {
+	for _, incomingID := range []any{nil, "sender-memory"} {
+		t.Run(fmt.Sprint(incomingID), func(t *testing.T) {
+			receiver := newTestSyncDB(t)
+			execIns(t, receiver, `INSERT INTO sdk_sessions (content_session_id, memory_session_id, project, platform_source, started_at, started_at_epoch) VALUES ('pending-content', NULL, 'proj', 'claude', '2026-09-20', 0)`)
+			bundle := &Bundle{Sessions: []map[string]any{{"content_session_id": "pending-content", "memory_session_id": incomingID, "platform_source": "claude"}}}
+			for pass := 0; pass < 2; pass++ {
+				result, err := receiver.Import(bundle)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if result.Sessions != 0 || result.RelinkedObservations != 0 || result.RelinkedSummaries != 0 {
+					t.Fatalf("pending session changed: %+v", result)
+				}
+			}
+			var count int
+			if err := receiver.db.QueryRow(`SELECT COUNT(*) FROM sdk_sessions WHERE memory_session_id IS NULL`).Scan(&count); err != nil {
+				t.Fatal(err)
+			}
+			if count != 1 {
+				t.Fatalf("unassigned receiver sessions=%d, want 1", count)
+			}
+		})
+	}
+}
+
+func TestImportRejectsConflictingBundleSessionIdentity(t *testing.T) {
+	receiver := newTestSyncDB(t)
+	seedSession(t, receiver, "content-a", "receiver-memory", "2026-09-20T10:00:00.000Z")
+	seedObs(t, receiver, "sender-memory", "2026-09-20T11:00:00.000Z", "known-orphan")
+	bundle := &Bundle{Sessions: []map[string]any{
+		{"memory_session_id": "sender-memory", "platform_source": "claude", "content_session_id": "content-a"},
+		{"memory_session_id": "sender-memory", "platform_source": "claude", "content_session_id": "content-b", "project": "proj", "started_at": "2026-09-20", "started_at_epoch": 0},
+	}}
+	for _, reverse := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reverse=%v", reverse), func(t *testing.T) {
+			if reverse {
+				bundle.Sessions[0], bundle.Sessions[1] = bundle.Sessions[1], bundle.Sessions[0]
+			}
+			if _, err := receiver.Import(bundle); err == nil {
+				t.Fatal("conflicting session identities accepted")
+			}
+			var sessionCount int
+			if err := receiver.db.QueryRow(`SELECT COUNT(*) FROM sdk_sessions`).Scan(&sessionCount); err != nil {
+				t.Fatal(err)
+			}
+			if sessionCount != 1 {
+				t.Fatalf("failed import persisted sessions: %d", sessionCount)
+			}
+			var memoryID string
+			if err := receiver.db.QueryRow(`SELECT memory_session_id FROM observations WHERE title='known-orphan'`).Scan(&memoryID); err != nil {
+				t.Fatal(err)
+			}
+			if memoryID != "sender-memory" {
+				t.Fatalf("failed import changed observation identity: %q", memoryID)
+			}
+		})
 	}
 }

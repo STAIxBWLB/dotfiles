@@ -235,7 +235,7 @@ func ServeOp(ctx context.Context, dbPath, home, op string, stdin io.Reader, stdo
 		// Backfill kick on the importing side whenever content rows landed.
 		// Settings live under the caller's home regardless of any custom
 		// --remote-db path.
-		if home != "" && resp.Result.Obs+resp.Result.Sums > 0 {
+		if home != "" && resp.Result.NeedsBackfill() {
 			_ = KickWorkerRestart(ctx, home, nil)
 		}
 	case "count":
@@ -412,6 +412,12 @@ func (r *SyncReport) Summarize() string {
 	}
 	if r.Pulled != nil {
 		parts = append(parts, fmt.Sprintf("pulled +%d obs +%d sums +%d sessions", r.Pulled.Obs, r.Pulled.Sums, r.Pulled.Sessions))
+	}
+	for _, result := range []*ImportResult{r.Pushed, r.Pulled} {
+		if result == nil || result.RelinkedObservations+result.RelinkedSummaries == 0 {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("relinked %d obs + %d summaries", result.RelinkedObservations, result.RelinkedSummaries))
 	}
 	if len(parts) == 0 {
 		return "no rows transferred"
