@@ -689,3 +689,37 @@ func TestImportSessionWithUnassignedMemoryID(t *testing.T) {
 		})
 	}
 }
+
+func TestImportRejectsConflictingBundleSessionIdentity(t *testing.T) {
+	receiver := newTestSyncDB(t)
+	seedSession(t, receiver, "content-a", "receiver-memory", "2026-09-20T10:00:00.000Z")
+	seedObs(t, receiver, "sender-memory", "2026-09-20T11:00:00.000Z", "known-orphan")
+	bundle := &Bundle{Sessions: []map[string]any{
+		{"memory_session_id": "sender-memory", "platform_source": "claude", "content_session_id": "content-a"},
+		{"memory_session_id": "sender-memory", "platform_source": "claude", "content_session_id": "content-b", "project": "proj", "started_at": "2026-09-20", "started_at_epoch": 0},
+	}}
+	for _, reverse := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reverse=%v", reverse), func(t *testing.T) {
+			if reverse {
+				bundle.Sessions[0], bundle.Sessions[1] = bundle.Sessions[1], bundle.Sessions[0]
+			}
+			if _, err := receiver.Import(bundle); err == nil {
+				t.Fatal("conflicting session identities accepted")
+			}
+			var sessionCount int
+			if err := receiver.db.QueryRow(`SELECT COUNT(*) FROM sdk_sessions`).Scan(&sessionCount); err != nil {
+				t.Fatal(err)
+			}
+			if sessionCount != 1 {
+				t.Fatalf("failed import persisted sessions: %d", sessionCount)
+			}
+			var memoryID string
+			if err := receiver.db.QueryRow(`SELECT memory_session_id FROM observations WHERE title='known-orphan'`).Scan(&memoryID); err != nil {
+				t.Fatal(err)
+			}
+			if memoryID != "sender-memory" {
+				t.Fatalf("failed import changed observation identity: %q", memoryID)
+			}
+		})
+	}
+}

@@ -357,6 +357,7 @@ func (d *SyncDB) Import(b *Bundle) (*ImportResult, error) {
 	defer func() { _ = tx.Rollback() }()
 	res := &ImportResult{}
 	sessionIDMap := map[string]string{}
+	seenIdentities := map[string][2]string{}
 	skewed := map[string]bool{}
 	logSkew := func(cols []string) {
 		for _, c := range cols {
@@ -369,6 +370,14 @@ func (d *SyncDB) Import(b *Bundle) (*ImportResult, error) {
 		return nil, err
 	}
 	for _, row := range b.Sessions {
+		incomingID := rowString(row, "memory_session_id")
+		identity := [2]string{rowString(row, "platform_source"), rowString(row, "content_session_id")}
+		if incomingID != "" {
+			if previous, exists := seenIdentities[incomingID]; exists && previous != identity {
+				return nil, fmt.Errorf("incoming memory session %q has conflicting platform/content identities", incomingID)
+			}
+			seenIdentities[incomingID] = identity
+		}
 		canonicalID, added, err := importSession(tx, sessionCols, row, logSkew)
 		if err != nil {
 			return nil, fmt.Errorf("importing sdk_sessions: %w", err)
@@ -376,7 +385,6 @@ func (d *SyncDB) Import(b *Bundle) (*ImportResult, error) {
 		if added {
 			res.Sessions++
 		}
-		incomingID := rowString(row, "memory_session_id")
 		if incomingID != "" && canonicalID != "" && incomingID != canonicalID {
 			if previous, exists := sessionIDMap[incomingID]; exists && previous != canonicalID {
 				return nil, fmt.Errorf("incoming memory session %q maps to multiple receiver sessions", incomingID)
