@@ -1063,3 +1063,91 @@ func TestCodexHomeFollowsCodexHomeEnv(t *testing.T) {
 		t.Fatal("foreign broken cache reported runnable")
 	}
 }
+
+func TestMemoryMCPStatusExecutableAliases(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "dot")
+	alias := filepath.Join(dir, "dot-alias")
+	other := filepath.Join(dir, "other-dot")
+	broken := filepath.Join(dir, "broken-dot")
+	mustWriteFile(t, real, "dot")
+	mustWriteFile(t, other, "dot")
+	if err := os.Symlink(real, alias); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "missing"), broken); err != nil {
+		t.Fatal(err)
+	}
+	for _, variant := range []mcpEntryVariant{mcpVariantStandard, mcpVariantKiro, mcpVariantCopilot} {
+		for _, tc := range []struct {
+			name, command, executable string
+			want                      bool
+		}{
+			{"same", real, real, true},
+			{"configured alias", alias, real, true},
+			{"invoked alias", real, alias, true},
+			{"different file", other, real, false},
+			{"broken configured alias", broken, real, false},
+			{"broken invoked alias", real, broken, false},
+		} {
+			t.Run(fmt.Sprintf("%d/%s", variant, tc.name), func(t *testing.T) {
+				path := filepath.Join(t.TempDir(), "mcp.json")
+				if _, err := ensureMCPEntry(path, tc.command, variant); err != nil {
+					t.Fatal(err)
+				}
+				before, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				check := hasManagedMCPEntry
+				if variant == mcpVariantCopilot {
+					check = hasManagedCopilotMCPEntry
+				}
+				if got := check(path, tc.executable); got != tc.want {
+					t.Fatalf("ready = %v, want %v", got, tc.want)
+				}
+				after, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(before, after) {
+					t.Fatal("status changed MCP configuration")
+				}
+			})
+		}
+	}
+}
+
+func TestMemoryMCPStatusAliasesPreserveContract(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "dot")
+	alias := filepath.Join(dir, "dot-alias")
+	mustWriteFile(t, real, "dot")
+	if err := os.Symlink(real, alias); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		kind    string
+		tools   []string
+		copilot bool
+	}{
+		{"wrong args", []string{"ai", "memory", "other"}, "local", []string{"*"}, false},
+		{"wrong copilot args", []string{"ai", "memory", "other"}, "local", []string{"*"}, true},
+		{"wrong copilot type", []string{"ai", "memory", "mcp-server"}, "stdio", []string{"*"}, true},
+		{"wrong copilot tools", []string{"ai", "memory", "mcp-server"}, "local", []string{"other"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "mcp.json")
+			mustWriteJSON(t, path, map[string]any{"mcpServers": map[string]any{"claude-mem": map[string]any{"command": alias, "args": tc.args, "type": tc.kind, "tools": tc.tools}}})
+			check := hasManagedMCPEntry
+			if tc.copilot {
+				check = hasManagedCopilotMCPEntry
+			}
+			if check(path, real) {
+				t.Fatal("invalid MCP contract reported ready")
+			}
+		})
+	}
+}

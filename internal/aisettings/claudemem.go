@@ -1277,7 +1277,7 @@ func hasManagedMCPEntry(path, dotPath string) bool {
 	if len(args) == 5 && args[0] == "--home" && filepath.IsAbs(args[1]) {
 		args = args[2:]
 	}
-	return ok && entry.Command == dotPath && len(args) == 3 && args[0] == "ai" && args[1] == "memory" && args[2] == "mcp-server"
+	return ok && sameMemoryExecutable(entry.Command, dotPath) && len(args) == 3 && args[0] == "ai" && args[1] == "memory" && args[2] == "mcp-server"
 }
 
 func hasManagedCopilotMCPEntry(path, dotPath string) bool {
@@ -1293,10 +1293,26 @@ func hasManagedCopilotMCPEntry(path, dotPath string) bool {
 		return false
 	}
 	entry, ok := doc.MCPServers["claude-mem"]
-	return ok && entry.Command == dotPath &&
+	return ok && sameMemoryExecutable(entry.Command, dotPath) &&
 		len(entry.Args) == 3 && entry.Args[0] == "ai" && entry.Args[1] == "memory" && entry.Args[2] == "mcp-server" &&
 		entry.Type == "local" &&
 		len(entry.Tools) == 1 && entry.Tools[0] == "*"
+}
+
+// Preserve exact configured paths, and recognize filesystem aliases only when
+// both absolute paths exist and name the same file. Never resolve bare commands
+// through PATH: a different executable must not look like a managed adapter.
+func sameMemoryExecutable(configured, invoked string) bool {
+	if configured == invoked {
+		return configured != ""
+	}
+	if !filepath.IsAbs(configured) || !filepath.IsAbs(invoked) {
+		return false
+	}
+	configuredInfo, configuredErr := os.Stat(configured)
+	invokedInfo, invokedErr := os.Stat(invoked)
+	return configuredErr == nil && invokedErr == nil &&
+		!configuredInfo.IsDir() && !invokedInfo.IsDir() && os.SameFile(configuredInfo, invokedInfo)
 }
 
 func countWatches(watches []transcriptWatch) map[string]int {
