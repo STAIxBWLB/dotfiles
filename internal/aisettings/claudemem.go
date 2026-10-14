@@ -1265,8 +1265,9 @@ func codexClaudeMemEnabled(path string) bool {
 func hasManagedMCPEntry(path, dotPath string) bool {
 	var doc struct {
 		MCPServers map[string]struct {
-			Command string   `json:"command"`
-			Args    []string `json:"args"`
+			Command  string   `json:"command"`
+			Args     []string `json:"args"`
+			Disabled bool     `json:"disabled"`
 		} `json:"mcpServers"`
 	}
 	if !readJSONFile(path, &doc) {
@@ -1277,7 +1278,7 @@ func hasManagedMCPEntry(path, dotPath string) bool {
 	if len(args) == 5 && args[0] == "--home" && filepath.IsAbs(args[1]) {
 		args = args[2:]
 	}
-	return ok && sameMemoryExecutable(entry.Command, dotPath) && len(args) == 3 && args[0] == "ai" && args[1] == "memory" && args[2] == "mcp-server"
+	return ok && !entry.Disabled && len(args) == 3 && args[0] == "ai" && args[1] == "memory" && args[2] == "mcp-server" && sameMemoryExecutable(entry.Command, dotPath)
 }
 
 func hasManagedCopilotMCPEntry(path, dotPath string) bool {
@@ -1293,10 +1294,10 @@ func hasManagedCopilotMCPEntry(path, dotPath string) bool {
 		return false
 	}
 	entry, ok := doc.MCPServers["claude-mem"]
-	return ok && sameMemoryExecutable(entry.Command, dotPath) &&
+	return ok &&
 		len(entry.Args) == 3 && entry.Args[0] == "ai" && entry.Args[1] == "memory" && entry.Args[2] == "mcp-server" &&
 		entry.Type == "local" &&
-		len(entry.Tools) == 1 && entry.Tools[0] == "*"
+		len(entry.Tools) == 1 && entry.Tools[0] == "*" && sameMemoryExecutable(entry.Command, dotPath)
 }
 
 // Preserve exact configured paths, and recognize filesystem aliases only when

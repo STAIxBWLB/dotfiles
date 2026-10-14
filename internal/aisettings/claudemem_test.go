@@ -1151,3 +1151,35 @@ func TestMemoryMCPStatusAliasesPreserveContract(t *testing.T) {
 		})
 	}
 }
+
+func TestMemoryMCPStatusDisabledAdapter(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "dot")
+	alias := filepath.Join(dir, "dot-alias")
+	mustWriteFile(t, real, "dot")
+	if err := os.Symlink(real, alias); err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []string{real, alias} {
+		for _, disabled := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/disabled=%v", filepath.Base(command), disabled), func(t *testing.T) {
+				path := filepath.Join(t.TempDir(), "mcp.json")
+				mustWriteJSON(t, path, map[string]any{"mcpServers": map[string]any{"claude-mem": map[string]any{"command": command, "args": []string{"ai", "memory", "mcp-server"}, "disabled": disabled}}})
+				before, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := hasManagedMCPEntry(path, real); got == disabled {
+					t.Fatalf("ready=%v, disabled=%v", got, disabled)
+				}
+				after, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(before, after) {
+					t.Fatal("status changed disabled setting")
+				}
+			})
+		}
+	}
+}
