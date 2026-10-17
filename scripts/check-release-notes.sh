@@ -41,8 +41,12 @@ check_file() {
     lead=${line#"${line%%[![:space:]]*}"}
     if [ "$n" = 1 ]; then
       case "$lead" in
-        "" | "#"* | "-"* | "*"*) err "$f" 1 "first line must be a plain sentence" ;;
+        "" | "#"* | "-"* | "*"* | "+"* | [0-9]*[.\)]" "*) err "$f" 1 "first line must be a plain sentence" ;;
       esac
+    fi
+    # A line of only = or - underlines the line above into a heading.
+    if [[ "$lead" =~ ^(=+|-+)[[:space:]]*$ ]]; then
+      err "$f" "$n" "underlined (setext) heading or rule; use only the allowed ### sections"
     fi
     if [[ "$lead" == "#"* ]]; then
       local i found=-1
@@ -99,6 +103,9 @@ if [ "${1:-}" = "--self-test" ]; then
   expect ok "well-formed" "$(printf 'Fixes a crash.\n\n### Fixed\n- `dot sync` no longer crashes. (#1)\n\n%s' "$good_tail")"
   expect ok "maintenance" "$(printf 'Maintenance release: no user-facing changes.\n\n%s' "$good_tail")"
   expect fail "heading on line 1" "$(printf '# v1.0.1\n\n%s' "$good_tail")"
+  expect fail "setext heading" "$(printf 'Release changes\n===============\n\n%s' "$good_tail")"
+  expect fail "plus list on line 1" "$(printf '+ Changes sync. (#1)\n\n%s' "$good_tail")"
+  expect fail "numbered list on line 1" "$(printf '1. Changes sync. (#1)\n\n%s' "$good_tail")"
   expect fail "indented heading on line 1" "$(printf '   # v1.0.1\n\n%s' "$good_tail")"
   expect fail "indented unknown section" "$(printf 'X.\n\n  ### Changes\n- y (#1)\n\n%s' "$good_tail")"
   expect fail "indented allowed section" "$(printf 'X.\n\n ### Fixed\n- y (#1)\n\n%s' "$good_tail")"
