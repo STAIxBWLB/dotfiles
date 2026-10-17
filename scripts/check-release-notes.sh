@@ -28,7 +28,7 @@ previous_tag() {
 }
 
 check_file() {
-  local f=$1 tag prev want n=0 line last_section=-1 last=""
+  local f=$1 tag prev want n=0 line last_section=-1 last="" open_section=""
   tag=$(basename "$f" .md)
   if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then err "$f" 0 "file name is not vX.Y.Z.md"; return; fi
   if [ ! -s "$f" ]; then err "$f" 0 "empty"; return; fi
@@ -57,10 +57,13 @@ check_file() {
       elif [ "$found" -le "$last_section" ]; then
         err "$f" "$n" "section out of order or repeated: $line"
       else
+        [ -n "$open_section" ] && err "$f" "$open_section" "empty section"
         last_section=$found
+        open_section=$n
       fi
     fi
-    if [[ "$line" =~ (^|[^0-9a-f])[0-9a-f]{40}([^0-9a-f]|$) ]]; then err "$f" "$n" "commit SHA"; fi
+    if [[ "$line" =~ (^|[^0-9a-fA-F])[0-9a-fA-F]{40}([^0-9a-fA-F]|$) ]]; then err "$f" "$n" "commit SHA"; fi
+    if [[ -n "$open_section" && "$lead" =~ ^[-*+][[:space:]] ]]; then open_section=""; fi
     if [ "$need_pr" = 1 ] && [[ "$lead" =~ ^[-*+][[:space:]] ]] && [[ ! "$line" =~ \(#[0-9]+(,\ #[0-9]+)*\)\.?$ ]]; then
       err "$f" "$n" "bullet must end with its PR number, e.g. (#123)"
     fi
@@ -68,6 +71,7 @@ check_file() {
       err "$f" "$n" "conventional-commit prefix"
     fi
   done <"$f"
+  [ -n "$open_section" ] && err "$f" "$open_section" "empty section"
   prev=$(previous_tag "$f")
   if [ -n "$prev" ]; then
     want="**Full changelog**: $REPO_URL/compare/$prev...$tag"
@@ -114,6 +118,9 @@ if [ "${1:-}" = "--self-test" ]; then
   expect fail "unknown section" "$(printf 'X.\n\n### Changes\n- y (#1)\n\n%s' "$good_tail")"
   expect fail "section order" "$(printf 'X.\n\n### Fixed\n- a (#1)\n\n### New\n- b (#2)\n\n%s' "$good_tail")"
   expect fail "SHA" "$(printf 'X.\n\n### Fixed\n- a 0123456789abcdef0123456789abcdef01234567 (#1)\n\n%s' "$good_tail")"
+  expect fail "uppercase SHA" "$(printf 'X.\n\n### Fixed\n- a 0123456789ABCDEF0123456789ABCDEF01234567 (#1)\n\n%s' "$good_tail")"
+  expect fail "empty section" "$(printf 'X.\n\n### Fixed\n\n%s' "$good_tail")"
+  expect fail "empty section before another" "$(printf 'X.\n\n### New\n\n### Fixed\n- a (#1)\n\n%s' "$good_tail")"
   expect fail "conventional prefix" "$(printf 'X.\n\n### Fixed\n- fix(sync): a (#1)\n\n%s' "$good_tail")"
   expect fail "wrong compare link" "$(printf 'X.\n\n**Full changelog**: %s/compare/v0.9.0...v1.0.1' "$REPO_URL")"
   expect fail "missing link" "$(printf 'X.\n\n### Fixed\n- a (#1)')"
