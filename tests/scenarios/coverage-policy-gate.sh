@@ -148,10 +148,13 @@ fi
 
 echo "--- workflow trigger mutation ---"
 copy_inputs
-grep -Fv '      - ".testcoverage.yml"' "$WORKFLOW" >"$WORKFLOW.next"
+sed 's/\\\.testcoverage\\\.yml\$|//' "$WORKFLOW" >"$WORKFLOW.next"
+if cmp -s "$WORKFLOW" "$WORKFLOW.next"; then
+  fail "workflow trigger mutation changed nothing; the decision TEST_INPUTS no longer names .testcoverage.yml"
+fi
 mv "$WORKFLOW.next" "$WORKFLOW"
 run_gate
-expect_red_with "missing floor-policy pull-request path" '.testcoverage.yml' 'pull_request.paths'
+expect_red_with "missing floor-policy decision input" '.testcoverage.yml' 'TEST_INPUTS'
 
 echo "--- zero override mutation ---"
 copy_inputs
