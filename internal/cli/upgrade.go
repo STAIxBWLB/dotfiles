@@ -106,6 +106,9 @@ func runUpgrade(cmd *cobra.Command, currentVersion string) error {
 	switch {
 	case cmp == 0:
 		p.Line("Already up to date.")
+		if checkOnly {
+			p.Line("Update path: %s", updatePath(ctx, brew, viaBrew, currentClean, latestVersion, latest.TagName))
+		}
 		return nil
 	case cmp > 0:
 		p.Line("Current version %s is newer than latest release %s.", currentClean, latestVersion)
@@ -167,14 +170,19 @@ var slotRetryInterval = 15 * time.Second
 // once (#266); the first deferral reason is printed while it waits. No
 // attempt starts after the wait ends, and each one runs under its deadline.
 func acquireMaintenanceSlot(ctx context.Context, p *Printer, wait time.Duration, acquire func(context.Context) (func(), error)) (func(), error) {
-	release, err := acquire(ctx)
+	if wait <= 0 {
+		return acquire(ctx)
+	}
+	// The first attempt runs under the wait too: the prebuilt gate itself
+	// samples for a while before it answers.
+	waitCtx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
+	release, err := acquire(waitCtx)
 	var deferred *resourceguard.DeferredError
-	if err == nil || wait <= 0 || !errors.As(err, &deferred) {
+	if err == nil || !errors.As(err, &deferred) {
 		return release, err
 	}
 	p.Line("The maintenance slot is busy (%s); waiting up to %s...", deferred.Reason, wait)
-	waitCtx, cancel := context.WithTimeout(ctx, wait)
-	defer cancel()
 	for {
 		select {
 		case <-waitCtx.Done():

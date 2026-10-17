@@ -326,6 +326,20 @@ func TestAcquireMaintenanceSlotWaitsForABusySlot(t *testing.T) {
 	if elapsed := time.Since(start); elapsed > 5*time.Second {
 		t.Fatalf("a 20ms wait took %s", elapsed)
 	}
+
+	// A first attempt that would outlast the wait is cut off by it.
+	slowFirst := func(ctx context.Context) (func(), error) {
+		select {
+		case <-ctx.Done():
+			return nil, busy
+		case <-time.After(time.Hour):
+			return func() {}, nil
+		}
+	}
+	start = time.Now()
+	if _, err := acquireMaintenanceSlot(context.Background(), &Printer{Out: &out, Err: &out}, 20*time.Millisecond, slowFirst); !errors.As(err, &busy) || time.Since(start) > 5*time.Second {
+		t.Fatalf("a slow first attempt was not bounded by the wait: %v after %s", err, time.Since(start))
+	}
 	if hint := retrySlotHint(0); !strings.Contains(hint, "--wait") {
 		t.Fatalf("the no-wait hint must name --wait, got %q", hint)
 	}
