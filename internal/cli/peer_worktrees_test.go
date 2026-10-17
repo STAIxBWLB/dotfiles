@@ -2,9 +2,11 @@ package cli
 
 import (
 	"encoding/json"
+	"github.com/STAIxBWLB/dotfiles/internal/syncer"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -67,6 +69,12 @@ func TestPeerStatusJSONReportsUnreadableDirectories(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
 
+	// A caller that does not ask for the field (an older coordinator) would
+	// read the list as complete, so it still gets the fail-closed error.
+	if _, _, err := runDotForTest("peer", "status", "--json"); err == nil || !strings.Contains(err.Error(), "worktree detection") {
+		t.Fatalf("err = %v, want a fail-closed detection error without %s", err, syncer.PeerStatusUnscannedEnv)
+	}
+	t.Setenv(syncer.PeerStatusUnscannedEnv, "1")
 	out, errOut, err := runDotForTest("peer", "status", "--json")
 	if err != nil {
 		t.Fatalf("peer status --json: %v\nstderr=%s", err, errOut)

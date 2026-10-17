@@ -124,6 +124,11 @@ func runPeerStatus(cmd *cobra.Command, _ []string) error {
 		// the peer sync a real worktree as regular files (the #135 husk
 		// class), so refuse rather than emit an incomplete document.
 		worktrees, unscanned, err := syncer.DetectPeerWorktrees(cfg, st.LocalPath)
+		if err == nil && len(unscanned) > 0 && os.Getenv(syncer.PeerStatusUnscannedEnv) == "" {
+			// A caller that does not ask for the field would read the list as
+			// complete: refuse, as before (#268).
+			err = fmt.Errorf("cannot read %s", strings.Join(unscanned, ", "))
+		}
 		if err != nil {
 			return fmt.Errorf("linked-worktree detection failed; refusing to report an incomplete worktree list: %w", err)
 		}

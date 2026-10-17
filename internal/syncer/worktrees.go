@@ -181,6 +181,17 @@ func SavePeerWorktrees(path string, rels []string) error {
 // run: the remote list is cross-machine input and a single corrupt path must
 // not stop every sync.
 func MergePeerWorktrees(cfg *Config, remote []string, persist bool) ([]string, error) {
+	return mergePeerWorktrees(cfg, remote, nil, persist)
+}
+
+// MergePeerWorktreesChecked is MergePeerWorktrees for a remote status that
+// listed directories its scan could not read: they are judged against the
+// complete union (stored, local, remote) before anything is persisted.
+func MergePeerWorktreesChecked(cfg *Config, remote, remoteUnscanned []string, persist bool) ([]string, error) {
+	return mergePeerWorktrees(cfg, remote, remoteUnscanned, persist)
+}
+
+func mergePeerWorktrees(cfg *Config, remote, remoteUnscanned []string, persist bool) ([]string, error) {
 	if cfg == nil || cfg.LocalPaths == nil {
 		return nil, fmt.Errorf("peer worktrees: local paths unresolved")
 	}
@@ -220,6 +231,9 @@ func MergePeerWorktrees(cfg *Config, remote []string, persist bool) ([]string, e
 		out = append(out, rel)
 	}
 	sort.Strings(out)
+	if err := CheckPeerUnscanned(cfg, remoteUnscanned, out); err != nil {
+		return nil, err
+	}
 	if persist {
 		if err := SavePeerWorktrees(cfg.LocalPaths.WorktreesFile, out); err != nil {
 			return nil, err

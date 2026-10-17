@@ -663,3 +663,18 @@ func TestPeerUnscannedDirsAreJudgedByTheCoordinator(t *testing.T) {
 		t.Fatalf("a directory under a known worktree root must pass: %v", err)
 	}
 }
+
+// The unscanned check runs against the complete union, so a stored worktree
+// root the peer cannot read is accepted; it is excluded from every transfer.
+func TestMergePeerWorktreesChecked_AcceptsUnscannedStoredRoots(t *testing.T) {
+	cfg := newPeerWorktreeTestConfig(t, t.TempDir())
+	if err := SavePeerWorktrees(cfg.LocalPaths.WorktreesFile, []string{"dev/wt"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := MergePeerWorktreesChecked(cfg, nil, []string{"dev/wt", "dev/wt/inner"}, false); err != nil {
+		t.Fatalf("a stored worktree root reported as unscanned was refused: %v", err)
+	}
+	if _, err := MergePeerWorktreesChecked(cfg, nil, []string{"docs/locked"}, false); err == nil {
+		t.Fatal("an included unscanned directory must still fail closed")
+	}
+}

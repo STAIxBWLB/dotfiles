@@ -275,8 +275,14 @@ func remoteShellPath(path string) string {
 }
 
 func remotePeerStatusCommand(dot string) string {
-	return "exec " + shellQuote(dot) + " peer status --json"
+	return PeerStatusUnscannedEnv + "=1 exec " + shellQuote(dot) + " peer status --json"
 }
+
+// PeerStatusUnscannedEnv asks `dot peer status --json` to report directories
+// its worktree scan cannot read in unscannedWorktreeDirs instead of failing
+// (#268). Only a coordinator that judges that field sets it: an older one
+// keeps the fail-closed status, and an older peer ignores the variable.
+const PeerStatusUnscannedEnv = "DOT_PEER_STATUS_UNSCANNED"
 
 func remotePeerNormalizeCommand(dot string) string {
 	return "exec " + shellQuote(dot) + " sync names normalize --profile=peer --yes"
