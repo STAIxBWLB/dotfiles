@@ -13,6 +13,8 @@ set -uo pipefail
 
 REPO_URL="https://github.com/STAIxBWLB/dotfiles"
 SECTIONS=("### New" "### Improved" "### Fixed" "### Action needed")
+# Notes before this release predate the rule that every bullet ends with its PR.
+PR_REF_SINCE=v2.70.1
 
 err() { echo "$1:$2: $3"; bad=1; }
 
@@ -30,6 +32,8 @@ check_file() {
   tag=$(basename "$f" .md)
   if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then err "$f" 0 "file name is not vX.Y.Z.md"; return; fi
   if [ ! -s "$f" ]; then err "$f" 0 "empty"; return; fi
+  local need_pr=0
+  [ "$(printf '%s\n' "$PR_REF_SINCE" "$tag" | sort -V | head -n 1)" = "$PR_REF_SINCE" ] && need_pr=1
   while IFS= read -r line || [ -n "$line" ]; do
     n=$((n + 1))
     last=$line
@@ -52,6 +56,9 @@ check_file() {
       fi
     fi
     if [[ "$line" =~ (^|[^0-9a-f])[0-9a-f]{40}([^0-9a-f]|$) ]]; then err "$f" "$n" "commit SHA"; fi
+    if [ "$need_pr" = 1 ] && [[ "$lead" == "- "* ]] && [[ ! "$line" =~ \(#[0-9]+(,\ #[0-9]+)*\)\.?$ ]]; then
+      err "$f" "$n" "bullet must end with its PR number, e.g. (#123)"
+    fi
     if [[ "$line" =~ ^(-[[:space:]]+)?(feat|fix|chore|docs|ci|refactor|test|perf|build|style|revert)(\([^\)]*\))?!?:[[:space:]] ]]; then
       err "$f" "$n" "conventional-commit prefix"
     fi
@@ -78,6 +85,7 @@ run() {
 }
 
 if [ "${1:-}" = "--self-test" ]; then
+  PR_REF_SINCE=v1.0.0 # the fixtures below are v1.0.x
   tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
   d=$tmp/docs/releases; mkdir -p "$d"
   good_tail="**Full changelog**: $REPO_URL/compare/v1.0.0...v1.0.1"
@@ -100,6 +108,8 @@ if [ "${1:-}" = "--self-test" ]; then
   expect fail "conventional prefix" "$(printf 'X.\n\n### Fixed\n- fix(sync): a (#1)\n\n%s' "$good_tail")"
   expect fail "wrong compare link" "$(printf 'X.\n\n**Full changelog**: %s/compare/v0.9.0...v1.0.1' "$REPO_URL")"
   expect fail "missing link" "$(printf 'X.\n\n### Fixed\n- a (#1)')"
+  expect fail "bullet without PR" "$(printf 'X.\n\n### Fixed\n- `dot sync` no longer crashes.\n\n%s' "$good_tail")"
+  expect ok "bullet with two PRs" "$(printf 'X.\n\n### Fixed\n- a (#1, #2)\n\n%s' "$good_tail")"
   # The oldest note links /commits/<tag>, and version order is numeric.
   printf 'First.\n\n**Full changelog**: %s/compare/v1.0.0...v1.0.1\n' "$REPO_URL" >"$d/v1.0.0.md"
   if run "$d/v1.0.0.md" >/dev/null; then echo "FAIL: oldest note accepted a compare link"; fail=1; fi
