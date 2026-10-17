@@ -89,8 +89,12 @@ func TestBuildSyncStatusJSONCarriesTheConflictsError(t *testing.T) {
 	scheduler := &syncer.Scheduler{Paths: &syncer.Paths{LaunchdPlist: filepath.Join(t.TempDir(), "com.dotfiles.sync.plist")}}
 
 	clean := buildSyncStatusJSON(cfg, &syncer.Status{LocalPath: cfg.LocalPath, Target: cfg.Target}, scheduler)
-	if clean.SchemaVersion != 6 {
-		t.Fatalf("schemaVersion = %d, want 6", clean.SchemaVersion)
+	if clean.SchemaVersion != 7 {
+		t.Fatalf("schemaVersion = %d, want 7", clean.SchemaVersion)
+	}
+	live := buildSyncStatusJSON(cfg, &syncer.Status{LocalPath: cfg.LocalPath, Target: cfg.Target, LiveConflicts: 2, BackupBytes: 9, Conflicts: []syncer.ConflictEntry{{Timestamp: "t"}}}, scheduler)
+	if live.LiveConflictCount != 2 || live.BackupBytes != 9 || live.ConflictCount != 1 {
+		t.Fatalf("live = %d, backupBytes = %d, conflictCount = %d; want 2, 9, 1", live.LiveConflictCount, live.BackupBytes, live.ConflictCount)
 	}
 	if clean.ConflictsError != "" {
 		t.Fatalf("clean document conflictsError = %q, want empty", clean.ConflictsError)

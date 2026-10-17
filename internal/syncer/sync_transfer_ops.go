@@ -64,6 +64,9 @@ func PushCommand(ctx context.Context, opts PushOptions) (res *PushCommandResult,
 	}
 	// Whether this run completed is decided here, once, from how it returned.
 	partial := false
+	// Conflicts a refused run leaves for status (#264); -1 keeps the stored
+	// count until a plan says otherwise.
+	liveConflicts := -1
 	if !opts.DryRun && !cfg.Paused {
 		defer func() {
 			switch {
@@ -72,7 +75,7 @@ func PushCommand(ctx context.Context, opts PushOptions) (res *PushCommandResult,
 			case res == nil && err == nil:
 				return // a panic: the run neither completed nor failed
 			}
-			if recErr := recordPushAttempt(cfg, err, partial); recErr != nil && err == nil {
+			if recErr := recordPushAttempt(cfg, err, partial, liveConflicts); recErr != nil && err == nil {
 				err = fmt.Errorf("state update: %w", recErr)
 			}
 		}()
@@ -130,13 +133,20 @@ func PushCommand(ctx context.Context, opts PushOptions) (res *PushCommandResult,
 	if err != nil {
 		return nil, fmt.Errorf("planning push: %w", err)
 	}
+	liveConflicts = 0
 	emitSync(opts.Progress, SyncEvent{Kind: SyncEventPushPlanReady, PushPlan: plan})
+	if !opts.DryRun && len(plan.BaselineRefresh) > 0 {
+		if err := refreshBaselineRows(cfg, plan.BaselineRefresh); err != nil {
+			return nil, err
+		}
+	}
 	if opts.DryRun || (!plan.HasChanges() && !plan.HasConflicts()) {
 		RecordResult(state, cfg, "push", nil, opts.DryRun)
 		return &PushCommandResult{Outcome: PushPlanned}, nil
 	}
 	if opts.Mode == ModeClean && plan.HasConflicts() {
 		refused := fmt.Errorf("push refused: %d conflict(s); rerun with --mode=force to overwrite with backups", len(plan.Conflicts))
+		liveConflicts = len(plan.Conflicts)
 		RecordResult(state, cfg, "push", refused, false)
 		return nil, refused
 	}
@@ -174,6 +184,22 @@ func PushCommand(ctx context.Context, opts PushOptions) (res *PushCommandResult,
 		return nil, fmt.Errorf("push failed: %w", pushErr)
 	}
 	return &PushCommandResult{Outcome: PushComplete}, nil
+}
+
+// refreshBaselineRows writes the given baseline rows, keeping every other
+// row: the content-equal pairs a plan found (#265).
+func refreshBaselineRows(cfg *Config, rows map[string]Fingerprint) error {
+	baseline, err := LoadBaselineManifest(cfg.LocalPaths.BaselineFile)
+	if err != nil {
+		return fmt.Errorf("baseline refresh: %w", err)
+	}
+	for rel, fp := range rows {
+		baseline[rel] = fp
+	}
+	if err := SaveBaselineManifest(cfg.LocalPaths.BaselineFile, baseline); err != nil {
+		return fmt.Errorf("baseline refresh: %w", err)
+	}
+	return nil
 }
 
 // unappliedDeletes fails a push that left a planned deletion in the mirror
@@ -230,7 +256,7 @@ func RecordPushRefusal(cfg *Config, why error) error {
 		return nil
 	}
 	defer release()
-	return recordPushAttempt(cfg, why, false)
+	return recordPushAttempt(cfg, why, false, -1) // refused before planning: conflicts unknown
 }
 
 // recordPushAttempt notes how a real push run ended in the profile state. A
@@ -239,13 +265,16 @@ func RecordPushRefusal(cfg *Config, why error) error {
 // still in the workspace stamps last_push: one that skipped files (exit 23)
 // does not, so a push that keeps skipping them goes stale in status (#224). It
 // runs after the post-push checks, so a run they fail never counts as a push.
-func recordPushAttempt(cfg *Config, runErr error, partial bool) error {
+func recordPushAttempt(cfg *Config, runErr error, partial bool, liveConflicts int) error {
 	if cfg.LocalPaths == nil {
 		return nil
 	}
 	now := time.Now().UTC()
 	return UpdateLocalState(cfg.LocalPaths, func(s *LocalState) {
 		s.LastPushAttempt = now
+		if liveConflicts >= 0 {
+			s.LastPushConflicts = liveConflicts
+		}
 		if runErr == nil {
 			if !partial {
 				s.LastPush = now

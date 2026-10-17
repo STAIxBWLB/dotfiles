@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 6,
+  "schemaVersion": 7,
   "kind": "mirror",
   "profile": "sync",
   "configured": true,
@@ -33,6 +33,8 @@
   "lastPushErrorSince": null,
   "lastIntakeAt": null,
   "conflictCount": 0,
+  "liveConflictCount": 0,
+  "backupBytes": 0,
   "unsupportedNameCount": 0,
   "logPath": "@ROOT@/.dotfiles/sync/log/sync.log",
   "includePath": "@ROOT@/.dotfiles/sync/include.txt",

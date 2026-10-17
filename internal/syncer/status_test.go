@@ -75,3 +75,26 @@ func TestGetStatus_SSHPeerCountsLocalConflictsOnce(t *testing.T) {
 		t.Fatalf("SSH peer conflicts = %d, want 1", got)
 	}
 }
+
+// Status reports the conflicts the last push refused on apart from the
+// retained backup directories and their size (#264).
+func TestGetStatus_LiveConflictsAndBackupBytes(t *testing.T) {
+	f := newIntakeFixture(t)
+	dir := filepath.Join(f.mirror, conflictsDirName, "20261018T043113.000", backupSubFromWorkspace)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte("12345"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateLocalState(f.cfg.LocalPaths, func(s *LocalState) { s.LastPushConflicts = 3 }); err != nil {
+		t.Fatal(err)
+	}
+	st, err := GetStatus(context.Background(), f.runner, f.cfg, &config.UserState{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.LiveConflicts != 3 || len(st.Conflicts) != 1 || st.BackupBytes != 5 {
+		t.Fatalf("live = %d, backups = %d, bytes = %d; want 3, 1, 5", st.LiveConflicts, len(st.Conflicts), st.BackupBytes)
+	}
+}

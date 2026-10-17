@@ -45,6 +45,12 @@ type PushPlan struct {
 	// propagation is on.
 	MoveLeftovers bool
 	Propagation   PropagationPolicy
+	// BaselineRefresh holds paths whose local and mirror copies have equal
+	// bytes under different mtimes (#265): a provider rewrote only the
+	// timestamp. They are neither a change nor a conflict; a real run records
+	// the mirror copy's fingerprint with its sha, so later plans compare them
+	// by content.
+	BaselineRefresh map[string]Fingerprint
 	// Placeholders counts mirror files whose content lives only in the
 	// provider's cloud. They are reported because a mirror that is mostly
 	// placeholders explains conflicts an operator cannot otherwise see.
@@ -105,9 +111,32 @@ func PlanPush(cfg *Config) (*PushPlan, error) {
 	}
 
 	plan := &PushPlan{
-		Propagation:   cfg.Propagation,
-		Placeholders:  len(mirrorInv.dehydrated),
-		MoveLeftovers: cfg.Propagation.Delete,
+		Propagation:     cfg.Propagation,
+		Placeholders:    len(mirrorInv.dehydrated),
+		MoveLeftovers:   cfg.Propagation.Delete,
+		BaselineRefresh: map[string]Fingerprint{},
+	}
+	// sameBytes settles a would-be conflict between two copies of one size by
+	// content, and records an equal pair for the baseline refresh.
+	sameBytes := func(rel, localAbs, mirrorAbs string, localFP, mirrorFP Fingerprint) (bool, error) {
+		if localFP.Size != mirrorFP.Size {
+			return false, nil
+		}
+		l, err := FingerprintFile(localAbs, FingerprintStrict)
+		if err != nil {
+			return false, fmt.Errorf("fingerprinting local: %w", err)
+		}
+		m, err := FingerprintFile(mirrorAbs, FingerprintStrict)
+		if err != nil {
+			return false, fmt.Errorf("fingerprinting mirror: %w", err)
+		}
+		if l.Sha != m.Sha {
+			return false, nil
+		}
+		if base, ok := baseline[rel]; !ok || base.Sha != m.Sha || base.Size != m.Size || !sameMtime(base.Mtime, m.Mtime) {
+			plan.BaselineRefresh[rel] = m
+		}
+		return true, nil
 	}
 	rels := unionKeys(localInv.files, mirrorInv.files)
 	for _, rel := range rels {
@@ -253,6 +282,11 @@ func PlanPush(cfg *Config) (*PushPlan, error) {
 			}
 			base, ok := baseline[rel]
 			if !ok {
+				if same, err := sameBytes(rel, localAbs, mirrorAbs, localFP, mirrorFP); err != nil {
+					return nil, err
+				} else if same {
+					continue
+				}
 				plan.Conflicts = append(plan.Conflicts, PushConflict{
 					RelPath: rel, LocalPath: localAbs, MirrorPath: mirrorAbs,
 					Reason: "local and mirror differ without a baseline",
@@ -263,6 +297,11 @@ func PlanPush(cfg *Config) (*PushPlan, error) {
 			mirrorMatchesBase := FingerprintsCompatible(base, mirrorFP, mirrorAbs)
 			if mirrorMatchesBase && !localMatchesBase {
 				plan.Updates = append(plan.Updates, rel)
+				continue
+			}
+			if same, err := sameBytes(rel, localAbs, mirrorAbs, localFP, mirrorFP); err != nil {
+				return nil, err
+			} else if same {
 				continue
 			}
 			plan.Conflicts = append(plan.Conflicts, PushConflict{

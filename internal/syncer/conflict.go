@@ -87,6 +87,72 @@ func (c *ConflictDir) PullLocalBackupRel() string {
 	return filepath.Join(conflictsDirName, c.Timestamp, backupSubFromWorkspace)
 }
 
+// dropRoutineBackups removes from this push's backup directory every copy
+// that only records a routine update (#264): the workspace still has the
+// path and the replaced mirror copy matched the pre-push baseline, so it is
+// what an earlier push wrote and the workspace already holds its successor.
+// What stays is what a backup is for: propagated deletions, overwrites of a
+// copy that changed in the mirror after the baseline, and anything unproven.
+// Directories left empty go, the timestamp directory included. Best effort:
+// a copy that cannot be judged or removed is kept.
+func dropRoutineBackups(cfg *Config, conflict *ConflictDir, baseline map[string]Fingerprint) {
+	local := strings.TrimRight(cfg.LocalPath, "/")
+	mirror := strings.TrimRight(cfg.MirrorPath, "/")
+	// A symlinked component would lead the removals out of the mirror.
+	if refuseUnsafeBackupDir(mirror, conflict.PushBackupRel()) != nil {
+		return
+	}
+	root := filepath.Join(mirror, conflict.PushBackupRel())
+	var dirs []string
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil //nolint:nilerr // best effort: an unreadable copy is kept
+		}
+		if d.IsDir() {
+			dirs = append(dirs, path)
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return nil //nolint:nilerr // kept
+		}
+		rel = normalizeRel(rel)
+		base, ok := baseline[rel]
+		if !ok {
+			return nil
+		}
+		// The workspace must still hold the same kind of entry: a file that
+		// became a directory or a link is a replacement, not an update.
+		if li, err := os.Lstat(filepath.Join(local, rel)); err != nil || li.Mode().Type() != d.Type() {
+			return nil // a propagated deletion, a type change, or unknown: kept
+		}
+		info, err := d.Info()
+		if err != nil || (base.Sha != "" && dehydratedFile(path, info)) {
+			return nil //nolint:nilerr // hashing a cloud placeholder would download it: kept
+		}
+		fp, err := FingerprintFile(path, FingerprintFast)
+		if err == nil && backupMatchesBaseline(base, fp, path) {
+			_ = os.Remove(path)
+		}
+		return nil
+	})
+	for i := len(dirs) - 1; i >= 0; i-- {
+		_ = os.Remove(dirs[i]) // only an empty directory goes
+	}
+	_ = os.Remove(filepath.Dir(root))
+}
+
+// backupMatchesBaseline is the proof a backup copy needs before it goes: the
+// sha when the row has one, otherwise the size and the exact mtime. The
+// one-second tolerance plans use would let a same-size cloud edit within the
+// same second lose its only copy.
+func backupMatchesBaseline(base, fp Fingerprint, path string) bool {
+	if base.Sha != "" {
+		return FingerprintsCompatible(base, fp, path)
+	}
+	return fp.Size == base.Size && fp.Mtime.Equal(base.Mtime)
+}
+
 // ConflictEntry summarizes one timestamped conflict directory under a
 // tree's .sync-conflicts/ folder.
 type ConflictEntry struct {

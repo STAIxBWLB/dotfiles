@@ -16,8 +16,9 @@ import (
 // drops, or renames a field, so a strict consumer can reject a document
 // shape it does not know. v3 adds unsupportedNameCount, v4 ownerAliases,
 // v5 lastPushAttemptAt, lastPushError and lastPushErrorSince, v6
-// conflictsError and optional job lastExitCode.
-const syncStatusSchemaVersion = 6
+// conflictsError and optional job lastExitCode, v7 liveConflictCount and
+// backupBytes (conflictCount keeps counting retained backup directories).
+const syncStatusSchemaVersion = 7
 
 type syncTargetJSON struct {
 	Kind string `json:"kind"`
@@ -78,7 +79,9 @@ type syncStatusJSON struct {
 	LastPushError        string                      `json:"lastPushError,omitempty"`
 	LastPushErrorSince   *string                     `json:"lastPushErrorSince"`
 	LastIntakeAt         *string                     `json:"lastIntakeAt"`
-	ConflictCount        int                         `json:"conflictCount"`
+	ConflictCount        int                         `json:"conflictCount"` // retained backup directories
+	LiveConflictCount    int                         `json:"liveConflictCount"`
+	BackupBytes          int64                       `json:"backupBytes"`
 	ConflictsError       string                      `json:"conflictsError,omitempty"`
 	UnsupportedNameCount int                         `json:"unsupportedNameCount"`
 	LogPath              string                      `json:"logPath"`
@@ -179,6 +182,8 @@ func buildSyncStatusJSON(cfg *syncer.Config, st *syncer.Status, sched *syncer.Sc
 		LastPushErrorSince:   timeJSON(st.LastPushErrorSince),
 		LastIntakeAt:         timeJSON(st.LastIntake),
 		ConflictCount:        len(st.Conflicts),
+		LiveConflictCount:    st.LiveConflicts,
+		BackupBytes:          st.BackupBytes,
 		ConflictsError:       st.ConflictsError,
 		UnsupportedNameCount: st.UnsupportedNames,
 		LogPath:              cfg.LogFile,

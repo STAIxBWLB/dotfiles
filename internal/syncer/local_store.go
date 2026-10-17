@@ -207,6 +207,10 @@ type LocalState struct {
 	LastPushAttempt    time.Time `yaml:"last_push_attempt,omitempty"`
 	LastPushError      string    `yaml:"last_push_error,omitempty"`
 	LastPushErrorSince time.Time `yaml:"last_push_error_since,omitempty"`
+	// LastPushConflicts counts the conflicts the latest push refused on;
+	// any other push run resets it. Status shows it apart from the retained
+	// backup directories (#264).
+	LastPushConflicts int `yaml:"last_push_conflicts,omitempty"`
 }
 
 // LocalPaths resolves every well-known path under

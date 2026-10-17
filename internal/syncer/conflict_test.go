@@ -268,3 +268,93 @@ func TestStatus_ReportsARefusedConflictsDir(t *testing.T) {
 		t.Errorf("ConflictsError = %q, want the refusal", st.ConflictsError)
 	}
 }
+
+// A backup copy goes only when the workspace still holds a file of the same
+// kind whose predecessor matched the baseline (#264); a file the workspace
+// replaced with a directory keeps its backup.
+func TestDropRoutineBackupsKeepsTypeChanges(t *testing.T) {
+	f := newIntakeFixture(t)
+	conflict := NewConflictDir()
+	backup := filepath.Join(f.mirror, conflict.PushBackupRel())
+	baseline := map[string]Fingerprint{}
+	for _, rel := range []string{"notes/routine.md", "notes/item"} {
+		abs := filepath.Join(backup, rel)
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(abs, []byte("old"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		fp, err := FingerprintFile(abs, FingerprintFast)
+		if err != nil {
+			t.Fatal(err)
+		}
+		baseline[rel] = fp
+	}
+	f.writeLocal("notes/routine.md", "new")
+	f.writeLocal("notes/item/child.md", "now a directory")
+
+	dropRoutineBackups(f.cfg, conflict, baseline)
+	if _, err := os.Stat(filepath.Join(backup, "notes/routine.md")); !os.IsNotExist(err) {
+		t.Errorf("routine update backup kept: %v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(backup, "notes/item")); err != nil || string(got) != "old" {
+		t.Errorf("file replaced by a directory lost its backup: %q, %v", got, err)
+	}
+}
+
+// The cleanup never follows a symlinked .sync-conflicts out of the mirror.
+func TestDropRoutineBackupsRefusesASymlinkedRoot(t *testing.T) {
+	f := newIntakeFixture(t)
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(f.mirror, conflictsDirName)); err != nil {
+		t.Fatal(err)
+	}
+	conflict := NewConflictDir()
+	victim := filepath.Join(outside, conflict.Timestamp, backupSubFromWorkspace, "notes/a.md")
+	if err := os.MkdirAll(filepath.Dir(victim), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(victim, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fp, err := FingerprintFile(victim, FingerprintFast)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.writeLocal("notes/a.md", "new")
+
+	dropRoutineBackups(f.cfg, conflict, map[string]Fingerprint{"notes/a.md": fp})
+	if _, err := os.Stat(victim); err != nil {
+		t.Fatalf("a file outside the mirror was removed: %v", err)
+	}
+}
+
+// Without a sha in the baseline row, a backup goes only on the exact mtime: a
+// same-size cloud edit inside the same second keeps its copy.
+func TestDropRoutineBackupsNeedsTheExactMtimeWithoutASha(t *testing.T) {
+	f := newIntakeFixture(t)
+	conflict := NewConflictDir()
+	backup := filepath.Join(f.mirror, conflict.PushBackupRel(), "notes/a.md")
+	if err := os.MkdirAll(filepath.Dir(backup), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(backup, []byte("edited"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	when := time.Date(2026, 10, 18, 4, 0, 0, 500_000_000, time.UTC)
+	if err := os.Chtimes(backup, when, when); err != nil {
+		t.Fatal(err)
+	}
+	f.writeLocal("notes/a.md", "newer")
+	sameSecond := Fingerprint{Size: int64(len("edited")), Mtime: when.Add(-100 * time.Millisecond)}
+
+	dropRoutineBackups(f.cfg, conflict, map[string]Fingerprint{"notes/a.md": sameSecond})
+	if _, err := os.Stat(backup); err != nil {
+		t.Fatalf("a copy matching only to the second was removed: %v", err)
+	}
+	dropRoutineBackups(f.cfg, conflict, map[string]Fingerprint{"notes/a.md": {Size: sameSecond.Size, Mtime: when}})
+	if _, err := os.Stat(backup); !os.IsNotExist(err) {
+		t.Fatalf("an exact match was kept: %v", err)
+	}
+}
