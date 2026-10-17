@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // EventKind names one observable step outcome. The engine emits kinds and

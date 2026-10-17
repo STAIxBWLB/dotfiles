@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
-	"github.com/entelecheia/dotfiles-v2/internal/watchdog"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/watchdog"
 )
 
 // Slot classes.

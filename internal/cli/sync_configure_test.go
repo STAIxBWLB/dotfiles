@@ -3,7 +3,7 @@ package cli
 import (
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/syncer"
+	"github.com/STAIxBWLB/dotfiles/internal/syncer"
 )
 
 func TestApplyLocalConfigPreviewProjectsPendingChanges(t *testing.T) {

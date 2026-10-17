@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
-	"github.com/entelecheia/dotfiles-v2/internal/syncer"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/syncer"
 )
 
 // BUG-07: `dot status` resolved its state, config path, secrets store, sync

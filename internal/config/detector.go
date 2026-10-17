@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"strings"
 
-	execrun "github.com/entelecheia/dotfiles-v2/internal/exec"
+	execrun "github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // SystemInfo holds detected system information.

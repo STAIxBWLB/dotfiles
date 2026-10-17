@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
 )
 
 func fixture(t *testing.T) (*config.AIPolicyConfig, []Runtime) {

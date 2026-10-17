@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
-	"github.com/entelecheia/dotfiles-v2/internal/template"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/template"
 )
 
 type plistProgramArguments struct {

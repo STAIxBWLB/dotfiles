@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // seedUpdateHome builds a home with a marketplace checkout at version

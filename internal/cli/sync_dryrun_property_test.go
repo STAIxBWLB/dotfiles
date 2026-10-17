@@ -17,7 +17,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/syncer"
+	"github.com/STAIxBWLB/dotfiles/internal/syncer"
 )
 
 // syncDryRunSandbox points every home-derived resolution at a fresh temp dir.

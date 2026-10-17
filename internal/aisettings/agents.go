@@ -15,10 +15,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
 
-	dotexec "github.com/entelecheia/dotfiles-v2/internal/exec"
-	dottemplate "github.com/entelecheia/dotfiles-v2/internal/template"
+	dotexec "github.com/STAIxBWLB/dotfiles/internal/exec"
+	dottemplate "github.com/STAIxBWLB/dotfiles/internal/template"
 )
 
 const (

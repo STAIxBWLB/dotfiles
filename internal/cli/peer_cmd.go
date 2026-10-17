@@ -9,9 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
-	"github.com/entelecheia/dotfiles-v2/internal/fileutil"
-	"github.com/entelecheia/dotfiles-v2/internal/syncer"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
+	"github.com/STAIxBWLB/dotfiles/internal/syncer"
 )
 
 // PeerProfile is the sync profile name used for machine-to-machine sync.

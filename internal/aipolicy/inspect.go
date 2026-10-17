@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
 )
 
 var nativeVersion = regexp.MustCompile(`\b[0-9]+\.[0-9]+\.[0-9]+\b`)

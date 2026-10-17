@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // PeerHooks are per-machine actions around a coordinator role change (#184).

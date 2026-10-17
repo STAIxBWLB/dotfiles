@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 func TestRenderReapPlist_Golden(t *testing.T) {

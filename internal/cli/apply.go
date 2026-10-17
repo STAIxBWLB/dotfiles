@@ -9,11 +9,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
-	"github.com/entelecheia/dotfiles-v2/internal/module"
-	"github.com/entelecheia/dotfiles-v2/internal/template"
-	"github.com/entelecheia/dotfiles-v2/internal/ui"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/module"
+	"github.com/STAIxBWLB/dotfiles/internal/template"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 var errAborted = errors.New("aborted by user")

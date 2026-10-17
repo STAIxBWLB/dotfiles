@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	dotexec "github.com/entelecheia/dotfiles-v2/internal/exec"
+	dotexec "github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 func TestPatchAgentsCoauthorInstruction(t *testing.T) {

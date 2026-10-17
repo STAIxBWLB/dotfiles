@@ -1,4 +1,4 @@
-module github.com/entelecheia/dotfiles-v2
+module github.com/STAIxBWLB/dotfiles
 
 go 1.26.9
 

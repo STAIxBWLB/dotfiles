@@ -7,7 +7,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/entelecheia/dotfiles-v2/internal/sliceutil"
+	"github.com/STAIxBWLB/dotfiles/internal/sliceutil"
 )
 
 const kvKeyWidth = 22 // width of "Pull+intake scheduler:"

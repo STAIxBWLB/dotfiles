@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/entelecheia/dotfiles-v2/internal/aisettings"
-	"github.com/entelecheia/dotfiles-v2/internal/config"
-	execrun "github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/aisettings"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
+	execrun "github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // Command-side assembly for the ai family: the cobra flags a command was

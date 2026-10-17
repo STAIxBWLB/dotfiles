@@ -11,8 +11,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	execrun "github.com/entelecheia/dotfiles-v2/internal/exec"
-	"github.com/entelecheia/dotfiles-v2/internal/ui"
+	execrun "github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 func newAIAuthCmd() *cobra.Command {

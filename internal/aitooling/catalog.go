@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
 )
 
 type Entry struct{ ID, Kind, Name, Binary string }

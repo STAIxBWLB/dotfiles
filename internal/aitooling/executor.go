@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
-	"github.com/entelecheia/dotfiles-v2/internal/resourceguard"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/resourceguard"
 )
 
 type command struct {

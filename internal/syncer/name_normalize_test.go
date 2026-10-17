@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/text/unicode/norm"
 
-	dotexec "github.com/entelecheia/dotfiles-v2/internal/exec"
+	dotexec "github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 func nfdTestConfig(t *testing.T, root string) *Config {

@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // outOrStdout normalizes a nil writer to os.Stdout, so the package states

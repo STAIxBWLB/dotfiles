@@ -21,7 +21,7 @@ func TestPlanVerifiedPrebuiltPinsNativeStableRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.AssetName != "dot_2.70.35_darwin_arm64.tar.gz" || plan.DownloadURL != "https://github.com/entelecheia/dotfiles-v2/releases/download/v2.70.35/dot_2.70.35_darwin_arm64.tar.gz" {
+	if plan.AssetName != "dot_2.70.35_darwin_arm64.tar.gz" || plan.DownloadURL != "https://github.com/STAIxBWLB/dotfiles/releases/download/v2.70.35/dot_2.70.35_darwin_arm64.tar.gz" {
 		t.Fatalf("unexpected release plan: %+v", plan)
 	}
 	for _, tag := range []string{"v2.70.35-rc.1", "v2.70.35+build", "latest", ""} {
@@ -365,7 +365,7 @@ func TestPrebuiltHomebrewEligibilityChecksRawSourcePinAndInstalledKeg(t *testing
 	h := homebrewDot{prefix: prefix, formula: "dotfiles"}
 	for _, dir := range []string{
 		filepath.Join(prefix, "bin"), filepath.Join(prefix, "Library", "Homebrew"),
-		filepath.Join(prefix, "Library", "Taps", "entelecheia", "homebrew-tap", "Formula"),
+		filepath.Join(prefix, "Library", "Taps", "staixbwlb", "homebrew-cask", "Formula"),
 		filepath.Join(prefix, "Cellar", "dotfiles", "2.70.34", "bin"),
 		filepath.Join(prefix, "opt", "dotfiles", "bin"),
 	} {
@@ -397,7 +397,7 @@ func TestPrebuiltHomebrewEligibilityChecksRawSourcePinAndInstalledKeg(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	formulaPath := filepath.Join(prefix, "Library", "Taps", "entelecheia", "homebrew-tap", "Formula", "dotfiles.rb")
+	formulaPath := filepath.Join(prefix, "Library", "Taps", "staixbwlb", "homebrew-cask", "Formula", "dotfiles.rb")
 	if err := os.WriteFile(formulaPath, []byte(formula), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -480,7 +480,7 @@ func TestUpgradeHomebrewPrebuiltReloadsMovedOptAfterBrewFailure(t *testing.T) {
 	opt := filepath.Join(prefix, "opt", "dotfiles")
 	for _, path := range []string{
 		filepath.Join(prefix, "bin"), filepath.Join(prefix, "Library", "Homebrew"),
-		filepath.Join(prefix, "Library", "Taps", "entelecheia", "homebrew-tap", "Formula"),
+		filepath.Join(prefix, "Library", "Taps", "staixbwlb", "homebrew-cask", "Formula"),
 		filepath.Join(currentKeg, "bin"), filepath.Join(newKeg, "bin"), filepath.Dir(opt),
 	} {
 		if err := os.MkdirAll(path, 0o755); err != nil {
@@ -512,7 +512,7 @@ func TestUpgradeHomebrewPrebuiltReloadsMovedOptAfterBrewFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	formulaPath := filepath.Join(prefix, "Library", "Taps", "entelecheia", "homebrew-tap", "Formula", "dotfiles.rb")
+	formulaPath := filepath.Join(prefix, "Library", "Taps", "staixbwlb", "homebrew-cask", "Formula", "dotfiles.rb")
 	if err := os.WriteFile(formulaPath, []byte(formula), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -538,7 +538,7 @@ func TestUpgradeHomebrewPrebuiltReloadsMovedOptAfterBrewFailure(t *testing.T) {
 			if brewIndex < 0 || !slices.Contains(args, "HOMEBREW_NO_AUTO_UPDATE=1") || !slices.Contains(args, "HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1") || !slices.Contains(args, "HOMEBREW_NO_INSTALL_CLEANUP=1") {
 				return "", fmt.Errorf("unsafe brew environment: %v", args)
 			}
-			if !slices.Equal(args[brewIndex+1:], []string{"upgrade", "--formula", "entelecheia/tap/dotfiles"}) {
+			if !slices.Equal(args[brewIndex+1:], []string{"upgrade", "--formula", "staixbwlb/cask/dotfiles"}) {
 				return "", fmt.Errorf("unexpected brew upgrade argv: %v", args[brewIndex+1:])
 			}
 			upgradeCalls++

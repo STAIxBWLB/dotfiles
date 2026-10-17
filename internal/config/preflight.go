@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	execrun "github.com/entelecheia/dotfiles-v2/internal/exec"
+	execrun "github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // CheckStatus represents the result status of a single preflight check.

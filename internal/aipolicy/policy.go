@@ -1,7 +1,7 @@
 // Package aipolicy resolves validated portable preferences against local capabilities.
 package aipolicy
 
-import "github.com/entelecheia/dotfiles-v2/internal/config"
+import "github.com/STAIxBWLB/dotfiles/internal/config"
 
 type Request struct {
 	Task                 string   `json:"task"`

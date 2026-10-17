@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/entelecheia/dotfiles-v2/internal/clean"
-	"github.com/entelecheia/dotfiles-v2/internal/ui"
+	"github.com/STAIxBWLB/dotfiles/internal/clean"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 func newCleanCmd() *cobra.Command {

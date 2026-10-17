@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/ui"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 	"github.com/spf13/cobra"
 )
 

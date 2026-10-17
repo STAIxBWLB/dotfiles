@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/entelecheia/dotfiles-v2/internal/aisettings"
+	"github.com/STAIxBWLB/dotfiles/internal/aisettings"
 )
 
 // GitModule manages git configuration files.

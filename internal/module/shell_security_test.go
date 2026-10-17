@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	internalexec "github.com/entelecheia/dotfiles-v2/internal/exec"
+	internalexec "github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 var shellFixtureDirectories = map[string]bool{

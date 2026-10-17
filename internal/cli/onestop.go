@@ -9,13 +9,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/entelecheia/dotfiles-v2/internal/aisettings"
-	"github.com/entelecheia/dotfiles-v2/internal/appsettings"
-	"github.com/entelecheia/dotfiles-v2/internal/config"
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
-	"github.com/entelecheia/dotfiles-v2/internal/profilesnap"
-	"github.com/entelecheia/dotfiles-v2/internal/secrets"
-	"github.com/entelecheia/dotfiles-v2/internal/ui"
+	"github.com/STAIxBWLB/dotfiles/internal/aisettings"
+	"github.com/STAIxBWLB/dotfiles/internal/appsettings"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/profilesnap"
+	"github.com/STAIxBWLB/dotfiles/internal/secrets"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // onestopCtx carries the shared session for the one-stop `dot backup` /

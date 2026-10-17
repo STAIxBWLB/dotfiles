@@ -1,6 +1,6 @@
-# Maru / dotfiles-v2 Boundary
+# Maru / dotfiles Boundary
 
-`dotfiles-v2` owns selected agent/tool installation orchestration, environment
+`dotfiles` owns selected agent/tool installation orchestration, environment
 and documented tool settings. Maru owns shared skill sources, registry,
 canonical links and target deployment. Dot delegates selected skill sharing to
 Maru's capability-checked CLI; it never copies or rewrites skill trees itself.
@@ -14,7 +14,7 @@ discoverable skills from unselected agents. Gencode and pi install through
 the managed npm prefix; Antigravity installs `agy` under `~/.local/bin` and
 self-updates, so update operations defer rather than reinstall.
 
-## dotfiles-v2 May Write
+## dotfiles May Write
 
 - `~/.claude/CLAUDE.md`
 - `~/.claude/settings.json` (HUD statusLine block tagged `# dot-hud`, and only
@@ -399,7 +399,7 @@ tool):
 - `<workspace>/.dotfiles/peer/hooks-disabled.txt`: the launchd labels the
   role hooks disabled, one per line, so `on_activate` re-enables only those.
 
-## dotfiles-v2 Must Not Write Directly
+## dotfiles Must Not Write Directly
 
 - anything under any tool skill root outside the explicit peer filesystem
   transport above (`~/.claude/skills/**`,

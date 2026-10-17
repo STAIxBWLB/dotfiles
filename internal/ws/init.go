@@ -8,11 +8,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
-	"github.com/entelecheia/dotfiles-v2/internal/fileutil"
-	"github.com/entelecheia/dotfiles-v2/internal/ghauth"
-	"github.com/entelecheia/dotfiles-v2/internal/ui"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
+	"github.com/STAIxBWLB/dotfiles/internal/ghauth"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // InitOptions controls Init behavior.

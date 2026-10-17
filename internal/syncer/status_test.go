@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
 )
 
 func TestGetStatus_IgnoresStaleLock(t *testing.T) {

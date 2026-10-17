@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/syncer"
-	"github.com/entelecheia/dotfiles-v2/internal/ws"
+	"github.com/STAIxBWLB/dotfiles/internal/syncer"
+	"github.com/STAIxBWLB/dotfiles/internal/ws"
 	"github.com/spf13/cobra"
 )
 

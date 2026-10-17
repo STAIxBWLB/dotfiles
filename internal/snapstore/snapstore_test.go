@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // fixedTime is the timestamp every expected id in this file derives from, so

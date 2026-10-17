@@ -10,7 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/term"
 
-	"github.com/entelecheia/dotfiles-v2/internal/sliceutil"
+	"github.com/STAIxBWLB/dotfiles/internal/sliceutil"
 )
 
 // Styles for consistent output across the CLI.

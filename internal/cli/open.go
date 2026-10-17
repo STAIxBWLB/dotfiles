@@ -10,8 +10,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
-	"github.com/entelecheia/dotfiles-v2/internal/workspace"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/workspace"
 	"github.com/spf13/cobra"
 )
 

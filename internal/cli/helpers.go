@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 func absPath(path string) string {

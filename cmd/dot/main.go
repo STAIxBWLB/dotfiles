@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/entelecheia/dotfiles-v2/internal/cli"
+	"github.com/STAIxBWLB/dotfiles/internal/cli"
 )
 
 var (

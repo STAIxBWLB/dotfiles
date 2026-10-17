@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/entelecheia/dotfiles-v2/internal/aischedule"
-	"github.com/entelecheia/dotfiles-v2/internal/aitooling"
+	"github.com/STAIxBWLB/dotfiles/internal/aischedule"
+	"github.com/STAIxBWLB/dotfiles/internal/aitooling"
 )
 
 // updateTools is the fixed phase order of `dot ai update`.

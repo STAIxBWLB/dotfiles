@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/entelecheia/dotfiles-v2/internal/tunnel"
+	"github.com/STAIxBWLB/dotfiles/internal/tunnel"
 )
 
 func newTunnelClientCmd() *cobra.Command {

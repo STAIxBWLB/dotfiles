@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/template"
+	"github.com/STAIxBWLB/dotfiles/internal/template"
 )
 
 func TestSystemdAnalyze_SpecialHome(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/entelecheia/dotfiles-v2/internal/aipolicy"
+	"github.com/STAIxBWLB/dotfiles/internal/aipolicy"
 )
 
 // RetainKnowledge compares semantic tool grants across native binding spellings.

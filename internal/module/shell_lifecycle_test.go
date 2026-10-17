@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
-	dotexec "github.com/entelecheia/dotfiles-v2/internal/exec"
-	"github.com/entelecheia/dotfiles-v2/internal/template"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
+	dotexec "github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/template"
 )
 
 const lifecycleFixtureCommit = "146461f7c6d95f4ba1220559d66eb113418b40a8"

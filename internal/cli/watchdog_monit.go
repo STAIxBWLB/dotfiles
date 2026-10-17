@@ -10,10 +10,10 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
-	"github.com/entelecheia/dotfiles-v2/internal/ui"
-	"github.com/entelecheia/dotfiles-v2/internal/watchdog"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
+	"github.com/STAIxBWLB/dotfiles/internal/watchdog"
 )
 
 // dot watchdog monit — the P3 setup/status/uninstall steps for monit

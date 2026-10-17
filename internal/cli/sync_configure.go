@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/entelecheia/dotfiles-v2/internal/appsettings"
-	"github.com/entelecheia/dotfiles-v2/internal/syncer"
+	"github.com/STAIxBWLB/dotfiles/internal/appsettings"
+	"github.com/STAIxBWLB/dotfiles/internal/syncer"
 )
 
 func newSyncConfigureCmd() *cobra.Command {

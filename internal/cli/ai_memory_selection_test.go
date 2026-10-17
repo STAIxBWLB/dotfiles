@@ -6,7 +6,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
 	"github.com/spf13/cobra"
 )
 

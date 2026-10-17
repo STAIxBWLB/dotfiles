@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/entelecheia/dotfiles-v2/internal/fileutil"
+	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
 )
 
 const (

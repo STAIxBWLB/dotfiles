@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
-	"github.com/entelecheia/dotfiles-v2/internal/fileutil"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
 )
 
 // detectGitConfig reads a value from git config (global).

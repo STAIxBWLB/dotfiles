@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/entelecheia/dotfiles-v2/internal/syncer"
+	"github.com/STAIxBWLB/dotfiles/internal/syncer"
 	"github.com/spf13/cobra"
 )
 

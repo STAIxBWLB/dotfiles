@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
-	dotexec "github.com/entelecheia/dotfiles-v2/internal/exec"
-	"github.com/entelecheia/dotfiles-v2/internal/template"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
+	dotexec "github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/template"
 )
 
 func gpgTestContext(t *testing.T, signing bool, home string) *RunContext {

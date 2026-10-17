@@ -24,7 +24,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/syncer"
+	"github.com/STAIxBWLB/dotfiles/internal/syncer"
 )
 
 // TestSyncDryRunLeavesTreeByteIdentical drives every sync subcommand that

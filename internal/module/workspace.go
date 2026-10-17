@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/entelecheia/dotfiles-v2/internal/fileutil"
-	"github.com/entelecheia/dotfiles-v2/internal/ws"
+	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
+	"github.com/STAIxBWLB/dotfiles/internal/ws"
 )
 
 // WorkspaceModule manages workspace symlink federation and shell config.

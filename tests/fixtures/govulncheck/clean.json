@@ -1,2 +1,2 @@
 {"config":{"protocol_version":"v1.0.0","scanner_name":"govulncheck","scanner_version":"v1.7.0","db":"https://vuln.go.dev","db_last_modified":"2026-08-20T17:00:00Z","go_version":"go1.25.14","scan_level":"symbol","scan_mode":"source"}}
-{"SBOM":{"go_version":"go1.25.14","roots":["github.com/entelecheia/dotfiles-v2/cmd/dot"],"modules":[{"path":"github.com/entelecheia/dotfiles-v2","found_at":"."},{"path":"golang.org/x/text","version":"v0.39.0"}]}}
+{"SBOM":{"go_version":"go1.25.14","roots":["github.com/STAIxBWLB/dotfiles/cmd/dot"],"modules":[{"path":"github.com/STAIxBWLB/dotfiles","found_at":"."},{"path":"golang.org/x/text","version":"v0.39.0"}]}}

@@ -14,8 +14,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
-	"github.com/entelecheia/dotfiles-v2/internal/fileutil"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
 )
 
 // ErrNoChange short-circuits Mutate without writing. An edit closure
@@ -35,7 +35,7 @@ func SettingsPath(home string) string {
 
 // LockDir returns the PID lock directory serializing Mutate calls. It
 // lives inside Claude Code's tree, so docs/BOUNDARIES.md names it as a
-// dotfiles-v2 write root.
+// dotfiles write root.
 func LockDir(home string) string {
 	return filepath.Join(home, ".claude", ".dot-lock")
 }

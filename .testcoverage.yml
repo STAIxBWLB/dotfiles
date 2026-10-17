@@ -38,7 +38,7 @@
 #
 # ANCHORING, which differs between the two lists and is verified, not assumed:
 #   - override.path matches the PACKAGE path with the module prefix stripped
-#     (`internal/guard`, not `github.com/entelecheia/dotfiles-v2/internal/guard`
+#     (`internal/guard`, not `github.com/STAIxBWLB/dotfiles/internal/guard`
 #     — the latter matches nothing). Anchored at BOTH ends: unanchored
 #     `^internal/config` also matches `internal/config/catalog`, which is a
 #     separate package with a separate floor.

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	dottemplate "github.com/entelecheia/dotfiles-v2/internal/template"
+	dottemplate "github.com/STAIxBWLB/dotfiles/internal/template"
 )
 
 const continuityStart = "<!-- dotfiles:continuity:start -->"

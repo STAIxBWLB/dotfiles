@@ -8,8 +8,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/claudecfg"
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/claudecfg"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // foreignSettings mirrors the shape of a real user settings.json with hooks

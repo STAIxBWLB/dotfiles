@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/aitooling"
-	"github.com/entelecheia/dotfiles-v2/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/aitooling"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
 )
 
 func TestAISelectedManagedFilesExcludeUnselectedClaude(t *testing.T) {

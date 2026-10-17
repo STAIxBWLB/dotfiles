@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
-	"github.com/entelecheia/dotfiles-v2/internal/fileutil"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
 )
 
 // ConfigureWorkspace prompts for workspace settings. Skipped for server profile.

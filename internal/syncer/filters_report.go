@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/entelecheia/dotfiles-v2/internal/template"
+	"github.com/STAIxBWLB/dotfiles/internal/template"
 )
 
 // FilterLayer is one row of the effective filter chain, in evaluation order,

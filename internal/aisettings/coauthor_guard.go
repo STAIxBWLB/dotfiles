@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	dotexec "github.com/entelecheia/dotfiles-v2/internal/exec"
-	"github.com/entelecheia/dotfiles-v2/internal/fileutil"
+	dotexec "github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
 )
 
 const (

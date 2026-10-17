@@ -1,6 +1,6 @@
 # Accepted ceilings
 
-This document records deliberate limits in dotfiles-v2 that are acceptable at
+This document records deliberate limits in dotfiles that are acceptable at
 today's operating scale. Each section names the code boundary, why the limit is
 accepted, and the concrete event that would require a different design. There
 are five required ceilings for DEBT-06 and two additional ceilings minted by

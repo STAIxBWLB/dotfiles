@@ -7,9 +7,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/entelecheia/dotfiles-v2/internal/aisettings"
-	"github.com/entelecheia/dotfiles-v2/internal/config/catalog"
-	"github.com/entelecheia/dotfiles-v2/internal/ui"
+	"github.com/STAIxBWLB/dotfiles/internal/aisettings"
+	"github.com/STAIxBWLB/dotfiles/internal/config/catalog"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 func newAICmd() *cobra.Command {

@@ -20,7 +20,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/entelecheia/dotfiles-v2/internal/clean"
+	"github.com/STAIxBWLB/dotfiles/internal/clean"
 )
 
 // Marker is the filename macOS looks for. The sibling token

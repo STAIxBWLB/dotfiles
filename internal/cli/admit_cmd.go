@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/entelecheia/dotfiles-v2/internal/admission"
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/admission"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // ExitDeferred is EX_TEMPFAIL: the admission gate or the slot wait deferred

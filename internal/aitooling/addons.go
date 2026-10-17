@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
 )
 
 func (e *Engine) addon(ctx context.Context, en Entry, s config.AIToolingConfig, op Operation) []ItemResult {

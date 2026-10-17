@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/admission"
-	execprobe "github.com/entelecheia/dotfiles-v2/internal/exec"
-	"github.com/entelecheia/dotfiles-v2/internal/watchdog"
+	"github.com/STAIxBWLB/dotfiles/internal/admission"
+	execprobe "github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/watchdog"
 )
 
 const (

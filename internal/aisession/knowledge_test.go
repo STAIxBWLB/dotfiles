@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/aipolicy"
+	"github.com/STAIxBWLB/dotfiles/internal/aipolicy"
 )
 
 func testKnowledgeGrants(agent string) []aipolicy.KnowledgeApproval {

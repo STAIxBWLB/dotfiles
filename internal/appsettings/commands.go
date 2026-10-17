@@ -8,9 +8,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config/catalog"
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
-	"github.com/entelecheia/dotfiles-v2/internal/sliceutil"
+	"github.com/STAIxBWLB/dotfiles/internal/config/catalog"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/sliceutil"
 )
 
 // Per-command entry points for the `dot apps` family. Each entry takes an

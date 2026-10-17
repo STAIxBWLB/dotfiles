@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // hotHostPaths are host files both Macs rewrite on their own (#181):

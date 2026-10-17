@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // PeerHomeConflictRoot is the destination-relative quarantine used by the

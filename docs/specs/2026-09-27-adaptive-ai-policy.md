@@ -2,7 +2,7 @@
 
 Status: Implementation on `feat/adaptive-ai-policy`; native rollout and evaluation pending.
 Date: 2026-09-27
-Issue: https://github.com/entelecheia/dotfiles-v2/issues/153
+Issue: https://github.com/STAIxBWLB/dotfiles/issues/153
 Maru integration: https://github.com/STAIxBWLB/maru/issues/404
 
 ## Problem and evidence

@@ -13,9 +13,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/admission"
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
-	"github.com/entelecheia/dotfiles-v2/internal/watchdog"
+	"github.com/STAIxBWLB/dotfiles/internal/admission"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/watchdog"
 	"github.com/spf13/cobra"
 )
 

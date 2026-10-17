@@ -12,10 +12,10 @@ import (
 	"charm.land/huh/v2"
 	"github.com/spf13/cobra"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
-	"github.com/entelecheia/dotfiles-v2/internal/syncer"
-	"github.com/entelecheia/dotfiles-v2/internal/ui"
-	"github.com/entelecheia/dotfiles-v2/internal/ws"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/syncer"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
+	"github.com/STAIxBWLB/dotfiles/internal/ws"
 )
 
 // printSensitiveOverrides renders the engine's complete, sorted policy

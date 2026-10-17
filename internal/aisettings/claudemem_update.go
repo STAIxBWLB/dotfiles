@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // Keeping claude-mem at the latest marketplace version on every synced

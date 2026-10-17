@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/syncer"
+	"github.com/STAIxBWLB/dotfiles/internal/syncer"
 )
 
 // #182 AC3: peer status states the role, and on the peer it does not show
