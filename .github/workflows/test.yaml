@@ -56,6 +56,8 @@ jobs:
       # config against fixtures written into the tree, and /tests/scenarios in
       # the image has no repo above it. Placed after the real gate so a bug in
       # the scenario cannot mask a real lint finding.
+      - name: CI decision path classification
+        run: bash scripts/ci-decision.sh --self-test
       - name: Seam lint rules are not a no-op
         run: bash tests/scenarios/lint-seams-gate.sh
       - name: Dependency vulnerability gate
