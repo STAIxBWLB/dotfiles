@@ -35,8 +35,12 @@ checksum:
   name_template: checksums.txt
 
 changelog:
-  # Release notes come from docs/releases/<tag>.md (--release-notes).
-  disable: true
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^ci:"
+      - "^chore:"
 
 release:
   github:
