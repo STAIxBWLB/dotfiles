@@ -42,6 +42,9 @@ type peerStatusJSON struct {
 	// peer on a previous release simply sends nothing, which decodes as the
 	// empty list the sticky union already tolerates.
 	Worktrees []string `json:"worktrees,omitempty"`
+	// UnscannedWorktreeDirs are directories the scan could not read; the
+	// coordinator's filters decide whether they matter (#268).
+	UnscannedWorktreeDirs []string `json:"unscannedWorktreeDirs,omitempty"`
 	// OwnerEpoch and FencePending carry the coordinator-transition state the
 	// fence compares on first contact. Optional: a peer on a previous release
 	// sends neither, which the fence reads as "no epoch support" and answers
@@ -120,26 +123,27 @@ func runPeerStatus(cmd *cobra.Command, _ []string) error {
 		// A detection failure must fail closed: an under-reported list lets
 		// the peer sync a real worktree as regular files (the #135 husk
 		// class), so refuse rather than emit an incomplete document.
-		worktrees, err := syncer.DetectPeerWorktrees(cfg, st.LocalPath)
+		worktrees, unscanned, err := syncer.DetectPeerWorktrees(cfg, st.LocalPath)
 		if err != nil {
 			return fmt.Errorf("linked-worktree detection failed; refusing to report an incomplete worktree list: %w", err)
 		}
 		encoder := json.NewEncoder(cmd.OutOrStdout())
 		encoder.SetIndent("", "  ")
 		return encoder.Encode(peerStatusJSON{
-			SchemaVersion: peerStatusSchemaVersion,
-			Kind:          "peer",
-			Profile:       base,
-			Job:           job,
-			LastExitCode:  snapshot.LastExitCode,
-			RunCount:      snapshot.RunCount,
-			LastHeldAt:    timeJSON(st.LastHeld),
-			HomePathsPath: syncer.PeerHomePathsFile(cfg.LocalPaths),
-			Worktrees:     worktrees,
-			OwnerEpoch:    cfg.OwnerEpoch,
-			FencePending:  cfg.FencePending,
-			DotVersion:    cmd.Root().Version,
-			Role:          peerRole(cfg),
+			SchemaVersion:         peerStatusSchemaVersion,
+			Kind:                  "peer",
+			Profile:               base,
+			Job:                   job,
+			LastExitCode:          snapshot.LastExitCode,
+			RunCount:              snapshot.RunCount,
+			LastHeldAt:            timeJSON(st.LastHeld),
+			HomePathsPath:         syncer.PeerHomePathsFile(cfg.LocalPaths),
+			Worktrees:             worktrees,
+			UnscannedWorktreeDirs: unscanned,
+			OwnerEpoch:            cfg.OwnerEpoch,
+			FencePending:          cfg.FencePending,
+			DotVersion:            cmd.Root().Version,
+			Role:                  peerRole(cfg),
 		})
 	}
 	p := printerFrom(cmd)

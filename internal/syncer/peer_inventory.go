@@ -294,6 +294,9 @@ type remotePeerStatus struct {
 	SchemaVersion int      `json:"schemaVersion"`
 	Kind          string   `json:"kind"`
 	Worktrees     []string `json:"worktrees"`
+	// UnscannedWorktreeDirs are the directories the remote could not read
+	// during its worktree scan; this Mac's filters judge them (#268).
+	UnscannedWorktreeDirs []string `json:"unscannedWorktreeDirs"`
 	OwnerEpoch    int      `json:"ownerEpoch"`
 	FencePending  bool     `json:"fencePending"`
 	DotVersion    string   `json:"dotVersion"`
@@ -398,12 +401,12 @@ func parseRemotePeerStatus(cfg *Config, raw string) (*remotePeerStatus, error) {
 // same status document, without the coordinator validation: `peer diff` runs
 // it on machines where the owner check is not its business. A remote on a
 // previous release answers with no worktrees field and the list is empty.
-func fetchRemotePeerWorktrees(ctx context.Context, runner *exec.Runner, cfg *Config) ([]string, error) {
+func fetchRemotePeerWorktrees(ctx context.Context, runner *exec.Runner, cfg *Config) (worktrees, unscanned []string, err error) {
 	status, err := fetchRemotePeerStatus(ctx, runner, cfg)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return status.Worktrees, nil
+	return status.Worktrees, status.UnscannedWorktreeDirs, nil
 }
 
 // checkRemotePeerTopology proves the remote profile points back at this

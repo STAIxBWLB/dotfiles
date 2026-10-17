@@ -495,7 +495,7 @@ func TestDetectLinkedWorktrees_VanishedDirectory(t *testing.T) {
 		}
 		return false
 	}
-	got, err := detectLinkedWorktrees(root, removeOnVisit, "")
+	got, err := detectLinkedWorktrees(root, removeOnVisit, "", nil)
 	if err != nil {
 		t.Fatalf("vanished directory failed the scan: %v", err)
 	}
@@ -592,9 +592,9 @@ func TestDetectPeerWorktrees_ReportsWorktreesUnderLocalOnlyRules(t *testing.T) {
 	makeFakeGitdir(t, filepath.Join(workspace, "dev", "feature-wt"), filepath.Join(workspace, "main", ".git", "worktrees", "feature-wt"), true)
 	unreadableDir(t, filepath.Join(workspace, "scratchpad", "temp", "runtime"))
 
-	got, err := DetectPeerWorktrees(cfg, workspace)
-	if err != nil {
-		t.Fatalf("the code-owned volatile layer was not pruned: %v", err)
+	got, unscanned, err := DetectPeerWorktrees(cfg, workspace)
+	if err != nil || len(unscanned) != 0 {
+		t.Fatalf("the code-owned volatile layer was not pruned: %v, unscanned %v", err, unscanned)
 	}
 	if !slices.Equal(got, []string{"dev/feature-wt"}) {
 		t.Fatalf("got %v, want the worktree a local-only rule hides", got)
@@ -633,5 +633,33 @@ func TestPeerRunScansPruneTheVolatileLayer(t *testing.T) {
 	unreadableDir(t, filepath.Join(workspace, "docs", "locked"))
 	if _, err := ComputeTombstones(cfg); err == nil {
 		t.Fatal("an unreadable included directory must fail the tombstone scan")
+	}
+}
+
+// The other Mac reports a directory it cannot read instead of failing, and
+// the coordinator judges it with its own filters (#268): one its filters, or a
+// known worktree root, keep out of the transfer is accepted; any other fails
+// closed with the path and the fix.
+func TestPeerUnscannedDirsAreJudgedByTheCoordinator(t *testing.T) {
+	remote := t.TempDir()
+	rcfg := newPeerWorktreeTestConfig(t, remote)
+	unreadableDir(t, filepath.Join(remote, "dev", "hub", ".agenthub", "state", "benchmarks"))
+	found, unscanned, err := DetectPeerWorktrees(rcfg, remote)
+	if err != nil || len(found) != 0 || !slices.Equal(unscanned, []string{"dev/hub/.agenthub/state/benchmarks"}) {
+		t.Fatalf("remote scan = %v, %v, %v; want the unreadable directory reported", found, unscanned, err)
+	}
+
+	cfg := newPeerWorktreeTestConfig(t, t.TempDir())
+	if err := CheckPeerUnscanned(cfg, unscanned, nil); err == nil || !strings.Contains(err.Error(), "dev/hub/.agenthub/state/benchmarks") || !strings.Contains(err.Error(), cfg.IgnoreFile) {
+		t.Fatalf("an included unscanned directory must fail closed with its path and the fix, got %v", err)
+	}
+	if err := os.WriteFile(cfg.IgnoreFile, []byte(".agenthub/state/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckPeerUnscanned(cfg, unscanned, nil); err != nil {
+		t.Fatalf("a directory the coordinator excludes must pass: %v", err)
+	}
+	if err := CheckPeerUnscanned(newPeerWorktreeTestConfig(t, t.TempDir()), []string{"dev/wt/locked"}, []string{"dev/wt"}); err != nil {
+		t.Fatalf("a directory under a known worktree root must pass: %v", err)
 	}
 }

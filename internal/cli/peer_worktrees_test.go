@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 )
 
@@ -51,10 +50,13 @@ func TestPeerStatusJSONIncludesWorktrees(t *testing.T) {
 	}
 }
 
-// The status document feeds the remote side's sticky union: a detection
-// failure must fail closed instead of reporting an incomplete worktree list
-// the peer would trust (the #135 husk class).
-func TestPeerStatusJSONFailsOnDetectionError(t *testing.T) {
+// The status document feeds the coordinator's sticky union: a directory the
+// scan cannot read is reported, never silently left out, so the coordinator
+// can refuse it unless its own filters exclude it (#268; the #135 husk class).
+func TestPeerStatusJSONReportsUnreadableDirectories(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a mode-000 directory")
+	}
 	_, root := goldenSyncFixture(t)
 	locked := filepath.Join(root, "dev", "locked")
 	if err := os.MkdirAll(locked, 0o755); err != nil {
@@ -65,8 +67,17 @@ func TestPeerStatusJSONFailsOnDetectionError(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
 
-	_, _, err := runDotForTest("peer", "status", "--json")
-	if err == nil || !strings.Contains(err.Error(), "worktree detection") {
-		t.Fatalf("err = %v, want a fail-closed detection error", err)
+	out, errOut, err := runDotForTest("peer", "status", "--json")
+	if err != nil {
+		t.Fatalf("peer status --json: %v\nstderr=%s", err, errOut)
+	}
+	var doc struct {
+		Unscanned []string `json:"unscannedWorktreeDirs"`
+	}
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("status document does not parse: %v\n%s", err, out)
+	}
+	if !slices.Equal(doc.Unscanned, []string{"dev/locked"}) {
+		t.Fatalf("unscannedWorktreeDirs = %v, want [dev/locked]", doc.Unscanned)
 	}
 }

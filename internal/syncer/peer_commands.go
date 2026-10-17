@@ -425,8 +425,11 @@ func PeerDiff(ctx context.Context, opts PeerDiffOptions) (*PeerDiffResult, error
 	// worktree any earlier complete run has seen. `peer diff` is always a
 	// preview, so the union is never persisted here.
 	var remoteWorktrees []string
-	if wt, err := fetchRemotePeerWorktrees(ctx, opts.Probe, cfg); err == nil {
+	if wt, unscanned, err := fetchRemotePeerWorktrees(ctx, opts.Probe, cfg); err == nil {
 		remoteWorktrees = wt
+		if err := CheckPeerUnscanned(cfg, unscanned, wt); err != nil {
+			return nil, err
+		}
 	}
 	worktrees, err := MergePeerWorktrees(cfg, remoteWorktrees, false)
 	if err != nil {
@@ -626,6 +629,9 @@ func PeerSync(ctx context.Context, opts PeerSyncOptions) (*PeerSyncResult, error
 	// identical set to the local walk, the remote inventory and every
 	// transfer, or a rule only one side applies becomes a propagated delete.
 	// A real run persists the union; a preview changes nothing in the store.
+	if err := CheckPeerUnscanned(cfg, remoteStatus.UnscannedWorktreeDirs, remoteStatus.Worktrees); err != nil {
+		return nil, err
+	}
 	worktrees, err := MergePeerWorktrees(cfg, remoteStatus.Worktrees, !dryRun)
 	if err != nil {
 		return nil, err
