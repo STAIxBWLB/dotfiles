@@ -1046,7 +1046,8 @@ func TestPushCommand_WhileLockedRunsOnlyUnderTheLock(t *testing.T) {
 	}
 	if held != 1 || released != 1 {
 		t.Fatalf("lease taken %d, released %d; want 1 and 1", held, released)
-||||||| parent of 30603a7 (fix(sync): keep mirror backups for real losses only; mtime-only copies are not conflicts)
+	}
+}
 
 // pushClean runs a clean push and fails the test on any error.
 func (f *intakeFixture) pushClean(mode RunMode) {
