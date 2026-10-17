@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // makeFakeWorktree plants a linked-worktree shape without running git: a
@@ -597,5 +598,40 @@ func TestDetectPeerWorktrees_ReportsWorktreesUnderLocalOnlyRules(t *testing.T) {
 	}
 	if !slices.Equal(got, []string{"dev/feature-wt"}) {
 		t.Fatalf("got %v, want the worktree a local-only rule hides", got)
+	}
+}
+
+// The tombstone and name-normalization scans of a peer run prune the
+// code-owned volatile layer too, so a churning or unreadable scratch tree
+// cannot fail the run one step after the worktree scan (#268). An unreadable
+// included directory still fails the tombstone scan closed.
+func TestPeerRunScansPruneTheVolatileLayer(t *testing.T) {
+	workspace := t.TempDir()
+	cfg := newPeerWorktreeTestConfig(t, workspace)
+	if err := os.MkdirAll(filepath.Join(workspace, "notes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "notes", "a.md"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Propagation.Delete = true
+	if err := SaveBaselineManifest(cfg.LocalPaths.BaselineFile, map[string]Fingerprint{"notes/a.md": {Size: 1, Mtime: time.Now()}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := markPeerBaselineTarget(cfg); err != nil {
+		t.Fatal(err)
+	}
+	unreadableDir(t, filepath.Join(workspace, "scratchpad", "temp", "runtime"))
+
+	if _, err := ComputeTombstones(cfg); err != nil {
+		t.Fatalf("tombstone scan read the volatile layer: %v", err)
+	}
+	if _, err := PlanWorkspaceNameNormalization(cfg); err != nil {
+		t.Fatalf("name normalization read the volatile layer: %v", err)
+	}
+
+	unreadableDir(t, filepath.Join(workspace, "docs", "locked"))
+	if _, err := ComputeTombstones(cfg); err == nil {
+		t.Fatal("an unreadable included directory must fail the tombstone scan")
 	}
 }

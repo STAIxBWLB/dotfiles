@@ -2,6 +2,7 @@ package syncer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -83,12 +84,22 @@ func ComputeTombstones(cfg *Config) ([]string, error) {
 		return nil, fmt.Errorf("loading filters: %w", err)
 	}
 
+	// The code-owned peer volatile layer never enters a peer baseline, so it is
+	// pruned like the filters above (#268); empty outside the peer profile.
+	volatile := peerVolatilePatterns(cfg)
 	present := map[string]bool{}
 	err = filepath.WalkDir(local, func(absPath string, d fs.DirEntry, err error) error {
 		if err != nil {
-			// Skipping an unreadable subtree would make every baseline entry
-			// beneath it look deleted. Tombstone detection is destructive, so any
-			// incomplete inventory must fail closed.
+			// A path gone since the walk listed it is deleted, which is what
+			// this inventory reports. Skipping an unreadable subtree instead
+			// would make every baseline entry beneath it look deleted, so any
+			// other error fails closed.
+			if absPath != local && errors.Is(err, fs.ErrNotExist) {
+				if d != nil && d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
 			return err
 		}
 		if absPath == local {
@@ -99,7 +110,7 @@ func ComputeTombstones(cfg *Config) ([]string, error) {
 			return err
 		}
 		rel = normalizeRel(rel)
-		if filter.shouldSkip(absPath, rel, d.IsDir()) {
+		if matchesAny(volatile, rel, d.IsDir()) || filter.shouldSkip(absPath, rel, d.IsDir()) {
 			if d.IsDir() {
 				return filepath.SkipDir
 			}

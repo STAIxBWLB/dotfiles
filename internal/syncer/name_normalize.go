@@ -1,6 +1,7 @@
 package syncer
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -167,6 +168,9 @@ func PlanWorkspaceNameNormalization(cfg *Config) (*NameNormalizationPlan, error)
 		return nil, fmt.Errorf("loading sync filters for NFD normalization: %w", err)
 	}
 
+	// The code-owned peer volatile layer is never transferred, so nothing in it
+	// needs a normalized name (#268); it is empty outside the peer profile.
+	volatile := peerVolatilePatterns(cfg)
 	plan := &NameNormalizationPlan{WorkspaceRoot: root}
 	var invalid []string
 	var collisions []NameNormalizationCollision
@@ -177,6 +181,13 @@ func PlanWorkspaceNameNormalization(cfg *Config) (*NameNormalizationPlan, error)
 
 	err = filepath.WalkDir(root, func(absPath string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
+			// Gone since the walk listed it: nothing left to rename.
+			if absPath != root && errors.Is(walkErr, fs.ErrNotExist) {
+				if d != nil && d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
 			return fmt.Errorf("walking %s: %w", absPath, walkErr)
 		}
 		if d == nil {
@@ -254,7 +265,7 @@ func PlanWorkspaceNameNormalization(cfg *Config) (*NameNormalizationPlan, error)
 		}
 		isDir := info.IsDir()
 
-		if isNFDHardExcluded(rel) || filter.shouldSkip(absPath, rel, isDir) {
+		if isNFDHardExcluded(rel) || matchesAny(volatile, rel, isDir) || filter.shouldSkip(absPath, rel, isDir) {
 			plan.Skipped++
 			if isDir {
 				return filepath.SkipDir

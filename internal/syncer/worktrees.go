@@ -252,7 +252,7 @@ func MaterializeWorktreesDynFile(dir string, rels []string) (string, error) {
 func DetectPeerWorktrees(cfg *Config, root string) ([]string, error) {
 	volatile := peerVolatilePatterns(cfg)
 	return detectLinkedWorktrees(root, func(rel string) bool {
-		return isAlwaysExcluded(rel) || matchesAny(volatile, rel)
+		return isAlwaysExcluded(rel) || matchesAny(volatile, rel, true)
 	}, cfg.IgnoreFile)
 }
 
@@ -275,7 +275,7 @@ func peerScanSkip(cfg *Config) (func(rel string) bool, error) {
 	}
 	volatile := peerVolatilePatterns(cfg)
 	return func(rel string) bool {
-		return matchesAny(volatile, rel) || filter.shouldSkip("", rel, true)
+		return matchesAny(volatile, rel, true) || filter.shouldSkip("", rel, true)
 	}, nil
 }
 
@@ -288,9 +288,9 @@ func peerVolatilePatterns(cfg *Config) []excludePattern {
 	return out
 }
 
-func matchesAny(patterns []excludePattern, dir string) bool {
+func matchesAny(patterns []excludePattern, rel string, isDir bool) bool {
 	for _, p := range patterns {
-		if p.matches(dir, true) {
+		if p.matches(rel, isDir) {
 			return true
 		}
 	}
