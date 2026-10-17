@@ -120,7 +120,7 @@ func runPeerStatus(cmd *cobra.Command, _ []string) error {
 		// A detection failure must fail closed: an under-reported list lets
 		// the peer sync a real worktree as regular files (the #135 husk
 		// class), so refuse rather than emit an incomplete document.
-		worktrees, err := syncer.DetectLinkedWorktrees(st.LocalPath)
+		worktrees, err := syncer.DetectPeerWorktrees(cfg, st.LocalPath)
 		if err != nil {
 			return fmt.Errorf("linked-worktree detection failed; refusing to report an incomplete worktree list: %w", err)
 		}

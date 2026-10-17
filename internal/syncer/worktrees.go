@@ -183,11 +183,7 @@ func MergePeerWorktrees(cfg *Config, remote []string, persist bool) ([]string, e
 			seen[normalizeRel(rel)] = true
 		}
 	}
-	skip, err := peerScanSkip(cfg)
-	if err != nil {
-		return nil, err
-	}
-	detected, err := detectLinkedWorktrees(cfg.LocalPaths.WorkspaceRoot, skip, cfg.IgnoreFile)
+	detected, err := DetectPeerWorktrees(cfg, cfg.LocalPaths.WorkspaceRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -244,6 +240,17 @@ func MaterializeWorktreesDynFile(dir string, rels []string) (string, error) {
 		return "", fmt.Errorf("writing %s: %w", out, err)
 	}
 	return out, nil
+}
+
+// DetectPeerWorktrees is the worktree scan of a peer run over root, pruned by
+// this machine's peer filters (#268). Both sides use it: the coordinator for
+// its own tree, and the other Mac for the list its status reports.
+func DetectPeerWorktrees(cfg *Config, root string) ([]string, error) {
+	skip, err := peerScanSkip(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return detectLinkedWorktrees(root, skip, cfg.IgnoreFile)
 }
 
 // peerScanSkip reports the directories a peer transfer excludes: the Go twin
