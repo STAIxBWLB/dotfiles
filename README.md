@@ -146,6 +146,19 @@ keystore extensions. An operator can explicitly re-include a path in
 `allow.txt`; status and dry-run previews show every such sensitive override
 without changing the requested transfer decision.
 
+### Sync backups and conflicts
+
+`dot sync push` keeps a copy under the mirror's `.sync-conflicts/<timestamp>/`
+only when something could be lost: a propagated deletion, or an overwrite of a
+mirror copy that changed after the last push. It also keeps one, to be safe,
+when a file turns into a directory or link, or when it cannot prove the old
+copy matched the last push. A routine update leaves no backup, and a mirror file the cloud rewrote with the same bytes and only a new
+timestamp is not a conflict. `dot sync status` shows `Conflicts: N live` (the
+conflicts the last push refused on) apart from `Backups: M directories
+(size)`, and `dot sync status --json` carries `liveConflictCount` and
+`backupBytes` next to `conflictCount` (retained backup directories). Old
+backups stay until `dot sync conflicts prune`.
+
 ### Build from source
 
 ```bash
@@ -762,6 +775,7 @@ dotfiles/
 | Job | Matrix | Description |
 |-----|--------|-------------|
 | **decision** | ubuntu-latest | Skips the jobs below when only non-test files changed, or when a main push carries a tree its PR already validated (`scripts/ci-decision.sh`) |
+| **release-notes** | ubuntu-latest | Format check of every `docs/releases/v*.md` (`scripts/check-release-notes.sh`); always runs, in seconds |
 | **lint** | ubuntu-latest | golangci-lint |
 | **unit** | ubuntu-latest, macos-latest | Go unit tests + coverage |
 | **integration** | ubuntu-24.04 × {minimal,full,server} + server image | Docker-based profile tests |
@@ -774,11 +788,11 @@ Test runs on pull requests and main pushes, not on tags.
 
 ### Creating a Release
 
-Add `docs/releases/vX.Y.Z.md` (format: `AGENTS.md`, Release notes) and merge it first; the Release workflow publishes it as the release body and stops without it.
+Add `docs/releases/vX.Y.Z.md` (format: `AGENTS.md`, Release notes) and merge it first; the Release workflow publishes it as the release body and stops when it is missing or breaks the format. Check it locally with `bash scripts/check-release-notes.sh docs/releases/vX.Y.Z.md`: plain first line, only the `### New` / `### Improved` / `### Fixed` / `### Action needed` sections in that order, every bullet ending with its PR number, no commit SHAs or conventional-commit prefixes, and the compare link to the previous release as the last line.
 
 ```bash
-git tag v0.9.0
-git push origin v0.9.0
+git tag vX.Y.Z
+git push origin vX.Y.Z
 # Release waits for the main-push Test run of that commit, then publishes
 ```
 
