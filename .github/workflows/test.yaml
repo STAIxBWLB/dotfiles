@@ -12,7 +12,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: test-${{ github.ref }}
+  # One group per main commit: a newer push would otherwise replace a pending
+  # main run, and Release needs every main commit's Test result.
+  group: test-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:

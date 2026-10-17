@@ -17,6 +17,10 @@ relevant_files() {
   grep -E "$TEST_INPUTS" | { if [ -n "${TEST_IGNORE:-}" ]; then grep -vE "$TEST_IGNORE"; else cat; fi; } || true
 }
 
+# Prints every path a compare response touches; a rename counts by both paths,
+# since moving a test input out of the watched set removes it.
+changed_paths() { jq -r '.files[] | .filename, (.previous_filename // empty)'; }
+
 if [ "${1:-}" = "--self-test" ]; then
   TEST_INPUTS='^(cmd/|internal/|docs/|README\.md$)'
   TEST_IGNORE='^docs/releases/'
@@ -32,6 +36,8 @@ if [ "${1:-}" = "--self-test" ]; then
   check 1 docs/CEILINGS.md
   check 1 README.md
   check 0 README.md.bak
+  renamed=$(changed_paths <<<'{"files":[{"filename":"AGENTS.md","previous_filename":"internal/cli/root.go","status":"renamed"}]}' | relevant_files | grep -c . || true)
+  if [ "$renamed" != 1 ]; then echo "FAIL: rename out of the test inputs was not counted"; fail=1; fi
   [ "$fail" = 0 ] && echo "ci-decision self-test: ok"
   exit "$fail"
 fi
@@ -64,7 +70,7 @@ count=$(jq '.files | length' <<<"$cmp")
 if [ "$count" -ge 300 ]; then
   decide true "$count changed files; the compare API caps the list"
 fi
-relevant=$(jq -r '.files[].filename' <<<"$cmp" | relevant_files)
+relevant=$(changed_paths <<<"$cmp" | relevant_files)
 if [ -z "$relevant" ]; then
   decide false "none of the $count changed files are test inputs"
 fi
