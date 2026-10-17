@@ -257,6 +257,14 @@ func PlanWorkspaceNameNormalization(cfg *Config) (*NameNormalizationPlan, error)
 		}
 		info, err := d.Info()
 		if err != nil {
+			// Listed by its parent, gone before Info: nothing left to rename.
+			if errors.Is(err, fs.ErrNotExist) {
+				plan.Skipped++
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
 			return fmt.Errorf("reading %s: %w", absPath, err)
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
