@@ -56,10 +56,10 @@ check_file() {
       fi
     fi
     if [[ "$line" =~ (^|[^0-9a-f])[0-9a-f]{40}([^0-9a-f]|$) ]]; then err "$f" "$n" "commit SHA"; fi
-    if [ "$need_pr" = 1 ] && [[ "$lead" == "- "* ]] && [[ ! "$line" =~ \(#[0-9]+(,\ #[0-9]+)*\)\.?$ ]]; then
+    if [ "$need_pr" = 1 ] && [[ "$lead" =~ ^[-*+][[:space:]] ]] && [[ ! "$line" =~ \(#[0-9]+(,\ #[0-9]+)*\)\.?$ ]]; then
       err "$f" "$n" "bullet must end with its PR number, e.g. (#123)"
     fi
-    if [[ "$line" =~ ^(-[[:space:]]+)?(feat|fix|chore|docs|ci|refactor|test|perf|build|style|revert)(\([^\)]*\))?!?:[[:space:]] ]]; then
+    if [[ "$lead" =~ ^([-*+][[:space:]]+)?(feat|fix|chore|docs|ci|refactor|test|perf|build|style|revert)(\([^\)]*\))?!?:[[:space:]] ]]; then
       err "$f" "$n" "conventional-commit prefix"
     fi
   done <"$f"
@@ -109,6 +109,9 @@ if [ "${1:-}" = "--self-test" ]; then
   expect fail "wrong compare link" "$(printf 'X.\n\n**Full changelog**: %s/compare/v0.9.0...v1.0.1' "$REPO_URL")"
   expect fail "missing link" "$(printf 'X.\n\n### Fixed\n- a (#1)')"
   expect fail "bullet without PR" "$(printf 'X.\n\n### Fixed\n- `dot sync` no longer crashes.\n\n%s' "$good_tail")"
+  expect fail "star bullet without PR" "$(printf 'X.\n\n### Fixed\n* a\n\n%s' "$good_tail")"
+  expect fail "plus bullet without PR" "$(printf 'X.\n\n### Fixed\n+ a\n\n%s' "$good_tail")"
+  expect fail "indented conventional prefix" "$(printf 'X.\n\n### Fixed\n  - fix(sync): a (#1)\n\n%s' "$good_tail")"
   expect ok "bullet with two PRs" "$(printf 'X.\n\n### Fixed\n- a (#1, #2)\n\n%s' "$good_tail")"
   # The oldest note links /commits/<tag>, and version order is numeric.
   printf 'First.\n\n**Full changelog**: %s/compare/v1.0.0...v1.0.1\n' "$REPO_URL" >"$d/v1.0.0.md"
