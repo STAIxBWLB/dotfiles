@@ -37,7 +37,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           WORKFLOW_FILE: test.yaml
           # The former trigger paths filter. docs/releases/ holds release notes only.
-          TEST_INPUTS: '^(cmd/|internal/|go\.mod$|go\.sum$|\.testcoverage\.yml$|Makefile$|scripts/|tests/|tools/|docs/|README\.md$|\.github/workflows/|\.goreleaser\.yaml$|\.golangci\.yml$)'
+          TEST_INPUTS: '^(cmd/|internal/|go\.mod$|go\.sum$|\.testcoverage\.yml$|Makefile$|scripts/|tests/|tools/|docs/|README\.md$|\.github/workflows/|\.goreleaser\.yaml$|\.golangci\.yml$|\.govulncheck-allow\.json$|\.dockerignore$)'
           TEST_IGNORE: '^docs/releases/'
         run: bash scripts/ci-decision.sh
 

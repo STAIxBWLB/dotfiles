@@ -66,11 +66,11 @@ esac
 if ! cmp=$(api "repos/$GITHUB_REPOSITORY/compare/$range"); then
   decide true "could not compare $range"
 fi
-count=$(jq '.files | length' <<<"$cmp")
+count=$(jq '.files | length' <<<"$cmp") || decide true "unreadable compare response for $range"
 if [ "$count" -ge 300 ]; then
   decide true "$count changed files; the compare API caps the list"
 fi
-relevant=$(changed_paths <<<"$cmp" | relevant_files)
+relevant=$(changed_paths <<<"$cmp" | relevant_files) || decide true "could not classify the changed files"
 if [ -z "$relevant" ]; then
   decide false "none of the $count changed files are test inputs"
 fi
