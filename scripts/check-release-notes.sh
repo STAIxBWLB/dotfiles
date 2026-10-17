@@ -41,7 +41,8 @@ check_file() {
     lead=${line#"${line%%[![:space:]]*}"}
     if [ "$n" = 1 ]; then
       case "$lead" in
-        "" | "#"* | "-"* | "*"* | "+"* | [0-9]*[.\)]" "*) err "$f" 1 "first line must be a plain sentence" ;;
+        "" | "#"* | "-"* | "*"* | "+"*) err "$f" 1 "first line must be a plain sentence" ;;
+        *) [[ "$lead" =~ ^[0-9]+[.\)][[:space:]] ]] && err "$f" 1 "first line must be a plain sentence" ;;
       esac
     fi
     # A line of only = or - underlines the line above into a heading.
@@ -105,6 +106,7 @@ if [ "${1:-}" = "--self-test" ]; then
   expect fail "heading on line 1" "$(printf '# v1.0.1\n\n%s' "$good_tail")"
   expect fail "setext heading" "$(printf 'Release changes\n===============\n\n%s' "$good_tail")"
   expect fail "plus list on line 1" "$(printf '+ Changes sync. (#1)\n\n%s' "$good_tail")"
+  expect ok "sentence starting with a number" "$(printf '1 file changed. More follows.\n\n%s' "$good_tail")"
   expect fail "numbered list on line 1" "$(printf '1. Changes sync. (#1)\n\n%s' "$good_tail")"
   expect fail "indented heading on line 1" "$(printf '   # v1.0.1\n\n%s' "$good_tail")"
   expect fail "indented unknown section" "$(printf 'X.\n\n  ### Changes\n- y (#1)\n\n%s' "$good_tail")"
