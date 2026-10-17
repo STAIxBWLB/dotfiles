@@ -275,8 +275,14 @@ func remoteShellPath(path string) string {
 }
 
 func remotePeerStatusCommand(dot string) string {
-	return "exec " + shellQuote(dot) + " peer status --json"
+	return PeerStatusUnscannedEnv + "=1 exec " + shellQuote(dot) + " peer status --json"
 }
+
+// PeerStatusUnscannedEnv asks `dot peer status --json` to report directories
+// its worktree scan cannot read in unscannedWorktreeDirs instead of failing
+// (#268). Only a coordinator that judges that field sets it: an older one
+// keeps the fail-closed status, and an older peer ignores the variable.
+const PeerStatusUnscannedEnv = "DOT_PEER_STATUS_UNSCANNED"
 
 func remotePeerNormalizeCommand(dot string) string {
 	return "exec " + shellQuote(dot) + " sync names normalize --profile=peer --yes"
@@ -294,10 +300,13 @@ type remotePeerStatus struct {
 	SchemaVersion int      `json:"schemaVersion"`
 	Kind          string   `json:"kind"`
 	Worktrees     []string `json:"worktrees"`
-	OwnerEpoch    int      `json:"ownerEpoch"`
-	FencePending  bool     `json:"fencePending"`
-	DotVersion    string   `json:"dotVersion"`
-	Profile       struct {
+	// UnscannedWorktreeDirs are the directories the remote could not read
+	// during its worktree scan; this Mac's filters judge them (#268).
+	UnscannedWorktreeDirs []string `json:"unscannedWorktreeDirs"`
+	OwnerEpoch            int      `json:"ownerEpoch"`
+	FencePending          bool     `json:"fencePending"`
+	DotVersion            string   `json:"dotVersion"`
+	Profile               struct {
 		Configured   bool     `json:"configured"`
 		Owner        string   `json:"owner"`
 		OwnerAliases []string `json:"ownerAliases"`
@@ -398,12 +407,12 @@ func parseRemotePeerStatus(cfg *Config, raw string) (*remotePeerStatus, error) {
 // same status document, without the coordinator validation: `peer diff` runs
 // it on machines where the owner check is not its business. A remote on a
 // previous release answers with no worktrees field and the list is empty.
-func fetchRemotePeerWorktrees(ctx context.Context, runner *exec.Runner, cfg *Config) ([]string, error) {
+func fetchRemotePeerWorktrees(ctx context.Context, runner *exec.Runner, cfg *Config) (worktrees, unscanned []string, err error) {
 	status, err := fetchRemotePeerStatus(ctx, runner, cfg)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return status.Worktrees, nil
+	return status.Worktrees, status.UnscannedWorktreeDirs, nil
 }
 
 // checkRemotePeerTopology proves the remote profile points back at this

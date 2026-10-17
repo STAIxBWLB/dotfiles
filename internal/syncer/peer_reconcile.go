@@ -2,6 +2,8 @@ package syncer
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -206,6 +208,68 @@ func ValidatePeerPlanSafety(cfg *Config, plan *PeerPlan) error {
 		return fmt.Errorf("peer plan safety: refusing %d outbound deletion(s): over max_delete=%d", len(plan.DeleteRemote), cfg.MaxDelete)
 	}
 	return nil
+}
+
+// ValidateWorkspacePlanSafety is ValidatePeerPlanSafety for the workspace
+// plan, where a person can approve one reviewed deletion set over max_delete
+// (#269). An approval must match the plan's digest whatever its size, and a
+// match lifts the cap for exactly those paths. Tracked host paths keep the
+// plain check and their own cap.
+func ValidateWorkspacePlanSafety(cfg *Config, plan *PeerPlan) error {
+	if cfg == nil || plan == nil {
+		return fmt.Errorf("peer plan safety: missing config or plan")
+	}
+	digest := DeletePlanDigest(plan)
+	if cfg.ApproveDeletes != "" {
+		if cfg.ApproveDeletes != digest {
+			return fmt.Errorf("peer plan safety: the deletion set changed since %s was approved: now %d inbound and %d outbound, deletion plan %s. Review it with `dot peer diff --list`, then approve exactly this set with `dot peer sync --approve-deletes %s`",
+				cfg.ApproveDeletes, len(plan.DeleteLocal), len(plan.DeleteRemote), digest, digest)
+		}
+		capless := *cfg
+		capless.MaxDelete = 0
+		if err := ValidatePeerPlanSafety(&capless, plan); err != nil {
+			return err
+		}
+		cfg.approvedDeletes = make(map[string]bool, len(plan.DeleteLocal)+len(plan.DeleteRemote))
+		for _, rel := range plan.DeleteLocal {
+			cfg.approvedDeletes[rel] = true
+		}
+		for _, rel := range plan.DeleteRemote {
+			cfg.approvedDeletes[rel] = true
+		}
+		return nil
+	}
+	err := ValidatePeerPlanSafety(cfg, plan)
+	if err != nil && strings.Contains(err.Error(), "over max_delete") {
+		return fmt.Errorf("%w. Deletion plan %s: review it with `dot peer diff --list`, then approve exactly this set with `dot peer sync --approve-deletes %s`", err, digest, digest)
+	}
+	return err
+}
+
+// DeletePlanDigest names a plan's exact deletion set (#269): both sorted
+// lists, by direction. A person approves a reviewed set by this digest, and a
+// set that changed afterwards no longer matches it.
+func DeletePlanDigest(plan *PeerPlan) string {
+	h := sha256.New()
+	for _, rel := range plan.DeleteLocal {
+		fmt.Fprintf(h, "in\x00%s\x00", rel)
+	}
+	for _, rel := range plan.DeleteRemote {
+		fmt.Fprintf(h, "out\x00%s\x00", rel)
+	}
+	return hex.EncodeToString(h.Sum(nil))[:deletePlanDigestLen]
+}
+
+const deletePlanDigestLen = 16
+
+// ValidDeletePlanDigest reports whether s has the shape DeletePlanDigest
+// prints.
+func ValidDeletePlanDigest(s string) bool {
+	if len(s) != deletePlanDigestLen {
+		return false
+	}
+	_, err := hex.DecodeString(s)
+	return err == nil && strings.ToLower(s) == s
 }
 
 // ValidatePeerPushRemoteStable prevents a stale plan from overwriting an edit

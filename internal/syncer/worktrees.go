@@ -1,6 +1,7 @@
 package syncer
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -31,12 +32,49 @@ import (
 // and nothing to sync; an unreadable subtree inside an existing root is an
 // error, so callers can fail closed instead of trusting an incomplete list.
 func DetectLinkedWorktrees(root string) ([]string, error) {
+	return detectLinkedWorktrees(root, nil, "", nil)
+}
+
+// detectLinkedWorktrees is DetectLinkedWorktrees for a peer run (#268). skip
+// names directories the transfer excludes: they are pruned before they are
+// read, so an unreadable or churning excluded tree cannot fail the run. A
+// directory that vanishes after the walk listed it counts as gone. An
+// unreadable included directory still fails closed, naming the path and the
+// fix; ignoreFile is the exclude file the message points at. With unreadable
+// set, such a directory is recorded there and skipped instead, for a caller
+// whose filters are not the ones that decide (the other Mac's status).
+func detectLinkedWorktrees(root string, skip func(rel string) bool, ignoreFile string, unreadable *[]string) ([]string, error) {
 	root = strings.TrimRight(root, "/")
 	var found []string
 	err := filepath.WalkDir(root, func(abs string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			if abs == root && os.IsNotExist(walkErr) {
+			if abs == root {
+				if os.IsNotExist(walkErr) {
+					return nil
+				}
+				return walkErr
+			}
+			if errors.Is(walkErr, fs.ErrNotExist) {
+				if d != nil && d.IsDir() {
+					return filepath.SkipDir
+				}
 				return nil
+			}
+			if errors.Is(walkErr, fs.ErrPermission) && unreadable != nil {
+				if rel, err := filepath.Rel(root, abs); err == nil {
+					*unreadable = append(*unreadable, normalizeRel(rel))
+				}
+				if d != nil && d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if errors.Is(walkErr, fs.ErrPermission) {
+				where := "the peer ignore.txt"
+				if ignoreFile != "" {
+					where = ignoreFile
+				}
+				return fmt.Errorf("cannot read %s: %w; fix its permissions (chmod u+rx), or exclude it from peer sync in %s", abs, walkErr, where)
 			}
 			return walkErr
 		}
@@ -46,12 +84,16 @@ func DetectLinkedWorktrees(root string) ([]string, error) {
 		if d.Name() == ".git" {
 			return filepath.SkipDir
 		}
+		rel, err := filepath.Rel(root, abs)
+		if err != nil {
+			return err
+		}
+		rel = normalizeRel(rel)
+		if skip != nil && skip(rel) {
+			return filepath.SkipDir
+		}
 		if isLinkedWorktreeDir(abs) {
-			rel, err := filepath.Rel(root, abs)
-			if err != nil {
-				return err
-			}
-			if rel := normalizeRel(rel); rel != "" {
+			if rel != "" {
 				found = append(found, rel)
 			}
 			return filepath.SkipDir
@@ -139,6 +181,17 @@ func SavePeerWorktrees(path string, rels []string) error {
 // run: the remote list is cross-machine input and a single corrupt path must
 // not stop every sync.
 func MergePeerWorktrees(cfg *Config, remote []string, persist bool) ([]string, error) {
+	return mergePeerWorktrees(cfg, remote, nil, persist)
+}
+
+// MergePeerWorktreesChecked is MergePeerWorktrees for a remote status that
+// listed directories its scan could not read: they are judged against the
+// complete union (stored, local, remote) before anything is persisted.
+func MergePeerWorktreesChecked(cfg *Config, remote, remoteUnscanned []string, persist bool) ([]string, error) {
+	return mergePeerWorktrees(cfg, remote, remoteUnscanned, persist)
+}
+
+func mergePeerWorktrees(cfg *Config, remote, remoteUnscanned []string, persist bool) ([]string, error) {
 	if cfg == nil || cfg.LocalPaths == nil {
 		return nil, fmt.Errorf("peer worktrees: local paths unresolved")
 	}
@@ -152,7 +205,15 @@ func MergePeerWorktrees(cfg *Config, remote []string, persist bool) ([]string, e
 			seen[normalizeRel(rel)] = true
 		}
 	}
-	detected, err := DetectLinkedWorktrees(cfg.LocalPaths.WorkspaceRoot)
+	for _, rel := range remote {
+		rel = normalizeRel(rel)
+		if rel != "" && validateTombstoneRel(rel) == nil {
+			seen[rel] = true
+		}
+	}
+	// Stored and peer-reported roots are excluded from every transfer, so the
+	// scan does not read them either.
+	detected, err := detectPeerWorktrees(cfg, cfg.LocalPaths.WorkspaceRoot, seen)
 	if err != nil {
 		return nil, err
 	}
@@ -165,17 +226,14 @@ func MergePeerWorktrees(cfg *Config, remote []string, persist bool) ([]string, e
 		}
 		seen[rel] = true
 	}
-	for _, rel := range remote {
-		rel = normalizeRel(rel)
-		if rel != "" && validateTombstoneRel(rel) == nil {
-			seen[rel] = true
-		}
-	}
 	out := make([]string, 0, len(seen))
 	for rel := range seen {
 		out = append(out, rel)
 	}
 	sort.Strings(out)
+	if err := CheckPeerUnscanned(cfg, remoteUnscanned, out); err != nil {
+		return nil, err
+	}
 	if persist {
 		if err := SavePeerWorktrees(cfg.LocalPaths.WorktreesFile, out); err != nil {
 			return nil, err
@@ -209,4 +267,100 @@ func MaterializeWorktreesDynFile(dir string, rels []string) (string, error) {
 		return "", fmt.Errorf("writing %s: %w", out, err)
 	}
 	return out, nil
+}
+
+// DetectPeerWorktrees is the scan behind the worktree list the other Mac
+// reports in its status (#268). The coordinator applies its own filters to
+// the transfer, so this side prunes only the code-owned layers both share,
+// never its editable ignore.txt: a worktree hidden by a local-only rule would
+// go unreported and its content would travel as regular files. For the same
+// reason an unreadable directory is reported as unscanned, not judged here:
+// the coordinator decides with its filters (CheckPeerUnscanned).
+func DetectPeerWorktrees(cfg *Config, root string) (found, unscanned []string, err error) {
+	volatile := peerVolatilePatterns(cfg)
+	found, err = detectLinkedWorktrees(root, func(rel string) bool {
+		return isAlwaysExcluded(rel) || matchesAny(volatile, rel, true)
+	}, cfg.IgnoreFile, &unscanned)
+	return found, unscanned, err
+}
+
+// CheckPeerUnscanned accepts the directories the other Mac could not read
+// during its worktree scan only when this Mac's filters, or a known worktree
+// root, keep them and everything beneath them out of the transfer. Any other
+// one could hide a worktree that would then travel as regular files.
+func CheckPeerUnscanned(cfg *Config, unscanned, known []string) error {
+	if len(unscanned) == 0 {
+		return nil
+	}
+	skip, err := peerScanSkip(cfg)
+	if err != nil {
+		return err
+	}
+	roots := map[string]bool{}
+	for _, rel := range known {
+		roots[normalizeRel(rel)] = true
+	}
+	for _, rel := range unscanned {
+		rel = normalizeRel(rel)
+		excluded := false
+		for prefix := rel; prefix != "" && !excluded; prefix = parentRel(prefix) {
+			excluded = roots[prefix] || skip(prefix)
+		}
+		if !excluded {
+			where := "the peer ignore.txt"
+			if cfg.IgnoreFile != "" {
+				where = cfg.IgnoreFile
+			}
+			return fmt.Errorf("the peer cannot read %s during its linked-worktree scan; fix its permissions there (chmod u+rx), or exclude it from peer sync in %s on this Mac", rel, where)
+		}
+	}
+	return nil
+}
+
+func parentRel(rel string) string {
+	if i := strings.LastIndexByte(rel, '/'); i >= 0 {
+		return rel[:i]
+	}
+	return ""
+}
+
+// detectPeerWorktrees also prunes the already known worktree roots.
+func detectPeerWorktrees(cfg *Config, root string, known map[string]bool) ([]string, error) {
+	skip, err := peerScanSkip(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return detectLinkedWorktrees(root, func(rel string) bool { return known[rel] || skip(rel) }, cfg.IgnoreFile, nil)
+}
+
+// peerScanSkip reports the directories a peer transfer excludes: the Go twin
+// of the filter chain plus the code-owned volatile layer that precedes it.
+// The worktree scan prunes them, so it never reads a tree nothing will sync.
+func peerScanSkip(cfg *Config) (func(rel string) bool, error) {
+	filter, err := newSyncFilter(cfg, strings.TrimRight(cfg.MirrorPath, "/"))
+	if err != nil {
+		return nil, fmt.Errorf("loading peer filters: %w", err)
+	}
+	volatile := peerVolatilePatterns(cfg)
+	return func(rel string) bool {
+		return matchesAny(volatile, rel, true) || filter.shouldSkip("", rel, true)
+	}, nil
+}
+
+// peerVolatilePatterns is the code-owned volatile exclude layer as patterns.
+func peerVolatilePatterns(cfg *Config) []excludePattern {
+	var out []excludePattern
+	for _, arg := range peerVolatileExcludeArgs(cfg) {
+		out = append(out, excludePattern{raw: strings.TrimPrefix(arg, "--exclude=")})
+	}
+	return out
+}
+
+func matchesAny(patterns []excludePattern, rel string, isDir bool) bool {
+	for _, p := range patterns {
+		if p.matches(rel, isDir) {
+			return true
+		}
+	}
+	return false
 }

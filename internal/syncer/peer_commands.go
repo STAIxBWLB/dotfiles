@@ -424,11 +424,11 @@ func PeerDiff(ctx context.Context, opts PeerDiffOptions) (*PeerDiffResult, error
 	// status cannot be read, and the stored ∪ local union still covers every
 	// worktree any earlier complete run has seen. `peer diff` is always a
 	// preview, so the union is never persisted here.
-	var remoteWorktrees []string
-	if wt, err := fetchRemotePeerWorktrees(ctx, opts.Probe, cfg); err == nil {
-		remoteWorktrees = wt
+	var remoteWorktrees, remoteUnscanned []string
+	if wt, unscanned, err := fetchRemotePeerWorktrees(ctx, opts.Probe, cfg); err == nil {
+		remoteWorktrees, remoteUnscanned = wt, unscanned
 	}
-	worktrees, err := MergePeerWorktrees(cfg, remoteWorktrees, false)
+	worktrees, err := MergePeerWorktreesChecked(cfg, remoteWorktrees, remoteUnscanned, false)
 	if err != nil {
 		return nil, err
 	}
@@ -626,7 +626,7 @@ func PeerSync(ctx context.Context, opts PeerSyncOptions) (*PeerSyncResult, error
 	// identical set to the local walk, the remote inventory and every
 	// transfer, or a rule only one side applies becomes a propagated delete.
 	// A real run persists the union; a preview changes nothing in the store.
-	worktrees, err := MergePeerWorktrees(cfg, remoteStatus.Worktrees, !dryRun)
+	worktrees, err := MergePeerWorktreesChecked(cfg, remoteStatus.Worktrees, remoteStatus.UnscannedWorktreeDirs, !dryRun)
 	if err != nil {
 		return nil, err
 	}
@@ -657,7 +657,7 @@ func PeerSync(ctx context.Context, opts PeerSyncOptions) (*PeerSyncResult, error
 	if err != nil {
 		return nil, err
 	}
-	if err := ValidatePeerPlanSafety(cfg, plan); err != nil {
+	if err := ValidateWorkspacePlanSafety(cfg, plan); err != nil {
 		return nil, err
 	}
 	// host_merge decides here, before anything moves (#181). Its files are

@@ -250,6 +250,10 @@ tool):
   `dot peer sync` only when Telegram alerting is enabled and a transition or
   reminder actually sends, and removed when a recovery sends. `--dry-run`
   never writes it
+- `<workspace>/.dotfiles/peer/log/sync.log` and `sync.log.1`..`.3` — the peer
+  run log. A scheduled `dot peer sync` rotates it past 10 MB (renames, keeping
+  three old files), then appends dated start and exit lines and the run's
+  output; launchd's redirect of the job's output points at the same file
 - `<workspace>/.dotfiles/peer/alert.lock/` — the PID lock serializing peer
   alert reporting across overlapping runs (the sync run lock is already
   released by the time the outcome is reported)
