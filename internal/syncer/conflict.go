@@ -116,8 +116,10 @@ func dropRoutineBackups(cfg *Config, conflict *ConflictDir, baseline map[string]
 		if !ok {
 			return nil
 		}
-		if _, err := os.Lstat(filepath.Join(local, rel)); err != nil {
-			return nil // a propagated deletion, or unknown: kept
+		// The workspace must still hold the same kind of entry: a file that
+		// became a directory or a link is a replacement, not an update.
+		if li, err := os.Lstat(filepath.Join(local, rel)); err != nil || li.Mode().Type() != d.Type() {
+			return nil // a propagated deletion, a type change, or unknown: kept
 		}
 		info, err := d.Info()
 		if err != nil || (base.Sha != "" && dehydratedFile(path, info)) {
