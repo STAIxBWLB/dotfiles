@@ -156,9 +156,14 @@ func TestRunUpgradeHomebrew(t *testing.T) {
 		if f.acquired != wantAcquired {
 			t.Fatalf("%s: maintenance slot acquired %d times, want %d", mode, f.acquired, wantAcquired)
 		}
+		if mode == "check" && !strings.Contains(out.String(), "Update path: full maintenance gate, because ") {
+			t.Fatalf("--check must name the update path and why the prebuilt path is skipped, got %q", out.String())
+		}
 		wantRequests := 1
-		if mode == "update" && runtime.GOOS == "darwin" || mode == "update" && runtime.GOOS == "linux" {
-			wantRequests = 2 // release metadata plus the intentionally missing checksum list
+		if mode != "current" && (runtime.GOOS == "darwin" || runtime.GOOS == "linux") {
+			// Release metadata plus the intentionally missing checksum list;
+			// --check reads it too, to say which path an update would take.
+			wantRequests = 2
 		}
 		if transport.requests != wantRequests {
 			t.Fatalf("made %d HTTP requests, want %d", transport.requests, wantRequests)
@@ -286,7 +291,7 @@ func TestUpgradeHomebrewBranches(t *testing.T) {
 			f := tc.f
 			f.install(t)
 			var out bytes.Buffer
-			err := upgradeHomebrew(context.Background(), &Printer{Out: &out, Err: &out}, h, "1.0.0", "2.0.0", tc.dryRun)
+			err := upgradeHomebrew(context.Background(), &Printer{Out: &out, Err: &out}, h, "1.0.0", "2.0.0", tc.dryRun, 0)
 			if tc.wantErr == "" && err != nil || tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)) {
 				t.Fatalf("err = %v, want %q", err, tc.wantErr)
 			}
@@ -315,7 +320,7 @@ func TestUpgradeHomebrewSignalDoesNotKillBrew(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	var out bytes.Buffer
-	if err := upgradeHomebrew(ctx, &Printer{Out: &out, Err: &out}, homebrewDot{prefix: t.TempDir(), formula: "dotfiles"}, "1.0.0", "2.0.0", false); err != nil {
+	if err := upgradeHomebrew(ctx, &Printer{Out: &out, Err: &out}, homebrewDot{prefix: t.TempDir(), formula: "dotfiles"}, "1.0.0", "2.0.0", false, 0); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range f.canceled {
@@ -459,7 +464,7 @@ func TestReloadDotLaunchAgents(t *testing.T) {
 			// already have replaced the binary.
 			name: "after a failed version check",
 			run: func(ctx context.Context, p *Printer) error {
-				return upgradeHomebrew(ctx, p, h, "1.0.0", "2.0.0", false)
+				return upgradeHomebrew(ctx, p, h, "1.0.0", "2.0.0", false, 0)
 			},
 			relink:   true,
 			attempts: 1,
@@ -469,7 +474,7 @@ func TestReloadDotLaunchAgents(t *testing.T) {
 		{
 			name: "after a failed brew upgrade",
 			run: func(ctx context.Context, p *Printer) error {
-				return upgradeHomebrew(ctx, p, h, "1.0.0", "2.0.0", false)
+				return upgradeHomebrew(ctx, p, h, "1.0.0", "2.0.0", false, 0)
 			},
 			relink:      true,
 			upgradeFail: true,
@@ -481,7 +486,7 @@ func TestReloadDotLaunchAgents(t *testing.T) {
 			// bin/dot belongs to graphviz, so only the opt link moves.
 			name: "when another formula owns bin/dot",
 			run: func(ctx context.Context, p *Printer) error {
-				return upgradeHomebrew(ctx, p, h, "1.0.0", "2.0.0", false)
+				return upgradeHomebrew(ctx, p, h, "1.0.0", "2.0.0", false, 0)
 			},
 			relink:   true,
 			binTaken: true,
@@ -494,7 +499,7 @@ func TestReloadDotLaunchAgents(t *testing.T) {
 			// so the healthy jobs keep running.
 			name: "after a failed brew upgrade that kept the link",
 			run: func(ctx context.Context, p *Printer) error {
-				return upgradeHomebrew(ctx, p, h, "1.0.0", "2.0.0", false)
+				return upgradeHomebrew(ctx, p, h, "1.0.0", "2.0.0", false, 0)
 			},
 			upgradeFail: true,
 			wantErr:     "brew upgrade staixbwlb/cask/dotfiles: exit status 1",

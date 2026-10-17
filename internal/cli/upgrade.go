@@ -17,6 +17,7 @@ import (
 
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
 	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
+	"github.com/STAIxBWLB/dotfiles/internal/resourceguard"
 )
 
 const githubRepo = "STAIxBWLB/dotfiles"
@@ -33,13 +34,16 @@ installed tap recipe matches the verified native release, dot uses its bounded
 prebuilt update policy. Stale or changed tap metadata uses the full maintenance
 gate before brew update. A pinned formula is left alone. Use --homebrew to
 target an existing Homebrew install from a standalone dot binary. --check only
-reports the latest version.`,
+reports the latest version and which path an update would take, and why the
+verified-prebuilt path is skipped when it is. --wait 30m waits for a busy
+maintenance slot instead of deferring at once.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runUpgrade(cmd, currentVersion)
 		},
 	}
 	cmd.Flags().Bool("check", false, "Only check for updates without installing")
 	cmd.Flags().Bool("homebrew", false, "Target the installed Homebrew dot formula")
+	cmd.Flags().Duration("wait", 0, "wait up to this long for the maintenance slot instead of deferring (e.g. 30m)")
 	return cmd
 }
 
@@ -53,6 +57,7 @@ func runUpgrade(cmd *cobra.Command, currentVersion string) error {
 	checkOnly, _ := cmd.Flags().GetBool("check")
 	homebrewTarget, _ := cmd.Flags().GetBool("homebrew")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	wait, _ := cmd.Flags().GetDuration("wait")
 	p := printerFrom(cmd)
 
 	p.Line("Current version: %s", currentVersion)
@@ -68,7 +73,7 @@ func runUpgrade(cmd *cobra.Command, currentVersion string) error {
 		}
 		viaBrew = true
 		p.Line("Homebrew target version: %s", currentVersion)
-	} else if !checkOnly {
+	} else {
 		// Resolve the install target before downloading anything: a binary inside
 		// a package manager's tree is not dot's to replace. On a Homebrew install
 		// EvalSymlinks resolves ~/.local/bin/dot → /opt/homebrew/bin/dot →
@@ -113,6 +118,7 @@ func runUpgrade(cmd *cobra.Command, currentVersion string) error {
 
 	if checkOnly {
 		p.Line("\nUpdate available: %s → %s", currentClean, latestVersion)
+		p.Line("Update path: %s", updatePath(ctx, brew, viaBrew, currentClean, latestVersion, latest.TagName))
 		if homebrewTarget {
 			p.Line("Run 'dot update --homebrew' to install.")
 		} else {
@@ -120,44 +126,100 @@ func runUpgrade(cmd *cobra.Command, currentVersion string) error {
 		}
 		return nil
 	}
-	return performVerifiedUpdate(ctx, p, execPath, brew, viaBrew, currentClean, latestVersion, latest.TagName, dryRun)
+	return performVerifiedUpdate(ctx, p, execPath, brew, viaBrew, currentClean, latestVersion, latest.TagName, dryRun, wait)
 }
 
-func performVerifiedUpdate(ctx context.Context, p *Printer, execPath string, brew homebrewDot, viaBrew bool, current, latest, tag string, dryRun bool) error {
+// updatePath says, read-only, which path `dot update` would take (#266).
+func updatePath(ctx context.Context, brew homebrewDot, viaBrew bool, current, latest, tag string) string {
+	if !viaBrew {
+		return "verified prebuilt download"
+	}
+	if _, _, why := homebrewPrebuiltPlan(ctx, brew, current, latest, tag); why != "" {
+		return "full maintenance gate, because " + why
+	}
+	return "verified prebuilt (Homebrew)"
+}
+
+// homebrewPrebuiltPlan returns the release plan and checksum list when a
+// Homebrew install can take the verified-prebuilt path, or the reason it
+// cannot.
+func homebrewPrebuiltPlan(ctx context.Context, brew homebrewDot, current, latest, tag string) (verifiedPrebuiltPlan, []byte, string) {
+	osName, archName, err := supportedNativeReleaseTarget()
+	if err != nil {
+		return verifiedPrebuiltPlan{}, nil, err.Error()
+	}
+	plan, err := planVerifiedPrebuilt(tag, osName, archName)
+	if err != nil {
+		return plan, nil, "no verified release asset: " + err.Error()
+	}
+	checksums, err := fetchPrebuiltChecksums(ctx, plan.ChecksumsURL)
+	if err != nil {
+		return plan, nil, "cannot read the release checksum list: " + err.Error()
+	}
+	return plan, checksums, prebuiltIneligibility(ctx, brew, current, latest, checksums)
+}
+
+// slotRetryInterval paces --wait retries; tests shorten it.
+var slotRetryInterval = 15 * time.Second
+
+// acquireMaintenanceSlot takes the maintenance slot through acquire. With
+// wait > 0 a deferral is retried until wait runs out instead of failing at
+// once (#266); the first deferral reason is printed while it waits.
+func acquireMaintenanceSlot(ctx context.Context, p *Printer, wait time.Duration, acquire func(context.Context) (func(), error)) (func(), error) {
+	release, err := acquire(ctx)
+	var deferred *resourceguard.DeferredError
+	if err == nil || wait <= 0 || !errors.As(err, &deferred) {
+		return release, err
+	}
+	p.Line("The maintenance slot is busy (%s); waiting up to %s...", deferred.Reason, wait)
+	deadline := time.Now().Add(wait)
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(slotRetryInterval):
+		}
+		release, err = acquire(ctx)
+		if err == nil || !errors.As(err, &deferred) || !time.Now().Before(deadline) {
+			return release, err
+		}
+	}
+}
+
+func retrySlotHint(wait time.Duration) string {
+	if wait > 0 {
+		return "the wait of " + wait.String() + " ended"
+	}
+	return "retry later, or wait for it with dot update --wait 30m"
+}
+
+func performVerifiedUpdate(ctx context.Context, p *Printer, execPath string, brew homebrewDot, viaBrew bool, current, latest, tag string, dryRun bool, wait time.Duration) error {
 	if dryRun {
 		if viaBrew {
-			return upgradeHomebrew(ctx, p, brew, current, latest, true)
+			return upgradeHomebrew(ctx, p, brew, current, latest, true, wait)
 		}
 		p.Line("[dry-run] would download and verify dot %s, then replace %s under verified-prebuilt admission", latest, execPath)
 		return nil
 	}
 
 	fullHomebrewFallback := func(reason string) error {
-		p.Line("Verified-prebuilt Homebrew update unavailable (%s); using the full maintenance gate.", reason)
-		return upgradeHomebrew(ctx, p, brew, current, latest, false)
+		p.Line("Verified-prebuilt Homebrew update unavailable: %s. Using the full maintenance gate.", reason)
+		return upgradeHomebrew(ctx, p, brew, current, latest, false, wait)
 	}
 	osName, archName, err := supportedNativeReleaseTarget()
-	if err != nil {
-		if viaBrew {
-			return fullHomebrewFallback("cannot use the verified-prebuilt policy")
-		}
-		return err
-	}
-	plan, err := planVerifiedPrebuilt(tag, osName, archName)
-	if err != nil {
-		if viaBrew {
-			return fullHomebrewFallback("cannot use the verified-prebuilt policy")
-		}
-		return err
-	}
+	var plan verifiedPrebuiltPlan
 	var checksums []byte
 	if viaBrew {
-		checksums, err = fetchPrebuiltChecksums(ctx, plan.ChecksumsURL)
-		if err != nil {
-			return fullHomebrewFallback("cannot validate the release checksum list")
+		var why string
+		if plan, checksums, why = homebrewPrebuiltPlan(ctx, brew, current, latest, tag); why != "" {
+			return fullHomebrewFallback(why)
 		}
-		if !prebuiltFormulaEligible(ctx, brew, current, latest, checksums) {
-			return fullHomebrewFallback("is not eligible for the verified-prebuilt policy")
+	} else {
+		if err != nil {
+			return err
+		}
+		if plan, err = planVerifiedPrebuilt(tag, osName, archName); err != nil {
+			return err
 		}
 	}
 	p.Line("\nDownloading %s...", plan.AssetName)
@@ -182,13 +244,13 @@ func performVerifiedUpdate(ctx context.Context, p *Printer, execPath string, bre
 		return fmt.Errorf("downloaded binary failed exact version validation: %w", err)
 	}
 	if viaBrew {
-		err := upgradeHomebrewPrebuilt(ctx, p, brew, current, latest, checksums, false)
+		err := upgradeHomebrewPrebuilt(ctx, p, brew, current, latest, checksums, false, wait)
 		if !errors.Is(err, errHomebrewNeedsFullGate) {
 			return err
 		}
-		return fullHomebrewFallback("changed while the update was being prepared")
+		return fullHomebrewFallback("the formula changed while the update was being prepared")
 	}
-	return installStandalonePrebuilt(ctx, p, newBinary, execPath, latest, osName, archName)
+	return installStandalonePrebuilt(ctx, p, newBinary, execPath, latest, osName, archName, wait)
 }
 
 // downloadVerifiedArchive downloads the release archive and the release's

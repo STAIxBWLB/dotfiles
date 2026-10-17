@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/resourceguard"
 )
 
 func TestParseSemver(t *testing.T) {
@@ -280,5 +282,56 @@ func TestHomebrewDotFor(t *testing.T) {
 		if ok != tc.ok || h.prefix != tc.prefix || (ok && h.formula != "dotfiles") {
 			t.Errorf("homebrewDotFor(%q) = %+v, %v; want prefix %q, %v", tc.path, h, ok, tc.prefix, tc.ok)
 		}
+	}
+}
+
+// --wait retries a deferred maintenance slot until it frees, saying why it
+// waits; without --wait the deferral returns at once (#266 AC2).
+func TestAcquireMaintenanceSlotWaitsForABusySlot(t *testing.T) {
+	prev := slotRetryInterval
+	slotRetryInterval = time.Millisecond
+	t.Cleanup(func() { slotRetryInterval = prev })
+	busy := &resourceguard.DeferredError{Reason: "another heavyweight job owns scope maintenance"}
+
+	calls := 0
+	freesOnThird := func(context.Context) (func(), error) {
+		calls++
+		if calls < 3 {
+			return nil, busy
+		}
+		return func() {}, nil
+	}
+	var out bytes.Buffer
+	release, err := acquireMaintenanceSlot(context.Background(), &Printer{Out: &out, Err: &out}, time.Minute, freesOnThird)
+	if err != nil || release == nil || calls != 3 {
+		t.Fatalf("waited acquire = %v after %d calls", err, calls)
+	}
+	if !strings.Contains(out.String(), "waiting up to 1m0s") || !strings.Contains(out.String(), busy.Reason) {
+		t.Fatalf("the wait must say why and how long, got %q", out.String())
+	}
+
+	calls = 0
+	if _, err := acquireMaintenanceSlot(context.Background(), &Printer{Out: &out, Err: &out}, 0, freesOnThird); !errors.As(err, &busy) || calls != 1 {
+		t.Fatalf("without --wait the deferral must return at once: %v after %d calls", err, calls)
+	}
+
+	alwaysBusy := func(context.Context) (func(), error) { return nil, busy }
+	if _, err := acquireMaintenanceSlot(context.Background(), &Printer{Out: &out, Err: &out}, 5*time.Millisecond, alwaysBusy); !errors.As(err, &busy) {
+		t.Fatalf("a wait that runs out must return the deferral: %v", err)
+	}
+	if hint := retrySlotHint(0); !strings.Contains(hint, "--wait") {
+		t.Fatalf("the no-wait hint must name --wait, got %q", hint)
+	}
+}
+
+// --check names the update path and, for Homebrew, why the verified-prebuilt
+// path is skipped; it reads only (#266 AC3).
+func TestUpdatePathNamesTheSkipReason(t *testing.T) {
+	if got := updatePath(context.Background(), homebrewDot{}, false, "1.0.0", "1.0.1", "v1.0.1"); got != "verified prebuilt download" {
+		t.Fatalf("standalone path = %q", got)
+	}
+	got := updatePath(context.Background(), homebrewDot{prefix: t.TempDir(), formula: "dotfiles"}, true, "1.0.0", "1.0.1", "v1.0.1-rc1")
+	if !strings.HasPrefix(got, "full maintenance gate, because ") || !strings.Contains(got, "not an exact stable version") {
+		t.Fatalf("homebrew path = %q, want the full gate with the reason", got)
 	}
 }

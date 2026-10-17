@@ -125,7 +125,7 @@ func TestStandalonePromotionRequiresExactRuntimeVersion(t *testing.T) {
 	if err := os.WriteFile(destination, []byte("old executable"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := installStandalonePrebuilt(context.Background(), &Printer{}, source, destination, "2.70.35", goos, goarch); err == nil || !strings.Contains(err.Error(), "expected exact dot version") {
+	if err := installStandalonePrebuilt(context.Background(), &Printer{}, source, destination, "2.70.35", goos, goarch, 0); err == nil || !strings.Contains(err.Error(), "expected exact dot version") {
 		t.Fatal("accepted binary reporting the wrong release version")
 	}
 	if acquired != 0 {
@@ -401,8 +401,11 @@ func TestPrebuiltHomebrewEligibilityChecksRawSourcePinAndInstalledKeg(t *testing
 	if err := os.WriteFile(formulaPath, []byte(formula), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if !prebuiltFormulaEligible(context.Background(), h, "2.70.34", "2.70.35", checksums) {
-		t.Fatal("rejected canonical unpinned formula with the exact installed opt version")
+	if why := prebuiltIneligibility(context.Background(), h, "2.70.34", "2.70.35", checksums); why != "" {
+		t.Fatalf("rejected canonical unpinned formula with the exact installed opt version: %s", why)
+	}
+	if why := prebuiltIneligibility(context.Background(), h, "2.70.33", "2.70.35", checksums); !strings.Contains(why, "not the running 2.70.33") {
+		t.Fatalf("a keg that is not the running version must be refused with its own reason, got %q", why)
 	}
 	brewEnv := filepath.Join(prefix, "etc", "homebrew", "brew.env")
 	if err := os.MkdirAll(filepath.Dir(brewEnv), 0o755); err != nil {
@@ -411,8 +414,8 @@ func TestPrebuiltHomebrewEligibilityChecksRawSourcePinAndInstalledKeg(t *testing
 	if err := os.WriteFile(brewEnv, []byte("HOMEBREW_XDG_CONFIG_HOME=/tmp/custom-homebrew\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if prebuiltFormulaEligible(context.Background(), h, "2.70.34", "2.70.35", checksums) {
-		t.Fatal("accepted an environment-file redirect that could override Homebrew safety flags")
+	if why := prebuiltIneligibility(context.Background(), h, "2.70.34", "2.70.35", checksums); !strings.Contains(why, "brew.env") {
+		t.Fatalf("an environment-file redirect must be refused with its own reason, got %q", why)
 	}
 	if err := os.WriteFile(brewEnv, []byte("# no Homebrew runtime overrides\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -425,15 +428,15 @@ func TestPrebuiltHomebrewEligibilityChecksRawSourcePinAndInstalledKeg(t *testing
 	if err := os.WriteFile(formulaPath, []byte(mutated), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if prebuiltFormulaEligible(context.Background(), h, "2.70.34", "2.70.35", checksums) {
-		t.Fatal("accepted modified formula install source")
+	if why := prebuiltIneligibility(context.Background(), h, "2.70.34", "2.70.35", checksums); !strings.Contains(why, "not the canonical release formula") {
+		t.Fatalf("a modified formula must be refused with its own reason, got %q", why)
 	}
 	acquired := 0
 	upgradeAcquirePrebuilt = func(context.Context) (func(), error) {
 		acquired++
 		return func() {}, nil
 	}
-	if err := upgradeHomebrewPrebuilt(context.Background(), &Printer{}, h, "2.70.34", "2.70.35", checksums, false); !errors.Is(err, errHomebrewNeedsFullGate) {
+	if err := upgradeHomebrewPrebuilt(context.Background(), &Printer{}, h, "2.70.34", "2.70.35", checksums, false, 0); !errors.Is(err, errHomebrewNeedsFullGate) {
 		t.Fatalf("changed raw formula did not route to full gate: %v", err)
 	}
 	if acquired != 0 {
@@ -449,8 +452,8 @@ func TestPrebuiltHomebrewEligibilityChecksRawSourcePinAndInstalledKeg(t *testing
 	if err := os.Symlink(filepath.Dir(filepath.Dir(binary)), filepath.Join(pinDir, "dotfiles")); err != nil {
 		t.Fatal(err)
 	}
-	if prebuiltFormulaEligible(context.Background(), h, "2.70.34", "2.70.35", checksums) {
-		t.Fatal("accepted pinned formula")
+	if why := prebuiltIneligibility(context.Background(), h, "2.70.34", "2.70.35", checksums); !strings.Contains(why, "pinned") {
+		t.Fatalf("a pinned formula must be refused with its own reason, got %q", why)
 	}
 }
 
@@ -559,7 +562,7 @@ func TestUpgradeHomebrewPrebuiltReloadsMovedOptAfterBrewFailure(t *testing.T) {
 		reloaded++
 		return reloadErr
 	}
-	got := upgradeHomebrewPrebuilt(context.Background(), &Printer{Out: io.Discard, Err: io.Discard}, h, "2.70.34", "2.70.35", checksums, false)
+	got := upgradeHomebrewPrebuilt(context.Background(), &Printer{Out: io.Discard, Err: io.Discard}, h, "2.70.34", "2.70.35", checksums, false, 0)
 	if !errors.Is(got, brewErr) || !errors.Is(got, reloadErr) {
 		t.Fatalf("error after opt move = %v, want brew and reload errors", got)
 	}
