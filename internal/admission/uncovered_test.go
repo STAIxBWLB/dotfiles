@@ -173,3 +173,37 @@ func TestLeasedPIDsSkipsExpiredLeases(t *testing.T) {
 		t.Fatalf("LeasedPIDs = %v, want only the live lease 22", got)
 	}
 }
+
+// dot's own scheduled peer sync runs from launchd with cwd "/", so its rsync
+// child has no repository and used to defer every repo and the maintenance
+// slot (#267). Under its background lease the whole tree is covered.
+func TestBackgroundSyncLeaseCoversItsRsyncChild(t *testing.T) {
+	const self, dot, rsync = 9000, 4100, 4101
+	table := "4100 1 0.0 /opt/homebrew/bin/dot peer sync\n" +
+		"4101 4100 100.0 /opt/homebrew/bin/rsync -a --delete /Users/u/work/ peer:/Users/u/work/\n"
+	rows, parents, err := parseProcessTable(table)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	store := NewStore(t.TempDir(), nil)
+	slot, _, err := store.Acquire(context.Background(), "peer sync", ClassBackground, Lease{Owner: "dot@test", PID: dot, PIDStart: "Sat Oct 18 04:00:00 2026"})
+	if err != nil || slot == nil {
+		t.Fatalf("background lease = %v, %v", slot, err)
+	}
+	for _, leased := range [][]int{nil, LeasedPIDs(store)} {
+		jobs, err := unownedHeavyJobs(rows, parents, self, leased)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, maintenance := range []bool{false, true} {
+			blocking := filterUncovered(jobs, "/Users/u/other/.git", maintenance)
+			if leased == nil && len(blocking) == 0 {
+				t.Fatal("fixture is vacuous: without the lease the rsync child must block")
+			}
+			if leased != nil && len(blocking) != 0 {
+				t.Fatalf("maintenance=%v: the leased sync's rsync still blocks: %v", maintenance, blocking)
+			}
+		}
+	}
+}

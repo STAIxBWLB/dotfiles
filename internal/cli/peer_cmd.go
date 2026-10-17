@@ -11,6 +11,7 @@ import (
 
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
 	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
+	"github.com/STAIxBWLB/dotfiles/internal/resourceguard"
 	"github.com/STAIxBWLB/dotfiles/internal/syncer"
 )
 
@@ -237,6 +238,7 @@ on a laptop.`,
 				progress = renderPeerEvent(&Printer{Out: c.ErrOrStderr(), Err: c.ErrOrStderr()})
 				bs.Config.Out = c.ErrOrStderr()
 			}
+			releaseLease := resourceguard.HoldBackgroundSync(context.Background(), "peer sync")
 			res, err := syncer.PeerSync(context.Background(), syncer.PeerSyncOptions{
 				Config:   bs.Config,
 				Runner:   bs.Runner,
@@ -250,6 +252,7 @@ on a laptop.`,
 
 				LocalDotVersion: c.Root().Version,
 			})
+			releaseLease()
 			// Alerting observes the outcome; it never masks or replaces the
 			// run's own error and exit code below.
 			reportPeerSyncAlert(context.Background(), c, bs, res, err, dryRun, !pushOnly && !pullOnly)

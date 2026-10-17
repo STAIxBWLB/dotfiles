@@ -249,26 +249,11 @@ func (a *adapter) acquirePolicy(ctx context.Context, opts Options, policy admiss
 	// ponytail: process-wide env; fine while one guarded job runs per process.
 	prev, hadPrev := os.LookupEnv(admission.NestedEnv)
 	_ = os.Setenv(admission.NestedEnv, admission.NestedEnvValue(scope, class))
-	stop := make(chan struct{})
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		t := time.NewTicker(a.heartbeat)
-		defer t.Stop()
-		for {
-			select {
-			case <-stop:
-				return
-			case <-t.C:
-				_ = slot.Heartbeat()
-			}
-		}
-	}()
+	stopHeartbeat := keepAlive(slot, a.heartbeat)
 	var once sync.Once
 	return func() {
 		once.Do(func() {
-			close(stop)
-			<-done
+			stopHeartbeat()
 			if hadPrev {
 				_ = os.Setenv(admission.NestedEnv, prev)
 			} else {
@@ -277,6 +262,64 @@ func (a *adapter) acquirePolicy(ctx context.Context, opts Options, policy admiss
 			_ = slot.Release()
 		})
 	}, nil
+}
+
+// keepAlive heartbeats slot until the returned func is called.
+func keepAlive(slot *admission.Slot, every time.Duration) (stop func()) {
+	stopCh := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		t := time.NewTicker(every)
+		defer t.Stop()
+		for {
+			select {
+			case <-stopCh:
+				return
+			case <-t.C:
+				_ = slot.Heartbeat()
+			}
+		}
+	}()
+	return func() {
+		close(stopCh)
+		<-done
+	}
+}
+
+// HoldBackgroundSync holds a lease named purpose while dot's own peer sync or
+// mirror push runs (#267). `dot admit status` lists it with its start time,
+// and the uncovered-work scan treats the leased process tree as covered, so
+// the sync's rsync children never defer heavy work in another repository or
+// the maintenance slot. It never defers or blocks the sync: there is no gate,
+// and any failure returns a no-op release.
+func HoldBackgroundSync(ctx context.Context, purpose string) (release func()) {
+	return native().holdBackground(ctx, purpose)
+}
+
+func (a *adapter) holdBackground(ctx context.Context, purpose string) func() {
+	noop := func() {}
+	root, err := a.root()
+	if err != nil {
+		return noop
+	}
+	dir, _ := os.Getwd()
+	lease, err := a.lease(ctx, a.runner, dir)
+	if err != nil {
+		return noop
+	}
+	slot, _, err := admission.NewStore(root, a.runner).Acquire(ctx, purpose, admission.ClassBackground, lease)
+	if err != nil || slot == nil {
+		return noop
+	}
+	stopHeartbeat := keepAlive(slot, a.heartbeat)
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			stopHeartbeat()
+			_ = slot.Release()
+		})
+	}
 }
 
 func hasLiveParentLease(ctx context.Context, runner *exec.Runner, store *admission.Store, scope, class string, childPID int) bool {
