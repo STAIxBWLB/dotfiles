@@ -769,6 +769,8 @@ dotfiles/
 
 ### Creating a Release
 
+Add `docs/releases/vX.Y.Z.md` (format: `AGENTS.md`, Release notes) and merge it first; the Release workflow publishes it as the release body and stops without it.
+
 ```bash
 git tag v0.9.0
 git push origin v0.9.0
