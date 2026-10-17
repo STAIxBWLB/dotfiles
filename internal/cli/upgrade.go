@@ -164,7 +164,8 @@ var slotRetryInterval = 15 * time.Second
 
 // acquireMaintenanceSlot takes the maintenance slot through acquire. With
 // wait > 0 a deferral is retried until wait runs out instead of failing at
-// once (#266); the first deferral reason is printed while it waits.
+// once (#266); the first deferral reason is printed while it waits. No
+// attempt starts after the wait ends, and each one runs under its deadline.
 func acquireMaintenanceSlot(ctx context.Context, p *Printer, wait time.Duration, acquire func(context.Context) (func(), error)) (func(), error) {
 	release, err := acquire(ctx)
 	var deferred *resourceguard.DeferredError
@@ -172,15 +173,19 @@ func acquireMaintenanceSlot(ctx context.Context, p *Printer, wait time.Duration,
 		return release, err
 	}
 	p.Line("The maintenance slot is busy (%s); waiting up to %s...", deferred.Reason, wait)
-	deadline := time.Now().Add(wait)
+	waitCtx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
 	for {
 		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
+		case <-waitCtx.Done():
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			return nil, err
 		case <-time.After(slotRetryInterval):
 		}
-		release, err = acquire(ctx)
-		if err == nil || !errors.As(err, &deferred) || !time.Now().Before(deadline) {
+		release, err = acquire(waitCtx)
+		if err == nil || !errors.As(err, &deferred) {
 			return release, err
 		}
 	}

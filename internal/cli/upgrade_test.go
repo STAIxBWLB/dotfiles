@@ -315,9 +315,16 @@ func TestAcquireMaintenanceSlotWaitsForABusySlot(t *testing.T) {
 		t.Fatalf("without --wait the deferral must return at once: %v after %d calls", err, calls)
 	}
 
-	alwaysBusy := func(context.Context) (func(), error) { return nil, busy }
-	if _, err := acquireMaintenanceSlot(context.Background(), &Printer{Out: &out, Err: &out}, 5*time.Millisecond, alwaysBusy); !errors.As(err, &busy) {
-		t.Fatalf("a wait that runs out must return the deferral: %v", err)
+	// The wait bounds the whole retry: with a retry interval far past it, it
+	// ends on time and starts no attempt after the deadline.
+	slotRetryInterval = time.Hour
+	calls = 0
+	start := time.Now()
+	if _, err := acquireMaintenanceSlot(context.Background(), &Printer{Out: &out, Err: &out}, 20*time.Millisecond, freesOnThird); !errors.As(err, &busy) || calls != 1 {
+		t.Fatalf("an exhausted wait = %v after %d calls; want the deferral and no attempt past the deadline", err, calls)
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("a 20ms wait took %s", elapsed)
 	}
 	if hint := retrySlotHint(0); !strings.Contains(hint, "--wait") {
 		t.Fatalf("the no-wait hint must name --wait, got %q", hint)
