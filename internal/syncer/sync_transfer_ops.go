@@ -26,6 +26,10 @@ type PushOptions struct {
 	DryRun   bool
 	Progress func(SyncEvent)
 	Confirm  ConfirmFunc
+	// WhileLocked runs once this run holds the sync lock, and its release
+	// when the run ends: the caller's background lease then always belongs
+	// to the run that owns the lock (#267). Nil holds nothing.
+	WhileLocked func() (release func())
 }
 
 // PushOutcome names how a push run ended; cli renders the closing line.
@@ -55,6 +59,9 @@ func PushCommand(ctx context.Context, opts PushOptions) (res *PushCommandResult,
 		return &PushCommandResult{Outcome: PushLockBusy, LockErr: lockErr}, nil
 	}
 	defer release()
+	if opts.WhileLocked != nil {
+		defer opts.WhileLocked()()
+	}
 	// Whether this run completed is decided here, once, from how it returned.
 	partial := false
 	if !opts.DryRun && !cfg.Paused {

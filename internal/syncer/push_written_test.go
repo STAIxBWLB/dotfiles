@@ -1019,3 +1019,32 @@ func TestPushCommand_ALeftoverTheWorkspaceHasAgainStays(t *testing.T) {
 		t.Errorf("a leftover the workspace has again left the mirror: %v", err)
 	}
 }
+
+// The background lease follows the sync lock (#267): a run that loses the
+// lock never takes it, and the run that holds the lock releases it at the end.
+func TestPushCommand_WhileLockedRunsOnlyUnderTheLock(t *testing.T) {
+	requireRsync(t)
+	f := newIntakeFixture(t)
+	f.writeLocal("notes/a.md", "a")
+	held, released := 0, 0
+	opts := PushOptions{Config: f.cfg, Runner: f.runner, Mode: ModeClean, WhileLocked: func() func() {
+		held++
+		return func() { released++ }
+	}}
+
+	release, err := AcquireLockForRun(f.cfg.LockDir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := PushCommand(context.Background(), opts)
+	release()
+	if err != nil || res.Outcome != PushLockBusy || held != 0 {
+		t.Fatalf("a run without the lock: outcome %v, err %v, lease taken %d time(s)", res, err, held)
+	}
+	if _, err := PushCommand(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	if held != 1 || released != 1 {
+		t.Fatalf("lease taken %d, released %d; want 1 and 1", held, released)
+	}
+}

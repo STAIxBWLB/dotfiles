@@ -521,6 +521,10 @@ type PeerSyncOptions struct {
 	// LocalDotVersion is this binary's version ("2.70.22 (sha)"); a peer on
 	// a different release is reported. Empty skips the comparison.
 	LocalDotVersion string
+	// WhileLocked runs once this run holds the sync lock, and its release
+	// when the run ends: the caller's background lease then always belongs
+	// to the run that owns the lock (#267). Nil holds nothing.
+	WhileLocked func() (release func())
 }
 
 // PeerSyncResult reports how the transaction ended. Complete=false means
@@ -565,6 +569,9 @@ func PeerSync(ctx context.Context, opts PeerSyncOptions) (*PeerSyncResult, error
 		return nil, fmt.Errorf("another peer sync is already running: %w", err)
 	}
 	defer release()
+	if opts.WhileLocked != nil {
+		defer opts.WhileLocked()()
+	}
 
 	if err := CheckSSH(ctx, probe, cfg.Target.Host); err != nil {
 		return &PeerSyncResult{Unreachable: true}, nil

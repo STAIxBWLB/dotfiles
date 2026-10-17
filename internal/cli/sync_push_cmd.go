@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -105,11 +106,6 @@ func runSyncPush(cmd *cobra.Command, _ []string) error {
 	}
 	overrides := syncer.SensitiveOverrides(cfg.AllowPatterns)
 
-	// The scheduled push and a manual one hold the same named lease (#267);
-	// a preview writes nothing, the admission state included.
-	if !dryRun {
-		defer resourceguard.HoldBackgroundSync(cmd.Context(), "mirror push ("+cfg.Profile+")")()
-	}
 	res, err := syncer.PushCommand(cmd.Context(), syncer.PushOptions{
 		State:  bs.State,
 		Config: cfg,
@@ -122,7 +118,8 @@ func runSyncPush(cmd *cobra.Command, _ []string) error {
 			dryRun:             dryRun,
 			sensitiveOverrides: overrides,
 		}),
-		Confirm: confirmSync(cmd),
+		Confirm:     confirmSync(cmd),
+		WhileLocked: backgroundLease(dryRun, "mirror push ("+cfg.Profile+")"),
 	})
 	if err != nil {
 		return err
@@ -137,6 +134,16 @@ func runSyncPush(cmd *cobra.Command, _ []string) error {
 	case syncer.PushPlanned:
 	}
 	return nil
+}
+
+// backgroundLease is the lease a real peer sync or mirror push holds while it
+// owns the sync lock (#267); a preview writes nothing, the admission state
+// included.
+func backgroundLease(dryRun bool, purpose string) func() func() {
+	if dryRun {
+		return nil
+	}
+	return func() func() { return resourceguard.HoldBackgroundSync(context.Background(), purpose) }
 }
 
 // recordPushRefusal stores a refusal that stopped a real push before the
