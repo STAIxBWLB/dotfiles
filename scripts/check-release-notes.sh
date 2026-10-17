@@ -33,12 +33,14 @@ check_file() {
   while IFS= read -r line || [ -n "$line" ]; do
     n=$((n + 1))
     last=$line
+    # Markdown still reads a heading or a list item after leading spaces.
+    lead=${line#"${line%%[![:space:]]*}"}
     if [ "$n" = 1 ]; then
-      case "$line" in
+      case "$lead" in
         "" | "#"* | "-"* | "*"*) err "$f" 1 "first line must be a plain sentence" ;;
       esac
     fi
-    if [[ "$line" == "#"* ]]; then
+    if [[ "$lead" == "#"* ]]; then
       local i found=-1
       for i in "${!SECTIONS[@]}"; do [ "$line" = "${SECTIONS[$i]}" ] && found=$i; done
       if [ "$found" -lt 0 ]; then
@@ -89,6 +91,9 @@ if [ "${1:-}" = "--self-test" ]; then
   expect ok "well-formed" "$(printf 'Fixes a crash.\n\n### Fixed\n- `dot sync` no longer crashes. (#1)\n\n%s' "$good_tail")"
   expect ok "maintenance" "$(printf 'Maintenance release: no user-facing changes.\n\n%s' "$good_tail")"
   expect fail "heading on line 1" "$(printf '# v1.0.1\n\n%s' "$good_tail")"
+  expect fail "indented heading on line 1" "$(printf '   # v1.0.1\n\n%s' "$good_tail")"
+  expect fail "indented unknown section" "$(printf 'X.\n\n  ### Changes\n- y (#1)\n\n%s' "$good_tail")"
+  expect fail "indented allowed section" "$(printf 'X.\n\n ### Fixed\n- y (#1)\n\n%s' "$good_tail")"
   expect fail "unknown section" "$(printf 'X.\n\n### Changes\n- y (#1)\n\n%s' "$good_tail")"
   expect fail "section order" "$(printf 'X.\n\n### Fixed\n- a (#1)\n\n### New\n- b (#2)\n\n%s' "$good_tail")"
   expect fail "SHA" "$(printf 'X.\n\n### Fixed\n- a 0123456789abcdef0123456789abcdef01234567 (#1)\n\n%s' "$good_tail")"
