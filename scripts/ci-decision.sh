@@ -84,8 +84,14 @@ if [ "$GITHUB_EVENT_NAME" = "push" ]; then
         && head_tree=$(api "repos/$GITHUB_REPOSITORY/git/commits/$head" --jq .tree.sha) \
         && runs=$(api "repos/$GITHUB_REPOSITORY/actions/workflows/$WORKFLOW_FILE/runs?event=pull_request&head_sha=$head&status=completed&per_page=20"); then
         last=$(jq -r '[.workflow_runs[]] | sort_by(.run_started_at) | last | .conclusion // ""' <<<"$runs")
-        if [ "$push_tree" = "$head_tree" ] && [ "$last" = "success" ]; then
-          decide false "PR #$n already validated the exact tree $push_tree"
+        # A PR run tests the synthetic merge with the base of that moment, not
+        # the head. When the pre-merge main is an ancestor of the head, every
+        # earlier base was too (main only moves forward), so that merge was the
+        # head tree itself.
+        parent=$(api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA" --jq '.parents[0].sha') || parent=""
+        behind=$( [ -n "$parent" ] && api "repos/$GITHUB_REPOSITORY/compare/$parent...$head" --jq .behind_by ) || behind=""
+        if [ "$push_tree" = "$head_tree" ] && [ "$last" = "success" ] && [ "$behind" = 0 ]; then
+          decide false "PR #$n already validated the exact tree $push_tree (head contains main $parent)"
         fi
       fi
     fi

@@ -32,21 +32,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # An annotated tag push may carry the tag object, not the commit, in
+          # GITHUB_SHA; Test runs are keyed by the commit.
+          commit=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq .sha) || { echo "::error::cannot resolve $GITHUB_REF_NAME to a commit"; exit 1; }
           deadline=$((SECONDS + 45 * 60)); first_seen=""
           while :; do
-            run=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/test.yaml/runs?event=push&head_sha=$GITHUB_SHA&per_page=10" \
+            run=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/test.yaml/runs?event=push&head_sha=$commit&per_page=10" \
               --jq '[.workflow_runs[] | select(.head_branch == "main")] | sort_by(.run_started_at) | last // empty | "\(.status) \(.conclusion) \(.html_url)"') || { run=""; api_errors=$((${api_errors:-0} + 1)); echo "::warning::Test run lookup failed (attempt $api_errors)"; }
             if [ -n "$run" ]; then
               read -r status conclusion url <<<"$run"
               if [ "$status" = completed ]; then
-                [ "$conclusion" = success ] && { echo "Test passed for $GITHUB_SHA: $url"; break; }
-                echo "::error::Test for $GITHUB_SHA concluded $conclusion: $url"; exit 1
+                [ "$conclusion" = success ] && { echo "Test passed for $commit: $url"; break; }
+                echo "::error::Test for $commit concluded $conclusion: $url"; exit 1
               fi
               first_seen=${first_seen:-$SECONDS}
             elif [ $SECONDS -gt 600 ] && [ -z "$first_seen" ]; then
-              echo "::error::no main-push Test run for $GITHUB_SHA (failed lookups: ${api_errors:-0}); tag a commit that is on main"; exit 1
+              echo "::error::no main-push Test run for $commit (failed lookups: ${api_errors:-0}); tag a commit that is on main"; exit 1
             fi
-            [ $SECONDS -lt $deadline ] || { echo "::error::timed out waiting for Test on $GITHUB_SHA"; exit 1; }
+            [ $SECONDS -lt $deadline ] || { echo "::error::timed out waiting for Test on $commit"; exit 1; }
             sleep 30
           done
 
