@@ -237,14 +237,8 @@ on a laptop.`,
 				return err
 			}
 			dryRun, _ := c.Flags().GetBool("dry-run")
-			if isScheduledRun() && !dryRun {
-				finish, err := startScheduledPeerLog(bs.Config.LogFile)
-				if err != nil {
-					bs.Runner.Logger.Warn("peer run log unavailable; output stays on launchd's redirection", "err", err)
-				} else {
-					defer func() { finish(runErr) }()
-				}
-			}
+			finish := openScheduledPeerLog(bs, dryRun)
+			defer func() { finish(runErr) }()
 			if approve != "" {
 				if !syncer.ValidDeletePlanDigest(approve) {
 					return fmt.Errorf("--approve-deletes takes the digest a dry run prints, got %q", approve)

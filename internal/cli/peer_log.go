@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/STAIxBWLB/dotfiles/internal/syncer"
 )
 
 // A scheduled peer run writes its own log (#270): a start and an exit line
@@ -29,6 +31,20 @@ var redirectStdio = func(f *os.File) error {
 		}
 	}
 	return nil
+}
+
+// openScheduledPeerLog starts the dated log of a real scheduled run and
+// returns the func that writes its exit line; any other run gets a no-op.
+func openScheduledPeerLog(bs *syncer.BootstrapResult, dryRun bool) func(error) {
+	if !isScheduledRun() || dryRun {
+		return func(error) {}
+	}
+	finish, err := startScheduledPeerLog(bs.Config.LogFile)
+	if err != nil {
+		bs.Runner.Logger.Warn("peer run log unavailable; output stays on launchd's redirection", "err", err)
+		return func(error) {}
+	}
+	return finish
 }
 
 // startScheduledPeerLog rotates the log at path, re-points stdout and stderr
