@@ -41,6 +41,18 @@ jobs:
           TEST_IGNORE: '^docs/releases/'
         run: bash scripts/ci-decision.sh
 
+  # Light and always on: release notes are outside the test inputs, so a
+  # notes-only PR runs this and nothing heavy (#272).
+  release-notes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Release notes format
+        run: |
+          bash scripts/check-release-notes.sh --self-test
+          bash scripts/check-release-notes.sh
+
   lint:
     needs: decision
     if: needs.decision.outputs.run_full == 'true'

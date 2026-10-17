@@ -64,7 +64,9 @@ jobs:
       - name: Require release notes
         env:
           NOTES: docs/releases/${{ env.tag }}.md
-        run: test -s "$NOTES" || { echo "::error::$NOTES is missing or empty; add it in the release PR (AGENTS.md, Release notes)"; exit 1; }
+        run: |
+          test -s "$NOTES" || { echo "::error::$NOTES is missing or empty; add it in the release PR (AGENTS.md, Release notes)"; exit 1; }
+          bash scripts/check-release-notes.sh "$NOTES"
 
       - name: Require the tap deploy key
         env:
