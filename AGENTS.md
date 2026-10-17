@@ -31,7 +31,7 @@ file states are maintained here.
 
 ## Release notes
 
-- Every published tag `vX.Y.Z` needs `docs/releases/vX.Y.Z.md` in the tagged commit. Add it in the release PR; the Release workflow publishes it as the GitHub release body and fails before goreleaser when it is missing or empty.
+- Every published tag `vX.Y.Z` needs `docs/releases/vX.Y.Z.md` in the tagged commit. Add it in the release PR; the Release workflow publishes it as the GitHub release body and fails before goreleaser when it is missing or breaks the format below. Check it with `bash scripts/check-release-notes.sh docs/releases/vX.Y.Z.md`.
 - Readers are people who run `dot` on their Mac, Linux workstation or GPU server. Write what changes for them, not how the code changed. Cover every PR since the previous published release.
 - Format:
   - First line: one sentence on what this release changes for the user. No heading before it.
