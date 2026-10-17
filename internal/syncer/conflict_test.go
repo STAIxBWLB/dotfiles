@@ -329,3 +329,32 @@ func TestDropRoutineBackupsRefusesASymlinkedRoot(t *testing.T) {
 		t.Fatalf("a file outside the mirror was removed: %v", err)
 	}
 }
+
+// Without a sha in the baseline row, a backup goes only on the exact mtime: a
+// same-size cloud edit inside the same second keeps its copy.
+func TestDropRoutineBackupsNeedsTheExactMtimeWithoutASha(t *testing.T) {
+	f := newIntakeFixture(t)
+	conflict := NewConflictDir()
+	backup := filepath.Join(f.mirror, conflict.PushBackupRel(), "notes/a.md")
+	if err := os.MkdirAll(filepath.Dir(backup), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(backup, []byte("edited"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	when := time.Date(2026, 10, 18, 4, 0, 0, 500_000_000, time.UTC)
+	if err := os.Chtimes(backup, when, when); err != nil {
+		t.Fatal(err)
+	}
+	f.writeLocal("notes/a.md", "newer")
+	sameSecond := Fingerprint{Size: int64(len("edited")), Mtime: when.Add(-100 * time.Millisecond)}
+
+	dropRoutineBackups(f.cfg, conflict, map[string]Fingerprint{"notes/a.md": sameSecond})
+	if _, err := os.Stat(backup); err != nil {
+		t.Fatalf("a copy matching only to the second was removed: %v", err)
+	}
+	dropRoutineBackups(f.cfg, conflict, map[string]Fingerprint{"notes/a.md": {Size: sameSecond.Size, Mtime: when}})
+	if _, err := os.Stat(backup); !os.IsNotExist(err) {
+		t.Fatalf("an exact match was kept: %v", err)
+	}
+}

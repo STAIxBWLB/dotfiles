@@ -131,7 +131,7 @@ func dropRoutineBackups(cfg *Config, conflict *ConflictDir, baseline map[string]
 			return nil //nolint:nilerr // hashing a cloud placeholder would download it: kept
 		}
 		fp, err := FingerprintFile(path, FingerprintFast)
-		if err == nil && FingerprintsCompatible(base, fp, path) {
+		if err == nil && backupMatchesBaseline(base, fp, path) {
 			_ = os.Remove(path)
 		}
 		return nil
@@ -140,6 +140,17 @@ func dropRoutineBackups(cfg *Config, conflict *ConflictDir, baseline map[string]
 		_ = os.Remove(dirs[i]) // only an empty directory goes
 	}
 	_ = os.Remove(filepath.Dir(root))
+}
+
+// backupMatchesBaseline is the proof a backup copy needs before it goes: the
+// sha when the row has one, otherwise the size and the exact mtime. The
+// one-second tolerance plans use would let a same-size cloud edit within the
+// same second lose its only copy.
+func backupMatchesBaseline(base, fp Fingerprint, path string) bool {
+	if base.Sha != "" {
+		return FingerprintsCompatible(base, fp, path)
+	}
+	return fp.Size == base.Size && fp.Mtime.Equal(base.Mtime)
 }
 
 // ConflictEntry summarizes one timestamped conflict directory under a
