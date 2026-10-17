@@ -255,7 +255,8 @@ tool):
   released by the time the outcome is reported)
 - `~/.local/state/dot/admission/` — the resource-admission controller state:
   the slot directories (`slots/`, one per repo plus the shared maintenance
-  slot, each holding a `lease.json` with the owner pid/start, heartbeat and
+  slot and a background slot per running `dot peer sync` or `dot sync push`,
+  each holding a `lease.json` with the owner pid/start, heartbeat and
   deadline), the heavy-work pressure history (`history.json`), the verified
   native dot-update pressure and quiet-swap history (`history-prebuilt.json`),
   and the per-scope notify dedup marks (`notify/`). `history.json` is written
