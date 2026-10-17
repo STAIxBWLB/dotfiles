@@ -201,17 +201,35 @@ func ValidatePeerPlanSafety(cfg *Config, plan *PeerPlan) error {
 			"peer plan safety: local inventory retained only %d of %d baseline payload(s); refusing %d outbound deletion(s) as a probable reset",
 			plan.LocalCount, plan.BaselineCount, len(plan.DeleteRemote))
 	}
-	var refused string
 	if cfg.MaxDelete > 0 && len(plan.DeleteLocal) > cfg.MaxDelete {
-		refused = fmt.Sprintf("refusing %d inbound deletion(s): over max_delete=%d", len(plan.DeleteLocal), cfg.MaxDelete)
-	} else if cfg.MaxDelete > 0 && len(plan.DeleteRemote) > cfg.MaxDelete {
-		refused = fmt.Sprintf("refusing %d outbound deletion(s): over max_delete=%d", len(plan.DeleteRemote), cfg.MaxDelete)
+		return fmt.Errorf("peer plan safety: refusing %d inbound deletion(s): over max_delete=%d", len(plan.DeleteLocal), cfg.MaxDelete)
 	}
-	if refused == "" {
-		return nil
+	if cfg.MaxDelete > 0 && len(plan.DeleteRemote) > cfg.MaxDelete {
+		return fmt.Errorf("peer plan safety: refusing %d outbound deletion(s): over max_delete=%d", len(plan.DeleteRemote), cfg.MaxDelete)
+	}
+	return nil
+}
+
+// ValidateWorkspacePlanSafety is ValidatePeerPlanSafety for the workspace
+// plan, where a person can approve one reviewed deletion set over max_delete
+// (#269). An approval must match the plan's digest whatever its size, and a
+// match lifts the cap for exactly those paths. Tracked host paths keep the
+// plain check and their own cap.
+func ValidateWorkspacePlanSafety(cfg *Config, plan *PeerPlan) error {
+	if cfg == nil || plan == nil {
+		return fmt.Errorf("peer plan safety: missing config or plan")
 	}
 	digest := DeletePlanDigest(plan)
-	if cfg.ApproveDeletes == digest {
+	if cfg.ApproveDeletes != "" {
+		if cfg.ApproveDeletes != digest {
+			return fmt.Errorf("peer plan safety: the deletion set changed since %s was approved: now %d inbound and %d outbound, deletion plan %s. Review it with `dot peer diff --list`, then approve exactly this set with `dot peer sync --approve-deletes %s`",
+				cfg.ApproveDeletes, len(plan.DeleteLocal), len(plan.DeleteRemote), digest, digest)
+		}
+		capless := *cfg
+		capless.MaxDelete = 0
+		if err := ValidatePeerPlanSafety(&capless, plan); err != nil {
+			return err
+		}
 		cfg.approvedDeletes = make(map[string]bool, len(plan.DeleteLocal)+len(plan.DeleteRemote))
 		for _, rel := range plan.DeleteLocal {
 			cfg.approvedDeletes[rel] = true
@@ -221,10 +239,11 @@ func ValidatePeerPlanSafety(cfg *Config, plan *PeerPlan) error {
 		}
 		return nil
 	}
-	if cfg.ApproveDeletes != "" {
-		refused = fmt.Sprintf("the deletion set changed since %s was approved: now %d inbound and %d outbound; %s", cfg.ApproveDeletes, len(plan.DeleteLocal), len(plan.DeleteRemote), refused)
+	err := ValidatePeerPlanSafety(cfg, plan)
+	if err != nil && strings.Contains(err.Error(), "over max_delete") {
+		return fmt.Errorf("%w. Deletion plan %s: review it with `dot peer diff --list`, then approve exactly this set with `dot peer sync --approve-deletes %s`", err, digest, digest)
 	}
-	return fmt.Errorf("peer plan safety: %s. Deletion plan %s: review it with `dot peer diff --list`, then approve exactly this set with `dot peer sync --approve-deletes %s`", refused, digest, digest)
+	return err
 }
 
 // DeletePlanDigest names a plan's exact deletion set (#269): both sorted

@@ -183,7 +183,15 @@ func MergePeerWorktrees(cfg *Config, remote []string, persist bool) ([]string, e
 			seen[normalizeRel(rel)] = true
 		}
 	}
-	detected, err := DetectPeerWorktrees(cfg, cfg.LocalPaths.WorkspaceRoot)
+	for _, rel := range remote {
+		rel = normalizeRel(rel)
+		if rel != "" && validateTombstoneRel(rel) == nil {
+			seen[rel] = true
+		}
+	}
+	// Stored and peer-reported roots are excluded from every transfer, so the
+	// scan does not read them either.
+	detected, err := detectPeerWorktrees(cfg, cfg.LocalPaths.WorkspaceRoot, seen)
 	if err != nil {
 		return nil, err
 	}
@@ -195,12 +203,6 @@ func MergePeerWorktrees(cfg *Config, remote []string, persist bool) ([]string, e
 			return nil, fmt.Errorf("local linked worktree path %q cannot be represented in the peer worktree store; rename it and realign the store by hand", rel)
 		}
 		seen[rel] = true
-	}
-	for _, rel := range remote {
-		rel = normalizeRel(rel)
-		if rel != "" && validateTombstoneRel(rel) == nil {
-			seen[rel] = true
-		}
 	}
 	out := make([]string, 0, len(seen))
 	for rel := range seen {
@@ -246,11 +248,16 @@ func MaterializeWorktreesDynFile(dir string, rels []string) (string, error) {
 // this machine's peer filters (#268). Both sides use it: the coordinator for
 // its own tree, and the other Mac for the list its status reports.
 func DetectPeerWorktrees(cfg *Config, root string) ([]string, error) {
+	return detectPeerWorktrees(cfg, root, nil)
+}
+
+// detectPeerWorktrees also prunes the already known worktree roots.
+func detectPeerWorktrees(cfg *Config, root string, known map[string]bool) ([]string, error) {
 	skip, err := peerScanSkip(cfg)
 	if err != nil {
 		return nil, err
 	}
-	return detectLinkedWorktrees(root, skip, cfg.IgnoreFile)
+	return detectLinkedWorktrees(root, func(rel string) bool { return known[rel] || skip(rel) }, cfg.IgnoreFile)
 }
 
 // peerScanSkip reports the directories a peer transfer excludes: the Go twin

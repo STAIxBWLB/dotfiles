@@ -77,3 +77,11 @@ func TestRotateLogFileKeepsConfiguredCount(t *testing.T) {
 		t.Fatal("a log under the limit was rotated")
 	}
 }
+
+// A run that fails before its log opens still leaves a dated exit line.
+func TestPeerExitLineIsDated(t *testing.T) {
+	line := peerExitLine(errors.New("loading peer config: bad\nmore"))
+	if !regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} op=peer-sync exit=1 err=loading peer config: bad$`).MatchString(line) {
+		t.Fatalf("line = %q", line)
+	}
+}

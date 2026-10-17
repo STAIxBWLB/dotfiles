@@ -180,7 +180,7 @@ func markPeerBaselineTarget(cfg *Config) error {
 // failed mount or a broken filter presents the entire tree as deleted; the
 // cap turns that into a refusal instead of a mass removal on the peer.
 func checkTombstoneCap(cfg *Config, tombstones []string) error {
-	if cfg.MaxDelete > 0 && len(tombstones) > cfg.MaxDelete && !allApproved(cfg, tombstones) {
+	if cfg.MaxDelete > 0 && len(tombstones) > cfg.MaxDelete {
 		return fmt.Errorf(
 			"refusing to propagate %d deletions: over max_delete=%d. "+
 				"Review baseline.manifest against the local tree; raise max_delete if this is genuine",
@@ -189,18 +189,20 @@ func checkTombstoneCap(cfg *Config, tombstones []string) error {
 	return nil
 }
 
-// allApproved reports whether every path belongs to the deletion set a
-// person approved for this run (#269).
-func allApproved(cfg *Config, rels []string) bool {
-	if len(cfg.approvedDeletes) == 0 {
-		return false
-	}
-	for _, rel := range rels {
-		if !cfg.approvedDeletes[rel] {
-			return false
+// checkWorkspaceDeleteCap is checkTombstoneCap for the workspace delete
+// pass: a set that lies wholly inside the deletion set a person approved for
+// this run passes (#269).
+func checkWorkspaceDeleteCap(cfg *Config, tombstones []string) error {
+	if len(cfg.approvedDeletes) > 0 {
+		approved := true
+		for _, rel := range tombstones {
+			approved = approved && cfg.approvedDeletes[rel]
+		}
+		if approved {
+			return nil
 		}
 	}
-	return true
+	return checkTombstoneCap(cfg, tombstones)
 }
 
 // writeTombstoneList writes the paths NUL-delimited for rsync --files-from
@@ -379,7 +381,7 @@ func PropagateDeletes(ctx context.Context, runner *exec.Runner, cfg *Config, con
 	if !cfg.Propagation.Delete || !cfg.Propagation.Create || !cfg.Propagation.Update {
 		return fmt.Errorf("propagate deletes: requires create, update, and delete propagation")
 	}
-	if err := checkTombstoneCap(cfg, tombstones); err != nil {
+	if err := checkWorkspaceDeleteCap(cfg, tombstones); err != nil {
 		return err
 	}
 	ready, err := peerBaselineMatchesTarget(cfg)
@@ -483,7 +485,7 @@ func preflightPeerQuarantine(ctx context.Context, runner *exec.Runner, cfg *Conf
 // local-directory integration test can exercise real rsync without an SSH
 // fixture. Production callers use PropagateDeletes and its peer-only guards.
 func propagateDeletes(ctx context.Context, runner *exec.Runner, cfg *Config, conflict *ConflictDir, tombstones []string, dryRun bool) error {
-	if err := checkTombstoneCap(cfg, tombstones); err != nil {
+	if err := checkWorkspaceDeleteCap(cfg, tombstones); err != nil {
 		return err
 	}
 	if cfg.LocalPaths == nil {

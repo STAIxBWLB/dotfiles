@@ -643,15 +643,16 @@ func TestDeletePeerLocal_RefusesQuarantineSymlink(t *testing.T) {
 
 // A plan over max_delete names its deletion set by digest; that digest lifts
 // the cap for exactly that set, for one run, and a changed set refuses again
-// with the new digest (#269).
-func TestValidatePeerPlanSafetyApprovesOneReviewedDeletionSet(t *testing.T) {
+// with the new digest, also when it fits the cap (#269). The tracked host-path
+// check and its delete cap are never lifted.
+func TestValidateWorkspacePlanSafetyApprovesOneReviewedDeletionSet(t *testing.T) {
 	plan := func(out ...string) *PeerPlan {
 		return &PeerPlan{BaselineCount: 100, LocalCount: 95, RemoteCount: 100, DeleteRemote: out}
 	}
 	reviewed := plan("a", "b", "c")
 
 	cfg := &Config{MaxDelete: 2}
-	err := ValidatePeerPlanSafety(cfg, reviewed)
+	err := ValidateWorkspacePlanSafety(cfg, reviewed)
 	digest := DeletePlanDigest(reviewed)
 	if err == nil || !strings.Contains(err.Error(), "over max_delete=2") || !strings.Contains(err.Error(), "--approve-deletes "+digest) {
 		t.Fatalf("over-cap refusal must name the digest and the approve command, got %v", err)
@@ -661,23 +662,30 @@ func TestValidatePeerPlanSafetyApprovesOneReviewedDeletionSet(t *testing.T) {
 	}
 
 	cfg = &Config{MaxDelete: 2, ApproveDeletes: digest}
-	if err := ValidatePeerPlanSafety(cfg, reviewed); err != nil {
+	if err := ValidateWorkspacePlanSafety(cfg, reviewed); err != nil {
 		t.Fatalf("approved set refused: %v", err)
 	}
-	if err := checkTombstoneCap(cfg, []string{"a", "b", "c"}); err != nil {
+	if err := checkWorkspaceDeleteCap(cfg, []string{"a", "b", "c"}); err != nil {
 		t.Fatalf("delete pass refused the approved set: %v", err)
 	}
-	if err := checkTombstoneCap(cfg, []string{"a", "b", "x"}); err == nil {
+	if err := checkWorkspaceDeleteCap(cfg, []string{"a", "b", "x"}); err == nil {
 		t.Fatal("the approval lifted the cap for a path outside the approved set")
 	}
-
-	drifted := plan("a", "b", "c", "d")
-	cfg = &Config{MaxDelete: 2, ApproveDeletes: digest}
-	err = ValidatePeerPlanSafety(cfg, drifted)
-	if err == nil || !strings.Contains(err.Error(), "changed since "+digest) || !strings.Contains(err.Error(), DeletePlanDigest(drifted)) {
-		t.Fatalf("a changed set must refuse with the new digest, got %v", err)
+	if err := checkTombstoneCap(cfg, []string{"a", "b", "c"}); err == nil {
+		t.Fatal("the approval lifted the tracked host-path delete cap")
 	}
-	if len(cfg.approvedDeletes) != 0 {
-		t.Fatal("a refused approval recorded an approved set")
+	if err := ValidatePeerPlanSafety(&Config{MaxDelete: 2, ApproveDeletes: digest}, reviewed); err == nil {
+		t.Fatal("the approval lifted the tracked host-path plan cap")
+	}
+
+	for name, changed := range map[string]*PeerPlan{"over the cap": plan("a", "b", "c", "d"), "within the cap": plan("x", "y")} {
+		cfg = &Config{MaxDelete: 2, ApproveDeletes: digest}
+		err = ValidateWorkspacePlanSafety(cfg, changed)
+		if err == nil || !strings.Contains(err.Error(), "changed since "+digest) || !strings.Contains(err.Error(), DeletePlanDigest(changed)) {
+			t.Fatalf("%s: a changed set must refuse with the new digest, got %v", name, err)
+		}
+		if len(cfg.approvedDeletes) != 0 {
+			t.Fatalf("%s: a refused approval recorded an approved set", name)
+		}
 	}
 }

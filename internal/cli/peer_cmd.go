@@ -230,6 +230,10 @@ on a laptop.`,
 			p := printerFrom(c)
 			bs, err := syncer.Bootstrap(peerBootstrapOptions(c))
 			if err != nil {
+				if isScheduledRun() {
+					// launchd's redirect holds this line: still dated.
+					fmt.Fprintln(c.ErrOrStderr(), peerExitLine(err))
+				}
 				return err
 			}
 			dryRun, _ := c.Flags().GetBool("dry-run")

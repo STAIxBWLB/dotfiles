@@ -657,7 +657,7 @@ func PeerSync(ctx context.Context, opts PeerSyncOptions) (*PeerSyncResult, error
 	if err != nil {
 		return nil, err
 	}
-	if err := ValidatePeerPlanSafety(cfg, plan); err != nil {
+	if err := ValidateWorkspacePlanSafety(cfg, plan); err != nil {
 		return nil, err
 	}
 	// host_merge decides here, before anything moves (#181). Its files are

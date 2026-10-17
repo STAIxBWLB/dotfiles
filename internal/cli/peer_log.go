@@ -52,14 +52,19 @@ func startScheduledPeerLog(path string) (func(error), error) {
 	stamp := func() string { return time.Now().Format("2006-01-02 15:04:05") }
 	fmt.Fprintf(f, "%s op=peer-sync start pid=%d\n", stamp(), os.Getpid())
 	return func(runErr error) {
-		line := fmt.Sprintf("%s op=peer-sync exit=%d", stamp(), exitCodeOf(runErr))
-		if runErr != nil {
-			msg, _, _ := strings.Cut(runErr.Error(), "\n")
-			line += " err=" + msg
-		}
-		fmt.Fprintln(f, line)
+		fmt.Fprintln(f, peerExitLine(runErr))
 		_ = f.Close()
 	}, nil
+}
+
+// peerExitLine is the dated exit line of a peer run.
+func peerExitLine(runErr error) string {
+	line := fmt.Sprintf("%s op=peer-sync exit=%d", time.Now().Format("2006-01-02 15:04:05"), exitCodeOf(runErr))
+	if runErr != nil {
+		msg, _, _ := strings.Cut(runErr.Error(), "\n")
+		line += " err=" + msg
+	}
+	return line
 }
 
 // exitCodeOf mirrors cmd/dot: an error that carries its own code keeps it.

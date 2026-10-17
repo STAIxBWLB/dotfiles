@@ -557,3 +557,23 @@ func TestMergePeerWorktrees_IncludedUnreadableFailsWithFix(t *testing.T) {
 		}
 	}
 }
+
+// Stored and peer-reported worktree roots are excluded from every transfer,
+// so the scan does not read them either (#268).
+func TestMergePeerWorktrees_SkipsKnownRootsUnreadable(t *testing.T) {
+	workspace := t.TempDir()
+	cfg := newPeerWorktreeTestConfig(t, workspace)
+	if err := SavePeerWorktrees(cfg.LocalPaths.WorktreesFile, []string{"dev/old-wt"}); err != nil {
+		t.Fatal(err)
+	}
+	unreadableDir(t, filepath.Join(workspace, "dev", "old-wt", "locked"))
+	unreadableDir(t, filepath.Join(workspace, "dev", "remote-wt", "locked"))
+
+	got, err := MergePeerWorktrees(cfg, []string{"dev/remote-wt"}, false)
+	if err != nil {
+		t.Fatalf("a known worktree root was read: %v", err)
+	}
+	if !slices.Equal(got, []string{"dev/old-wt", "dev/remote-wt"}) {
+		t.Fatalf("got %v", got)
+	}
+}
