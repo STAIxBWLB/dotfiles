@@ -24,6 +24,11 @@ const (
 	// ClassMaintenance is the host-wide install/update slot: one shared
 	// slot regardless of which repo the work started in.
 	ClassMaintenance = "maintenance"
+	// ClassBackground is dot's own peer sync and mirror push (#267): one slot
+	// per purpose and never gated. It only makes the running sync visible: its
+	// process tree is a leased owner, so the uncovered-work scan counts its
+	// rsync and ssh children as covered for every other class.
+	ClassBackground = "background"
 )
 
 // DefaultHeartbeatInterval is how often a running job refreshes its lease.

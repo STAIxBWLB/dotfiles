@@ -249,6 +249,7 @@ on a laptop.`,
 				Itemize:  list || jsonOut,
 
 				LocalDotVersion: c.Root().Version,
+				WhileLocked:     backgroundLease(dryRun, "peer sync"),
 			})
 			// Alerting observes the outcome; it never masks or replaces the
 			// run's own error and exit code below.

@@ -315,3 +315,38 @@ func TestAdapterPassesLeasesToScan(t *testing.T) {
 		t.Fatalf("scan got leased PIDs %v, want 4242", got)
 	}
 }
+
+// A running peer sync holds a background lease (#267): `dot admit status`
+// lists it with its start time, its PID counts as a leased owner for the
+// uncovered-work scan, and the release removes the lease.
+func TestHoldBackgroundSyncHoldsANamedLease(t *testing.T) {
+	snap, none := healthySnapshot(), []string(nil)
+	a, store := testAdapter(t, &snap, &none)
+
+	release := a.holdBackground(context.Background(), "peer sync")
+	leases, err := store.ListLeases()
+	if err != nil || len(leases) != 1 {
+		t.Fatalf("leases = %v, %v; want the peer sync lease", leases, err)
+	}
+	if l := leases[0]; l.Scope != "peer sync" || l.Class != admission.ClassBackground || l.PID != os.Getpid() || l.AcquiredAt.IsZero() {
+		t.Fatalf("lease = %+v", l)
+	}
+	if pids := admission.LeasedPIDs(store); len(pids) != 1 || pids[0] != os.Getpid() {
+		t.Fatalf("leased PIDs = %v; the sync's process tree must count as owned", pids)
+	}
+	release()
+	release() // idempotent
+	if leases, _ := store.ListLeases(); len(leases) != 0 {
+		t.Fatalf("lease left after release: %v", leases)
+	}
+}
+
+// A failure to record the lease never stops the sync.
+func TestHoldBackgroundSyncFailsOpen(t *testing.T) {
+	snap, none := healthySnapshot(), []string(nil)
+	a, _ := testAdapter(t, &snap, &none)
+	a.lease = func(context.Context, *exec.Runner, string) (admission.Lease, error) {
+		return admission.Lease{}, errors.New("ps unavailable")
+	}
+	a.holdBackground(context.Background(), "peer sync")()
+}

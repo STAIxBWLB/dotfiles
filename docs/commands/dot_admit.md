@@ -16,9 +16,11 @@ slot instead. On defer the exit code is 75 (EX_TEMPFAIL) with a
 machine-readable outcome on stdout when --json is set. When a command runs,
 its own stdout is the payload and the --json completion record goes to
 stderr, so the exit code is the machine-readable result. 'dot ai run' and
-the tooling updates share these slots. Heavy work launched outside both
-holds no lease; a bounded process-table scan defers when such work runs in
-this repo or its repo is unknown. Use '--' before commands that collide with
+the tooling updates share these slots. 'dot peer sync' and 'dot sync push'
+hold a background lease while they run, so their rsync never defers other
+work. Heavy work launched outside all of these holds no lease; a bounded
+process-table scan defers when such work runs in this repo or its repo is
+unknown. Use '--' before commands that collide with
 subcommand names.
 
 ```
