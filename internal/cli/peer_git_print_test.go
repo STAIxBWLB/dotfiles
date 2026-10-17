@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/syncer"
+	"github.com/STAIxBWLB/dotfiles/internal/syncer"
 )
 
 // The preview prints each no-match class with its suggestion, and a rescue

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
 )
 
 func TestResolveReaper_Defaults(t *testing.T) {

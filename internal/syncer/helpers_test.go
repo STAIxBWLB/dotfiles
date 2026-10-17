@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/fileutil"
+	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
 )
 
 func TestAcquireLock_FailsWhenLiveLockHeld(t *testing.T) {

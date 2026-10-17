@@ -2,7 +2,7 @@ package aisettings
 
 import (
 	"fmt"
-	"github.com/entelecheia/dotfiles-v2/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
 	"os"
 	"path/filepath"
 )

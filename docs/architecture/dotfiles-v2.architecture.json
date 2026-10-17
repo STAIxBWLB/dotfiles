@@ -2,12 +2,12 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "dotfiles-v2 dot CLI",
+    "title": "dotfiles dot CLI",
     "locale": "en",
     "quality_profile": "showcase",
     "output": "dotfiles-v2-rendered.html",
     "repository": {
-      "url": "https://github.com/entelecheia/dotfiles-v2",
+      "url": "https://github.com/STAIxBWLB/dotfiles",
       "provider": "github",
       "revision": "388a398a32a82c86f68ecabf8f6bfe56686ccbf6"
     }

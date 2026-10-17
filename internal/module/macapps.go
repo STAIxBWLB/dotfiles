@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config/catalog"
+	"github.com/STAIxBWLB/dotfiles/internal/config/catalog"
 )
 
 // MacAppsModule installs macOS cask applications selected during init or

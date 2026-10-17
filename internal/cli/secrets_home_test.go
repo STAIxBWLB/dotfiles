@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
-	"github.com/entelecheia/dotfiles-v2/internal/secrets"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/secrets"
 )
 
 // BUG-08: every standalone `dot secrets` subcommand loaded state with the bare

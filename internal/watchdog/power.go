@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // Power hardening for headless hosts: capture the current pmset/systemsetup

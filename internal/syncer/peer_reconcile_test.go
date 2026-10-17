@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	goexec "github.com/entelecheia/dotfiles-v2/internal/exec"
+	goexec "github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 func TestAppendPeerConflictAuditRecordsDecision(t *testing.T) {

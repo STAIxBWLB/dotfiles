@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/entelecheia/dotfiles-v2/internal/claudecfg"
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/claudecfg"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // HookMarker tags every settings.json hook entry dot guard installs. Hook

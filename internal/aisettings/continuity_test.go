@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	dottemplate "github.com/entelecheia/dotfiles-v2/internal/template"
+	dottemplate "github.com/STAIxBWLB/dotfiles/internal/template"
 )
 
 func TestContinuityPreservesCustomContentAndBacksUp(t *testing.T) {

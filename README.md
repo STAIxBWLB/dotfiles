@@ -1,7 +1,7 @@
-# dotfiles-v2
+# dotfiles
 
-[![Test](https://github.com/entelecheia/dotfiles-v2/actions/workflows/test.yaml/badge.svg)](https://github.com/entelecheia/dotfiles-v2/actions/workflows/test.yaml)
-[![Release](https://github.com/entelecheia/dotfiles-v2/actions/workflows/release.yaml/badge.svg)](https://github.com/entelecheia/dotfiles-v2/actions/workflows/release.yaml)
+[![Test](https://github.com/STAIxBWLB/dotfiles/actions/workflows/test.yaml/badge.svg)](https://github.com/STAIxBWLB/dotfiles/actions/workflows/test.yaml)
+[![Release](https://github.com/STAIxBWLB/dotfiles/actions/workflows/release.yaml/badge.svg)](https://github.com/STAIxBWLB/dotfiles/actions/workflows/release.yaml)
 
 Declarative user environment management + AI-powered tmux workspace manager.
 A single Go binary. macOS + Linux + GPU servers. Modular, profile-based, AI-ready.
@@ -13,16 +13,21 @@ A single Go binary. macOS + Linux + GPU servers. Modular, profile-based, AI-read
 ### Install via Homebrew (recommended on macOS / Linuxbrew)
 
 ```bash
-brew tap entelecheia/tap
-brew trust entelecheia/tap
+brew tap staixbwlb/cask
+brew trust staixbwlb/cask
 brew install dotfiles
 ```
 
 Provides the `dot` binary and the `dotfiles` back-compat symlink.
 
+Moved from `entelecheia/tap` in October 2026. On an existing install,
+`brew update` follows the old tap's migration entry; if `brew info dotfiles`
+still names `entelecheia/tap`, run `brew trust staixbwlb/cask` and then
+`brew reinstall staixbwlb/cask/dotfiles`.
+
 `brew trust` is what lets Homebrew load a formula from a non-official tap. On
 Homebrew 6 with `HOMEBREW_REQUIRE_TAP_TRUST` set, tapping alone is not enough;
-the install stops with `Refusing to load formula entelecheia/tap/dotfiles from
+the install stops with `Refusing to load formula staixbwlb/cask/dotfiles from
 untrusted tap`. It is a no-op on older Homebrew and safe to run twice.
 
 Taps that `dot apply` adds for you (`staixbwlb/cask`, `manaflow-ai/cmux`,
@@ -32,7 +37,7 @@ needed for the bootstrap tap that installs `dot` itself.
 ### Install via curl (fallback)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/entelecheia/dotfiles-v2/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/STAIxBWLB/dotfiles/main/scripts/install.sh | bash
 ```
 
 Use this when Homebrew isn't available or you want the bootstrap to install it for you. The installer handles prerequisites automatically:
@@ -144,7 +149,7 @@ without changing the requested transfer decision.
 ### Build from source
 
 ```bash
-git clone https://github.com/entelecheia/dotfiles-v2.git && cd dotfiles-v2
+git clone https://github.com/STAIxBWLB/dotfiles.git && cd dotfiles
 make build          # → bin/dot
 make install        # → ~/.local/bin/dot + ~/.local/bin/dotfiles (symlink)
 ```
@@ -687,12 +692,12 @@ On defer `dot admit` exits 75 (`EX_TEMPFAIL`) and `--json` prints the machine-re
 
 ## Architecture
 
-Same modular Go architecture as [rootfiles-v2](https://github.com/entelecheia/rootfiles-v2).
+Same modular Go architecture as [rootfiles](https://github.com/STAIxBWLB/rootfiles).
 
 Interactive blueprint: [docs/architecture/dotfiles-v2-rendered.html](docs/architecture/dotfiles-v2-rendered.html) (spec: [dotfiles-v2.architecture.json](docs/architecture/dotfiles-v2.architecture.json)).
 
 ```
-rootfiles-v2 (root, server)     dotfiles-v2 (user, workstation)
+rootfiles (root, server)        dotfiles (user, workstation)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Packages (APT), users, SSH       Packages (Homebrew), shell, git
 Docker, GPUs, tunnels            Terminal, fonts, AI
@@ -702,7 +707,7 @@ Locale, firewall, storage        Workspace, secrets, sync, tmux
 ### Project Structure
 
 ```
-dotfiles-v2/
+dotfiles/
 ├── cmd/dot/main.go               # Entry point (ldflags: version, commit)
 ├── internal/
 │   ├── cli/                      # Cobra commands
@@ -777,7 +782,7 @@ git push origin v0.9.0
 On a fresh DGX or GPU server — auto-detects NVIDIA GPU + CUDA:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/entelecheia/dotfiles-v2/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/STAIxBWLB/dotfiles/main/scripts/install.sh | bash
 dot init --yes     # auto-selects 'server' profile
 dot apply --yes    # packages (incl. rsync), shell, git, ssh, terminal, tmux, ai, conda
 ```

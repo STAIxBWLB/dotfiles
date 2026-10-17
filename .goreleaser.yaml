@@ -44,20 +44,23 @@ changelog:
 
 release:
   github:
-    owner: entelecheia
-    name: dotfiles-v2
+    owner: STAIxBWLB
+    name: dotfiles
   extra_files:
     - glob: scripts/install.sh
 
 brews:
   - name: dotfiles
     repository:
-      owner: entelecheia
-      name: homebrew-tap
+      owner: STAIxBWLB
+      name: homebrew-cask
       branch: main
-      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+      # Write deploy key scoped to the tap repository only.
+      git:
+        url: "git@github.com:STAIxBWLB/homebrew-cask.git"
+        private_key: "{{ .Env.HOMEBREW_TAP_SSH_KEY }}"
     directory: Formula
-    homepage: "https://github.com/entelecheia/dotfiles-v2"
+    homepage: "https://github.com/STAIxBWLB/dotfiles"
     description: "Declarative dotfiles manager and AI tmux workspace orchestrator"
     license: MIT
     install: |
@@ -68,4 +71,4 @@ brews:
     commit_author:
       name: goreleaserbot
       email: bot@goreleaser.com
-    commit_msg_template: "chore(formula): bump dotfiles to {{ .Tag }}"
+    commit_msg_template: "dotfiles: update to {{ .Tag }}"

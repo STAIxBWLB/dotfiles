@@ -18,9 +18,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/entelecheia/dotfiles-v2/internal/aihandoff"
-	"github.com/entelecheia/dotfiles-v2/internal/aipolicy"
-	"github.com/entelecheia/dotfiles-v2/internal/resourceguard"
+	"github.com/STAIxBWLB/dotfiles/internal/aihandoff"
+	"github.com/STAIxBWLB/dotfiles/internal/aipolicy"
+	"github.com/STAIxBWLB/dotfiles/internal/resourceguard"
 )
 
 type Options struct {

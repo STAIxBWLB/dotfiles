@@ -6,7 +6,7 @@ package ghauth
 import (
 	"context"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // Scopes lists OAuth scopes requested during gh auth login.

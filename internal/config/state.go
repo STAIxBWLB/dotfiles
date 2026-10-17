@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/sliceutil"
-	"github.com/entelecheia/dotfiles-v2/internal/tunnel"
+	"github.com/STAIxBWLB/dotfiles/internal/sliceutil"
+	"github.com/STAIxBWLB/dotfiles/internal/tunnel"
 	"gopkg.in/yaml.v3"
 )
 

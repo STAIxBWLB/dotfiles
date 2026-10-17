@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/claudecfg"
+	"github.com/STAIxBWLB/dotfiles/internal/claudecfg"
 )
 
 // BUG-16: the preview branch of applyClaudeHUD reported a fixed both-halves

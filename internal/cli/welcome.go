@@ -3,8 +3,8 @@ package cli
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
-	"github.com/entelecheia/dotfiles-v2/internal/ui"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // printWelcome shows a friendly getting-started guide when invoked without args.
@@ -82,7 +82,7 @@ func printUsecases(cmd *cobra.Command) {
 	section(p, "1. First-time setup on a new machine",
 		"Fresh install — get from zero to productive in minutes.",
 		[]usecase{
-			{"curl -fsSL https://raw.githubusercontent.com/entelecheia/dotfiles-v2/main/scripts/install.sh | bash",
+			{"curl -fsSL https://raw.githubusercontent.com/STAIxBWLB/dotfiles/main/scripts/install.sh | bash",
 				"Download binary from GitHub Releases"},
 			{"dot init",
 				"Interactive setup (auto-detects git config, timezone, SSH keys)"},

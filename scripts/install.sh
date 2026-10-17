@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="entelecheia/dotfiles-v2"
+REPO="STAIxBWLB/dotfiles"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
 # --- Helpers ---

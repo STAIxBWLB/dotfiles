@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/entelecheia/dotfiles-v2/internal/fileutil"
+	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
 )
 
 var nerdFontPins = []fontAssetPin{

@@ -8,9 +8,9 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/entelecheia/dotfiles-v2/internal/appsettings"
-	"github.com/entelecheia/dotfiles-v2/internal/syncer"
-	"github.com/entelecheia/dotfiles-v2/internal/ui"
+	"github.com/STAIxBWLB/dotfiles/internal/appsettings"
+	"github.com/STAIxBWLB/dotfiles/internal/syncer"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 	"github.com/spf13/cobra"
 )
 

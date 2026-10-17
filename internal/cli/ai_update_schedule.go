@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/aischedule"
-	"github.com/entelecheia/dotfiles-v2/internal/resourceguard"
+	"github.com/STAIxBWLB/dotfiles/internal/aischedule"
+	"github.com/STAIxBWLB/dotfiles/internal/resourceguard"
 	"github.com/spf13/cobra"
 )
 

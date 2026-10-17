@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // PeerStatusSchemaVersion is the schema version of the `dot peer status --json`

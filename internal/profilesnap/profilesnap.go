@@ -25,9 +25,9 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
-	"github.com/entelecheia/dotfiles-v2/internal/snapstore"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/snapstore"
 )
 
 // Meta records the human-readable provenance of a snapshot.

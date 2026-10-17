@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/entelecheia/dotfiles-v2/internal/aisettings"
-	"github.com/entelecheia/dotfiles-v2/internal/aitooling"
-	"github.com/entelecheia/dotfiles-v2/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/aisettings"
+	"github.com/STAIxBWLB/dotfiles/internal/aitooling"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
 )
 
 // AIModule manages AI CLI/config helper shell configs and Claude settings.

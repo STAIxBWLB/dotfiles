@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	dotexec "github.com/entelecheia/dotfiles-v2/internal/exec"
+	dotexec "github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // TestApplyClaudeHUD_DryRunWritesNothingWithARealRunner is the falsifiable

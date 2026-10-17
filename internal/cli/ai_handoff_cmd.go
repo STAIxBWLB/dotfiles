@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/entelecheia/dotfiles-v2/internal/aihandoff"
+	"github.com/STAIxBWLB/dotfiles/internal/aihandoff"
 	"github.com/spf13/cobra"
 )
 

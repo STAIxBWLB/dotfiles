@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/claudecfg"
-	dotexec "github.com/entelecheia/dotfiles-v2/internal/exec"
-	"github.com/entelecheia/dotfiles-v2/internal/guard"
+	"github.com/STAIxBWLB/dotfiles/internal/claudecfg"
+	dotexec "github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/guard"
 )
 
 // guardHookEntries is how many marker-tagged hook commands EnsureHookEntries

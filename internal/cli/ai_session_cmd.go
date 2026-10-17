@@ -12,8 +12,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/entelecheia/dotfiles-v2/internal/aipolicy"
-	"github.com/entelecheia/dotfiles-v2/internal/aisession"
+	"github.com/STAIxBWLB/dotfiles/internal/aipolicy"
+	"github.com/STAIxBWLB/dotfiles/internal/aisession"
 	"github.com/spf13/cobra"
 )
 

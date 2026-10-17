@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/config"
-	"github.com/entelecheia/dotfiles-v2/internal/syncer"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/syncer"
 )
 
 // syncCLIFixture isolates HOME/XDG so syncer.Bootstrap resolves state,

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/aipolicy"
+	"github.com/STAIxBWLB/dotfiles/internal/aipolicy"
 )
 
 func fixture(t *testing.T, agent string) (Options, string) {

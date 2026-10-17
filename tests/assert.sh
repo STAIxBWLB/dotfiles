@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# assert.sh — Common test assertion functions for dotfiles-v2
+# assert.sh — Common test assertion functions for dotfiles
 set -euo pipefail
 
 PASS=0

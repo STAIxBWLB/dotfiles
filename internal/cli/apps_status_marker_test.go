@@ -3,7 +3,7 @@ package cli
 import (
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/ui"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // markerAlphabet is every glyph internal/ui publishes. The membership row

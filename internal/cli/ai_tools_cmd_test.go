@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/aisettings"
-	execrun "github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/aisettings"
+	execrun "github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 func TestRegisteredInstructionToolsFiltersUnregisteredAgents(t *testing.T) {

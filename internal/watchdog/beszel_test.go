@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 func renderBeszelPlistOrFail(t *testing.T, agentPath, envPath, listen, logDir string) string {

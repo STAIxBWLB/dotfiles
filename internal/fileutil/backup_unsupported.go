@@ -5,7 +5,7 @@ package fileutil
 import (
 	"fmt"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 func backup(_ *exec.Runner, _ string, path string) error {

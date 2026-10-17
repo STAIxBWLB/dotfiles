@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/entelecheia/dotfiles-v2/internal/fileutil"
+	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
 )
 
 type templatedFile struct {

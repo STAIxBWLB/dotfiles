@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
-	dottemplate "github.com/entelecheia/dotfiles-v2/internal/template"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	dottemplate "github.com/STAIxBWLB/dotfiles/internal/template"
 )
 
 const (

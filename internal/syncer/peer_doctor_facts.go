@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // PeerSideFacts are one machine's answers to the pre-reunion checks (#182).

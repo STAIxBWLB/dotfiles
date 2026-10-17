@@ -3,7 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
-	"github.com/entelecheia/dotfiles-v2/internal/resourceguard"
+	"github.com/STAIxBWLB/dotfiles/internal/resourceguard"
 	"github.com/spf13/cobra"
 	"os"
 	"os/signal"

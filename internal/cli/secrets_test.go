@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/secrets"
+	"github.com/STAIxBWLB/dotfiles/internal/secrets"
 )
 
 func TestRenderSecretsEvent_RestoreBackupOrder(t *testing.T) {

@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	dotexec "github.com/entelecheia/dotfiles-v2/internal/exec"
-	"github.com/entelecheia/dotfiles-v2/internal/syncer"
+	dotexec "github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/syncer"
 )
 
 // Sync transport: the remote side is `ssh <target> dot ai memory sync

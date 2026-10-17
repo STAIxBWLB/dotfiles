@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // Peer deletions are normally tens of inbox paths. Keep the new-profile cap

@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/resourceguard"
+	"github.com/STAIxBWLB/dotfiles/internal/resourceguard"
 )
 
 type upgradeReleaseTransport struct{ requests int }
@@ -34,7 +34,7 @@ func (tr *upgradeReleaseTransport) RoundTrip(req *http.Request) (*http.Response,
 }
 
 func formulaJSON(stable string, pinned bool) string {
-	return fmt.Sprintf(`{"formulae":[{"full_name":"entelecheia/tap/dotfiles","pinned":%v,"versions":{"stable":%q}}]}`, pinned, stable)
+	return fmt.Sprintf(`{"formulae":[{"full_name":"staixbwlb/cask/dotfiles","pinned":%v,"versions":{"stable":%q}}]}`, pinned, stable)
 }
 
 // fakeUpgrade scripts upgradeRun and upgradeAcquire and records each call as
@@ -141,7 +141,7 @@ func TestRunUpgradeHomebrew(t *testing.T) {
 		}
 		var want []string
 		if mode == "update" {
-			want = []string{"brew info --json=v2 --formula dotfiles", "brew upgrade entelecheia/tap/dotfiles", "dot --version"}
+			want = []string{"brew info --json=v2 --formula dotfiles", "brew upgrade staixbwlb/cask/dotfiles", "dot --version"}
 			if !strings.Contains(out.String(), "Upgraded: 1.0.0 → 99.0.0 (Homebrew)") {
 				t.Fatalf("output %q", out.String())
 			}
@@ -232,12 +232,12 @@ func TestUpgradeHomebrewBranches(t *testing.T) {
 		{
 			name: "tap current",
 			f:    fakeUpgrade{infos: []string{formulaJSON("2.0.0", false)}, version: done},
-			want: []string{"brew info --json=v2 --formula dotfiles", "brew upgrade entelecheia/tap/dotfiles", "dot --version"},
+			want: []string{"brew info --json=v2 --formula dotfiles", "brew upgrade staixbwlb/cask/dotfiles", "dot --version"},
 		},
 		{
 			name: "tap behind, brew update catches up",
 			f:    fakeUpgrade{infos: []string{formulaJSON("1.0.0", false), formulaJSON("2.0.0", false)}, version: done},
-			want: []string{"brew info --json=v2 --formula dotfiles", "brew update", "brew info --json=v2 --formula dotfiles", "brew upgrade entelecheia/tap/dotfiles", "dot --version"},
+			want: []string{"brew info --json=v2 --formula dotfiles", "brew update", "brew info --json=v2 --formula dotfiles", "brew upgrade staixbwlb/cask/dotfiles", "dot --version"},
 		},
 		{
 			name:    "tap still behind after brew update",
@@ -260,7 +260,7 @@ func TestUpgradeHomebrewBranches(t *testing.T) {
 			name:    "version not reached",
 			f:       fakeUpgrade{infos: []string{formulaJSON("2.0.0", false)}, version: "dot version 1.0.0 (abc)\n"},
 			wantErr: "not 2.0.0 or newer",
-			want:    []string{"brew info --json=v2 --formula dotfiles", "brew upgrade entelecheia/tap/dotfiles", "dot --version"},
+			want:    []string{"brew info --json=v2 --formula dotfiles", "brew upgrade staixbwlb/cask/dotfiles", "dot --version"},
 		},
 		{
 			name:    "brew info lists no formula",
@@ -271,7 +271,7 @@ func TestUpgradeHomebrewBranches(t *testing.T) {
 		{
 			name:     "a newer release reached the tap",
 			f:        fakeUpgrade{infos: []string{formulaJSON("2.1.0", false)}, version: "dot version 2.1.0 (abc)\n"},
-			want:     []string{"brew info --json=v2 --formula dotfiles", "brew upgrade entelecheia/tap/dotfiles", "dot --version"},
+			want:     []string{"brew info --json=v2 --formula dotfiles", "brew upgrade staixbwlb/cask/dotfiles", "dot --version"},
 			wantLine: "Upgraded: 1.0.0 → 2.1.0 (Homebrew)",
 		},
 		{
@@ -279,7 +279,7 @@ func TestUpgradeHomebrewBranches(t *testing.T) {
 			f:        fakeUpgrade{infos: []string{formulaJSON("1.0.0", false)}},
 			dryRun:   true,
 			want:     []string{"brew info --json=v2 --formula dotfiles"},
-			wantLine: "[dry-run] would run: brew update\n[dry-run] would run: brew upgrade entelecheia/tap/dotfiles\n",
+			wantLine: "[dry-run] would run: brew update\n[dry-run] would run: brew upgrade staixbwlb/cask/dotfiles\n",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -474,7 +474,7 @@ func TestReloadDotLaunchAgents(t *testing.T) {
 			relink:      true,
 			upgradeFail: true,
 			attempts:    1,
-			wantErr:     "brew upgrade entelecheia/tap/dotfiles: exit status 1",
+			wantErr:     "brew upgrade staixbwlb/cask/dotfiles: exit status 1",
 			wantLine:    "Reloaded com.dotfiles.sync",
 		},
 		{
@@ -497,7 +497,7 @@ func TestReloadDotLaunchAgents(t *testing.T) {
 				return upgradeHomebrew(ctx, p, h, "1.0.0", "2.0.0", false)
 			},
 			upgradeFail: true,
-			wantErr:     "brew upgrade entelecheia/tap/dotfiles: exit status 1",
+			wantErr:     "brew upgrade staixbwlb/cask/dotfiles: exit status 1",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

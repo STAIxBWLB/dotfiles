@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/admission"
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/admission"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 var admitTestClock = time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)

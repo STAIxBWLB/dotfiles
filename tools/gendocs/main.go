@@ -14,7 +14,7 @@ import (
 
 	"github.com/spf13/cobra/doc"
 
-	"github.com/entelecheia/dotfiles-v2/internal/cli"
+	"github.com/STAIxBWLB/dotfiles/internal/cli"
 )
 
 func main() {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // UserStateRoot is the admission state root of the real user. Slots are per

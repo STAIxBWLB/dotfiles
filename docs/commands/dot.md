@@ -4,7 +4,7 @@ User environment & workspace management tool
 
 ### Synopsis
 
-dotfiles-v2: Declarative user environment configuration with modular profiles.
+dotfiles: Declarative user environment configuration with modular profiles.
 
 Run without arguments to see a getting-started guide.
 Run 'dot usecase' for detailed workflow examples.

@@ -23,7 +23,7 @@ func NewRootCmd(version, commit string) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "dot",
 		Short: "User environment & workspace management tool",
-		Long: `dotfiles-v2: Declarative user environment configuration with modular profiles.
+		Long: `dotfiles: Declarative user environment configuration with modular profiles.
 
 Run without arguments to see a getting-started guide.
 Run 'dot usecase' for detailed workflow examples.

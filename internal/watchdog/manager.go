@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // Manager owns the on-disk locations and launchd lifecycle of the watchdog.

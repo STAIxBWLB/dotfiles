@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	internalexec "github.com/entelecheia/dotfiles-v2/internal/exec"
+	internalexec "github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 func TestStageGitComponent_RejectsRevisionMismatch(t *testing.T) {

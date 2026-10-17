@@ -3,7 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
-	"github.com/entelecheia/dotfiles-v2/internal/resourceguard"
+	"github.com/STAIxBWLB/dotfiles/internal/resourceguard"
 	"os"
 	"path/filepath"
 	"strings"

@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/entelecheia/dotfiles-v2/internal/template"
+	"github.com/STAIxBWLB/dotfiles/internal/template"
 )
 
 // excludesTemplatePath is the path inside the embedded templates FS.

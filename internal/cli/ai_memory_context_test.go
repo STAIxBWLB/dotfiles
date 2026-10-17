@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/aisettings"
+	"github.com/STAIxBWLB/dotfiles/internal/aisettings"
 	"github.com/spf13/cobra"
 )
 

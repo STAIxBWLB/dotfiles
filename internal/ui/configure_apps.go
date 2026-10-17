@@ -5,10 +5,10 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/entelecheia/dotfiles-v2/internal/appsettings"
-	"github.com/entelecheia/dotfiles-v2/internal/config"
-	"github.com/entelecheia/dotfiles-v2/internal/config/catalog"
-	"github.com/entelecheia/dotfiles-v2/internal/sliceutil"
+	"github.com/STAIxBWLB/dotfiles/internal/appsettings"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/config/catalog"
+	"github.com/STAIxBWLB/dotfiles/internal/sliceutil"
 )
 
 // ConfigureAI prompts for AI CLI/config helper setup.

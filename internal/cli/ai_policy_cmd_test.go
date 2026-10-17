@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/entelecheia/dotfiles-v2/internal/aipolicy"
-	"github.com/entelecheia/dotfiles-v2/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/aipolicy"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
 )
 
 func goldenAIPolicyFixture(t *testing.T) (home, root string) {

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/entelecheia/dotfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // peerScheduleSandbox builds the one situation PeerSchedule's validation chain
