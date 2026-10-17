@@ -297,10 +297,10 @@ type remotePeerStatus struct {
 	// UnscannedWorktreeDirs are the directories the remote could not read
 	// during its worktree scan; this Mac's filters judge them (#268).
 	UnscannedWorktreeDirs []string `json:"unscannedWorktreeDirs"`
-	OwnerEpoch    int      `json:"ownerEpoch"`
-	FencePending  bool     `json:"fencePending"`
-	DotVersion    string   `json:"dotVersion"`
-	Profile       struct {
+	OwnerEpoch            int      `json:"ownerEpoch"`
+	FencePending          bool     `json:"fencePending"`
+	DotVersion            string   `json:"dotVersion"`
+	Profile               struct {
 		Configured   bool     `json:"configured"`
 		Owner        string   `json:"owner"`
 		OwnerAliases []string `json:"ownerAliases"`
