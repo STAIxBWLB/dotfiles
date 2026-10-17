@@ -351,6 +351,9 @@ func TestUpdatePathNamesTheSkipReason(t *testing.T) {
 	if got := updatePath(context.Background(), homebrewDot{}, false, "1.0.0", "1.0.1", "v1.0.1"); got != "verified prebuilt download" {
 		t.Fatalf("standalone path = %q", got)
 	}
+	if got := updatePath(context.Background(), homebrewDot{}, false, "1.0.0", "1.0.1", "v1.0.1-rc1"); !strings.HasPrefix(got, "none: ") {
+		t.Fatalf("standalone path without a verified release asset = %q", got)
+	}
 	got := updatePath(context.Background(), homebrewDot{prefix: t.TempDir(), formula: "dotfiles"}, true, "1.0.0", "1.0.1", "v1.0.1-rc1")
 	if !strings.HasPrefix(got, "full maintenance gate, because ") || !strings.Contains(got, "not an exact stable version") {
 		t.Fatalf("homebrew path = %q, want the full gate with the reason", got)

@@ -135,6 +135,13 @@ func runUpgrade(cmd *cobra.Command, currentVersion string) error {
 // updatePath says, read-only, which path `dot update` would take (#266).
 func updatePath(ctx context.Context, brew homebrewDot, viaBrew bool, current, latest, tag string) string {
 	if !viaBrew {
+		goos, goarch, err := supportedNativeReleaseTarget()
+		if err == nil {
+			_, err = planVerifiedPrebuilt(tag, goos, goarch)
+		}
+		if err != nil {
+			return "none: " + err.Error()
+		}
 		return "verified prebuilt download"
 	}
 	if _, _, why := homebrewPrebuiltPlan(ctx, brew, current, latest, tag); why != "" {
