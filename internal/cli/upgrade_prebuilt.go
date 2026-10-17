@@ -534,7 +534,7 @@ func verifyExactPrebuiltBinary(ctx context.Context, path, version, goos, goarch 
 	return nil
 }
 
-func installStandalonePrebuilt(ctx context.Context, p *Printer, source, destination, version, goos, goarch string) error {
+func installStandalonePrebuilt(ctx context.Context, p *Printer, source, destination, version, goos, goarch string, wait time.Duration) error {
 	if err := verifyExactPrebuiltBinary(ctx, source, version, goos, goarch); err != nil {
 		return err
 	}
@@ -545,9 +545,9 @@ func installStandalonePrebuilt(ctx context.Context, p *Printer, source, destinat
 	if int64(len(data)) == 0 || int64(len(data)) > prebuiltMaxBinaryBytes {
 		return fmt.Errorf("verified executable size %d is outside the prebuilt limit", len(data))
 	}
-	release, err := upgradeAcquirePrebuilt(ctx)
+	release, err := acquireMaintenanceSlot(ctx, p, wait, upgradeAcquirePrebuilt)
 	if err != nil {
-		return fmt.Errorf("the verified prebuilt update needs the maintenance slot: %w; retry later", err)
+		return fmt.Errorf("the verified prebuilt update needs the maintenance slot: %w; %s", err, retrySlotHint(wait))
 	}
 	defer release()
 	tmp, err := os.CreateTemp(filepath.Dir(destination), ".dot.*.new")

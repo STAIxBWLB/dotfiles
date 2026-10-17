@@ -71,14 +71,16 @@ type brewFormula struct {
 // upgradeHomebrew upgrades a Homebrew-installed dot through the brew that
 // owns it, then reloads the LaunchAgents that run it (#235). dot never writes
 // into the Cellar itself.
-func upgradeHomebrew(ctx context.Context, p *Printer, h homebrewDot, current, latest string, dryRun bool) error {
+func upgradeHomebrew(ctx context.Context, p *Printer, h homebrewDot, current, latest string, dryRun bool, wait time.Duration) error {
 	if os.Geteuid() == 0 {
 		return fmt.Errorf("this dot binary belongs to Homebrew, which does not run as root; run dot update as the user who owns %s", h.prefix)
 	}
 	if !dryRun {
-		release, err := upgradeAcquire(ctx, resourceguard.Options{Purpose: "dot update", ScopeKey: "tooling"})
+		release, err := acquireMaintenanceSlot(ctx, p, wait, func(ctx context.Context) (func(), error) {
+			return upgradeAcquire(ctx, resourceguard.Options{Purpose: "dot update", ScopeKey: "tooling"})
+		})
 		if err != nil {
-			return fmt.Errorf("the Homebrew upgrade needs the maintenance slot: %w; retry later", err)
+			return fmt.Errorf("the Homebrew upgrade needs the maintenance slot: %w; %s", err, retrySlotHint(wait))
 		}
 		defer release()
 	}

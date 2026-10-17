@@ -30,7 +30,7 @@ var portableRubyVersionName = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(_[0-9]
 // upgradeHomebrewPrebuilt uses the warning-tolerant profile only when the
 // current Homebrew tap contains the exact GoReleaser-generated native-only
 // formula for this verified release. Any drift returns to the full-gate path.
-func upgradeHomebrewPrebuilt(ctx context.Context, p *Printer, h homebrewDot, current, version string, checksums []byte, dryRun bool) error {
+func upgradeHomebrewPrebuilt(ctx context.Context, p *Printer, h homebrewDot, current, version string, checksums []byte, dryRun bool, wait time.Duration) error {
 	if os.Geteuid() == 0 {
 		return fmt.Errorf("this dot binary belongs to Homebrew, which does not run as root; run dot update as the user who owns %s", h.prefix)
 	}
@@ -41,9 +41,9 @@ func upgradeHomebrewPrebuilt(ctx context.Context, p *Printer, h homebrewDot, cur
 		p.Line("[dry-run] verified Homebrew formula is eligible for dot %s", version)
 		return nil
 	}
-	release, err := upgradeAcquirePrebuilt(ctx)
+	release, err := acquireMaintenanceSlot(ctx, p, wait, upgradeAcquirePrebuilt)
 	if err != nil {
-		return fmt.Errorf("the verified prebuilt Homebrew update needs the maintenance slot: %w; retry later", err)
+		return fmt.Errorf("the verified prebuilt Homebrew update needs the maintenance slot: %w; %s", err, retrySlotHint(wait))
 	}
 	defer release()
 	// Re-read the raw formula after admission and before any Homebrew command
@@ -91,26 +91,51 @@ func canonicalFormulaMatches(source, version string, checksums []byte) bool {
 }
 
 func prebuiltFormulaEligible(ctx context.Context, h homebrewDot, current, version string, checksums []byte) bool {
+	return prebuiltIneligibility(ctx, h, current, version, checksums) == ""
+}
+
+// prebuiltIneligibility names the first check that keeps a Homebrew install
+// off the verified-prebuilt policy, or returns "" when every check passes
+// (#266). The fallback line and `dot update --check` print it.
+func prebuiltIneligibility(ctx context.Context, h homebrewDot, current, version string, checksums []byte) string {
 	if !prebuiltFormulaSourceEligible(h, version, checksums) {
-		return false
+		return "the tap formula is not the canonical release formula for " + version + " (run brew update, or the tap was edited)"
+	}
+	if homebrewRubyOverridesPresent(h) {
+		return "HOMEBREW_* environment variables or a brew.env file override Homebrew's defaults"
 	}
 	if !homebrewRuntimeReady(h) {
-		return false
+		return "Homebrew's portable Ruby is not installed as expected (run brew update once)"
 	}
 	pinned, err := homebrewFormulaPinned(h)
-	if err != nil || pinned {
-		return false
+	if err != nil {
+		return "cannot read the formula's pin state: " + err.Error()
+	}
+	if pinned {
+		return "the " + h.formula + " formula is pinned"
 	}
 	goos, goarch, err := supportedNativeReleaseTarget()
-	if err != nil || runtime.GOARCH != goarch {
-		return false
+	if err != nil {
+		return err.Error()
+	}
+	if runtime.GOARCH != goarch {
+		return fmt.Sprintf("this dot is %s, but the native release for this Mac is %s", runtime.GOARCH, goarch)
 	}
 	optBinary, kegVersion, err := managedHomebrewOptBinary(h)
-	if err != nil || verifyNativeBinaryTarget(optBinary, goos, goarch) != nil {
-		return false
+	if err != nil {
+		return "the Homebrew keg is not a managed dot install: " + err.Error()
+	}
+	if err := verifyNativeBinaryTarget(optBinary, goos, goarch); err != nil {
+		return "the installed Homebrew binary is not a native " + goos + "/" + goarch + " build"
 	}
 	installed, err := readDotBinaryVersion(ctx, optBinary)
-	return err == nil && kegVersion == current && installed == current
+	if err != nil {
+		return "cannot read the installed Homebrew dot version: " + err.Error()
+	}
+	if kegVersion != current || installed != current {
+		return fmt.Sprintf("the Homebrew keg holds %s (binary reports %s), not the running %s", kegVersion, installed, current)
+	}
+	return ""
 }
 
 func homebrewRuntimeReady(h homebrewDot) bool {
