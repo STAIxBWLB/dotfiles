@@ -105,8 +105,11 @@ func runSyncPush(cmd *cobra.Command, _ []string) error {
 	}
 	overrides := syncer.SensitiveOverrides(cfg.AllowPatterns)
 
-	// The scheduled push and a manual one hold the same named lease (#267).
-	defer resourceguard.HoldBackgroundSync(cmd.Context(), "mirror push ("+cfg.Profile+")")()
+	// The scheduled push and a manual one hold the same named lease (#267);
+	// a preview writes nothing, the admission state included.
+	if !dryRun {
+		defer resourceguard.HoldBackgroundSync(cmd.Context(), "mirror push ("+cfg.Profile+")")()
+	}
 	res, err := syncer.PushCommand(cmd.Context(), syncer.PushOptions{
 		State:  bs.State,
 		Config: cfg,

@@ -238,7 +238,11 @@ on a laptop.`,
 				progress = renderPeerEvent(&Printer{Out: c.ErrOrStderr(), Err: c.ErrOrStderr()})
 				bs.Config.Out = c.ErrOrStderr()
 			}
-			releaseLease := resourceguard.HoldBackgroundSync(context.Background(), "peer sync")
+			// A preview writes nothing, the admission state included.
+			releaseLease := func() {}
+			if !dryRun {
+				releaseLease = resourceguard.HoldBackgroundSync(context.Background(), "peer sync")
+			}
 			res, err := syncer.PeerSync(context.Background(), syncer.PeerSyncOptions{
 				Config:   bs.Config,
 				Runner:   bs.Runner,
