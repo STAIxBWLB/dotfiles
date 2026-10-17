@@ -302,3 +302,30 @@ func TestDropRoutineBackupsKeepsTypeChanges(t *testing.T) {
 		t.Errorf("file replaced by a directory lost its backup: %q, %v", got, err)
 	}
 }
+
+// The cleanup never follows a symlinked .sync-conflicts out of the mirror.
+func TestDropRoutineBackupsRefusesASymlinkedRoot(t *testing.T) {
+	f := newIntakeFixture(t)
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(f.mirror, conflictsDirName)); err != nil {
+		t.Fatal(err)
+	}
+	conflict := NewConflictDir()
+	victim := filepath.Join(outside, conflict.Timestamp, backupSubFromWorkspace, "notes/a.md")
+	if err := os.MkdirAll(filepath.Dir(victim), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(victim, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fp, err := FingerprintFile(victim, FingerprintFast)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.writeLocal("notes/a.md", "new")
+
+	dropRoutineBackups(f.cfg, conflict, map[string]Fingerprint{"notes/a.md": fp})
+	if _, err := os.Stat(victim); err != nil {
+		t.Fatalf("a file outside the mirror was removed: %v", err)
+	}
+}

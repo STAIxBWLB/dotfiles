@@ -97,7 +97,12 @@ func (c *ConflictDir) PullLocalBackupRel() string {
 // a copy that cannot be judged or removed is kept.
 func dropRoutineBackups(cfg *Config, conflict *ConflictDir, baseline map[string]Fingerprint) {
 	local := strings.TrimRight(cfg.LocalPath, "/")
-	root := filepath.Join(strings.TrimRight(cfg.MirrorPath, "/"), conflict.PushBackupRel())
+	mirror := strings.TrimRight(cfg.MirrorPath, "/")
+	// A symlinked component would lead the removals out of the mirror.
+	if refuseUnsafeBackupDir(mirror, conflict.PushBackupRel()) != nil {
+		return
+	}
+	root := filepath.Join(mirror, conflict.PushBackupRel())
 	var dirs []string
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
