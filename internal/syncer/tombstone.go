@@ -180,13 +180,27 @@ func markPeerBaselineTarget(cfg *Config) error {
 // failed mount or a broken filter presents the entire tree as deleted; the
 // cap turns that into a refusal instead of a mass removal on the peer.
 func checkTombstoneCap(cfg *Config, tombstones []string) error {
-	if cfg.MaxDelete > 0 && len(tombstones) > cfg.MaxDelete {
+	if cfg.MaxDelete > 0 && len(tombstones) > cfg.MaxDelete && !allApproved(cfg, tombstones) {
 		return fmt.Errorf(
 			"refusing to propagate %d deletions: over max_delete=%d. "+
 				"Review baseline.manifest against the local tree; raise max_delete if this is genuine",
 			len(tombstones), cfg.MaxDelete)
 	}
 	return nil
+}
+
+// allApproved reports whether every path belongs to the deletion set a
+// person approved for this run (#269).
+func allApproved(cfg *Config, rels []string) bool {
+	if len(cfg.approvedDeletes) == 0 {
+		return false
+	}
+	for _, rel := range rels {
+		if !cfg.approvedDeletes[rel] {
+			return false
+		}
+	}
+	return true
 }
 
 // writeTombstoneList writes the paths NUL-delimited for rsync --files-from

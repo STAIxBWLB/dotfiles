@@ -640,3 +640,44 @@ func TestDeletePeerLocal_RefusesQuarantineSymlink(t *testing.T) {
 		t.Fatalf("quarantine symlink target was modified: %v", entries)
 	}
 }
+
+// A plan over max_delete names its deletion set by digest; that digest lifts
+// the cap for exactly that set, for one run, and a changed set refuses again
+// with the new digest (#269).
+func TestValidatePeerPlanSafetyApprovesOneReviewedDeletionSet(t *testing.T) {
+	plan := func(out ...string) *PeerPlan {
+		return &PeerPlan{BaselineCount: 100, LocalCount: 95, RemoteCount: 100, DeleteRemote: out}
+	}
+	reviewed := plan("a", "b", "c")
+
+	cfg := &Config{MaxDelete: 2}
+	err := ValidatePeerPlanSafety(cfg, reviewed)
+	digest := DeletePlanDigest(reviewed)
+	if err == nil || !strings.Contains(err.Error(), "over max_delete=2") || !strings.Contains(err.Error(), "--approve-deletes "+digest) {
+		t.Fatalf("over-cap refusal must name the digest and the approve command, got %v", err)
+	}
+	if !ValidDeletePlanDigest(digest) || DeletePlanDigest(plan("a", "b", "c")) != digest {
+		t.Fatalf("digest %q is not stable or not valid", digest)
+	}
+
+	cfg = &Config{MaxDelete: 2, ApproveDeletes: digest}
+	if err := ValidatePeerPlanSafety(cfg, reviewed); err != nil {
+		t.Fatalf("approved set refused: %v", err)
+	}
+	if err := checkTombstoneCap(cfg, []string{"a", "b", "c"}); err != nil {
+		t.Fatalf("delete pass refused the approved set: %v", err)
+	}
+	if err := checkTombstoneCap(cfg, []string{"a", "b", "x"}); err == nil {
+		t.Fatal("the approval lifted the cap for a path outside the approved set")
+	}
+
+	drifted := plan("a", "b", "c", "d")
+	cfg = &Config{MaxDelete: 2, ApproveDeletes: digest}
+	err = ValidatePeerPlanSafety(cfg, drifted)
+	if err == nil || !strings.Contains(err.Error(), "changed since "+digest) || !strings.Contains(err.Error(), DeletePlanDigest(drifted)) {
+		t.Fatalf("a changed set must refuse with the new digest, got %v", err)
+	}
+	if len(cfg.approvedDeletes) != 0 {
+		t.Fatal("a refused approval recorded an approved set")
+	}
+}

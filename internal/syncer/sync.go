@@ -90,6 +90,13 @@ type Config struct {
 	// read it so the rsync argv and the Go walk agree layer for layer.
 	WorktreeExcludes []string
 
+	// ApproveDeletes is the deletion-plan digest a person approved for one
+	// peer run over max_delete (#269). Runtime-only, set from the CLI flag;
+	// approvedDeletes is the exact set it matched, which lifts the cap for
+	// those paths only.
+	ApproveDeletes  string
+	approvedDeletes map[string]bool
+
 	// OwnerEpoch orders coordinator transitions on the peer profile. Loaded
 	// from the store config; bumped by every deliberate owner change.
 	OwnerEpoch int

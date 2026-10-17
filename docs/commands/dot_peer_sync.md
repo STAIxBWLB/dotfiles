@@ -18,6 +18,11 @@ transaction before the additive host-path pass: deletes propagate into the
 receiving side's ~/.dot-peer-conflicts quarantine and dual edits keep both
 versions. Untracked host paths keep additive newest-mtime-wins behavior.
 
+A plan with more deletions than max_delete is refused and names a digest of
+its exact deletion set. After reviewing it (dot peer diff --list), approve that
+set for one run with --approve-deletes <digest>; if the set changed since,
+the run refuses again with the new digest. The config is never edited.
+
 Exits 0 when the peer is unreachable. That is what makes this safe to schedule
 on a laptop.
 
@@ -28,12 +33,13 @@ dot peer sync [flags]
 ### Options
 
 ```
-  -h, --help        help for sync
-      --json        print the itemized plan as JSON
-      --list        print every planned action (with --dry-run: exactly what a run would do)
-      --pull-only   receive peer changes without pushing
-      --push-only   send local changes without pulling first
-      --skip-home   workspace only; skip the host-path pass
+      --approve-deletes string   run one reviewed deletion set over max_delete, named by the digest a refused run prints
+  -h, --help                     help for sync
+      --json                     print the itemized plan as JSON
+      --list                     print every planned action (with --dry-run: exactly what a run would do)
+      --pull-only                receive peer changes without pushing
+      --push-only                send local changes without pulling first
+      --skip-home                workspace only; skip the host-path pass
 ```
 
 ### Options inherited from parent commands

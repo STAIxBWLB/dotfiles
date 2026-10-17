@@ -200,6 +200,7 @@ func reportPartial(p *Printer, err error) {
 
 func newPeerSyncCmd() *cobra.Command {
 	var pushOnly, pullOnly, skipHome, list, jsonOut bool
+	var approve string
 	cmd := &cobra.Command{
 		Use:   "sync",
 		Short: "Exchange workspace and host paths with the peer (both directions)",
@@ -218,15 +219,34 @@ transaction before the additive host-path pass: deletes propagate into the
 receiving side's ~/.dot-peer-conflicts quarantine and dual edits keep both
 versions. Untracked host paths keep additive newest-mtime-wins behavior.
 
+A plan with more deletions than max_delete is refused and names a digest of
+its exact deletion set. After reviewing it (dot peer diff --list), approve that
+set for one run with --approve-deletes <digest>; if the set changed since,
+the run refuses again with the new digest. The config is never edited.
+
 Exits 0 when the peer is unreachable. That is what makes this safe to schedule
 on a laptop.`,
-		RunE: func(c *cobra.Command, _ []string) error {
+		RunE: func(c *cobra.Command, _ []string) (runErr error) {
 			p := printerFrom(c)
 			bs, err := syncer.Bootstrap(peerBootstrapOptions(c))
 			if err != nil {
 				return err
 			}
 			dryRun, _ := c.Flags().GetBool("dry-run")
+			if isScheduledRun() && !dryRun {
+				finish, err := startScheduledPeerLog(bs.Config.LogFile)
+				if err != nil {
+					bs.Runner.Logger.Warn("peer run log unavailable; output stays on launchd's redirection", "err", err)
+				} else {
+					defer func() { finish(runErr) }()
+				}
+			}
+			if approve != "" {
+				if !syncer.ValidDeletePlanDigest(approve) {
+					return fmt.Errorf("--approve-deletes takes the digest a dry run prints, got %q", approve)
+				}
+				bs.Config.ApproveDeletes = approve
+			}
 			// A JSON document owns stdout; progress lines would corrupt it.
 			progress := renderPeerEvent(p)
 			if jsonOut {
@@ -325,5 +345,6 @@ on a laptop.`,
 	cmd.Flags().BoolVar(&skipHome, "skip-home", false, "workspace only; skip the host-path pass")
 	cmd.Flags().BoolVar(&list, "list", false, "print every planned action (with --dry-run: exactly what a run would do)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "print the itemized plan as JSON")
+	cmd.Flags().StringVar(&approve, "approve-deletes", "", "run one reviewed deletion set over max_delete, named by the digest a refused run prints")
 	return cmd
 }

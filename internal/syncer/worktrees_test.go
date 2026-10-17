@@ -474,3 +474,86 @@ func TestMergePeerWorktreesRejectsUnrepresentableLocalPath(t *testing.T) {
 		t.Fatalf("err = %v, want the unrepresentable local path to stop the run", err)
 	}
 }
+
+// A directory removed after the walk listed it - a temp tree torn down while
+// the scan runs - counts as gone and does not fail the run (#268 AC1).
+func TestDetectLinkedWorktrees_VanishedDirectory(t *testing.T) {
+	root := t.TempDir()
+	gone := filepath.Join(root, "tmp", "session-1")
+	if err := os.MkdirAll(filepath.Join(gone, "deeper"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	makeFakeGitdir(t, filepath.Join(root, "dev", "wt"), filepath.Join(root, "main", ".git", "worktrees", "wt"), true)
+	// The skip hook runs after the walk listed the directory and before it is
+	// read: removing it there is the race the scheduled run lost.
+	removeOnVisit := func(rel string) bool {
+		if rel == "tmp/session-1" {
+			if err := os.RemoveAll(gone); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return false
+	}
+	got, err := detectLinkedWorktrees(root, removeOnVisit, "")
+	if err != nil {
+		t.Fatalf("vanished directory failed the scan: %v", err)
+	}
+	if !slices.Equal(got, []string{"dev/wt"}) {
+		t.Fatalf("got %v, want [dev/wt]", got)
+	}
+}
+
+func unreadableDir(t *testing.T, dir string) {
+	t.Helper()
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a mode-000 directory")
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "inner"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+}
+
+// An unreadable directory inside a tree the peer filters exclude is never
+// read: neither the editable ignore.txt layer nor the code-owned volatile
+// layer can fail the run (#268 AC2).
+func TestMergePeerWorktrees_SkipsExcludedUnreadable(t *testing.T) {
+	workspace := t.TempDir()
+	cfg := newPeerWorktreeTestConfig(t, workspace)
+	if err := os.WriteFile(cfg.IgnoreFile, []byte(".agenthub/state/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	makeFakeGitdir(t, filepath.Join(workspace, "dev", "wt"), filepath.Join(workspace, "main", ".git", "worktrees", "wt"), true)
+	unreadableDir(t, filepath.Join(workspace, "dev", "hub", ".agenthub", "state", "benchmarks"))
+	unreadableDir(t, filepath.Join(workspace, "scratchpad", "temp", "runtime"))
+
+	got, err := MergePeerWorktrees(cfg, nil, false)
+	if err != nil {
+		t.Fatalf("excluded unreadable directory failed the scan: %v", err)
+	}
+	if !slices.Equal(got, []string{"dev/wt"}) {
+		t.Fatalf("got %v, want [dev/wt]", got)
+	}
+}
+
+// An unreadable directory the transfer would include still fails closed, and
+// the error names the path and both fixes (#268 AC3).
+func TestMergePeerWorktrees_IncludedUnreadableFailsWithFix(t *testing.T) {
+	workspace := t.TempDir()
+	cfg := newPeerWorktreeTestConfig(t, workspace)
+	locked := filepath.Join(workspace, "docs", "locked")
+	unreadableDir(t, locked)
+
+	_, err := MergePeerWorktrees(cfg, nil, false)
+	if err == nil {
+		t.Fatal("an unreadable included directory must fail the scan")
+	}
+	for _, want := range []string{locked, "chmod u+rx", cfg.IgnoreFile} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not name %q", err, want)
+		}
+	}
+}
