@@ -64,7 +64,9 @@ func PushCommand(ctx context.Context, opts PushOptions) (res *PushCommandResult,
 	}
 	// Whether this run completed is decided here, once, from how it returned.
 	partial := false
-	liveConflicts := 0 // conflicts a refused run leaves for status (#264)
+	// Conflicts a refused run leaves for status (#264); -1 keeps the stored
+	// count until a plan says otherwise.
+	liveConflicts := -1
 	if !opts.DryRun && !cfg.Paused {
 		defer func() {
 			switch {
@@ -131,6 +133,7 @@ func PushCommand(ctx context.Context, opts PushOptions) (res *PushCommandResult,
 	if err != nil {
 		return nil, fmt.Errorf("planning push: %w", err)
 	}
+	liveConflicts = 0
 	emitSync(opts.Progress, SyncEvent{Kind: SyncEventPushPlanReady, PushPlan: plan})
 	if !opts.DryRun && len(plan.BaselineRefresh) > 0 {
 		if err := refreshBaselineRows(cfg, plan.BaselineRefresh); err != nil {
