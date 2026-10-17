@@ -759,13 +759,16 @@ dotfiles/
 
 | Job | Matrix | Description |
 |-----|--------|-------------|
+| **decision** | ubuntu-latest | Skips the jobs below when only non-test files changed, or when a main push carries a tree its PR already validated (`scripts/ci-decision.sh`) |
 | **lint** | ubuntu-latest | golangci-lint |
 | **unit** | ubuntu-latest, macos-latest | Go unit tests + coverage |
 | **integration** | ubuntu-24.04 × {minimal,full,server} + server image | Docker-based profile tests |
-| **linux** | modules + 10 scenarios on ubuntu-22.04 image | Module and E2E scenario suite |
+| **linux** | shards `apply`, `idempotency`, `rest` on the ubuntu-22.04 image | Module and E2E scenario suite, split from one full list |
 | **apps-install-macos** | macos-latest | macOS cask install plus macapps scenario |
 
-**Release**: Triggered by `workflow_run` — only after Test succeeds on a `v*` tag. Uses GoReleaser for cross-platform builds (darwin/linux × amd64/arm64).
+Test runs on pull requests and main pushes, not on tags.
+
+**Release**: Triggered by a `v*` tag push. It waits for the tagged commit's main-push Test run and publishes only when that run succeeded, so the tag is not tested again. Uses GoReleaser for cross-platform builds (darwin/linux × amd64/arm64).
 
 ### Creating a Release
 
@@ -774,7 +777,7 @@ Add `docs/releases/vX.Y.Z.md` (format: `AGENTS.md`, Release notes) and merge it 
 ```bash
 git tag v0.9.0
 git push origin v0.9.0
-# Test workflow runs → on success → Release workflow creates GitHub Release
+# Release waits for the main-push Test run of that commit, then publishes
 ```
 
 ---

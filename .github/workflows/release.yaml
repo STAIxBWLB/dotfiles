@@ -1,41 +1,60 @@
 name: Release
 
 on:
-  workflow_run:
-    workflows: ["Test"]
-    types: [completed]
+  push:
+    tags: ["v*"]
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   # Never cancel a release mid-flight; prevents duplicate goreleaser runs for the same tag.
-  group: release-${{ github.event.workflow_run.head_branch }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    # Only run if Test succeeded AND was triggered by a version tag
-    # Pull request runs of Test (forks included) must never reach this job.
-    if: >
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_repository.full_name == github.repository &&
-      startsWith(github.event.workflow_run.head_branch, 'v')
+    timeout-minutes: 60
     steps:
-      - name: Get tag name
-        id: tag
+      - name: Validate tag
         env:
-          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          TAG: ${{ github.ref_name }}
         run: |
-          [[ "$HEAD_BRANCH" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::workflow_run head_branch is not a vX.Y.Z tag"; exit 1; }
-          echo "tag=$HEAD_BRANCH" >> "$GITHUB_OUTPUT"
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::tag is not vX.Y.Z"; exit 1; }
+          echo "tag=$TAG" >> "$GITHUB_ENV"
+
+      # Test is not re-run for the tag: the tagged commit's main-push Test run
+      # (full, or skipped by its decision job because the same tree already
+      # passed) is the release gate. Wait for it if it is still running.
+      - name: Require a successful Test run for the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # An annotated tag push may carry the tag object, not the commit, in
+          # GITHUB_SHA; Test runs are keyed by the commit.
+          commit=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq .sha) || { echo "::error::cannot resolve $GITHUB_REF_NAME to a commit"; exit 1; }
+          deadline=$((SECONDS + 45 * 60)); first_seen=""
+          while :; do
+            run=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/test.yaml/runs?event=push&head_sha=$commit&per_page=10" \
+              --jq '[.workflow_runs[] | select(.head_branch == "main")] | sort_by(.run_started_at) | last // empty | "\(.status) \(.conclusion) \(.html_url)"') || { run=""; api_errors=$((${api_errors:-0} + 1)); echo "::warning::Test run lookup failed (attempt $api_errors)"; }
+            if [ -n "$run" ]; then
+              read -r status conclusion url <<<"$run"
+              if [ "$status" = completed ]; then
+                [ "$conclusion" = success ] && { echo "Test passed for $commit: $url"; break; }
+                echo "::error::Test for $commit concluded $conclusion: $url"; exit 1
+              fi
+              first_seen=${first_seen:-$SECONDS}
+            elif [ $SECONDS -gt 600 ] && [ -z "$first_seen" ]; then
+              echo "::error::no main-push Test run for $commit (failed lookups: ${api_errors:-0}); tag a commit that is on main"; exit 1
+            fi
+            [ $SECONDS -lt $deadline ] || { echo "::error::timed out waiting for Test on $commit"; exit 1; }
+            sleep 30
+          done
 
       - uses: actions/checkout@v4
         with:
-          ref: ${{ steps.tag.outputs.tag }}
           fetch-depth: 0
 
       - uses: actions/setup-go@v5
@@ -44,7 +63,7 @@ jobs:
 
       - name: Require release notes
         env:
-          NOTES: docs/releases/${{ steps.tag.outputs.tag }}.md
+          NOTES: docs/releases/${{ env.tag }}.md
         run: test -s "$NOTES" || { echo "::error::$NOTES is missing or empty; add it in the release PR (AGENTS.md, Release notes)"; exit 1; }
 
       - name: Require the tap deploy key
@@ -55,7 +74,7 @@ jobs:
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
-          args: release --clean --release-notes docs/releases/${{ steps.tag.outputs.tag }}.md
+          args: release --clean --release-notes docs/releases/${{ env.tag }}.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_SSH_KEY: ${{ secrets.HOMEBREW_TAP_SSH_KEY }}

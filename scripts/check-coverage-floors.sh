@@ -46,7 +46,8 @@ trap cleanup EXIT
 # The coverage table is only enforcement when a pull request that changes the
 # table starts the workflow that runs this guard. Read the checked-in YAML
 # declaration rather than attempting to emulate a GitHub event: the exact
-# allowlist is the contract GitHub evaluates.
+# allowlist is the contract GitHub evaluates. Without a trigger paths filter,
+# the decision job's TEST_INPUTS is that allowlist (scripts/ci-decision.sh).
 awk '
   /^  pull_request:[[:space:]]*$/ { in_pr = 1; next }
   in_pr && /^  [^[:space:]#]/ { exit }
@@ -62,13 +63,24 @@ awk '
   }
 ' "$workflow_file" >"$work_dir/pull-request-paths"
 
-if [[ ! -s "$work_dir/pull-request-paths" ]]; then
-  echo "check-coverage-floors: $workflow_file has no pull_request.paths entries; required policy path .testcoverage.yml is not scheduled" >&2
+if [[ -s "$work_dir/pull-request-paths" ]]; then
+  if ! grep -Fxq '.testcoverage.yml' "$work_dir/pull-request-paths"; then
+    echo "check-coverage-floors: $workflow_file pull_request.paths omits required policy path .testcoverage.yml" >&2
+    exit 1
+  fi
+elif ! grep -Eq '^  pull_request:[[:space:]]*$' "$workflow_file"; then
+  echo "check-coverage-floors: $workflow_file has no pull_request trigger; required policy path .testcoverage.yml is not scheduled" >&2
   exit 1
-fi
-if ! grep -Fxq '.testcoverage.yml' "$work_dir/pull-request-paths"; then
-  echo "check-coverage-floors: $workflow_file pull_request.paths omits required policy path .testcoverage.yml" >&2
-  exit 1
+else
+  inputs=$(grep -E '^[[:space:]]+TEST_INPUTS:' "$workflow_file" || true)
+  if [[ $(printf '%s\n' "$inputs" | grep -c .) -ne 1 ]]; then
+    echo "check-coverage-floors: $workflow_file has no single decision TEST_INPUTS; required policy path .testcoverage.yml is not scheduled" >&2
+    exit 1
+  fi
+  if ! printf '%s' "$inputs" | grep -Fq '\.testcoverage\.yml$'; then
+    echo "check-coverage-floors: $workflow_file decision TEST_INPUTS omits required policy path .testcoverage.yml" >&2
+    exit 1
+  fi
 fi
 
 # Keep the package default's raw token until it has passed the same contract as

@@ -2,35 +2,48 @@ name: Test
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+  # No `paths` filter: the decision job skips the expensive jobs when only
+  # non-test files changed, so every commit still gets a Test result that the
+  # Release workflow can check. Tags are not tested again; Release checks the
+  # tagged commit's main-push run instead.
   pull_request:
-    # Also validate stacked feature PRs before their prerequisite reaches main.
-    paths:
-      - "cmd/**"
-      - "internal/**"
-      - "go.mod"
-      - "go.sum"
-      - ".testcoverage.yml"
-      - "Makefile"
-      - "scripts/**"
-      - "tests/**"
-      - "tools/**"
-      - "docs/commands/**"
-      - "docs/**"
-      - "README.md"
-      - ".github/workflows/**"
-      - ".goreleaser.yaml"
-      - ".golangci.yml"
 
 permissions:
   contents: read
 
 concurrency:
-  group: test-${{ github.ref }}
+  # One group per main commit: a newer push would otherwise replace a pending
+  # main run, and Release needs every main commit's Test result.
+  group: test-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
+  decision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      run_full: ${{ steps.decide.outputs.run_full }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          WORKFLOW_FILE: test.yaml
+          # The former trigger paths filter. docs/releases/ holds release notes only.
+          TEST_INPUTS: '^(cmd/|internal/|go\.mod$|go\.sum$|\.testcoverage\.yml$|Makefile$|scripts/|tests/|tools/|docs/|README\.md$|\.github/workflows/|\.goreleaser\.yaml$|\.golangci\.yml$|\.govulncheck-allow\.json$|\.dockerignore$)'
+          TEST_IGNORE: '^docs/releases/'
+        run: bash scripts/ci-decision.sh
+
   lint:
+    needs: decision
+    if: needs.decision.outputs.run_full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -45,6 +58,8 @@ jobs:
       # config against fixtures written into the tree, and /tests/scenarios in
       # the image has no repo above it. Placed after the real gate so a bug in
       # the scenario cannot mask a real lint finding.
+      - name: CI decision path classification
+        run: bash scripts/ci-decision.sh --self-test
       - name: Seam lint rules are not a no-op
         run: bash tests/scenarios/lint-seams-gate.sh
       - name: Dependency vulnerability gate
@@ -118,6 +133,8 @@ jobs:
         run: bash scripts/check-vacuity-guards.sh
 
   unit:
+    needs: decision
+    if: needs.decision.outputs.run_full == 'true'
     strategy:
       # One failing leg must not cancel the other platform's BUG-18/BUG-19
       # evidence (G-07-08): run 32977743165's macOS rg failure cancelled the
@@ -320,7 +337,8 @@ jobs:
           go-test-coverage --config=./.testcoverage.yml
 
   integration:
-    needs: unit
+    needs: decision
+    if: needs.decision.outputs.run_full == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -351,16 +369,44 @@ jobs:
           docker run --rm "$TAG" /tests/run-profile.sh "${{ matrix.profile }}"
 
   linux:
-    # Combined module + scenario suite: one image build, N fresh-container runs.
-    needs: unit
+    # Combined module + scenario suite: one image build, N fresh-container runs,
+    # split into shards so the three slowest cases run side by side.
+    needs: decision
+    if: needs.decision.outputs.run_full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [apply, idempotency, rest]
     env:
       TAG: dotfiles-test:linux
-      MODULES: "packages shell node git ssh terminal tmux ai conda"
-      SCENARIOS: "dry-run-all-profiles init-and-apply idempotency server-profile upgrade-check home-override workspace profile-snapshot sync install-script install-security guard dry-run-empty-home differential secrets noindex ssh-loopback"
+      ALL_MODULES: "packages shell node git ssh terminal tmux ai conda"
+      ALL_SCENARIOS: "dry-run-all-profiles init-and-apply idempotency server-profile upgrade-check home-override workspace profile-snapshot sync install-script install-security guard dry-run-empty-home differential secrets noindex ssh-loopback"
     steps:
       - uses: actions/checkout@v4
+      # Shards are carved out of the full lists, so a module or scenario added
+      # to ALL_* lands in `rest` without touching this step.
+      - name: Select shard
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          case "$SHARD" in
+            apply)       picks_s="init-and-apply"; picks_m="" ;;
+            idempotency) picks_s="idempotency";    picks_m="packages" ;;
+            rest)        picks_s="";               picks_m="" ;;
+            *) echo "::error::unknown shard $SHARD"; exit 1 ;;
+          esac
+          heavy_s="init-and-apply idempotency"; heavy_m="packages"
+          for x in $heavy_s; do [[ " $ALL_SCENARIOS " == *" $x "* ]] || { echo "::error::shard scenario $x is not in ALL_SCENARIOS"; exit 1; }; done
+          for x in $heavy_m; do [[ " $ALL_MODULES " == *" $x "* ]] || { echo "::error::shard module $x is not in ALL_MODULES"; exit 1; }; done
+          if [ "$SHARD" = rest ]; then
+            for x in $ALL_SCENARIOS; do [[ " $heavy_s " == *" $x "* ]] || picks_s="$picks_s $x"; done
+            for x in $ALL_MODULES; do [[ " $heavy_m " == *" $x "* ]] || picks_m="$picks_m $x"; done
+          fi
+          echo "SCENARIOS=${picks_s# }" >> "$GITHUB_ENV"
+          echo "MODULES=${picks_m# }" >> "$GITHUB_ENV"
+          echo "shard $SHARD: modules [${picks_m# }] scenarios [${picks_s# }]"
       - uses: actions/setup-go@v5
         with:
           go-version-file: "go.mod"
@@ -413,6 +459,7 @@ jobs:
             --cache-to "type=gha,mode=max,scope=$SCOPE" \
             -t "$TAG" -f tests/Dockerfile.ubuntu-22.04 .
       - name: Modules
+        if: env.MODULES != ''
         run: |
           failed=()
           for m in $MODULES; do
@@ -470,7 +517,8 @@ jobs:
           fi
 
   apps-install-macos:
-    needs: unit
+    needs: decision
+    if: needs.decision.outputs.run_full == 'true'
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
