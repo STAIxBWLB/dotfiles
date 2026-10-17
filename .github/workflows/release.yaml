@@ -42,6 +42,11 @@ jobs:
         with:
           go-version-file: "go.mod"
 
+      - name: Require release notes
+        env:
+          NOTES: docs/releases/${{ steps.tag.outputs.tag }}.md
+        run: test -s "$NOTES" || { echo "::error::$NOTES is missing or empty; add it in the release PR (AGENTS.md, Release notes)"; exit 1; }
+
       - name: Require the tap deploy key
         env:
           HOMEBREW_TAP_SSH_KEY: ${{ secrets.HOMEBREW_TAP_SSH_KEY }}
@@ -50,7 +55,7 @@ jobs:
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
-          args: release --clean
+          args: release --clean --release-notes docs/releases/${{ steps.tag.outputs.tag }}.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_SSH_KEY: ${{ secrets.HOMEBREW_TAP_SSH_KEY }}
