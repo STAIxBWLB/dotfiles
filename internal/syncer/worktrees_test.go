@@ -577,3 +577,25 @@ func TestMergePeerWorktrees_SkipsKnownRootsUnreadable(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+// The status list the other Mac reports ignores its own ignore.txt: the
+// coordinator's filters decide the transfer, so a worktree hidden only by a
+// local rule must still be reported (#268). The code-owned volatile layer,
+// identical on both sides, is still pruned.
+func TestDetectPeerWorktrees_ReportsWorktreesUnderLocalOnlyRules(t *testing.T) {
+	workspace := t.TempDir()
+	cfg := newPeerWorktreeTestConfig(t, workspace)
+	if err := os.WriteFile(cfg.IgnoreFile, []byte("/dev/feature-wt/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	makeFakeGitdir(t, filepath.Join(workspace, "dev", "feature-wt"), filepath.Join(workspace, "main", ".git", "worktrees", "feature-wt"), true)
+	unreadableDir(t, filepath.Join(workspace, "scratchpad", "temp", "runtime"))
+
+	got, err := DetectPeerWorktrees(cfg, workspace)
+	if err != nil {
+		t.Fatalf("the code-owned volatile layer was not pruned: %v", err)
+	}
+	if !slices.Equal(got, []string{"dev/feature-wt"}) {
+		t.Fatalf("got %v, want the worktree a local-only rule hides", got)
+	}
+}

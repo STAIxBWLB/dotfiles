@@ -244,11 +244,16 @@ func MaterializeWorktreesDynFile(dir string, rels []string) (string, error) {
 	return out, nil
 }
 
-// DetectPeerWorktrees is the worktree scan of a peer run over root, pruned by
-// this machine's peer filters (#268). Both sides use it: the coordinator for
-// its own tree, and the other Mac for the list its status reports.
+// DetectPeerWorktrees is the scan behind the worktree list the other Mac
+// reports in its status (#268). The coordinator applies its own filters to
+// the transfer, so this side prunes only the code-owned layers both share,
+// never its editable ignore.txt: a worktree hidden by a local-only rule would
+// go unreported and its content would travel as regular files.
 func DetectPeerWorktrees(cfg *Config, root string) ([]string, error) {
-	return detectPeerWorktrees(cfg, root, nil)
+	volatile := peerVolatilePatterns(cfg)
+	return detectLinkedWorktrees(root, func(rel string) bool {
+		return isAlwaysExcluded(rel) || matchesAny(volatile, rel)
+	}, cfg.IgnoreFile)
 }
 
 // detectPeerWorktrees also prunes the already known worktree roots.
@@ -268,16 +273,26 @@ func peerScanSkip(cfg *Config) (func(rel string) bool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("loading peer filters: %w", err)
 	}
-	var volatile []excludePattern
-	for _, arg := range peerVolatileExcludeArgs(cfg) {
-		volatile = append(volatile, excludePattern{raw: strings.TrimPrefix(arg, "--exclude=")})
-	}
+	volatile := peerVolatilePatterns(cfg)
 	return func(rel string) bool {
-		for _, p := range volatile {
-			if p.matches(rel, true) {
-				return true
-			}
-		}
-		return filter.shouldSkip("", rel, true)
+		return matchesAny(volatile, rel) || filter.shouldSkip("", rel, true)
 	}, nil
+}
+
+// peerVolatilePatterns is the code-owned volatile exclude layer as patterns.
+func peerVolatilePatterns(cfg *Config) []excludePattern {
+	var out []excludePattern
+	for _, arg := range peerVolatileExcludeArgs(cfg) {
+		out = append(out, excludePattern{raw: strings.TrimPrefix(arg, "--exclude=")})
+	}
+	return out
+}
+
+func matchesAny(patterns []excludePattern, dir string) bool {
+	for _, p := range patterns {
+		if p.matches(dir, true) {
+			return true
+		}
+	}
+	return false
 }
