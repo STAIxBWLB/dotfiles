@@ -150,8 +150,9 @@ without changing the requested transfer decision.
 
 `dot sync push` keeps a copy under the mirror's `.sync-conflicts/<timestamp>/`
 only when something could be lost: a propagated deletion, or an overwrite of a
-mirror copy that changed after the last push. A routine update leaves no
-backup, and a mirror file the cloud rewrote with the same bytes and only a new
+mirror copy that changed after the last push. It also keeps one, to be safe,
+when a file turns into a directory or link, or when it cannot prove the old
+copy matched the last push. A routine update leaves no backup, and a mirror file the cloud rewrote with the same bytes and only a new
 timestamp is not a conflict. `dot sync status` shows `Conflicts: N live` (the
 conflicts the last push refused on) apart from `Backups: M directories
 (size)`, and `dot sync status --json` carries `liveConflictCount` and
