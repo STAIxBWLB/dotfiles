@@ -698,9 +698,19 @@ func Push(ctx context.Context, runner *exec.Runner, cfg *Config, dryRun bool) er
 	// push would falsely record unsent paths as peer-seen and could later turn a
 	// local delete into deletion of independent peer work. Keep that baseline
 	// unchanged on any failed SSH push.
+	// rsync --backup keeps every replaced mirror copy, routine updates
+	// included; the pre-push baseline tells which copies were routine (#264).
+	var preBaseline map[string]Fingerprint
+	if !dryRun && !cfg.Target.IsSSH() && cfg.LocalPaths != nil {
+		// Unreadable: keep every backup.
+		preBaseline, _ = LoadBaselineManifest(cfg.LocalPaths.BaselineFile)
+	}
 	out, rsyncErr := runRsyncOutput(ctx, runner, cfg, args)
 	if rsyncErr != nil && (cfg.Target.IsSSH() || !rsyncExited(ctx, rsyncErr)) {
 		return rsyncErr
+	}
+	if preBaseline != nil {
+		dropRoutineBackups(cfg, conflict, preBaseline)
 	}
 	if !dryRun && cfg.LocalPaths != nil {
 		// Fast (stat-only) fingerprints: a strict pass would read every

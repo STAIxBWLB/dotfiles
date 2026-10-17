@@ -53,6 +53,11 @@ disabled. Examples:
 The per-workspace store (.dotfiles/) and intake staging area
 (inbox/gdrive/) are always excluded so they never round-trip to mirror.
 
+Backups under the mirror's .sync-conflicts/ keep only what can be lost:
+propagated deletions and overwrites of a copy changed in the mirror. A routine
+update leaves none. A mirror copy with the same bytes and only a new mtime is
+not a conflict.
+
 Previews, including --dry-run, display operator-approved sensitive overrides.
 Dry-run does not transfer files.`,
 		RunE:         runSyncPush,

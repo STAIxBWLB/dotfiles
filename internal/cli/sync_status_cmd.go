@@ -6,6 +6,7 @@ import (
 
 	"github.com/STAIxBWLB/dotfiles/internal/syncer"
 	"github.com/STAIxBWLB/dotfiles/internal/ui"
+	"github.com/STAIxBWLB/dotfiles/internal/ws"
 	"github.com/spf13/cobra"
 )
 
@@ -125,17 +126,28 @@ func runSyncStatus(cmd *cobra.Command, _ []string) error {
 	if st.ConflictsError != "" {
 		p.Warn("conflict backups not listed: %s", st.ConflictsError)
 	}
-	if len(st.Conflicts) > 0 {
-		p.Section(fmt.Sprintf("Conflicts: %d backup directories", len(st.Conflicts)))
-		now := time.Now()
-		for _, c := range st.Conflicts {
-			age := now.Sub(c.ModTime).Truncate(time.Hour)
-			p.Bullet("•", fmt.Sprintf("%s (%s ago)", c.Timestamp, age))
-		}
-	}
+	printConflictState(p, st, time.Now())
 	if n := len(st.Shared); n > 0 {
 		p.KV("Shared", fmt.Sprintf("%d manual entries — see `dot sync shared`", n))
 	}
 	p.Blank()
 	return nil
+}
+
+// printConflictState shows live conflicts apart from retained backups (#264):
+// live conflicts block a clean push, backups are copies that need nothing
+// until they are pruned.
+func printConflictState(p *Printer, st *syncer.Status, now time.Time) {
+	if st.LiveConflicts > 0 {
+		p.KV("Conflicts", ui.StyleWarning.Render(fmt.Sprintf("%d live: the last push refused on them; `dot sync push --dry-run` lists them", st.LiveConflicts)))
+	} else {
+		p.KV("Conflicts", "0 live")
+	}
+	if len(st.Conflicts) > 0 {
+		p.Section(fmt.Sprintf("Backups: %d directories (%s), kept until `dot sync conflicts prune`", len(st.Conflicts), ws.FormatSize(st.BackupBytes)))
+		for _, c := range st.Conflicts {
+			age := now.Sub(c.ModTime).Truncate(time.Hour)
+			p.Bullet("•", fmt.Sprintf("%s (%s ago)", c.Timestamp, age))
+		}
+	}
 }

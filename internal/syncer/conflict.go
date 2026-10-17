@@ -87,6 +87,54 @@ func (c *ConflictDir) PullLocalBackupRel() string {
 	return filepath.Join(conflictsDirName, c.Timestamp, backupSubFromWorkspace)
 }
 
+// dropRoutineBackups removes from this push's backup directory every copy
+// that only records a routine update (#264): the workspace still has the
+// path and the replaced mirror copy matched the pre-push baseline, so it is
+// what an earlier push wrote and the workspace already holds its successor.
+// What stays is what a backup is for: propagated deletions, overwrites of a
+// copy that changed in the mirror after the baseline, and anything unproven.
+// Directories left empty go, the timestamp directory included. Best effort:
+// a copy that cannot be judged or removed is kept.
+func dropRoutineBackups(cfg *Config, conflict *ConflictDir, baseline map[string]Fingerprint) {
+	local := strings.TrimRight(cfg.LocalPath, "/")
+	root := filepath.Join(strings.TrimRight(cfg.MirrorPath, "/"), conflict.PushBackupRel())
+	var dirs []string
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil //nolint:nilerr // best effort: an unreadable copy is kept
+		}
+		if d.IsDir() {
+			dirs = append(dirs, path)
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return nil //nolint:nilerr // kept
+		}
+		rel = normalizeRel(rel)
+		base, ok := baseline[rel]
+		if !ok {
+			return nil
+		}
+		if _, err := os.Lstat(filepath.Join(local, rel)); err != nil {
+			return nil // a propagated deletion, or unknown: kept
+		}
+		info, err := d.Info()
+		if err != nil || (base.Sha != "" && dehydratedFile(path, info)) {
+			return nil //nolint:nilerr // hashing a cloud placeholder would download it: kept
+		}
+		fp, err := FingerprintFile(path, FingerprintFast)
+		if err == nil && FingerprintsCompatible(base, fp, path) {
+			_ = os.Remove(path)
+		}
+		return nil
+	})
+	for i := len(dirs) - 1; i >= 0; i-- {
+		_ = os.Remove(dirs[i]) // only an empty directory goes
+	}
+	_ = os.Remove(filepath.Dir(root))
+}
+
 // ConflictEntry summarizes one timestamped conflict directory under a
 // tree's .sync-conflicts/ folder.
 type ConflictEntry struct {

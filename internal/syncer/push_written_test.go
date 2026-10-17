@@ -1046,5 +1046,118 @@ func TestPushCommand_WhileLockedRunsOnlyUnderTheLock(t *testing.T) {
 	}
 	if held != 1 || released != 1 {
 		t.Fatalf("lease taken %d, released %d; want 1 and 1", held, released)
+||||||| parent of 30603a7 (fix(sync): keep mirror backups for real losses only; mtime-only copies are not conflicts)
+
+// pushClean runs a clean push and fails the test on any error.
+func (f *intakeFixture) pushClean(mode RunMode) {
+	f.t.Helper()
+	if _, err := PushCommand(context.Background(), PushOptions{Config: f.cfg, Runner: f.runner, Mode: mode}); err != nil {
+		f.t.Fatalf("push (%s): %v", mode, err)
+	}
+}
+
+// later sets a file's mtime past every write so far: rsync and the plan only
+// see a change through size and mtime.
+func later(t *testing.T, abs string, by time.Duration) {
+	t.Helper()
+	when := time.Now().Add(by)
+	if err := os.Chtimes(abs, when, when); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Pushing an ordinary edit leaves no backup behind (#264 AC1).
+func TestPushCommand_RoutineUpdateLeavesNoBackup(t *testing.T) {
+	requireRsync(t)
+	f := newIntakeFixture(t)
+	f.writeLocal("notes/a.md", "v1")
+	f.pushClean(ModeClean)
+	f.writeLocal("notes/a.md", "v2 edited")
+	later(t, filepath.Join(f.local, "notes/a.md"), time.Minute)
+	f.pushClean(ModeClean)
+
+	if got, _ := os.ReadFile(filepath.Join(f.mirror, "notes/a.md")); string(got) != "v2 edited" {
+		t.Fatalf("mirror copy = %q, want the edit", got)
+	}
+	if entries, err := ListConflicts(f.mirror); err != nil || len(entries) != 0 {
+		t.Fatalf("a routine update left backups: %v, %v", entries, err)
+	}
+}
+
+// A propagated deletion and a forced overwrite of a copy changed in the
+// mirror are still backed up (#264 AC2).
+func TestPushCommand_DeletionAndForcedOverwriteKeepBackups(t *testing.T) {
+	requireRsync(t)
+	requirePeerRsync(t)
+	f := newIntakeFixture(t)
+	f.cfg.Propagation.Delete = true
+	f.writeLocal("notes/gone.md", "delete me")
+	f.writeLocal("notes/both.md", "base")
+	f.pushClean(ModeClean)
+
+	if err := os.Remove(filepath.Join(f.local, "notes/gone.md")); err != nil {
+		t.Fatal(err)
+	}
+	f.writeMirror("notes/both.md", "edited in the cloud")
+	later(t, filepath.Join(f.mirror, "notes/both.md"), time.Minute)
+	f.writeLocal("notes/both.md", "edited here too")
+	later(t, filepath.Join(f.local, "notes/both.md"), 2*time.Minute)
+	f.pushClean(ModeForce)
+
+	entries, err := ListConflicts(f.mirror)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("backups = %v, %v; want one directory", entries, err)
+	}
+	backup := filepath.Join(entries[0].Path, backupSubFromWorkspace)
+	for rel, want := range map[string]string{"notes/gone.md": "delete me", "notes/both.md": "edited in the cloud"} {
+		if got, err := os.ReadFile(filepath.Join(backup, rel)); err != nil || string(got) != want {
+			t.Errorf("backup of %s = %q, %v; want %q", rel, got, err, want)
+		}
+	}
+}
+
+// Identical bytes under a new mirror mtime do not block a clean push, the
+// baseline row records the sha, and a real content change still refuses
+// (#265).
+func TestPushCommand_MtimeOnlyMirrorChangeIsNotAConflict(t *testing.T) {
+	requireRsync(t)
+	f := newIntakeFixture(t)
+	hook := "claude-hooks/a.sh"
+	f.writeLocal(hook, "#!/bin/sh\necho hi\n")
+	f.pushClean(ModeClean)
+	// The provider rewrites only the timestamp.
+	later(t, filepath.Join(f.mirror, hook), time.Hour)
+
+	// Nothing else to send: the run records the sha and moves nothing.
+	f.pushClean(ModeClean)
+	baseline, err := LoadBaselineManifest(f.cfg.LocalPaths.BaselineFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row := baseline[hook]; row.Sha == "" {
+		t.Fatalf("baseline row = %+v, want the sha", row)
+	}
+	f.pushClean(ModeClean) // stable: compared by content again
+
+	// With something else to send the clean push goes through, and rsync's
+	// replaced copy of the hook is a routine backup that does not stay.
+	f.writeLocal("notes/new.md", "something to send")
+	f.pushClean(ModeClean)
+	if got, _ := os.ReadFile(filepath.Join(f.mirror, "notes/new.md")); string(got) != "something to send" {
+		t.Fatalf("the clean push did not run: %q", got)
+	}
+	if entries, _ := ListConflicts(f.mirror); len(entries) != 0 {
+		t.Fatalf("backups left: %v", entries)
+	}
+
+	f.writeMirror(hook, "#!/bin/sh\necho HI\n") // same size, new bytes
+	later(t, filepath.Join(f.mirror, hook), 2*time.Hour)
+	f.writeLocal(hook, "#!/bin/sh\necho yo\n")
+	later(t, filepath.Join(f.local, hook), 3*time.Hour)
+	if _, err := PushCommand(context.Background(), PushOptions{Config: f.cfg, Runner: f.runner, Mode: ModeClean}); err == nil || !strings.Contains(err.Error(), "push refused: 1 conflict") {
+		t.Fatalf("a real mirror content change = %v, want a refusal", err)
+	}
+	if st, _ := LoadLocalState(f.cfg.LocalPaths); st.LastPushConflicts != 1 {
+		t.Fatalf("live conflicts after the refusal = %d, want 1", st.LastPushConflicts)
 	}
 }

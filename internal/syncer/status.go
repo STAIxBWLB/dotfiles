@@ -50,6 +50,8 @@ type Status struct {
 	SchedulerState       SchedulerState // push unit
 	IntakeSchedulerState SchedulerState // pull unit (if installed)
 	Conflicts            []ConflictEntry
+	BackupBytes          int64  // bytes held by the Conflicts directories
+	LiveConflicts        int    // conflicts the latest push refused on (#264)
 	ConflictsError       string // a tree whose backups could not be listed (a symlinked .sync-conflicts)
 	Shared               []SharedEntry
 
@@ -152,6 +154,11 @@ func GetStatus(ctx context.Context, runner *exec.Runner, cfg *Config, state *con
 			s.ConflictsError = err.Error()
 		}
 	}
+
+	for _, c := range s.Conflicts {
+		s.BackupBytes += conflictDirSize(c.Path)
+	}
+	s.LiveConflicts = localState.LastPushConflicts
 
 	// Populate manual shared entries. Errors are non-fatal; status is best-effort.
 	if shared, err := ScanShared(s.MirrorPath, cfg.SharedExcludes); err == nil {

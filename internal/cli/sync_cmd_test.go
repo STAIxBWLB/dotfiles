@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/huh/v2"
 	"github.com/spf13/cobra"
@@ -340,5 +341,25 @@ func TestPrintInactiveShared_ListsStoredEntriesOnce(t *testing.T) {
 	}
 	if n := strings.Count(got, "\n  \""); n != len(syncer.StoredSharedEntries(stored)) {
 		t.Errorf("listed %d entries, want %d:\n%s", n, len(syncer.StoredSharedEntries(stored)), got)
+	}
+}
+
+// Status shows live conflicts and retained backups on separate lines (#264
+// AC3): backups alone never read as conflicts.
+func TestSyncStatusSeparatesLiveConflictsFromBackups(t *testing.T) {
+	render := func(st *syncer.Status) string {
+		var out bytes.Buffer
+		printConflictState(&Printer{Out: &out, Err: io.Discard}, st, time.Now())
+		return out.String()
+	}
+	backups := []syncer.ConflictEntry{{Timestamp: "20261018T043113.000", ModTime: time.Now()}, {Timestamp: "20261018T050000.000", ModTime: time.Now()}}
+
+	got := render(&syncer.Status{Conflicts: backups, BackupBytes: 3 << 20})
+	if !strings.Contains(got, "0 live") || !strings.Contains(got, "Backups: 2 directories (3.0 MiB)") {
+		t.Fatalf("backups only:\n%s", got)
+	}
+	got = render(&syncer.Status{LiveConflicts: 6})
+	if !strings.Contains(got, "6 live") || strings.Contains(got, "Backups:") {
+		t.Fatalf("live only:\n%s", got)
 	}
 }
