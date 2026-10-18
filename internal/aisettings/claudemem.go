@@ -944,12 +944,15 @@ func ensureMCPEntry(path, dotPath string, variant mcpEntryVariant) (bool, error)
 
 func ensureScopedMCPEntry(path, dotPath string, variant mcpEntryVariant, home, pluginRoot string) (bool, error) {
 	doc := map[string]json.RawMessage{}
-	if raw, err := os.ReadFile(path); err == nil {
+	raw, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return false, err
+	}
+	// agy ships its MCP config as an empty file; treat that as no servers.
+	if len(bytes.TrimSpace(raw)) > 0 {
 		if err := json.Unmarshal(raw, &doc); err != nil {
 			return false, fmt.Errorf("parse MCP config %s: %w", path, err)
 		}
-	} else if !os.IsNotExist(err) {
-		return false, err
 	}
 	servers := map[string]json.RawMessage{}
 	if raw := doc["mcpServers"]; len(raw) > 0 {

@@ -204,3 +204,20 @@ func TestSelectedAntigravityGetsMCPRecall(t *testing.T) {
 		t.Fatal("unselected qwen was wired")
 	}
 }
+
+// agy creates mcp_config.json as an empty file; the entry still lands, while
+// a non-empty broken file is still rejected.
+func TestMCPEntryAcceptsEmptyConfigFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mcp_config.json")
+	mustWriteFile(t, path, "")
+	if _, err := ensureMCPEntry(path, "/opt/bin/dot", mcpVariantStandard); err != nil {
+		t.Fatal(err)
+	}
+	if !hasManagedMCPEntry(path, "/opt/bin/dot") {
+		t.Fatal("entry missing after empty config")
+	}
+	mustWriteFile(t, path, "{broken")
+	if _, err := ensureMCPEntry(path, "/opt/bin/dot", mcpVariantStandard); err == nil {
+		t.Fatal("broken config accepted")
+	}
+}
