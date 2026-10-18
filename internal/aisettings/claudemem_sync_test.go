@@ -3,6 +3,7 @@ package aisettings
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -721,5 +722,42 @@ func TestImportRejectsConflictingBundleSessionIdentity(t *testing.T) {
 				t.Fatalf("failed import changed observation identity: %q", memoryID)
 			}
 		})
+	}
+}
+
+// A write tx that reads first must not fail when another connection (the
+// claude-mem worker) commits between its read and its write.
+func TestSyncDBWriteTxSurvivesConcurrentCommit(t *testing.T) {
+	d := newTestSyncDB(t)
+	worker, err := sql.Open("sqlite", "file:"+d.Path+"?_pragma=busy_timeout(5000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer worker.Close()
+
+	tx, err := d.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	var n int
+	if err := tx.QueryRow("SELECT count(*) FROM sdk_sessions").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	// The worker waits for our lock instead of slipping a commit in.
+	done := make(chan error, 1)
+	go func() {
+		_, err := worker.Exec("INSERT INTO sdk_sessions (content_session_id, memory_session_id, project, started_at, started_at_epoch, status) VALUES ('w', 'w', 'p', '2026-01-01', 1, 'active')")
+		done <- err
+	}()
+	time.Sleep(100 * time.Millisecond)
+	if _, err := tx.Exec("INSERT INTO sdk_sessions (content_session_id, memory_session_id, project, started_at, started_at_epoch, status) VALUES ('s', 's', 'p', '2026-01-01', 1, 'active')"); err != nil {
+		t.Fatalf("write after read in tx: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("worker insert after import commit: %v", err)
 	}
 }

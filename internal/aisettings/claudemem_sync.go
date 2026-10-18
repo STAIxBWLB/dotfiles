@@ -114,6 +114,12 @@ func openSyncDB(path, mode string) (*SyncDB, error) {
 	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)", path)
 	if mode != "" {
 		dsn += "&mode=" + mode
+	} else {
+		// Import reads before it writes. A deferred tx that read a snapshot
+		// cannot upgrade after the worker commits: SQLite returns SQLITE_BUSY
+		// at once, without the busy timeout. IMMEDIATE takes the write lock at
+		// BEGIN, where busy_timeout does wait.
+		dsn += "&_txlock=immediate"
 	}
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
