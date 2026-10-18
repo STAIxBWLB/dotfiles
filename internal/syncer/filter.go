@@ -67,6 +67,9 @@ func newSyncFilter(cfg *Config, _ string) (*syncFilter, error) {
 		}
 		f.excludePatterns = append(f.excludePatterns, patterns...)
 	}
+	for _, p := range cfg.ExtraExcludes {
+		f.excludePatterns = append(f.excludePatterns, excludePattern{raw: p})
+	}
 
 	if f.mode == FilterModeInclude {
 		patterns := cfg.IncludePatterns
