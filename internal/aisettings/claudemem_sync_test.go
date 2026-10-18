@@ -3,6 +3,7 @@ package aisettings
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -721,5 +722,43 @@ func TestImportRejectsConflictingBundleSessionIdentity(t *testing.T) {
 				t.Fatalf("failed import changed observation identity: %q", memoryID)
 			}
 		})
+	}
+}
+
+// A write tx that reads first must not fail when another connection (the
+// claude-mem worker) tries to commit between its read and its write.
+func TestSyncDBWriteTxSurvivesConcurrentCommit(t *testing.T) {
+	d := newTestSyncDB(t)
+	// The live worker runs the store in WAL mode, where readers never block a
+	// writer's commit; that is what makes the deferred upgrade fail.
+	if _, err := d.db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		t.Fatal(err)
+	}
+	worker, err := sql.Open("sqlite", "file:"+d.Path+"?_pragma=busy_timeout(50)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer worker.Close()
+	const insert = "INSERT INTO sdk_sessions (content_session_id, memory_session_id, project, started_at, started_at_epoch, status) VALUES (?, ?, 'p', '2026-01-01', 1, 'active')"
+
+	tx, err := d.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	var n int
+	if err := tx.QueryRow("SELECT count(*) FROM sdk_sessions").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	// Deferred tx: this commit lands and the write below fails SQLITE_BUSY.
+	// Immediate tx: we hold the write lock, so the worker is the one refused.
+	if _, err := worker.Exec(insert, "w", "w"); err == nil {
+		t.Log("worker committed between the read and the write")
+	}
+	if _, err := tx.Exec(insert, "s", "s"); err != nil {
+		t.Fatalf("write after read in tx: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
 	}
 }
