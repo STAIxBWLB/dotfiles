@@ -23,13 +23,14 @@ func newPeerInitCmd() *cobra.Command {
 		Long: `Write <workspace>/.dotfiles/peer/ with a target, secrets opt-in, and the
 host-path list.
 
-Use a hostname that survives a network change. Tailscale MagicDNS names
-(<machine>.<tailnet>.ts.net) work from any network without a static IP or an
-inbound port, which is what a laptop needs.`,
+Use a host name that survives a network change: an SSH config alias that
+maps to the other machine's private-network address (for example its
+Cloudflare WARP IPv6, with HostKeyAlias), so the profile target does not
+change when the address does. A laptop needs one that works without an inbound port.`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			p := printerFrom(c)
 			if strings.TrimSpace(host) == "" {
-				return fmt.Errorf("--host is required (e.g. --host yj.lee@other.tailnet.ts.net)")
+				return fmt.Errorf("--host is required (e.g. --host yj.lee@other-mac, an SSH config alias)")
 			}
 			bs, err := syncer.Bootstrap(peerBootstrapOptions(c))
 			if err != nil {

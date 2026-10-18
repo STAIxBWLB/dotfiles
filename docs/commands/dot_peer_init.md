@@ -7,9 +7,10 @@ Create the peer profile pointing at another machine
 Write <workspace>/.dotfiles/peer/ with a target, secrets opt-in, and the
 host-path list.
 
-Use a hostname that survives a network change. Tailscale MagicDNS names
-(<machine>.<tailnet>.ts.net) work from any network without a static IP or an
-inbound port, which is what a laptop needs.
+Use a host name that survives a network change: an SSH config alias that
+maps to the other machine's private-network address (for example its
+Cloudflare WARP IPv6, with HostKeyAlias), so the profile target does not
+change when the address does. A laptop needs one that works without an inbound port.
 
 ```
 dot peer init [flags]
