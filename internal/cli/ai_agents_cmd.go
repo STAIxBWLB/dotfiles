@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -70,6 +71,12 @@ func newAIAgentsListCmd(verbose bool) *cobra.Command {
 					ui.StyleValue.Render(st.Tool.ID), st.Drift, st.TargetPath, opt, overlay))
 				if verbose {
 					p.Line("      rendered:%s target:%s", shortHash(st.RenderedHash), shortHash(st.TargetHash))
+				}
+			}
+			// Grok has no target of its own: it reads Claude's file.
+			if _, err := exec.LookPath("grok"); err == nil {
+				if claude, err := mgr.TargetPath("claude"); err == nil {
+					p.Line("  grok reads %s through its Claude compat", claude)
 				}
 			}
 			return nil

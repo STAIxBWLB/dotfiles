@@ -176,3 +176,31 @@ func TestSelectedRecallPinsHomeAndBackend(t *testing.T) {
 		t.Fatalf("unscoped recall: %+v", entry)
 	}
 }
+
+// agy has no transcript the bridge reads, so selecting it wires MCP recall
+// only, and keeps the other servers in its shared config.
+func TestSelectedAntigravityGetsMCPRecall(t *testing.T) {
+	home := t.TempDir()
+	plugin := marketplaceCheckoutDir(home)
+	writeClaudeMemTree(t, plugin, true)
+	m := NewClaudeMemManager(home, "/opt/bin/dot", "")
+	m.SelectedAgents = []string{"antigravity"}
+	m.PluginRoot = plugin
+	mustWriteFile(t, m.AntigravityMCPPath(), `{"mcpServers":{"other":{"command":"x"}}}`)
+	if _, err := m.PrepareSelectedIntegration(); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(m.AntigravityMCPPath())
+	var doc struct {
+		Servers map[string]json.RawMessage `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil || doc.Servers["claude-mem"] == nil || doc.Servers["other"] == nil {
+		t.Fatalf("agy MCP config = %s (%v)", raw, err)
+	}
+	if !hasManagedMCPEntry(m.AntigravityMCPPath(), m.DotPath) {
+		t.Fatal("status does not see the agy entry")
+	}
+	if _, err := os.Stat(m.QwenMCPPath()); !os.IsNotExist(err) {
+		t.Fatal("unselected qwen was wired")
+	}
+}

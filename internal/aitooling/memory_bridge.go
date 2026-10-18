@@ -36,7 +36,7 @@ func (e *Engine) memoryBridge(ctx context.Context, s config.AIToolingConfig, op 
 	}
 	if e.opts.DryRun {
 		r.Status = "planned"
-		r.Detail = "prepare selected Kimi/Qwen recall and watch configuration without service changes"
+		r.Detail = "prepare selected Kimi/Qwen/agy recall and watch configuration without service changes"
 		return r
 	}
 	if _, err := m.PrepareSelectedIntegration(); err != nil {
@@ -56,7 +56,7 @@ func (e *Engine) inspectMemoryBridge(ctx context.Context, m *aisettings.ClaudeMe
 		r.Detail = "native memory backend unavailable"
 		return r
 	}
-	configured := (!slices.Contains(s.Agents, "kimi") || status.KimiMCP) && (!slices.Contains(s.Agents, "qwen") || status.QwenMCP)
+	configured := (!slices.Contains(s.Agents, "kimi") || status.KimiMCP) && (!slices.Contains(s.Agents, "qwen") || status.QwenMCP) && (!slices.Contains(s.Agents, "antigravity") || status.AntigravityMCP)
 	expected, err := m.BuildTranscriptConfig()
 	if err != nil {
 		r.Status = "unknown"
@@ -77,6 +77,13 @@ func (e *Engine) inspectMemoryBridge(ctx context.Context, m *aisettings.ClaudeMe
 		r.Detail = "selected recall/watch configuration missing or drifted"
 		return r
 	}
+	// agy is MCP recall only: with no transcript adapter selected (Kimi,
+	// Qwen, pi, ...), nothing waits on the bridge service.
+	if len(expected.Schemas) == 0 {
+		r.Status = "installed"
+		r.Detail = "selected MCP recall verified; no transcript capture selected"
+		return r
+	}
 	r.Status = "pending-runtime"
 	r.Detail = "selected MCP and watch configuration verified; native bridge service is not running"
 	if status.BridgeRunning {
@@ -86,5 +93,5 @@ func (e *Engine) inspectMemoryBridge(ctx context.Context, m *aisettings.ClaudeMe
 	return r
 }
 func needsMemoryBridge(s config.AIToolingConfig) bool {
-	return slices.Contains(s.Agents, "kimi") || slices.Contains(s.Agents, "qwen")
+	return slices.Contains(s.Agents, "kimi") || slices.Contains(s.Agents, "qwen") || slices.Contains(s.Agents, "antigravity")
 }

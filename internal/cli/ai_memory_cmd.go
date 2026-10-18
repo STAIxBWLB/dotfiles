@@ -195,6 +195,7 @@ func newAIMemoryStatusCmd() *cobra.Command {
 			printMemoryState(p, "codex", status.CodexNativeHooks, codexDetail)
 			printMemoryState(p, "kimi", status.KimiMCP, fmt.Sprintf("MCP + %d transcript(s)", status.WatchCount["kimi"]))
 			printMemoryState(p, "qwen", status.QwenMCP, fmt.Sprintf("MCP + %d transcript(s)", status.WatchCount["qwen"]))
+			printMemoryState(p, "agy", status.AntigravityMCP, "MCP recall; no transcript capture")
 			printMemoryState(p, "kiro", status.KiroMCP, fmt.Sprintf("MCP + %d transcript(s)", status.WatchCount["kiro"]))
 			printMemoryState(p, "copilot", status.CopilotMCP, fmt.Sprintf("MCP + %d transcript(s)", status.WatchCount["copilot"]))
 			// pi's readiness is the instructions target, not the transcript

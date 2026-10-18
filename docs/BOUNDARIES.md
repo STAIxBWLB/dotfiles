@@ -45,8 +45,8 @@ self-updates, so update operations defer rather than reinstall.
   `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`,
   `~/.kiro/steering/AGENTS.md`, `~/.kimi-code/AGENTS.md`,
   `~/.pi/agent/AGENTS.md`, `~/.qwen/AGENTS.md`, `~/.gemini/GEMINI.md`,
-  `~/.copilot/copilot-instructions.md`, `~/.aider.conf.md`,
-  `~/.grok/AGENTS.md`, and `~/.config/opencode/AGENTS.md`. Each is
+  `~/.copilot/copilot-instructions.md`, `~/.aider.conf.md`, and
+  `~/.config/opencode/AGENTS.md`. Each is
   the whole file, rendered from the agents SSOT; registering a tool adds
   a target here or the boundary test fails. Session transcripts
   (`~/.pi/agent/sessions/**`, `~/.qwen/projects/**/chats/**`) are
@@ -288,6 +288,9 @@ tool):
 - `~/.kimi-code/mcp.json` — the `claude-mem` entry under `mcpServers`
   (command and args only), written by `dot ai memory install`; every
   other server entry is preserved
+- `~/.gemini/config/mcp_config.json` — the Antigravity CLI (agy) shared MCP
+  config: the `claude-mem` entry under `mcpServers` (command and args only),
+  written by `dot ai memory install`; every other server entry is preserved
 - `~/.qwen/settings.json` — the `claude-mem` entry under `mcpServers`
   (command and args only), written by `dot ai memory install`; every
   other key — Qwen's model, provider, auth, and UI settings — is

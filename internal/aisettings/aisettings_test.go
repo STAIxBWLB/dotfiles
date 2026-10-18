@@ -765,9 +765,11 @@ func TestRestoreSkipsRetiredCursorEntry(t *testing.T) {
 	version := "retired-cursor"
 	root := eng.VersionPath(version)
 	mustWrite(t, filepath.Join(root, homePrefix, ".cursor", "AGENTS.md"), []byte("# instructions\n"))
+	mustWrite(t, filepath.Join(root, homePrefix, ".grok", "AGENTS.md"), []byte("# instructions\n"))
 	mustWrite(t, filepath.Join(root, homePrefix, ".codex", "config.toml"), []byte("model = \"gpt\"\n"))
 	manifest, err := yaml.Marshal(ArchiveManifest{Schema: archiveVersion, Entries: []EntrySummary{
 		{Tool: "cursor", Path: ".cursor/AGENTS.md"},
+		{Tool: "grok", Path: ".grok/AGENTS.md"},
 		{Tool: "codex", Path: ".codex/config.toml"},
 	}})
 	if err != nil {
@@ -779,6 +781,9 @@ func TestRestoreSkipsRetiredCursorEntry(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, ".cursor", "AGENTS.md")); !os.IsNotExist(err) {
 		t.Fatalf("retired cursor target should not be restored: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".grok", "AGENTS.md")); !os.IsNotExist(err) {
+		t.Fatalf("retired grok target should not be restored: %v", err)
 	}
 	got, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
 	if err != nil {

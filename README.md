@@ -211,6 +211,13 @@ npm provider; Antigravity installs its `agy` binary into `~/.local/bin` and
 self-updates in the background, so `dot ai update` defers to that
 self-updater instead of reinstalling.
 
+Workspace context for Grok and agy: Grok reads the agents SSOT through its
+Claude compat (`~/.claude/CLAUDE.md`) and the claude-mem plugin it shares with
+Claude, so dot renders no Grok instructions file and removes a dot-rendered
+`~/.grok/AGENTS.md`. agy gets `~/.gemini/GEMINI.md` from
+`dot ai agents apply --tool antigravity`, and `dot ai memory install` adds the
+claude-mem MCP server to `~/.gemini/config/mcp_config.json`.
+
 ```bash
 dot ai setup
 dot ai setup --agents claude,codex --tools ripwire,ocr --skills meeting-notes --non-interactive --yes --dry-run

@@ -15,8 +15,9 @@ type AgentTool struct {
 func RegisteredAgentTools() []AgentTool {
 	// Keep this registry to instruction/settings targets only. Skill target
 	// symlinks are handled by SkillsManager when modules.ai.skills is enabled.
+	// Grok has no entry: it reads ~/.claude/CLAUDE.md through its Claude
+	// compat, and never reads ~/.grok/AGENTS.md.
 	return []AgentTool{
-		{ID: "grok", DisplayName: "Grok", TargetPath: "~/.grok/AGENTS.md", OverlayFile: "grok.md", Optional: true},
 		{ID: "opencode", DisplayName: "OpenCode", TargetPath: "~/.config/opencode/AGENTS.md", OverlayFile: "opencode.md", Optional: true},
 		{
 			ID:          "claude",
