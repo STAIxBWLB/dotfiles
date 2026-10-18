@@ -53,3 +53,35 @@ func TestPeerNormalizeExcludes_MalformedFailsNamingTheVariable(t *testing.T) {
 		t.Fatalf("error = %v, want one naming %s", err, PeerNormalizeExcludesEnv)
 	}
 }
+
+// The coordinator's filter decides as a whole: its allow line re-including a
+// path under its own deny gets that path renamed, and an allow line only the
+// other Mac has cannot re-include a tree the coordinator excludes (#279 AC5).
+func TestPeerNormalizeExcludes_UsesTheCoordinatorsAllowOrder(t *testing.T) {
+	coordinator := newPeerWorktreeTestConfig(t, t.TempDir())
+	if err := os.WriteFile(coordinator.IgnoreFile, []byte("keep/\n.agenthub/state/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	nfc := "café.txt"
+	coordinator.AllowPatterns = []string{"/keep/" + nfc}
+	payload, err := encodePeerNormalizeExcludes(coordinator)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	workspace := t.TempDir()
+	writeNFDTestFile(t, workspace, "keep/"+nfc, "synced")
+	unreadableDir(t, filepath.Join(workspace, ".agenthub", "state", "db"))
+	remote := newPeerWorktreeTestConfig(t, workspace)
+	remote.AllowPatterns = []string{"/.agenthub/state/db/inner"}
+	if err := ApplyPeerNormalizeExcludes(remote, payload); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := PlanWorkspaceNameNormalization(remote)
+	if err != nil {
+		t.Fatalf("a remote-only allow re-included the coordinator's exclude: %v", err)
+	}
+	if len(plan.Renames) != 1 || plan.Renames[0].OldRel != "keep/"+nfc {
+		t.Fatalf("renames = %#v, want the coordinator-allowed keep/%s", plan.Renames, nfc)
+	}
+}

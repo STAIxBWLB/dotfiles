@@ -90,10 +90,10 @@ type Config struct {
 	// read it so the rsync argv and the Go walk agree layer for layer.
 	WorktreeExcludes []string
 
-	// ExtraExcludes are exclude patterns from the coordinator's excludes file
-	// and ignore.txt, set only by the remote `dot sync names normalize` from
-	// PeerNormalizeExcludesEnv (#279). Runtime-only; only the Go walk reads
-	// it, since that command runs no rsync.
+	// ExtraExcludes are the coordinator's excludes-file and ignore.txt lines,
+	// set only by the remote `dot sync names normalize` from
+	// PeerNormalizeExcludesEnv in place of this Mac's files (#279).
+	// Runtime-only; only the Go walk reads it, since that command runs no rsync.
 	ExtraExcludes []string
 
 	// ApproveDeletes is the deletion-plan digest a person approved for one
