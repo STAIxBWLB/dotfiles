@@ -3,7 +3,10 @@ package aisettings
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,17 +22,17 @@ type fakeTransport struct {
 	db *SyncDB
 }
 
-func (f *fakeTransport) Max(context.Context, SyncPeer) (map[string]string, error) {
-	return f.db.MaxCreatedAt()
+func (f *fakeTransport) Max(ctx context.Context, _ SyncPeer) (map[string]string, error) {
+	return f.db.MaxCreatedAt(ctx)
 }
-func (f *fakeTransport) Export(_ context.Context, _ SyncPeer, cutoffs map[string]string, onlySessions bool) (*Bundle, error) {
-	return f.db.Export(cutoffs, onlySessions)
+func (f *fakeTransport) Export(ctx context.Context, _ SyncPeer, cutoffs map[string]string, onlySessions bool) (*Bundle, error) {
+	return f.db.Export(ctx, cutoffs, onlySessions)
 }
-func (f *fakeTransport) Import(_ context.Context, _ SyncPeer, b *Bundle) (*ImportResult, error) {
-	return f.db.Import(b)
+func (f *fakeTransport) Import(ctx context.Context, _ SyncPeer, b *Bundle) (*ImportResult, error) {
+	return f.db.Import(ctx, b)
 }
-func (f *fakeTransport) Counts(context.Context, SyncPeer) (*TableCounts, error) {
-	return f.db.Counts()
+func (f *fakeTransport) Counts(ctx context.Context, _ SyncPeer) (*TableCounts, error) {
+	return f.db.Counts(ctx)
 }
 
 func seedPair(t *testing.T) (local, remote *SyncDB) {
@@ -61,7 +64,7 @@ func TestRunMemorySync_BothDirections(t *testing.T) {
 	}
 	// Both sides now hold each other's rows.
 	for _, db := range []*SyncDB{local, remote} {
-		counts, err := db.Counts()
+		counts, err := db.Counts(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -91,7 +94,7 @@ func TestRunMemorySync_PushPullOnly(t *testing.T) {
 	if report.Pushed == nil || report.Pulled != nil {
 		t.Fatalf("push-only report = %#v", report)
 	}
-	if counts, _ := local.Counts(); counts.Obs != 1 {
+	if counts, _ := local.Counts(context.Background()); counts.Obs != 1 {
 		t.Fatalf("push must not pull: %#v", counts)
 	}
 
@@ -102,7 +105,7 @@ func TestRunMemorySync_PushPullOnly(t *testing.T) {
 	if report.Pulled == nil || report.Pushed != nil {
 		t.Fatalf("pull-only report = %#v", report)
 	}
-	if counts, _ := local.Counts(); counts.Obs != 2 {
+	if counts, _ := local.Counts(context.Background()); counts.Obs != 2 {
 		t.Fatalf("pull must land remote rows: %#v", counts)
 	}
 
@@ -119,10 +122,10 @@ func TestRunMemorySync_SessionsMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Sessions cross; content rows do not.
-	if counts, _ := local.Counts(); counts.Sessions != 2 || counts.Obs != 1 {
+	if counts, _ := local.Counts(context.Background()); counts.Sessions != 2 || counts.Obs != 1 {
 		t.Fatalf("local after sessions pass = %#v", counts)
 	}
-	if counts, _ := remote.Counts(); counts.Sessions != 2 || counts.Obs != 1 {
+	if counts, _ := remote.Counts(context.Background()); counts.Sessions != 2 || counts.Obs != 1 {
 		t.Fatalf("remote after sessions pass = %#v", counts)
 	}
 	_ = report
@@ -312,7 +315,7 @@ func TestServeOp_ImportKicksOnlyTheGivenHome(t *testing.T) {
 	src := newTestSyncDB(t)
 	seedSession(t, src, "c1", "m1", "2026-09-20T10:00:00.000Z")
 	seedObs(t, src, "m1", "2026-09-20T10:01:00.000Z", "x")
-	bundle, err := src.Export(nil, false)
+	bundle, err := src.Export(context.Background(), nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +345,7 @@ func TestServeOp_ImportKicksOnlyTheGivenHome(t *testing.T) {
 	src2 := newTestSyncDB(t)
 	seedSession(t, src2, "c2", "m2", "2026-09-21T10:00:00.000Z")
 	seedObs(t, src2, "m2", "2026-09-21T10:01:00.000Z", "y")
-	bundle2, err := src2.Export(nil, false)
+	bundle2, err := src2.Export(context.Background(), nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -465,5 +468,122 @@ func TestServeOpSessionRelinkBackfill(t *testing.T) {
 	}
 	if len(kicks) != 1 {
 		t.Fatalf("worker got %d backfill kicks, want one relink kick and no idempotent kick", len(kicks))
+	}
+}
+
+// #289: a store whose write lock another connection holds fails the run
+// after the busy timeout, naming the blocked phase, instead of spinning.
+func TestRunMemorySync_LockedStoreFailsFastNamingPhase(t *testing.T) {
+	local, remote := seedPair(t)
+	holder, err := sql.Open("sqlite", "file:"+local.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Close()
+	conn, err := holder.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(context.Background(), "BEGIN IMMEDIATE"); err != nil {
+		t.Fatal(err)
+	}
+	defer conn.ExecContext(context.Background(), "ROLLBACK")
+
+	start := time.Now()
+	_, err = RunMemorySync(context.Background(), local, &fakeTransport{db: remote}, SyncPeer{Target: "fake"}, SyncOptions{Direction: "pull"}, time.Now())
+	if err == nil {
+		t.Fatal("pull into a locked store succeeded")
+	}
+	if !strings.Contains(err.Error(), "pull: local import") || !strings.Contains(err.Error(), "SQLITE_BUSY") {
+		t.Fatalf("error should name the phase and SQLITE_BUSY: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 15*time.Second {
+		t.Fatalf("locked run took %s", elapsed)
+	}
+}
+
+// stallTransport never answers an export until its context ends.
+type stallTransport struct{ fakeTransport }
+
+func (s *stallTransport) Export(ctx context.Context, _ SyncPeer, _ map[string]string, _ bool) (*Bundle, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// #289: the deadline ends a stalled phase and the error names it.
+func TestRunMemorySync_DeadlineEndsStalledPhase(t *testing.T) {
+	local, remote := seedPair(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := RunMemorySync(ctx, local, &stallTransport{fakeTransport{db: remote}}, SyncPeer{Target: "fake"}, SyncOptions{Direction: "pull"}, time.Now())
+	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "pull: peer export") {
+		t.Fatalf("err = %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("stalled run outlived its deadline by %s", elapsed)
+	}
+}
+
+// cancelOnTable cancels the import when it reaches a table, standing in for
+// a SIGTERM that arrives after earlier tables were written in the tx.
+type cancelOnTable struct {
+	slog.Handler
+	table  string
+	cancel context.CancelFunc
+}
+
+func (h cancelOnTable) Handle(ctx context.Context, r slog.Record) error {
+	r.Attrs(func(a slog.Attr) bool {
+		if a.Key == "table" && a.Value.String() == h.table {
+			h.cancel()
+		}
+		return true
+	})
+	return h.Handler.Handle(ctx, r)
+}
+
+// #289: canceling mid-import rolls the whole transaction back.
+func TestImport_CancelMidwayRollsBack(t *testing.T) {
+	sender, receiver := seedPair(t)
+	bundle, err := sender.Export(context.Background(), nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	prev := slog.Default()
+	slog.SetDefault(slog.New(cancelOnTable{Handler: slog.NewTextHandler(os.Stderr, nil), table: "observations", cancel: cancel}))
+	defer slog.SetDefault(prev)
+
+	if _, err := receiver.Import(ctx, bundle); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	counts, err := receiver.Counts(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// seedPair gave the receiver one session and one observation of its own.
+	if counts.Sessions != 1 || counts.Obs != 1 || counts.Sums != 0 {
+		t.Fatalf("partial import left behind: %+v", counts)
+	}
+}
+
+// The in-memory key set must see rows inserted earlier in the same import.
+func TestImport_DedupesWithinOneBundle(t *testing.T) {
+	sender, receiver := seedPair(t)
+	bundle, err := sender.Export(context.Background(), nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle.Observations = append(bundle.Observations, bundle.Observations[0])
+	bundle.Summaries = append(bundle.Summaries, bundle.Summaries[0])
+	res, err := receiver.Import(context.Background(), bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Obs != 1 || res.Sums != 1 {
+		t.Fatalf("duplicate rows in one bundle imported twice: %+v", res)
 	}
 }

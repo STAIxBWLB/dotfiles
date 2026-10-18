@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -29,6 +31,10 @@ with a peer Mac. Incremental by default (receiver's MAX(created_at) minus a
 needs only the dot binary: the transport is
 'ssh <target> dot ai memory sync --serve <op>' with JSON over stdio.
 
+A run is bounded by --timeout: past it, or on SIGTERM, the open import
+rolls back and the run exits non-zero naming the phase it stopped in.
+Each phase logs its start and end to stderr.
+
 sessions replicates all sessions both ways. status prints both sides'
 counts plus the last scheduled run. With no action, sync runs both
 directions. --peer defaults to the configured dot peer target.`,
@@ -39,12 +45,37 @@ directions. --peer defaults to the configured dot peer target.`,
 	c.Flags().String("peer", "", "ssh target to sync with (default: the dot peer target)")
 	c.Flags().Bool("full", false, "disable the incremental cutoff (re-offer all rows)")
 	c.Flags().String("remote-db", "", "DB path on the peer (default: the peer's ~/.claude-mem/claude-mem.db)")
+	c.Flags().Duration("timeout", defaultMemorySyncTimeout, "abort the run (and roll back an open import) after this long")
 	c.Flags().String("serve", "", "run one serve op against the local DB (used by the ssh transport)")
 	_ = c.Flags().MarkHidden("serve")
 	return c
 }
 
+// defaultMemorySyncTimeout bounds one run. A healthy incremental sync takes
+// seconds; the bound exists so a stalled run cannot hold the store's write
+// lock, and the hourly launchd slot, for hours (#289).
+const defaultMemorySyncTimeout = 10 * time.Minute
+
 func runAIMemorySync(cmd *cobra.Command, args []string) error {
+	timeout, _ := cmd.Flags().GetDuration("timeout")
+	if timeout <= 0 {
+		return fmt.Errorf("--timeout must be positive")
+	}
+	ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
+	defer cancel()
+	cmd.SetContext(ctx)
+	err := runAIMemorySyncBounded(cmd, args)
+	switch {
+	case err == nil:
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		err = fmt.Errorf("sync aborted after the %s deadline: %w", timeout, err)
+	case errors.Is(ctx.Err(), context.Canceled):
+		err = fmt.Errorf("sync canceled: %w", err)
+	}
+	return err
+}
+
+func runAIMemorySyncBounded(cmd *cobra.Command, args []string) error {
 	if op, _ := cmd.Flags().GetString("serve"); op != "" {
 		dbPath := memorySyncDBPath(cmd)
 		return aisettings.ServeOp(cmd.Context(), dbPath, homeFor(cmd), op, cmd.InOrStdin(), cmd.OutOrStdout())

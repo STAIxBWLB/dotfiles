@@ -154,7 +154,7 @@ func TestSyncRoundTrip(t *testing.T) {
 		'claude', 'agent-7', '{"k":"v"}', 'hash-1', 'haiku', 12345, 'macbook', 42, 9)`)
 	seedSummary(t, sender, "mem-1", "2026-09-20T10:02:00.000Z", "req-1")
 
-	bundle, err := sender.Export(nil, false)
+	bundle, err := sender.Export(context.Background(), nil, false)
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestSyncRoundTrip(t *testing.T) {
 			t.Errorf("bundle carries skip column %q", col)
 		}
 	}
-	res, err := receiver.Import(bundle)
+	res, err := receiver.Import(context.Background(), bundle)
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestSyncRoundTrip(t *testing.T) {
 	}
 
 	// Idempotency: a second import of the same bundle adds nothing.
-	res2, err := receiver.Import(bundle)
+	res2, err := receiver.Import(context.Background(), bundle)
 	if err != nil {
 		t.Fatalf("second Import: %v", err)
 	}
@@ -230,7 +230,7 @@ func TestImportSessionsRelinksExistingReferences(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := receiver.Import(bundle)
+	result, err := receiver.Import(context.Background(), bundle)
 	if err != nil {
 		t.Fatalf("Import sessions: %v", err)
 	}
@@ -249,7 +249,7 @@ func TestImportSessionsRelinksExistingReferences(t *testing.T) {
 	}
 	unknown := "unknown-history"
 	seedObs(t, receiver, unknown, "2026-09-20T10:03:00.000Z", "unknown observation")
-	result, err = receiver.Import(bundle)
+	result, err = receiver.Import(context.Background(), bundle)
 	if err != nil {
 		t.Fatalf("second Import sessions: %v", err)
 	}
@@ -287,7 +287,7 @@ func TestImportMapsIncomingContentToEquivalentSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := receiver.Import(bundle)
+	result, err := receiver.Import(context.Background(), bundle)
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -304,7 +304,7 @@ func TestImportMapsIncomingContentToEquivalentSession(t *testing.T) {
 	if err != nil || !bytes.Equal(before, after) {
 		t.Fatalf("Import mutated caller bundle: err=%v", err)
 	}
-	result, err = receiver.Import(bundle)
+	result, err = receiver.Import(context.Background(), bundle)
 	if err != nil {
 		t.Fatalf("second Import: %v", err)
 	}
@@ -326,7 +326,7 @@ func TestImportDoesNotMapBlankOrCrossPlatformIdentity(t *testing.T) {
 			{"memory_session_id": "blank-identity-id", "project": "proj", "type": "discovery", "title": "blank-identity", "created_at": "2026-09-20T10:02:00.000Z", "created_at_epoch": 0},
 		},
 	}
-	if _, err := receiver.Import(bundle); err != nil {
+	if _, err := receiver.Import(context.Background(), bundle); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
 	for title, want := range map[string]string{"cross-platform": "cross-platform-id", "blank-identity": "blank-identity-id"} {
@@ -344,14 +344,14 @@ func TestImportConflictingMemoryIdentityFails(t *testing.T) {
 		equivalentSessionRow("new-id", "content-2", "claude"),
 		equivalentSessionRow("existing-id", "different-content", "claude"),
 	}}
-	if _, err := receiver.Import(bundle); err == nil {
+	if _, err := receiver.Import(context.Background(), bundle); err == nil {
 		t.Fatal("Import accepted an existing memory ID with a different identity")
 	}
 	var count int
 	if err := receiver.db.QueryRow("SELECT COUNT(*) FROM sdk_sessions WHERE memory_session_id = 'new-id'").Scan(&count); err != nil || count != 0 {
 		t.Fatalf("earlier session insert survived rollback: count=%d err=%v", count, err)
 	}
-	if _, err := receiver.Import(&Bundle{Sessions: []map[string]any{
+	if _, err := receiver.Import(context.Background(), &Bundle{Sessions: []map[string]any{
 		equivalentSessionRow("existing-id", "", ""),
 	}}); err == nil {
 		t.Fatal("Import accepted an incomplete identity for an existing memory ID")
@@ -365,7 +365,7 @@ func TestImportAmbiguousSessionIdentityFails(t *testing.T) {
 	bundle := &Bundle{Sessions: []map[string]any{
 		equivalentSessionRow("incoming-id", "content-1", "claude"),
 	}}
-	if _, err := receiver.Import(bundle); err == nil {
+	if _, err := receiver.Import(context.Background(), bundle); err == nil {
 		t.Fatal("Import accepted an ambiguous platform/content identity")
 	}
 	var count int
@@ -385,7 +385,7 @@ func TestImportRelinkUniqueConflictRollsBack(t *testing.T) {
 		equivalentSessionRow("new-id", "content-2", "claude"),
 		equivalentSessionRow("incoming-id", "content-1", "claude"),
 	}}
-	if _, err := receiver.Import(bundle); err == nil {
+	if _, err := receiver.Import(context.Background(), bundle); err == nil {
 		t.Fatal("Import accepted a relink that violates the observation session/hash index")
 	}
 	var got string
@@ -415,11 +415,11 @@ func TestSyncSchemaSkew(t *testing.T) {
 	execIns(t, sender, `INSERT INTO observations (memory_session_id, project, type, title, created_at, created_at_epoch, metadata, agent_type)
 		VALUES ('m1', 'proj', 'discovery', 'T1', '2026-09-20T10:01:00.000Z', 0, '{"k":"v"}', 'claude')`)
 
-	bundle, err := sender.Export(nil, false)
+	bundle, err := sender.Export(context.Background(), nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := receiver.Import(bundle)
+	res, err := receiver.Import(context.Background(), bundle)
 	if err != nil {
 		t.Fatalf("skewed Import must succeed: %v", err)
 	}
@@ -451,11 +451,11 @@ func TestSyncAttributionRepair(t *testing.T) {
 		VALUES ('m1', 'proj', 'discovery', 'T1', '2026-09-20T10:01:00.000Z', 0,
 		'kimi', 'agent-9', '{"m":1}', 'hash-9', 'k2')`)
 
-	bundle, err := sender.Export(nil, false)
+	bundle, err := sender.Export(context.Background(), nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := receiver.Import(bundle)
+	res, err := receiver.Import(context.Background(), bundle)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -473,7 +473,7 @@ func TestSyncAttributionRepair(t *testing.T) {
 		t.Fatalf("repair incomplete: %q %q %q %q %q", agentType, agentID, metadata, hash, model)
 	}
 	// Repair is one-off: a third pass repairs nothing.
-	res2, err := receiver.Import(bundle)
+	res2, err := receiver.Import(context.Background(), bundle)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -493,7 +493,7 @@ func TestExportCutoff(t *testing.T) {
 	seedSummary(t, db, "m-old", "2026-09-01T02:00:00.000Z", "old-req")
 	seedSummary(t, db, "m-new", "2026-09-25T02:00:00.000Z", "new-req")
 
-	bundle, err := db.Export(map[string]string{"observations": "2026-09-20T00:00:00.000Z", "session_summaries": "2026-09-20T00:00:00.000Z"}, false)
+	bundle, err := db.Export(context.Background(), map[string]string{"observations": "2026-09-20T00:00:00.000Z", "session_summaries": "2026-09-20T00:00:00.000Z"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -510,7 +510,7 @@ func TestExportCutoff(t *testing.T) {
 
 	// An old session IS included when an exported (overlapping) row backs it.
 	seedObs(t, db, "m-old", "2026-09-26T01:00:00.000Z", "overlap")
-	bundle, err = db.Export(map[string]string{"observations": "2026-09-20T00:00:00.000Z", "session_summaries": "2026-09-20T00:00:00.000Z"}, false)
+	bundle, err = db.Export(context.Background(), map[string]string{"observations": "2026-09-20T00:00:00.000Z", "session_summaries": "2026-09-20T00:00:00.000Z"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -532,7 +532,7 @@ func TestExportPerTableCutoffs(t *testing.T) {
 
 	// Observations are exported against a September cutoff while summaries
 	// use their own January one: the ancient summary must still be offered.
-	bundle, err := db.Export(map[string]string{
+	bundle, err := db.Export(context.Background(), map[string]string{
 		"observations":      "2026-09-20T00:00:00.000Z",
 		"session_summaries": "2025-12-25T00:00:00.000Z",
 	}, false)
@@ -553,7 +553,7 @@ func TestExportOnlySessions(t *testing.T) {
 	seedSession(t, db, "c2", "m2", "2026-09-25T00:00:00.000Z")
 	seedObs(t, db, "m1", "2026-09-26T01:00:00.000Z", "x")
 
-	bundle, err := db.Export(nil, true)
+	bundle, err := db.Export(context.Background(), nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -591,14 +591,14 @@ func TestMaxAndCounts(t *testing.T) {
 		VALUES ('m-ghost', 'proj', 'discovery', 'orphan', '2026-09-21T10:01:00.000Z', 0)`)
 	seedSummary(t, db, "m1", "2026-09-22T10:02:00.000Z", "req")
 
-	maxes, err := db.MaxCreatedAt()
+	maxes, err := db.MaxCreatedAt(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if maxes["observations"] != "2026-09-21T10:01:00.000Z" || maxes["session_summaries"] != "2026-09-22T10:02:00.000Z" {
 		t.Fatalf("maxes = %v", maxes)
 	}
-	counts, err := db.Counts()
+	counts, err := db.Counts(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -672,7 +672,7 @@ func TestImportSessionWithUnassignedMemoryID(t *testing.T) {
 			execIns(t, receiver, `INSERT INTO sdk_sessions (content_session_id, memory_session_id, project, platform_source, started_at, started_at_epoch) VALUES ('pending-content', NULL, 'proj', 'claude', '2026-09-20', 0)`)
 			bundle := &Bundle{Sessions: []map[string]any{{"content_session_id": "pending-content", "memory_session_id": incomingID, "platform_source": "claude"}}}
 			for pass := 0; pass < 2; pass++ {
-				result, err := receiver.Import(bundle)
+				result, err := receiver.Import(context.Background(), bundle)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -704,7 +704,7 @@ func TestImportRejectsConflictingBundleSessionIdentity(t *testing.T) {
 			if reverse {
 				bundle.Sessions[0], bundle.Sessions[1] = bundle.Sessions[1], bundle.Sessions[0]
 			}
-			if _, err := receiver.Import(bundle); err == nil {
+			if _, err := receiver.Import(context.Background(), bundle); err == nil {
 				t.Fatal("conflicting session identities accepted")
 			}
 			var sessionCount int
