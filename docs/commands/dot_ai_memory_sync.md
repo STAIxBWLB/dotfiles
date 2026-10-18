@@ -10,6 +10,10 @@ with a peer Mac. Incremental by default (receiver's MAX(created_at) minus a
 needs only the dot binary: the transport is
 'ssh <target> dot ai memory sync --serve <op>' with JSON over stdio.
 
+A run is bounded by --timeout: past it, or on SIGTERM, the open import
+rolls back and the run exits non-zero naming the phase it stopped in.
+Each phase logs its start and end to stderr.
+
 sessions replicates all sessions both ways. status prints both sides'
 counts plus the last scheduled run. With no action, sync runs both
 directions. --peer defaults to the configured dot peer target.
@@ -25,6 +29,7 @@ dot ai memory sync [push|pull|sync|sessions|status] [flags]
   -h, --help               help for sync
       --peer string        ssh target to sync with (default: the dot peer target)
       --remote-db string   DB path on the peer (default: the peer's ~/.claude-mem/claude-mem.db)
+      --timeout duration   abort the run (and roll back an open import) after this long (default 10m0s)
 ```
 
 ### Options inherited from parent commands

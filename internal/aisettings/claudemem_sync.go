@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -142,11 +143,11 @@ func DefaultSyncDBPath(homeDir string) string {
 
 // MaxCreatedAt is the serve `max` op: the receiver's newest created_at per
 // replicating table ("" when the table is empty).
-func (d *SyncDB) MaxCreatedAt() (map[string]string, error) {
+func (d *SyncDB) MaxCreatedAt(ctx context.Context) (map[string]string, error) {
 	out := map[string]string{}
 	for _, table := range []string{"observations", "session_summaries"} {
 		var max sql.NullString
-		if err := d.db.QueryRow("SELECT MAX(created_at) FROM " + table).Scan(&max); err != nil {
+		if err := d.db.QueryRowContext(ctx, "SELECT MAX(created_at) FROM "+table).Scan(&max); err != nil {
 			return nil, fmt.Errorf("max created_at on %s: %w", table, err)
 		}
 		if max.Valid {
@@ -157,7 +158,7 @@ func (d *SyncDB) MaxCreatedAt() (map[string]string, error) {
 }
 
 // Counts is the serve `count` op.
-func (d *SyncDB) Counts() (*TableCounts, error) {
+func (d *SyncDB) Counts(ctx context.Context) (*TableCounts, error) {
 	var c TableCounts
 	queries := []struct {
 		dst  *int
@@ -171,7 +172,7 @@ func (d *SyncDB) Counts() (*TableCounts, error) {
 			WHERE s.id IS NULL`},
 	}
 	for _, q := range queries {
-		if err := d.db.QueryRow(q.stmt).Scan(q.dst); err != nil {
+		if err := d.db.QueryRowContext(ctx, q.stmt).Scan(q.dst); err != nil {
 			return nil, err
 		}
 	}
@@ -208,22 +209,22 @@ func CutoffFor(receiverMax string, now time.Time) (string, error) {
 // Sessions ride along when they are newer than the oldest cutoff OR back an
 // exported observation/summary. onlySessions is the sessions-mode pass:
 // every session, no content rows.
-func (d *SyncDB) Export(cutoffs map[string]string, onlySessions bool) (*Bundle, error) {
+func (d *SyncDB) Export(ctx context.Context, cutoffs map[string]string, onlySessions bool) (*Bundle, error) {
 	b := &Bundle{Cutoff: oldestCutoff(cutoffs)}
 	var err error
 	if onlySessions {
-		b.Sessions, err = d.selectRows("SELECT * FROM sdk_sessions")
+		b.Sessions, err = d.selectRows(ctx, "SELECT * FROM sdk_sessions")
 		if err == nil {
 			stripSkipColumns(b.Sessions)
 		}
 		return b, err
 	}
 	obsWhere, obsArgs := cutoffWhere(cutoffs["observations"])
-	if b.Observations, err = d.selectRows("SELECT * FROM observations"+obsWhere, obsArgs...); err != nil {
+	if b.Observations, err = d.selectRows(ctx, "SELECT * FROM observations"+obsWhere, obsArgs...); err != nil {
 		return nil, err
 	}
 	sumWhere, sumArgs := cutoffWhere(cutoffs["session_summaries"])
-	if b.Summaries, err = d.selectRows("SELECT * FROM session_summaries"+sumWhere, sumArgs...); err != nil {
+	if b.Summaries, err = d.selectRows(ctx, "SELECT * FROM session_summaries"+sumWhere, sumArgs...); err != nil {
 		return nil, err
 	}
 	sessionSQL := `SELECT * FROM sdk_sessions WHERE memory_session_id IN (
@@ -234,7 +235,7 @@ func (d *SyncDB) Export(cutoffs map[string]string, onlySessions bool) (*Bundle, 
 		sessionSQL += " OR started_at > ?"
 		sessionArgs = append(sessionArgs, oldest)
 	}
-	if b.Sessions, err = d.selectRows(sessionSQL, sessionArgs...); err != nil {
+	if b.Sessions, err = d.selectRows(ctx, sessionSQL, sessionArgs...); err != nil {
 		return nil, err
 	}
 	// The skip set must not cross the wire either: id is receiver-assigned
@@ -282,8 +283,8 @@ func oldestCutoff(cutoffs map[string]string) string {
 
 // selectRows runs a query and returns every row as a column→value map.
 // []byte values are normalized to strings so a Bundle is JSON-clean.
-func (d *SyncDB) selectRows(query string, args ...any) ([]map[string]any, error) {
-	rows, err := d.db.Query(query, args...)
+func (d *SyncDB) selectRows(ctx context.Context, query string, args ...any) ([]map[string]any, error) {
+	rows, err := d.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -316,8 +317,8 @@ func (d *SyncDB) selectRows(query string, args ...any) ([]map[string]any, error)
 }
 
 // tableColumns is the receiver-side column set for the import intersection.
-func (d *SyncDB) tableColumns(table string) (map[string]bool, error) {
-	rows, err := d.db.Query("PRAGMA table_info(" + table + ")")
+func (d *SyncDB) tableColumns(ctx context.Context, table string) (map[string]bool, error) {
+	rows, err := d.db.QueryContext(ctx, "PRAGMA table_info("+table+")")
 	if err != nil {
 		return nil, err
 	}
@@ -354,11 +355,13 @@ func intersect(row map[string]any, receiverCols map[string]bool) (keep []string,
 }
 
 // Import is the serve `import` op: sessions first (content rows reference
-// them), then observations, then summaries, in one transaction.
-func (d *SyncDB) Import(b *Bundle) (*ImportResult, error) {
-	tx, err := d.db.Begin()
+// them), then observations, then summaries, in one transaction. ctx bounds
+// the whole run: cancellation interrupts the current statement and the
+// deferred rollback leaves no partial import.
+func (d *SyncDB) Import(ctx context.Context, b *Bundle) (*ImportResult, error) {
+	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("begin import: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	res := &ImportResult{}
@@ -371,7 +374,8 @@ func (d *SyncDB) Import(b *Bundle) (*ImportResult, error) {
 		}
 	}
 
-	sessionCols, err := d.tableColumns("sdk_sessions")
+	slog.Info("memory sync import", "table", "sdk_sessions", "rows", len(b.Sessions))
+	sessionCols, err := d.tableColumns(ctx, "sdk_sessions")
 	if err != nil {
 		return nil, err
 	}
@@ -384,7 +388,7 @@ func (d *SyncDB) Import(b *Bundle) (*ImportResult, error) {
 			}
 			seenIdentities[incomingID] = identity
 		}
-		canonicalID, added, err := importSession(tx, sessionCols, row, logSkew)
+		canonicalID, added, err := importSession(ctx, tx, sessionCols, row, logSkew)
 		if err != nil {
 			return nil, fmt.Errorf("importing sdk_sessions: %w", err)
 		}
@@ -399,7 +403,7 @@ func (d *SyncDB) Import(b *Bundle) (*ImportResult, error) {
 		}
 	}
 	for from, to := range sessionIDMap {
-		result, err := tx.Exec("UPDATE observations SET memory_session_id = ? WHERE memory_session_id = ?", to, from)
+		result, err := tx.ExecContext(ctx, "UPDATE observations SET memory_session_id = ? WHERE memory_session_id = ?", to, from)
 		if err != nil {
 			return nil, fmt.Errorf("relinking observations for session %q: %w", from, err)
 		}
@@ -408,7 +412,7 @@ func (d *SyncDB) Import(b *Bundle) (*ImportResult, error) {
 		} else {
 			res.RelinkedObservations += int(n)
 		}
-		result, err = tx.Exec("UPDATE session_summaries SET memory_session_id = ? WHERE memory_session_id = ?", to, from)
+		result, err = tx.ExecContext(ctx, "UPDATE session_summaries SET memory_session_id = ? WHERE memory_session_id = ?", to, from)
 		if err != nil {
 			return nil, fmt.Errorf("relinking summaries for session %q: %w", from, err)
 		}
@@ -418,13 +422,19 @@ func (d *SyncDB) Import(b *Bundle) (*ImportResult, error) {
 			res.RelinkedSummaries += int(n)
 		}
 	}
-	obsCols, err := d.tableColumns("observations")
+
+	slog.Info("memory sync import", "table", "observations", "rows", len(b.Observations))
+	obsCols, err := d.tableColumns(ctx, "observations")
 	if err != nil {
 		return nil, err
 	}
+	obsKeys, err := naturalKeys(ctx, tx, "observations", "title", b.Observations)
+	if err != nil {
+		return nil, fmt.Errorf("importing observations: %w", err)
+	}
 	for _, row := range b.Observations {
 		mapped := remapSessionRow(row, sessionIDMap)
-		added, repaired, err := importObservation(tx, obsCols, mapped, logSkew)
+		added, repaired, err := importObservation(ctx, tx, obsCols, obsKeys, mapped, logSkew)
 		if err != nil {
 			return nil, fmt.Errorf("importing observations: %w", err)
 		}
@@ -433,13 +443,19 @@ func (d *SyncDB) Import(b *Bundle) (*ImportResult, error) {
 		}
 		res.Repaired += repaired
 	}
-	sumCols, err := d.tableColumns("session_summaries")
+
+	slog.Info("memory sync import", "table", "session_summaries", "rows", len(b.Summaries))
+	sumCols, err := d.tableColumns(ctx, "session_summaries")
 	if err != nil {
 		return nil, err
 	}
+	sumKeys, err := naturalKeys(ctx, tx, "session_summaries", "request", b.Summaries)
+	if err != nil {
+		return nil, fmt.Errorf("importing session_summaries: %w", err)
+	}
 	for _, row := range b.Summaries {
 		mapped := remapSessionRow(row, sessionIDMap)
-		added, err := importDeduped(tx, sumCols, "session_summaries", "request", mapped, logSkew)
+		added, err := importDeduped(ctx, tx, sumCols, sumKeys, "session_summaries", "request", mapped, logSkew)
 		if err != nil {
 			return nil, fmt.Errorf("importing session_summaries: %w", err)
 		}
@@ -464,38 +480,75 @@ func rowString(row map[string]any, col string) string {
 	return ""
 }
 
-// dedupeExists is the natural-key lookup: (created_at, COALESCE(key,”)).
-func dedupeExists(tx *sql.Tx, table, keyCol string, row map[string]any) (bool, error) {
-	var n int
-	err := tx.QueryRow(`SELECT COUNT(1) FROM `+table+` WHERE created_at = ? AND COALESCE(`+keyCol+`, '') = ?`,
-		rowString(row, "created_at"), rowString(row, keyCol)).Scan(&n)
-	return n > 0, err
+// keySet maps the natural key (created_at, COALESCE(key,”)) to the
+// receiver rowids that carry it.
+type keySet map[[2]string][]int64
+
+func naturalKey(row map[string]any, keyCol string) [2]string {
+	return [2]string{rowString(row, "created_at"), rowString(row, keyCol)}
 }
 
-// insertRow inserts one row; inserted=false means a receiver-side unique
-// index the natural key does not cover (e.g. ux_observations_session_hash)
-// settled for "already here": the row is by definition not new.
-func insertRow(tx *sql.Tx, table string, cols []string, row map[string]any) (bool, error) {
+// naturalKeys loads the receiver's natural keys from the bundle's oldest
+// created_at on, in one pass. created_at has no index, so a lookup per
+// incoming row scanned the whole table each time: a 50k-row overlap on a
+// 220k-row store ran for hours under the write lock (#289).
+func naturalKeys(ctx context.Context, tx *sql.Tx, table, keyCol string, rows []map[string]any) (keySet, error) {
+	keys := keySet{}
+	if len(rows) == 0 {
+		return keys, nil
+	}
+	from := rowString(rows[0], "created_at")
+	for _, row := range rows {
+		if c := rowString(row, "created_at"); c < from {
+			from = c
+		}
+	}
+	q, err := tx.QueryContext(ctx, `SELECT rowid, created_at, COALESCE(`+keyCol+`, '') FROM `+table+` WHERE created_at >= ?`, from)
+	if err != nil {
+		return nil, err
+	}
+	defer q.Close()
+	for q.Next() {
+		var id int64
+		var createdAt, key string
+		if err := q.Scan(&id, &createdAt, &key); err != nil {
+			return nil, err
+		}
+		k := [2]string{createdAt, key}
+		keys[k] = append(keys[k], id)
+	}
+	return keys, q.Err()
+}
+
+// insertRow inserts one row and returns its rowid; inserted=false means a
+// receiver-side unique index the natural key does not cover (e.g.
+// ux_observations_session_hash) settled for "already here": the row is by
+// definition not new.
+func insertRow(ctx context.Context, tx *sql.Tx, table string, cols []string, row map[string]any) (int64, bool, error) {
 	marks := strings.TrimSuffix(strings.Repeat("?,", len(cols)), ",")
 	stmt := `INSERT INTO ` + table + ` (` + strings.Join(cols, ", ") + `) VALUES (` + marks + `)`
 	args := make([]any, len(cols))
 	for i, col := range cols {
 		args[i] = row[col]
 	}
-	_, err := tx.Exec(stmt, args...)
-	if err != nil && strings.Contains(err.Error(), "UNIQUE constraint") {
-		return false, nil
+	result, err := tx.ExecContext(ctx, stmt, args...)
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint") {
+			return 0, false, nil
+		}
+		return 0, false, err
 	}
-	return err == nil, err
+	id, err := result.LastInsertId()
+	return id, err == nil, err
 }
 
-func importSession(tx *sql.Tx, receiverCols map[string]bool, row map[string]any, logSkew func([]string)) (string, bool, error) {
+func importSession(ctx context.Context, tx *sql.Tx, receiverCols map[string]bool, row map[string]any, logSkew func([]string)) (string, bool, error) {
 	incomingID := rowString(row, "memory_session_id")
 	incomingPlatform := rowString(row, "platform_source")
 	incomingContentID := rowString(row, "content_session_id")
 	if incomingID != "" {
 		var platform, contentID sql.NullString
-		err := tx.QueryRow(`SELECT platform_source, content_session_id FROM sdk_sessions WHERE memory_session_id = ?`, incomingID).Scan(&platform, &contentID)
+		err := tx.QueryRowContext(ctx, `SELECT platform_source, content_session_id FROM sdk_sessions WHERE memory_session_id = ?`, incomingID).Scan(&platform, &contentID)
 		if err == nil {
 			if incomingPlatform == "" || incomingContentID == "" {
 				return "", false, fmt.Errorf("memory session %q has an incomplete platform/content identity", incomingID)
@@ -513,7 +566,7 @@ func importSession(tx *sql.Tx, receiverCols map[string]bool, row map[string]any,
 	// Only a complete identity can establish equivalence. Blank or NULL fields
 	// are deliberately left unmapped because they cannot safely identify a session.
 	if incomingPlatform != "" && incomingContentID != "" {
-		rows, err := tx.Query(`SELECT memory_session_id FROM sdk_sessions
+		rows, err := tx.QueryContext(ctx, `SELECT memory_session_id FROM sdk_sessions
 			WHERE platform_source = ? AND content_session_id = ?`, incomingPlatform, incomingContentID)
 		if err != nil {
 			return "", false, err
@@ -544,7 +597,7 @@ func importSession(tx *sql.Tx, receiverCols map[string]bool, row map[string]any,
 
 	keep, skewed := intersect(row, receiverCols)
 	logSkew(skewed)
-	added, err := insertRowStrict(tx, "sdk_sessions", keep, row)
+	added, err := insertRowStrict(ctx, tx, "sdk_sessions", keep, row)
 	if err != nil {
 		return "", false, err
 	}
@@ -556,14 +609,14 @@ func importSession(tx *sql.Tx, receiverCols map[string]bool, row map[string]any,
 
 // insertRowStrict is used for backing sessions: silently treating a unique
 // collision as a duplicate could leave incoming content pointing at no session.
-func insertRowStrict(tx *sql.Tx, table string, cols []string, row map[string]any) (bool, error) {
+func insertRowStrict(ctx context.Context, tx *sql.Tx, table string, cols []string, row map[string]any) (bool, error) {
 	marks := strings.TrimSuffix(strings.Repeat("?,", len(cols)), ",")
 	stmt := `INSERT INTO ` + table + ` (` + strings.Join(cols, ", ") + `) VALUES (` + marks + `)`
 	args := make([]any, len(cols))
 	for i, col := range cols {
 		args[i] = row[col]
 	}
-	result, err := tx.Exec(stmt, args...)
+	result, err := tx.ExecContext(ctx, stmt, args...)
 	if err != nil {
 		return false, err
 	}
@@ -591,55 +644,57 @@ func remapSessionRow(row map[string]any, sessionIDMap map[string]string) map[str
 // importObservation dedupes on (created_at, title); a dedupe hit runs the
 // one-off attribution repair, backfilling repairColumns the local row lacks
 // when the incoming bundle carries them.
-func importObservation(tx *sql.Tx, receiverCols map[string]bool, row map[string]any, logSkew func([]string)) (bool, int, error) {
-	exists, err := dedupeExists(tx, "observations", "title", row)
-	if err != nil {
-		return false, 0, err
+func importObservation(ctx context.Context, tx *sql.Tx, receiverCols map[string]bool, keys keySet, row map[string]any, logSkew func([]string)) (bool, int, error) {
+	k := naturalKey(row, "title")
+	if ids, exists := keys[k]; exists {
+		repaired, err := repairAttribution(ctx, tx, receiverCols, ids, row)
+		return false, repaired, err
 	}
-	if !exists {
-		keep, skewed := intersect(row, receiverCols)
-		logSkew(skewed)
-		added, err := insertRow(tx, "observations", keep, row)
-		return added, 0, err
+	keep, skewed := intersect(row, receiverCols)
+	logSkew(skewed)
+	id, added, err := insertRow(ctx, tx, "observations", keep, row)
+	if added {
+		keys[k] = []int64{id}
 	}
-	repaired, err := repairAttribution(tx, receiverCols, row)
-	return false, repaired, err
+	return added, 0, err
 }
 
-func repairAttribution(tx *sql.Tx, receiverCols map[string]bool, row map[string]any) (int, error) {
+func repairAttribution(ctx context.Context, tx *sql.Tx, receiverCols map[string]bool, ids []int64, row map[string]any) (int, error) {
 	repaired := 0
 	for _, col := range repairColumns {
 		incoming := rowString(row, col)
 		if incoming == "" || !receiverCols[col] {
 			continue
 		}
-		r, err := tx.Exec(`UPDATE observations SET `+col+` = ?
-			WHERE created_at = ? AND COALESCE(title, '') = ? AND (`+col+` IS NULL OR `+col+` = '')`,
-			incoming, rowString(row, "created_at"), rowString(row, "title"))
-		if err != nil {
-			if strings.Contains(err.Error(), "UNIQUE constraint") {
-				continue // content_hash would collide with the session-hash index
+		for _, id := range ids {
+			r, err := tx.ExecContext(ctx, `UPDATE observations SET `+col+` = ?
+				WHERE rowid = ? AND (`+col+` IS NULL OR `+col+` = '')`, incoming, id)
+			if err != nil {
+				if strings.Contains(err.Error(), "UNIQUE constraint") {
+					continue // content_hash would collide with the session-hash index
+				}
+				return repaired, err
 			}
-			return repaired, err
-		}
-		if n, _ := r.RowsAffected(); n > 0 {
-			repaired += int(n)
+			if n, _ := r.RowsAffected(); n > 0 {
+				repaired += int(n)
+			}
 		}
 	}
 	return repaired, nil
 }
 
-func importDeduped(tx *sql.Tx, receiverCols map[string]bool, table, keyCol string, row map[string]any, logSkew func([]string)) (bool, error) {
-	exists, err := dedupeExists(tx, table, keyCol, row)
-	if err != nil {
-		return false, err
-	}
-	if exists {
+func importDeduped(ctx context.Context, tx *sql.Tx, receiverCols map[string]bool, keys keySet, table, keyCol string, row map[string]any, logSkew func([]string)) (bool, error) {
+	k := naturalKey(row, keyCol)
+	if _, exists := keys[k]; exists {
 		return false, nil
 	}
 	keep, skewed := intersect(row, receiverCols)
 	logSkew(skewed)
-	return insertRow(tx, table, keep, row)
+	id, added, err := insertRow(ctx, tx, table, keep, row)
+	if added {
+		keys[k] = []int64{id}
+	}
+	return added, err
 }
 
 // KickWorkerRestart asks the local claude-mem worker to rebuild its search

@@ -33,14 +33,24 @@ func (m *ClaudeMemManager) SyncLogPath() string {
 	return filepath.Join(m.DataDir(), "logs", "claude-mem-sync.log")
 }
 
+// SyncAgentHardLimit is the wrapper's backstop in seconds: past it the run
+// gets SIGTERM, then SIGKILL 30 s later. It sits above the command's own
+// 10-minute --timeout, and launchd starts no new run while one is alive.
+const SyncAgentHardLimit = 900
+
 // RenderSyncAgentPlist renders the hourly sync agent. The invoked command
 // starts with the ssh pre-check per the sync contract: an unreachable peer
 // exits 0 before dot runs, so launchd never records a failure for a laptop
 // that is simply away. DOT_SCHEDULED_RUN tells the sync command to apply
-// the same policy to its own in-process probe.
+// the same policy to its own in-process probe. A watchdog enforces
+// SyncAgentHardLimit; launchd reaps its leftover sleep with the job.
 func RenderSyncAgentPlist(dotPath, peer, homeDir, logPath string) string {
-	script := fmt.Sprintf("ssh -o BatchMode=yes -o ConnectTimeout=10 %s true || exit 0\nexec %s ai memory sync --peer %s",
-		shellQuote(peer), shellQuote(dotPath), shellQuote(peer))
+	script := fmt.Sprintf(`ssh -o BatchMode=yes -o ConnectTimeout=10 %s true || exit 0
+%s ai memory sync --peer %s & pid=$!
+(sleep %d; kill -TERM $pid; sleep 30; kill -KILL $pid) 2>/dev/null & guard=$!
+wait $pid; rc=$?
+kill $guard 2>/dev/null
+exit $rc`, shellQuote(peer), shellQuote(dotPath), shellQuote(peer), SyncAgentHardLimit)
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">

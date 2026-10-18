@@ -174,7 +174,9 @@ func TestRenderSyncAgentPlist_Contract(t *testing.T) {
 	for _, want := range []string{
 		ClaudeMemSyncLaunchdLabel,
 		"ssh -o BatchMode=yes -o ConnectTimeout=10 &#39;user@mac2&#39; true || exit 0",
-		"exec &#39;/usr/local/bin/dot&#39; ai memory sync --peer &#39;user@mac2&#39;",
+		"&#39;/usr/local/bin/dot&#39; ai memory sync --peer &#39;user@mac2&#39; &amp; pid=$!",
+		"(sleep 900; kill -TERM $pid; sleep 30; kill -KILL $pid)",
+		"exit $rc",
 		"<key>DOT_SCHEDULED_RUN</key>",
 		"<integer>3600</integer>",
 	} {

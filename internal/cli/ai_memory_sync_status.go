@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"runtime"
@@ -22,12 +23,12 @@ func printMemorySyncDryRun(cmd *cobra.Command, db *aisettings.SyncDB, peer aiset
 	t := &aisettings.SSHTransport{}
 	p.Header("claude-mem sync (dry run)")
 	p.KV("Peer", peer.Target)
-	preview := func(label string, maxes map[string]string, export func(map[string]string, bool) (*aisettings.Bundle, error)) error {
+	preview := func(label string, maxes map[string]string, export func(context.Context, map[string]string, bool) (*aisettings.Bundle, error)) error {
 		cutoffs, err := memorySyncCutoffsForPreview(maxes, opts)
 		if err != nil {
 			return err
 		}
-		bundle, err := export(cutoffs, opts.OnlySessions)
+		bundle, err := export(cmd.Context(), cutoffs, opts.OnlySessions)
 		if err != nil {
 			return err
 		}
@@ -46,12 +47,12 @@ func printMemorySyncDryRun(cmd *cobra.Command, db *aisettings.SyncDB, peer aiset
 		}
 	}
 	if opts.OnlySessions || opts.Direction == "pull" || opts.Direction == "sync" {
-		maxes, err := db.MaxCreatedAt()
+		maxes, err := db.MaxCreatedAt(cmd.Context())
 		if err != nil {
 			return err
 		}
-		if err := preview("would pull (peer export)", maxes, func(cutoffs map[string]string, onlySessions bool) (*aisettings.Bundle, error) {
-			return t.Export(cmd.Context(), peer, cutoffs, onlySessions)
+		if err := preview("would pull (peer export)", maxes, func(ctx context.Context, cutoffs map[string]string, onlySessions bool) (*aisettings.Bundle, error) {
+			return t.Export(ctx, peer, cutoffs, onlySessions)
 		}); err != nil {
 			return err
 		}
@@ -101,7 +102,7 @@ func printMemorySyncStatus(p *Printer, cmd *cobra.Command, home string, peer ais
 		return err
 	}
 	defer db.Close()
-	local, err := db.Counts()
+	local, err := db.Counts(cmd.Context())
 	if err != nil {
 		return err
 	}
@@ -165,7 +166,7 @@ func printMemorySyncStatusSection(p *Printer, cmd *cobra.Command, mgr *aisetting
 		return
 	}
 	defer db.Close()
-	if local, err := db.Counts(); err == nil {
+	if local, err := db.Counts(cmd.Context()); err == nil {
 		p.Bullet(hint, syncCountsLine("local", local))
 	}
 	counts, err := (&aisettings.SSHTransport{}).Counts(cmd.Context(), aisettings.SyncPeer{Target: target, RemoteDot: remoteDot})

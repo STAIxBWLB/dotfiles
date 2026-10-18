@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -345,7 +346,7 @@ func seedSyncTestSchema(db *aisettings.SyncDB) error {
 			"created_at": "2026-09-20T10:02:00.000Z", "created_at_epoch": 0,
 		}},
 	}
-	_, err = db.Import(bundle)
+	_, err = db.Import(context.Background(), bundle)
 	return err
 }
 

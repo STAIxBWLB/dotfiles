@@ -9,7 +9,11 @@
     <string>/bin/sh</string>
     <string>-c</string>
     <string>ssh -o BatchMode=yes -o ConnectTimeout=10 &#39;user@mac2&#39; true || exit 0
-exec &#39;/Users/test/.local/bin/dot&#39; ai memory sync --peer &#39;user@mac2&#39;</string>
+&#39;/Users/test/.local/bin/dot&#39; ai memory sync --peer &#39;user@mac2&#39; &amp; pid=$!
+(sleep 900; kill -TERM $pid; sleep 30; kill -KILL $pid) 2&gt;/dev/null &amp; guard=$!
+wait $pid; rc=$?
+kill $guard 2&gt;/dev/null
+exit $rc</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>

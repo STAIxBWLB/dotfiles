@@ -216,11 +216,11 @@ func ServeOp(ctx context.Context, dbPath, home, op string, stdin io.Reader, stdo
 	resp := serveResponse{}
 	switch op {
 	case "max":
-		if resp.Max, err = db.MaxCreatedAt(); err != nil {
+		if resp.Max, err = db.MaxCreatedAt(ctx); err != nil {
 			resp.Error = err.Error()
 		}
 	case "export":
-		if resp.Bundle, err = db.Export(req.Cutoffs, req.OnlySessions); err != nil {
+		if resp.Bundle, err = db.Export(ctx, req.Cutoffs, req.OnlySessions); err != nil {
 			resp.Error = err.Error()
 		}
 	case "import":
@@ -228,7 +228,7 @@ func ServeOp(ctx context.Context, dbPath, home, op string, stdin io.Reader, stdo
 			resp.Error = "import request carries no bundle"
 			break
 		}
-		if resp.Result, err = db.Import(req.Bundle); err != nil {
+		if resp.Result, err = db.Import(ctx, req.Bundle); err != nil {
 			resp.Error = err.Error()
 			break
 		}
@@ -239,7 +239,7 @@ func ServeOp(ctx context.Context, dbPath, home, op string, stdin io.Reader, stdo
 			_ = KickWorkerRestart(ctx, home, nil)
 		}
 	case "count":
-		if resp.Counts, err = db.Counts(); err != nil {
+		if resp.Counts, err = db.Counts(ctx); err != nil {
 			resp.Error = err.Error()
 		}
 	default:
@@ -290,7 +290,8 @@ func receiverCutoffs(maxes map[string]string, full bool, now time.Time) (map[str
 
 // RunMemorySync executes one sync: push (local → peer), pull (peer →
 // local), or both. onlySessions exports every session both ways with no
-// content rows and no cutoff.
+// content rows and no cutoff. Each phase logs its start and end, and an
+// error names the phase it stopped in, so a stall or a lock shows where.
 func RunMemorySync(ctx context.Context, local *SyncDB, t SyncTransport, peer SyncPeer, opts SyncOptions, now time.Time) (*SyncReport, error) {
 	report := &SyncReport{Direction: opts.Direction}
 	push := opts.Direction == "push" || opts.Direction == "sync"
@@ -301,38 +302,57 @@ func RunMemorySync(ctx context.Context, local *SyncDB, t SyncTransport, peer Syn
 	if !push && !pull {
 		return nil, fmt.Errorf("unknown sync direction %q", opts.Direction)
 	}
+	full := opts.Full || opts.OnlySessions
 
 	if push {
-		maxes, err := t.Max(ctx, peer)
-		if err != nil {
+		var maxes map[string]string
+		var bundle *Bundle
+		if err := syncPhase("push: peer max", func() (n int, err error) {
+			maxes, err = t.Max(ctx, peer)
+			return len(maxes), err
+		}); err != nil {
 			return nil, err
 		}
-		cutoffs, err := receiverCutoffs(maxes, opts.Full || opts.OnlySessions, now)
-		if err != nil {
+		if err := syncPhase("push: local export", func() (int, error) {
+			cutoffs, err := receiverCutoffs(maxes, full, now)
+			if err != nil {
+				return 0, err
+			}
+			bundle, err = local.Export(ctx, cutoffs, opts.OnlySessions)
+			return bundle.rows(), err
+		}); err != nil {
 			return nil, err
 		}
-		bundle, err := local.Export(cutoffs, opts.OnlySessions)
-		if err != nil {
-			return nil, err
-		}
-		if report.Pushed, err = t.Import(ctx, peer, bundle); err != nil {
+		if err := syncPhase("push: peer import", func() (n int, err error) {
+			report.Pushed, err = t.Import(ctx, peer, bundle)
+			return report.Pushed.added(), err
+		}); err != nil {
 			return nil, err
 		}
 	}
 	if pull {
-		maxes, err := local.MaxCreatedAt()
-		if err != nil {
+		var maxes map[string]string
+		var bundle *Bundle
+		if err := syncPhase("pull: local max", func() (n int, err error) {
+			maxes, err = local.MaxCreatedAt(ctx)
+			return len(maxes), err
+		}); err != nil {
 			return nil, err
 		}
-		cutoffs, err := receiverCutoffs(maxes, opts.Full || opts.OnlySessions, now)
-		if err != nil {
+		if err := syncPhase("pull: peer export", func() (int, error) {
+			cutoffs, err := receiverCutoffs(maxes, full, now)
+			if err != nil {
+				return 0, err
+			}
+			bundle, err = t.Export(ctx, peer, cutoffs, opts.OnlySessions)
+			return bundle.rows(), err
+		}); err != nil {
 			return nil, err
 		}
-		bundle, err := t.Export(ctx, peer, cutoffs, opts.OnlySessions)
-		if err != nil {
-			return nil, err
-		}
-		if report.Pulled, err = local.Import(bundle); err != nil {
+		if err := syncPhase("pull: local import", func() (n int, err error) {
+			report.Pulled, err = local.Import(ctx, bundle)
+			return report.Pulled.added(), err
+		}); err != nil {
 			return nil, err
 		}
 	}
@@ -341,13 +361,40 @@ func RunMemorySync(ctx context.Context, local *SyncDB, t SyncTransport, peer Syn
 	// not turn a completed sync into a reported failure (the rows landed;
 	// the counts are the status row's convenience, not the result).
 	var err error
-	if report.LocalCounts, err = local.Counts(); err != nil {
+	if report.LocalCounts, err = local.Counts(ctx); err != nil {
 		report.LocalCounts = nil
 	}
 	if report.PeerCounts, err = t.Counts(ctx, peer); err != nil {
 		report.PeerCounts = nil
 	}
 	return report, nil
+}
+
+// syncPhase runs one phase between start and end log lines (with the
+// phase's row count) and prefixes its error with the phase name.
+func syncPhase(name string, fn func() (int, error)) error {
+	start := time.Now()
+	slog.Info("memory sync phase start", "phase", name)
+	n, err := fn()
+	if err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+	slog.Info("memory sync phase end", "phase", name, "rows", n, "elapsed", time.Since(start).Round(time.Millisecond))
+	return nil
+}
+
+func (b *Bundle) rows() int {
+	if b == nil {
+		return 0
+	}
+	return len(b.Observations) + len(b.Summaries) + len(b.Sessions)
+}
+
+func (r *ImportResult) added() int {
+	if r == nil {
+		return 0
+	}
+	return r.Obs + r.Sums + r.Sessions
 }
 
 // SyncStateEntry is one peer's last-run record for the status row.
