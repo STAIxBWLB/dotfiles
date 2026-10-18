@@ -215,7 +215,7 @@ Workspace context for Grok and agy: Grok reads the agents SSOT through its
 Claude compat (`~/.claude/CLAUDE.md`) and the claude-mem plugin it shares with
 Claude, so dot renders no Grok instructions file and removes a dot-rendered
 `~/.grok/AGENTS.md`. agy gets `~/.gemini/GEMINI.md` from
-`dot ai agents apply antigravity`, and `dot ai memory install` adds the
+`dot ai agents apply --tool antigravity`, and `dot ai memory install` adds the
 claude-mem MCP server to `~/.gemini/config/mcp_config.json`.
 
 ```bash

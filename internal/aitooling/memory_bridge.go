@@ -77,6 +77,13 @@ func (e *Engine) inspectMemoryBridge(ctx context.Context, m *aisettings.ClaudeMe
 		r.Detail = "selected recall/watch configuration missing or drifted"
 		return r
 	}
+	// agy is MCP recall only: with no transcript agent selected, nothing
+	// waits on the bridge service.
+	if !slices.Contains(s.Agents, "kimi") && !slices.Contains(s.Agents, "qwen") {
+		r.Status = "installed"
+		r.Detail = "selected MCP recall verified; no transcript capture selected"
+		return r
+	}
 	r.Status = "pending-runtime"
 	r.Detail = "selected MCP and watch configuration verified; native bridge service is not running"
 	if status.BridgeRunning {
