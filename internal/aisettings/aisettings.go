@@ -162,7 +162,6 @@ func Entries(includeAuth bool) []Entry {
 		// never restores; settings.json holds the dot-managed claude-mem MCP
 		// entry alongside Qwen's own model/auth settings.
 		{Tool: "qwen", Path: ".qwen/AGENTS.md", Description: "Qwen Code global instructions"},
-		{Tool: "grok", Path: ".grok/AGENTS.md", Description: "Grok global instructions"},
 		{Tool: "opencode", Path: ".config/opencode/AGENTS.md", Description: "OpenCode global instructions"},
 		{Tool: "qwen", Path: ".qwen/settings.json", Description: "Qwen Code settings and MCP servers"},
 		{Tool: "antigravity", Path: ".gemini/GEMINI.md", Description: "Antigravity/Gemini global instructions"},
@@ -1310,6 +1309,7 @@ func validatedRestoreEntries(root string, includeAuth bool) ([]validatedRestoreE
 	// unknown.
 	retiredSources := map[string]bool{
 		".cursor/AGENTS.md": true,
+		".grok/AGENTS.md":   true,
 	}
 	seenSource := map[string]bool{}
 	seenTarget := map[string]bool{}

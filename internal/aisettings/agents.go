@@ -241,7 +241,13 @@ func (m *AgentsManager) legacyStatePath() string {
 // file already exists.
 func (m *AgentsManager) DefaultApplyTools() []string {
 	if m.SelectedTools != nil {
-		return append([]string{}, m.SelectedTools...)
+		ids := []string{}
+		for _, id := range m.SelectedTools {
+			if _, ok := m.Tool(id); ok {
+				ids = append(ids, id)
+			}
+		}
+		return ids
 	}
 	var ids []string
 	seen := map[string]bool{}
@@ -804,8 +810,10 @@ func (m *AgentsManager) renderTool(tool AgentTool, ssotBytes []byte) (string, bo
 }
 
 func (m *AgentsManager) resolveToolIDs(ids []string) ([]string, error) {
+	implicit := false
 	if len(ids) == 0 && m.SelectedTools != nil {
 		ids = append([]string{}, m.SelectedTools...)
+		implicit = true
 		if len(ids) == 0 {
 			return ids, nil
 		}
@@ -833,6 +841,11 @@ func (m *AgentsManager) resolveToolIDs(ids []string) ([]string, error) {
 		}
 		tool, ok := m.Tool(id)
 		if !ok {
+			// A selected agent with no instructions target (grok reads
+			// ~/.claude/CLAUDE.md, gencode has none) is not an error.
+			if implicit {
+				continue
+			}
 			return nil, fmt.Errorf("unknown agents tool %q", id)
 		}
 		if seen[tool.ID] {

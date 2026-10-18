@@ -59,6 +59,7 @@ var pathBoundaryTable = []pathBoundaryEntry{
 	{"ClaudeMemManager.CopilotMCPPath", classHomeWrite},
 	{"ClaudeMemManager.KimiMCPPath", classHomeWrite},
 	{"ClaudeMemManager.QwenMCPPath", classHomeWrite},
+	{"ClaudeMemManager.AntigravityMCPPath", classHomeWrite},
 	{"ClaudeMemManager.PiAgentsPath", classHomeWrite},
 	{"ClaudeMemManager.KiroMCPPath", classHomeWrite},
 	{"ClaudeMemManager.LaunchdPlistPath", classHomeWrite},
@@ -115,6 +116,7 @@ var allowedBoundaryRoots = []string{
 	"~/.claude/plugins/marketplaces/thedotmack",
 	"~/.kimi-code/mcp.json",
 	"~/.qwen/settings.json",
+	"~/.gemini/config/mcp_config.json",
 	"~/.kiro/settings/mcp.json",
 	"~/.copilot/mcp-config.json",
 	"~/.codex/config.toml",
@@ -122,7 +124,6 @@ var allowedBoundaryRoots = []string{
 	// one is what makes a newly registered tool a documented grant rather
 	// than a silent one (see TestAgentTargetsResolveUnderAllowedRoots).
 	"~/.codex/AGENTS.md",
-	"~/.grok/AGENTS.md",
 	"~/.config/opencode/AGENTS.md",
 	"~/.kiro/steering/AGENTS.md",
 	"~/.kimi-code/AGENTS.md",
@@ -317,6 +318,8 @@ func resolveHomeWrite(t *testing.T, name, home string) string {
 		return (&ClaudeMemManager{HomeDir: home}).KimiMCPPath()
 	case "ClaudeMemManager.QwenMCPPath":
 		return (&ClaudeMemManager{HomeDir: home}).QwenMCPPath()
+	case "ClaudeMemManager.AntigravityMCPPath":
+		return (&ClaudeMemManager{HomeDir: home}).AntigravityMCPPath()
 	case "ClaudeMemManager.PiAgentsPath":
 		return (&ClaudeMemManager{HomeDir: home}).PiAgentsPath()
 	case "ClaudeMemManager.KiroMCPPath":

@@ -82,6 +82,9 @@ type ClaudeMemStatus struct {
 	CodexHome string
 	KimiMCP   bool
 	QwenMCP   bool
+	// AntigravityMCP reports agy's shared MCP config entry. agy has no
+	// transcript the bridge can read, so recall is all dot wires for it.
+	AntigravityMCP bool
 	// PiAgents reports pi's fan-out instructions target, which is all dot
 	// installs on pi's side: pi has no MCP entry to check.
 	PiAgents            bool
@@ -152,6 +155,11 @@ func (m *ClaudeMemManager) KimiMCPPath() string {
 
 func (m *ClaudeMemManager) QwenMCPPath() string {
 	return filepath.Join(m.HomeDir, ".qwen", "settings.json")
+}
+
+// AntigravityMCPPath is the Antigravity CLI's shared MCP config.
+func (m *ClaudeMemManager) AntigravityMCPPath() string {
+	return filepath.Join(m.HomeDir, ".gemini", "config", "mcp_config.json")
 }
 
 // PiAgentsPath is pi's global instructions target. pi takes no MCP entry, so
@@ -897,6 +905,7 @@ func (m *ClaudeMemManager) Install(ctx context.Context) (ClaudeMemInstallResult,
 	}{
 		{m.KimiMCPPath(), mcpVariantStandard},
 		{m.QwenMCPPath(), mcpVariantStandard},
+		{m.AntigravityMCPPath(), mcpVariantStandard},
 		{m.KiroMCPPath(), mcpVariantKiro},
 		{m.CopilotMCPPath(), mcpVariantCopilot},
 	} {
@@ -1226,6 +1235,7 @@ func (m *ClaudeMemManager) Status(ctx context.Context, ssotPath string) ClaudeMe
 	}
 	status.KimiMCP = hasManagedMCPEntry(m.KimiMCPPath(), m.DotPath)
 	status.QwenMCP = hasManagedMCPEntry(m.QwenMCPPath(), m.DotPath)
+	status.AntigravityMCP = hasManagedMCPEntry(m.AntigravityMCPPath(), m.DotPath)
 	if info, err := os.Stat(m.PiAgentsPath()); err == nil && !info.IsDir() {
 		status.PiAgents = true
 	}
@@ -1412,7 +1422,7 @@ func (m *ClaudeMemManager) PrepareSelectedIntegration() (ClaudeMemInstallResult,
 		return ClaudeMemInstallResult{}, err
 	}
 	result := ClaudeMemInstallResult{WatchCount: countWatches(config.Watches)}
-	bridgeSelected := memoryAgentSelected(selection, "kimi") || memoryAgentSelected(selection, "qwen")
+	bridgeSelected := memoryAgentSelected(selection, "kimi") || memoryAgentSelected(selection, "qwen") || memoryAgentSelected(selection, "antigravity")
 	if !bridgeSelected {
 		// Stop exposing previously managed watches without creating a worker
 		// or new configuration tree on a never-configured host.
@@ -1431,7 +1441,7 @@ func (m *ClaudeMemManager) PrepareSelectedIntegration() (ClaudeMemInstallResult,
 	if err != nil {
 		return result, err
 	}
-	for _, target := range []struct{ agent, path string }{{"kimi", m.KimiMCPPath()}, {"qwen", m.QwenMCPPath()}} {
+	for _, target := range []struct{ agent, path string }{{"kimi", m.KimiMCPPath()}, {"qwen", m.QwenMCPPath()}, {"antigravity", m.AntigravityMCPPath()}} {
 		if !memoryAgentSelected(selection, target.agent) {
 			continue
 		}
