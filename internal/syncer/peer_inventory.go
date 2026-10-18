@@ -284,8 +284,8 @@ func remotePeerStatusCommand(dot string) string {
 // keeps the fail-closed status, and an older peer ignores the variable.
 const PeerStatusUnscannedEnv = "DOT_PEER_STATUS_UNSCANNED"
 
-func remotePeerNormalizeCommand(dot string) string {
-	return "exec " + shellQuote(dot) + " sync names normalize --profile=peer --yes"
+func remotePeerNormalizeCommand(dot, excludes string) string {
+	return PeerNormalizeExcludesEnv + "=" + shellQuote(excludes) + " exec " + shellQuote(dot) + " sync names normalize --profile=peer --yes"
 }
 
 // remotePeerStatus is the narrow view of a remote `dot peer status --json`
@@ -464,7 +464,11 @@ func normalizeRemotePeerNames(ctx context.Context, runner *exec.Runner, cfg *Con
 	if err != nil {
 		return fmt.Errorf("normalizing peer workspace names: %w", err)
 	}
-	if _, err := runner.Run(ctx, "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", cfg.Target.Host, remotePeerNormalizeCommand(dot.Path)); err != nil {
+	excludes, err := encodePeerNormalizeExcludes(cfg)
+	if err != nil {
+		return fmt.Errorf("normalizing peer workspace names: %w", err)
+	}
+	if _, err := runner.Run(ctx, "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", cfg.Target.Host, remotePeerNormalizeCommand(dot.Path, excludes)); err != nil {
 		return fmt.Errorf("normalizing peer workspace names: %w", err)
 	}
 	return nil

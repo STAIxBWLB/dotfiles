@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -137,6 +138,12 @@ func runSyncNamesNormalize(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	cfg := bs.Config
+	// A coordinator's peer run passes its excludes and worktree union (#279).
+	if v := os.Getenv(syncer.PeerNormalizeExcludesEnv); v != "" && cfg.Profile == syncer.PeerProfile {
+		if err := syncer.ApplyPeerNormalizeExcludes(cfg, v); err != nil {
+			return err
+		}
+	}
 
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	yes, _ := cmd.Flags().GetBool("yes")
