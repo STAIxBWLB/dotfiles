@@ -197,4 +197,13 @@ func TestAntigravityOnlyRecallDoesNotWaitOnBridge(t *testing.T) {
 	if r := e.inspectMemoryBridge(context.Background(), m, s); r.Status != "installed" {
 		t.Fatalf("%+v", r)
 	}
+	// pi still captures transcripts, so agy+pi waits on the bridge.
+	s.Agents = []string{"antigravity", "pi"}
+	m.SelectedAgents = s.Agents
+	if _, err := m.PrepareSelectedIntegration(); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.inspectMemoryBridge(context.Background(), m, s); r.Status == "installed" {
+		t.Fatalf("agy+pi hid the bridge runtime: %+v", r)
+	}
 }
