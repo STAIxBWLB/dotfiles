@@ -199,3 +199,27 @@ func TestOpenCodeUsesCanonicalConfigHome(t *testing.T) {
 		t.Fatalf("explicit: %s %v", got, err)
 	}
 }
+
+// Grok has no target of its own; selecting it must still render the
+// ~/.claude/CLAUDE.md file Grok reads through its Claude compat.
+func TestSelectedGrokRendersClaudeTarget(t *testing.T) {
+	home := t.TempDir()
+	m := NewAgentsManager(nil, home)
+	m.SelectedTools = []string{"grok"}
+	if got := m.DefaultApplyTools(); len(got) != 1 || got[0] != "claude" {
+		t.Fatalf("apply set = %v", got)
+	}
+	if err := os.MkdirAll(filepath.Dir(m.SSOTPath()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(m.SSOTPath(), []byte("# shared\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Apply(ApplyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	target, _ := m.TargetPath("claude")
+	if raw, err := os.ReadFile(target); err != nil || !IsManagedAgentsFile(target) {
+		t.Fatalf("claude target not rendered: %q %v", raw, err)
+	}
+}

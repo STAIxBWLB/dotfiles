@@ -242,9 +242,9 @@ func (m *AgentsManager) legacyStatePath() string {
 func (m *AgentsManager) DefaultApplyTools() []string {
 	if m.SelectedTools != nil {
 		ids := []string{}
-		for _, id := range m.SelectedTools {
-			if _, ok := m.Tool(id); ok {
-				ids = append(ids, id)
+		for _, tool := range m.registry() {
+			if m.toolSelected(tool.ID) && !containsAgentID(ids, tool.ID) {
+				ids = append(ids, tool.ID)
 			}
 		}
 		return ids
@@ -271,6 +271,13 @@ func (m *AgentsManager) DefaultApplyTools() []string {
 		}
 	}
 	return ids
+}
+
+// toolSelected reports whether a registered target belongs to the saved
+// selection. A selected Grok selects Claude's file: Grok reads the SSOT from
+// ~/.claude/CLAUDE.md through its Claude compat.
+func (m *AgentsManager) toolSelected(id string) bool {
+	return containsAgentID(m.SelectedTools, id) || (id == "claude" && containsAgentID(m.SelectedTools, "grok"))
 }
 
 // Tool returns a registered tool by id.
@@ -312,7 +319,7 @@ func (m *AgentsManager) Status() ([]AgentStatus, error) {
 
 	var out []AgentStatus
 	for _, tool := range m.registry() {
-		if m.SelectedTools != nil && !containsAgentID(m.SelectedTools, tool.ID) {
+		if m.SelectedTools != nil && !m.toolSelected(tool.ID) {
 			continue
 		}
 		target, err := m.TargetPath(tool.ID)
@@ -810,13 +817,8 @@ func (m *AgentsManager) renderTool(tool AgentTool, ssotBytes []byte) (string, bo
 }
 
 func (m *AgentsManager) resolveToolIDs(ids []string) ([]string, error) {
-	implicit := false
 	if len(ids) == 0 && m.SelectedTools != nil {
-		ids = append([]string{}, m.SelectedTools...)
-		implicit = true
-		if len(ids) == 0 {
-			return ids, nil
-		}
+		return m.DefaultApplyTools(), nil
 	}
 	if len(ids) == 0 {
 		seen := map[string]bool{}
@@ -836,16 +838,11 @@ func (m *AgentsManager) resolveToolIDs(ids []string) ([]string, error) {
 		if id == "" {
 			continue
 		}
-		if m.SelectedTools != nil && !containsAgentID(m.SelectedTools, id) {
+		if m.SelectedTools != nil && !m.toolSelected(id) {
 			return nil, fmt.Errorf("agent %q is not selected; run dot ai setup --agents to change the selection", id)
 		}
 		tool, ok := m.Tool(id)
 		if !ok {
-			// A selected agent with no instructions target (grok reads
-			// ~/.claude/CLAUDE.md, gencode has none) is not an error.
-			if implicit {
-				continue
-			}
 			return nil, fmt.Errorf("unknown agents tool %q", id)
 		}
 		if seen[tool.ID] {
