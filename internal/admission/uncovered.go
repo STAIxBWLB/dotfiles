@@ -61,10 +61,12 @@ func FindUncovered(ctx context.Context, projectDir string, maintenance bool, lea
 func filterUncovered(jobs []HeavyJob, project string, maintenance bool) []string {
 	var out []string
 	for _, j := range jobs {
-		// A busy process with no heavy shape, in no repository, is host load that the
-		// pressure thresholds already cover, not work of unknown ownership (#294).
+		// A busy process with no heavy shape, in no repository, is host load, not
+		// work of unknown ownership (#294).
+		// ponytail: known ceiling. See docs/CEILINGS.md (cwd as the owner of busy unshaped work).
 		unknown := j.Repository == "" && !(j.CPUOnly && j.OutsideRepository)
-		if unknown || (!maintenance && j.Repository == project) || (maintenance && j.Maintenance) {
+		sameRepository := j.Repository != "" && j.Repository == project
+		if unknown || (!maintenance && sameRepository) || (maintenance && j.Maintenance) {
 			out = append(out, j.Describe())
 		}
 	}

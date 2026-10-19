@@ -72,6 +72,7 @@ func TestCeilingsDoc(t *testing.T) {
 		"internal/syncer/peer_commands.go",
 		"internal/config/state.go",
 		"internal/syncer/sync_cmd_ops.go",
+		"internal/admission/uncovered.go",
 	} {
 		if !strings.Contains(doc, path) {
 			t.Errorf("document does not name %q", path)
@@ -95,6 +96,7 @@ func TestCeilingsDoc(t *testing.T) {
 		{"internal/syncer/gitrescue.go", "ponytail: known ceiling. See docs/CEILINGS.md (rewrite twins by author, date and subject)."},
 		{"internal/container/translate.go", "ponytail: known ceiling. See docs/CEILINGS.md (container translation table)."},
 		{"internal/container/host.go", "ponytail: known ceiling. See docs/CEILINGS.md (container DNS injection)."},
+		{"internal/admission/uncovered.go", "ponytail: known ceiling. See docs/CEILINGS.md (cwd as the owner of busy unshaped work)."},
 	} {
 		data, err := os.ReadFile(filepath.Join("..", "..", want.path))
 		if err != nil {
