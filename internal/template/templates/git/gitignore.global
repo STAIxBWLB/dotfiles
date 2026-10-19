@@ -103,6 +103,7 @@ htmlcov/
 .agenthub/
 .qwen/
 .kimi-code/
+.jcode/
 .firecrawl/
 node_modules/
 brag-output*/
