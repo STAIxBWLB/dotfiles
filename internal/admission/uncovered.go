@@ -64,7 +64,7 @@ func filterUncovered(jobs []HeavyJob, project string, maintenance bool) []string
 		// A busy process with no heavy shape, in no repository, is host load, not
 		// work of unknown ownership (#294).
 		// ponytail: known ceiling. See docs/CEILINGS.md (cwd as the owner of busy unshaped work).
-		unknown := j.Repository == "" && !(j.CPUOnly && j.OutsideRepository)
+		unknown := j.Repository == "" && (!j.CPUOnly || !j.OutsideRepository)
 		sameRepository := j.Repository != "" && j.Repository == project
 		if unknown || (!maintenance && sameRepository) || (maintenance && j.Maintenance) {
 			out = append(out, j.Describe())
