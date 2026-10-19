@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -233,7 +234,7 @@ func TestCPUOnlyWorkOutsideRepositoriesDoesNotBlock(t *testing.T) {
 }
 
 func TestRepositoryIdentityReportsNotRepository(t *testing.T) {
-	if _, err := repositoryIdentity(t.TempDir()); !errors.Is(err, errNotRepository) {
+	if _, err := repositoryIdentity(tempOutsideRepositories(t)); !errors.Is(err, errNotRepository) {
 		t.Fatalf("plain directory: err=%v, want errNotRepository", err)
 	}
 	broken := t.TempDir()
@@ -245,14 +246,66 @@ func TestRepositoryIdentityReportsNotRepository(t *testing.T) {
 	}
 }
 
+// tempOutsideRepositories returns a temporary directory, or skips when the
+// host's TMPDIR itself lies inside a repository (some agent sandboxes).
+func tempOutsideRepositories(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if _, err := repositoryIdentity(dir); !errors.Is(err, errNotRepository) {
+		t.Skipf("TMPDIR %s is not outside every repository: %v", dir, err)
+	}
+	return dir
+}
+
+// spawnSleeper starts a child whose cwd is dir and stops it at cleanup.
+func spawnSleeper(t *testing.T, dir string) int {
+	t.Helper()
+	c := exec.Command("/bin/sleep", "30")
+	c.Dir = dir
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Process.Kill(); _ = c.Wait() })
+	return c.Process.Pid
+}
+
 func TestResolveJobDirectoriesMarksOutsideRepository(t *testing.T) {
 	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
 		t.Skip("cwd resolution is implemented for linux and darwin")
 	}
-	jobs := resolveJobDirectories(context.Background(), []HeavyJob{{PID: os.Getpid()}})
-	// The test binary runs inside this repository: known repository, not outside.
+	outside := spawnSleeper(t, tempOutsideRepositories(t))
+	gone := t.TempDir()
+	removed := spawnSleeper(t, gone)
+	if err := os.Remove(gone); err != nil {
+		t.Fatal(err)
+	}
+	jobs := resolveJobDirectories(context.Background(), []HeavyJob{{PID: os.Getpid()}, {PID: outside}, {PID: removed}})
 	if jobs[0].Repository == "" || jobs[0].OutsideRepository {
-		t.Fatalf("own process: %+v, want a repository", jobs[0])
+		t.Errorf("own process (in this repository): %+v, want a repository", jobs[0])
+	}
+	if !jobs[1].OutsideRepository || jobs[1].Repository != "" {
+		t.Errorf("child in a plain temporary directory: %+v, want OutsideRepository", jobs[1])
+	}
+	if jobs[2].OutsideRepository {
+		t.Errorf("child whose cwd was removed: %+v, want unknown ownership, not outside", jobs[2])
+	}
+}
+
+func TestRepositoryIdentityMissingPathIsUnknown(t *testing.T) {
+	if _, err := repositoryIdentity(filepath.Join(t.TempDir(), "missing")); err == nil || errors.Is(err, errNotRepository) {
+		t.Fatalf("nonexistent path: err=%v, want an unknown-ownership error", err)
+	}
+}
+
+// A caller outside every repository has project "": an exempted job must not
+// match it as "the same repository" (#294 D5).
+func TestExemptJobDoesNotMatchAnEmptyProject(t *testing.T) {
+	exempt := HeavyJob{PID: 7, CPUOnly: true, OutsideRepository: true}
+	if got := filterUncovered([]HeavyJob{exempt}, "", false); len(got) != 0 {
+		t.Fatalf("caller outside every repository blocked on exempt work: %v", got)
+	}
+	if got := filterUncovered([]HeavyJob{{PID: 8, CPUOnly: true}}, "", false); len(got) != 1 {
+		t.Fatalf("unknown ownership no longer blocks a caller outside every repository: %v", got)
 	}
 }
 
