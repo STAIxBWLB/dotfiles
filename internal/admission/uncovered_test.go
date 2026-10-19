@@ -2,8 +2,10 @@ package admission
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -205,5 +207,67 @@ func TestBackgroundSyncLeaseCoversItsRsyncChild(t *testing.T) {
 				t.Fatalf("maintenance=%v: the leased sync's rsync still blocks: %v", maintenance, blocking)
 			}
 		}
+	}
+}
+
+// A busy process with no build or test shape, whose cwd is known and lies
+// outside every repository, is host load: it never blocks as unknown ownership
+// (#294). Everything else that is unknown still blocks.
+func TestCPUOnlyWorkOutsideRepositoriesDoesNotBlock(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		job         HeavyJob
+		maintenance bool
+		want        int
+	}{
+		{"busy app process outside any repository", HeavyJob{PID: 1, CPUOnly: true, OutsideRepository: true}, false, 0},
+		{"busy process with unobserved cwd", HeavyJob{PID: 2, CPUOnly: true}, false, 1},
+		{"build-shaped work outside any repository", HeavyJob{PID: 3, OutsideRepository: true}, false, 1},
+		{"maintenance-shaped busy process outside any repository", HeavyJob{PID: 4, CPUOnly: true, OutsideRepository: true, Maintenance: true}, true, 1},
+		{"busy process outside any repository, maintenance class", HeavyJob{PID: 5, CPUOnly: true, OutsideRepository: true}, true, 0},
+	} {
+		if got := filterUncovered([]HeavyJob{tc.job}, "/a/.git", tc.maintenance); len(got) != tc.want {
+			t.Errorf("%s: blockers=%v, want %d", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestRepositoryIdentityReportsNotRepository(t *testing.T) {
+	if _, err := repositoryIdentity(t.TempDir()); !errors.Is(err, errNotRepository) {
+		t.Fatalf("plain directory: err=%v, want errNotRepository", err)
+	}
+	broken := t.TempDir()
+	if err := os.WriteFile(filepath.Join(broken, ".git"), []byte("not a pointer\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repositoryIdentity(broken); err == nil || errors.Is(err, errNotRepository) {
+		t.Fatalf("invalid Git pointer: err=%v, want an unknown-ownership error", err)
+	}
+}
+
+func TestResolveJobDirectoriesMarksOutsideRepository(t *testing.T) {
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		t.Skip("cwd resolution is implemented for linux and darwin")
+	}
+	jobs := resolveJobDirectories(context.Background(), []HeavyJob{{PID: os.Getpid()}})
+	// The test binary runs inside this repository: known repository, not outside.
+	if jobs[0].Repository == "" || jobs[0].OutsideRepository {
+		t.Fatalf("own process: %+v, want a repository", jobs[0])
+	}
+}
+
+func TestUnownedHeavyJobsMarksCPUOnly(t *testing.T) {
+	rows, parents, err := parseProcessTable("" +
+		"  400     1 150.0 /Users/x/.local/bin/claude --max-turns=1 --model=fast\n" +
+		"  401     1 150.0 /opt/homebrew/bin/cargo build --release\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs, err := unownedHeavyJobs(rows, parents, 999, nil)
+	if err != nil || len(jobs) != 2 {
+		t.Fatalf("jobs=%+v err=%v", jobs, err)
+	}
+	if !jobs[0].CPUOnly || jobs[1].CPUOnly {
+		t.Fatalf("CPUOnly: claude=%t cargo=%t, want true and false", jobs[0].CPUOnly, jobs[1].CPUOnly)
 	}
 }
