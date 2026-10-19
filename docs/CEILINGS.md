@@ -295,3 +295,22 @@ another option also does. On Linux it covers `run` and `create` only.
 
 Replace this when apple/container#1449 lands: set the property in setup and
 drop the injection.
+
+## Cwd as the owner of busy unshaped work
+
+`internal/admission/uncovered.go` attributes uncovered heavy work to a
+repository by the process's cwd. A process that matches no build, test or
+install shape and is caught only by the CPU rule no longer blocks admission as
+unknown ownership when its cwd is observed to lie outside every repository
+(#294): an app launched from `/`, or a tool's state directory such as
+claude-mem's observer sessions. A job whose cwd could not be observed, or whose
+resolution failed for any other reason, still blocks.
+
+So unshaped work that builds or tests a repository from a directory outside it,
+such as a Gradle daemon under `~/.gradle`, a VM process running a container
+build, or a script runner started from `~`, is not deferred. A single such
+process can also stay under the pressure thresholds on a many-core host. Native
+compiler children (`rustc`, `clang`, `swift-frontend`, `ld`) are still
+name-shaped and still block. Revisit this when such unshaped builds cause a
+missed deferral: attribute work through the process tree's repository
+arguments, or add the tool's name to the shape rules.

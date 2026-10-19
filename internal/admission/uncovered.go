@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	osexec "os/exec"
@@ -28,6 +29,10 @@ type HeavyJob struct {
 	Directory   string `json:"directory,omitempty"`
 	Repository  string `json:"repository,omitempty"`
 	Maintenance bool   `json:"maintenance,omitempty"`
+	// CPUOnly: only the CPU rule matched, not a build, test or install shape.
+	CPUOnly bool `json:"cpu_only,omitempty"`
+	// OutsideRepository: the cwd was observed and lies outside every repository.
+	OutsideRepository bool `json:"outside_repository,omitempty"`
 }
 
 // Describe renders a job for a defer reason.
@@ -56,7 +61,12 @@ func FindUncovered(ctx context.Context, projectDir string, maintenance bool, lea
 func filterUncovered(jobs []HeavyJob, project string, maintenance bool) []string {
 	var out []string
 	for _, j := range jobs {
-		if j.Repository == "" || (!maintenance && j.Repository == project) || (maintenance && j.Maintenance) {
+		// A busy process with no heavy shape, in no repository, is host load, not
+		// work of unknown ownership (#294).
+		// ponytail: known ceiling. See docs/CEILINGS.md (cwd as the owner of busy unshaped work).
+		unknown := j.Repository == "" && (!j.CPUOnly || !j.OutsideRepository)
+		sameRepository := j.Repository != "" && j.Repository == project
+		if unknown || (!maintenance && sameRepository) || (maintenance && j.Maintenance) {
 			out = append(out, j.Describe())
 		}
 	}
@@ -144,8 +154,9 @@ func unownedHeavyJobs(rows []processRow, parents map[int]int, self int, leased [
 		if ancestors[r.pid] || r.ppid == self || underLease(r.pid) {
 			continue
 		}
-		if heavyweight(r.name, r.args) || r.cpu >= 100 {
-			found = append(found, HeavyJob{PID: r.pid, ParentPID: r.ppid, Name: r.name, Maintenance: containsWord(r.args, "install", "update", "upgrade", "sync", "ci")})
+		shaped := heavyweight(r.name, r.args)
+		if shaped || r.cpu >= 100 {
+			found = append(found, HeavyJob{PID: r.pid, ParentPID: r.ppid, Name: r.name, CPUOnly: !shaped, Maintenance: containsWord(r.args, "install", "update", "upgrade", "sync", "ci")})
 			if len(found) > 20 {
 				return nil, fmt.Errorf("heavy process inventory exceeds 20 jobs; ownership cannot be established safely")
 			}
@@ -250,18 +261,24 @@ func resolveJobDirectories(ctx context.Context, jobs []HeavyJob) []HeavyJob {
 			jobs[i].Directory = cwd[jobs[i].PID]
 		}
 	}
-	cache := map[string]string{}
+	type identity struct {
+		repo    string
+		outside bool
+	}
+	cache := map[string]identity{}
 	for i := range jobs {
 		dir := jobs[i].Directory
 		if dir == "" {
 			continue
 		}
-		repo, ok := cache[dir]
+		id, ok := cache[dir]
 		if !ok {
-			repo, _ = repositoryIdentity(dir)
-			cache[dir] = repo
+			repo, err := repositoryIdentity(dir)
+			id = identity{repo: repo, outside: errors.Is(err, errNotRepository)}
+			cache[dir] = id
 		}
-		jobs[i].Repository = repo
+		jobs[i].Repository = id.repo
+		jobs[i].OutsideRepository = id.outside
 	}
 	return jobs
 }
@@ -285,6 +302,10 @@ func lsofDirectories(out string, probeErr error) map[int]string {
 	}
 	return cwd
 }
+
+// errNotRepository: the walk reached the filesystem root without a .git. Any
+// other resolution failure leaves ownership unknown.
+var errNotRepository = errors.New("not inside a Git repository")
 
 // repositoryIdentity resolves dir to its repository's common Git directory
 // with bounded filesystem reads, never Git subprocesses, so every worktree of
@@ -332,11 +353,11 @@ func repositoryIdentity(dir string) (string, error) {
 		}
 		parent := filepath.Dir(current)
 		if parent == current {
-			break
+			return "", fmt.Errorf("%w: %s", errNotRepository, dir)
 		}
 		current = parent
 	}
-	return "", fmt.Errorf("repository ownership unknown for %s", dir)
+	return "", fmt.Errorf("repository ownership unknown for %s: deeper than 64 levels", dir)
 }
 
 // readGitPointer reads a Git indirection file: a single short path, never
