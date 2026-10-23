@@ -30,15 +30,20 @@ func TestCodexMCPApplicationErrorsRemainNarrow(t *testing.T) {
 		blocked                                 bool
 	}{
 		{"missing vault note", "obsidian", "read_note", `{"content":[{"type":"text","text":"File not found"}]}`, `null`, false},
-		{"memory search application result", "mcp-search", "search", `{"content":[]}`, `null`, false},
-		{"plugin memory lookup", "plugin_claude-mem_mcp-search", "get_observations", `{"content":[]}`, `null`, false},
+		{"memory search application result", "amem", "amem_search", `{"content":[]}`, `null`, false},
+		{"memory show of a missing id", "amem", "amem_show", `{"content":[]}`, `null`, false},
+		{"work-list read", "amem", "amem_work_state_read", `{"content":[]}`, `null`, false},
+		{"retired claude-mem lookup", "mcp-search", "search", `{"content":[]}`, `null`, true},
+		{"retired plugin memory lookup", "plugin_claude-mem_mcp-search", "get_observations", `{"content":[]}`, `null`, true},
 		{"native read denial", "obsidian", "read_note", `null`, `{"message":"permission denied"}`, true},
 		{"native error wins over result", "obsidian", "read_note", `{"content":[]}`, `{"message":"permission denied"}`, true},
 		{"missing result", "obsidian", "read_note", `null`, `null`, true},
 		{"malformed result envelope", "obsidian", "read_note", `{}`, `null`, true},
 		{"failed note write", "obsidian", "write_note", `{"content":[{"type":"text","text":"File not found"}]}`, `null`, true},
 		{"failed patch", "obsidian", "patch_note", `{"content":[]}`, `null`, true},
-		{"failed memory record", "mcp-search", "observation_add", `{"content":[]}`, `null`, true},
+		{"failed memory proposal", "amem", "amem_remember", `{"content":[]}`, `null`, true},
+		{"failed work-list write", "amem", "amem_work_state_write", `{"content":[]}`, `null`, true},
+		{"claude-mem tool name on amem", "amem", "observation_add", `{"content":[]}`, `null`, true},
 		{"unknown server", "other", "read_note", `{"content":[]}`, `null`, true},
 		{"unknown tool", "obsidian", "delete_note", `{"content":[]}`, `null`, true},
 	}

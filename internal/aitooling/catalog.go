@@ -21,8 +21,7 @@ func Catalog() []Entry {
 		{"gencode", "agent", "Genspark Gencode", "gencode"}, {"pi", "agent", "pi", "pi"},
 		{"antigravity", "agent", "Antigravity CLI", "agy"},
 		{"ripwire", "tool", "ripwire", "ripwire"}, {"ocr", "tool", "Open Code Review", "ocr"},
-		{"gsd", "tool", "GSD", "gsd"}, {"claude-mem", "tool", "claude-mem", ""},
-		{"ponytail", "tool", "ponytail", ""},
+		{"gsd", "tool", "GSD", "gsd"}, {"ponytail", "tool", "ponytail", ""},
 	}
 }
 

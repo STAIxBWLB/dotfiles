@@ -17,7 +17,7 @@ func TestKnowledgeCodexRequiresExistingBindings(t *testing.T) {
 	if err != nil || len(grants) != 0 {
 		t.Fatalf("%+v %v", grants, err)
 	}
-	native := []byte("[mcp_servers.obsidian]\ncommand = \"obsidian-mcp\"\n[plugins.\"claude-mem@claude-mem-local\"]\nenabled = true\n[plugins.\"claude-mem@claude-mem-local\".mcp_servers.mcp-search.tools.search]\napproval_mode = \"ask\"\n")
+	native := []byte("[mcp_servers.obsidian]\ncommand = \"obsidian-mcp\"\n[mcp_servers.amem]\ncommand = \"/opt/bin/amem\"\nargs = [\"mcp\"]\n")
 	if err = os.WriteFile(filepath.Join(home, "config.toml"), native, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -30,12 +30,12 @@ func TestKnowledgeCodexRequiresExistingBindings(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(args, " ")
-	for _, expected := range []string{"write_note", "observation_add", "observation_record_event", "approval_mode=\"approve\""} {
+	for _, expected := range []string{"write_note", "mcp_servers.amem.tools.amem_search.approval_mode", "mcp_servers.amem.tools.amem_work_state_write.approval_mode", "mcp_servers.amem.tools.amem_remember.approval_mode", "approval_mode=\"approve\""} {
 		if !strings.Contains(joined, expected) {
-			t.Fatalf("missing %s", expected)
+			t.Fatalf("missing %s in %s", expected, joined)
 		}
 	}
-	for _, excluded := range []string{"delete_note", "move_file", "move_note", "build_corpus", "prime_corpus", "command=", "url="} {
+	for _, excluded := range []string{"delete_note", "move_file", "move_note", "build_corpus", "prime_corpus", "command=", "url=", "claude-mem", "mcp-search", "plugins."} {
 		if strings.Contains(joined, excluded) {
 			t.Fatalf("unexpected %s", excluded)
 		}
@@ -45,6 +45,65 @@ func TestKnowledgeCodexRequiresExistingBindings(t *testing.T) {
 		t.Fatal("native identity changed")
 	}
 }
+
+// amem's grant set is its frozen P2 tool list and nothing a note can be deleted or moved with.
+func TestKnowledgeMemoryToolsAreAmemsFrozenSurface(t *testing.T) {
+	want := []string{"amem_search", "amem_show", "amem_timeline", "amem_graph", "amem_work_state_read", "amem_work_state_write", "amem_remember", "amem_vault_candidates", "amem_capacity"}
+	if strings.Join(memoryKnowledgeTools, ",") != strings.Join(want, ",") {
+		t.Fatalf("memory tools drifted from agent-mem src/mcp.ts: %v", memoryKnowledgeTools)
+	}
+	for _, name := range memoryKnowledgeTools {
+		if !strings.HasPrefix(name, "amem_") || strings.Contains(name, "delete") || strings.Contains(name, "forget") || strings.Contains(name, "move") {
+			t.Errorf("unsafe or foreign memory tool %q", name)
+		}
+	}
+}
+
+// AC3: after retirement the old claude-mem names are refused outright, never mapped onto amem.
+func TestKnowledgeRefusesTheRetiredClaudeMemServerNames(t *testing.T) {
+	old := []KnowledgeApproval{
+		{Server: "plugin_claude-mem_mcp-search", Tool: "search", ApprovalMode: "approve"},
+		{Server: "plugin_claude-mem_mcp-search", Tool: "observation_add", ApprovalMode: "approve"},
+		{Server: "mcp-search", Plugin: "claude-mem@claude-mem-local", Tool: "search", ApprovalMode: "approve"},
+		{Server: "mcp-search", Plugin: "claude-mem@claude-mem-local", Tool: "observation_add", ApprovalMode: "approve"},
+		{Server: "mcp-search", Tool: "search", ApprovalMode: "approve"},
+	}
+	for _, agent := range []string{"claude", "codex"} {
+		for _, grant := range old {
+			if _, err := KnowledgeArgs(Runtime{Agent: agent}, []KnowledgeApproval{grant}); err == nil {
+				t.Errorf("%s accepted the retired grant %+v", agent, grant)
+			}
+		}
+	}
+	// amem's own names under a retired plugin binding are refused too: a plugin-scoped amem does not exist.
+	if _, err := KnowledgeArgs(Runtime{Agent: "codex"}, []KnowledgeApproval{{Server: "amem", Plugin: "claude-mem@claude-mem-local", Tool: "amem_search", ApprovalMode: "approve"}}); err == nil {
+		t.Error("accepted amem under a claude-mem plugin")
+	}
+	// and an old tool name on the amem server is not an amem tool.
+	for _, tool := range []string{"search", "observation_add", "get_observations", "smart_search"} {
+		if _, err := KnowledgeArgs(Runtime{Agent: "claude"}, []KnowledgeApproval{{Server: "amem", Tool: tool, ApprovalMode: "approve"}}); err == nil {
+			t.Errorf("accepted the claude-mem tool name %q on amem", tool)
+		}
+	}
+}
+
+// A machine that still has only the claude-mem plugin enabled gets no memory grant: the binding is
+// not recognized, so nothing is silently mapped, and nothing errors either.
+func TestKnowledgeCodexWithOnlyTheOldPluginGrantsNothing(t *testing.T) {
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := "[plugins.\"claude-mem@claude-mem-local\"]\nenabled = true\n[plugins.\"claude-mem@claude-mem-local\".mcp_servers.mcp-search.tools.search]\napproval_mode = \"approve\"\n"
+	if err = os.WriteFile(filepath.Join(home, "config.toml"), []byte(config), 0600); err != nil {
+		t.Fatal(err)
+	}
+	grants, err := KnowledgeApprovals(Runtime{Agent: "codex", Home: home})
+	if err != nil || len(grants) != 0 {
+		t.Fatalf("old plugin produced grants %+v err=%v", grants, err)
+	}
+}
+
 func TestKnowledgeCodexNoPhantomBindings(t *testing.T) {
 	home, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -54,7 +113,9 @@ func TestKnowledgeCodexNoPhantomBindings(t *testing.T) {
 		"[mcp_servers.obsidian.tools.read_note]\napproval_mode = \"ask\"\n",
 		"[mcp_servers.obsidian]\ncommand = \"obsidian-mcp\"\nenabled = false\n",
 		"[\"mcp_servers.obsidian\"]\ncommand = \"not-a-server\"\n",
-		"[plugins.\"claude-mem@claude-mem-local\"]\nenabled = false\n[plugins.\"claude-mem@claude-mem-local\".mcp_servers.mcp-search.tools.search]\napproval_mode = \"ask\"\n",
+		"[mcp_servers.amem.tools.amem_search]\napproval_mode = \"ask\"\n",
+		"[mcp_servers.amem]\ncommand = \"/opt/bin/amem\"\nenabled = false\n",
+		"[\"mcp_servers.amem\"]\ncommand = \"not-a-server\"\n",
 	} {
 		if err = os.WriteFile(filepath.Join(home, "config.toml"), []byte(config), 0600); err != nil {
 			t.Fatal(err)
@@ -75,7 +136,7 @@ func TestKnowledgeClaudePreciseGrants(t *testing.T) {
 	if err != nil || len(args) != 2 || args[0] != "--allowedTools" {
 		t.Fatalf("%+v %v", args, err)
 	}
-	for _, name := range []string{"mcp__obsidian__write_note", "mcp__obsidian__patch_note", "mcp__plugin_claude-mem_mcp-search__observation_add"} {
+	for _, name := range []string{"mcp__obsidian__write_note", "mcp__obsidian__patch_note", "mcp__amem__amem_work_state_write", "mcp__amem__amem_remember", "mcp__amem__amem_search"} {
 		if !strings.Contains(args[1], name) {
 			t.Fatal(name)
 		}
@@ -122,75 +183,11 @@ func TestKnowledgeCanonicalDeclaredHome(t *testing.T) {
 	}
 }
 
-func TestKnowledgeEnabledPluginManifestOnly(t *testing.T) {
-	home := t.TempDir()
-	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("[plugins.\"claude-mem@claude-mem-local\"]\nenabled = true\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	runtime := Runtime{Agent: "codex", Home: home}
-	if _, err := KnowledgeApprovals(runtime); err == nil {
-		t.Fatal("unknown enabled binding silently ignored")
-	}
-	bin := filepath.Join(home, "fake-codex")
-	script := "#!/bin/sh\n[ \"$*\" = \"plugin list --json --marketplace claude-mem-local\" ] || exit 44\nprintf '%s' '{\"installed\":[{\"pluginId\":\"claude-mem@claude-mem-local\",\"version\":\"13.28.0\",\"installed\":true}]}'\n"
-	if err := os.WriteFile(bin, []byte(script), 0700); err != nil {
-		t.Fatal(err)
-	}
-	runtime.Executable = bin
-	sharedPlugins := t.TempDir()
-	if err := os.Symlink(sharedPlugins, filepath.Join(home, "plugins")); err != nil {
-		t.Fatal(err)
-	}
-	root := filepath.Join(sharedPlugins, "cache", "claude-mem-local", "claude-mem", "13.28.0")
-	if err := os.MkdirAll(filepath.Join(root, ".codex-plugin"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, ".codex-plugin", "plugin.json"), []byte("{\"mcpServers\":\"./.mcp.json\"}"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, ".mcp.json"), []byte("{\"mcpServers\":{\"mcp-search\":{\"command\":\"node\",\"args\":[\"private-script\"]}}}"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	before, err := os.Stat(filepath.Join(root, ".mcp.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	grants, err := KnowledgeApprovals(runtime)
-	if err != nil || len(grants) != len(memoryKnowledgeTools) {
-		t.Fatalf("%+v %v", grants, err)
-	}
-	args, err := KnowledgeArgs(runtime, grants)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(strings.Join(args, " "), "private-script") {
-		t.Fatal("identity copied")
-	}
-	after, err := os.Stat(filepath.Join(root, ".mcp.json"))
-	if err != nil || !after.ModTime().Equal(before.ModTime()) {
-		t.Fatal("shared native metadata modified")
-	}
-	// A symlink below the resolved read boundary cannot escape to another file.
-	outside := filepath.Join(t.TempDir(), "foreign.json")
-	if err = os.WriteFile(outside, []byte("{}"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err = os.Remove(filepath.Join(root, ".mcp.json")); err != nil {
-		t.Fatal(err)
-	}
-	if err = os.Symlink(outside, filepath.Join(root, ".mcp.json")); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = KnowledgeApprovals(runtime); err == nil {
-		t.Fatal("metadata symlink escaped installed plugin root")
-	}
-}
-
 func TestKnowledgeCodexCLIUsesNativeRawSegments(t *testing.T) {
 	runtime := Runtime{Agent: "codex"}
 	grants := []KnowledgeApproval{
 		{Server: "obsidian", Tool: "write_note", ApprovalMode: "approve"},
-		{Plugin: "claude-mem@claude-mem-local", Server: "mcp-search", Tool: "observation_add", ApprovalMode: "approve"},
+		{Server: "amem", Tool: "amem_work_state_write", ApprovalMode: "approve"},
 	}
 	args, err := KnowledgeArgs(runtime, grants)
 	if err != nil {
@@ -200,7 +197,7 @@ func TestKnowledgeCodexCLIUsesNativeRawSegments(t *testing.T) {
 	// are literal key characters here, although native TOML files need them.
 	expected := [][]string{
 		{"mcp_servers", "obsidian", "tools", "write_note", "approval_mode"},
-		{"plugins", "claude-mem@claude-mem-local", "mcp_servers", "mcp-search", "tools", "observation_add", "approval_mode"},
+		{"mcp_servers", "amem", "tools", "amem_work_state_write", "approval_mode"},
 	}
 	for i, parts := range expected {
 		if args[2*i] != "-c" {
@@ -220,7 +217,7 @@ func TestKnowledgeCodexCLIUsesNativeRawSegments(t *testing.T) {
 			}
 		}
 	}
-	if !strings.Contains(knowledgeKey(grants[1]), "plugins.\"claude-mem@claude-mem-local\"") {
+	if !strings.Contains(knowledgeKey(grants[1]), "mcp_servers.\"amem\".tools.\"amem_work_state_write\"") {
 		t.Fatal("TOML file keys lost required quoting")
 	}
 }

@@ -14,9 +14,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/STAIxBWLB/dotfiles/internal/aisettings"
-	"github.com/STAIxBWLB/dotfiles/internal/config"
 )
 
 func TestGrokNativeReadinessAndStableUpdateDeferral(t *testing.T) {
@@ -176,34 +173,5 @@ func TestNPMCacheIntegrityRejectsTamperingAndTraversal(t *testing.T) {
 				t.Fatalf("clean=%v want=%v", got, tc.want)
 			}
 		})
-	}
-}
-
-// agy is MCP recall only, so an agy-only selection is complete once its MCP
-// entry is in place; it must not wait on the transcript bridge service.
-func TestAntigravityOnlyRecallDoesNotWaitOnBridge(t *testing.T) {
-	e := testEngine(t)
-	plugin := filepath.Join(e.opts.HomeDir, "plugin")
-	for _, name := range []string{"scripts/mcp-server.cjs", "scripts/transcript-watcher.cjs", "scripts/bun-runner.js", "node_modules/x/package.json"} {
-		writePluginFixture(t, filepath.Join(plugin, name), "{}")
-	}
-	s := config.AIToolingConfig{Agents: []string{"antigravity"}}
-	m := aisettings.NewClaudeMemManager(e.opts.HomeDir, "/opt/bin/dot", "")
-	m.SelectedAgents = s.Agents
-	m.PluginRoot = plugin
-	if _, err := m.PrepareSelectedIntegration(); err != nil {
-		t.Fatal(err)
-	}
-	if r := e.inspectMemoryBridge(context.Background(), m, s); r.Status != "installed" {
-		t.Fatalf("%+v", r)
-	}
-	// pi still captures transcripts, so agy+pi waits on the bridge.
-	s.Agents = []string{"antigravity", "pi"}
-	m.SelectedAgents = s.Agents
-	if _, err := m.PrepareSelectedIntegration(); err != nil {
-		t.Fatal(err)
-	}
-	if r := e.inspectMemoryBridge(context.Background(), m, s); r.Status == "installed" {
-		t.Fatalf("agy+pi hid the bridge runtime: %+v", r)
 	}
 }

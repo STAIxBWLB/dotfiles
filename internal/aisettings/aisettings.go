@@ -159,7 +159,7 @@ func Entries(includeAuth bool) []Entry {
 		{Tool: "pi", Path: ".pi/agent/settings.json", Description: "pi settings"},
 		{Tool: "pi", Path: ".pi/agent/models.json", Description: "pi providers and model catalog"},
 		// Qwen's sessions, memories, and usage record are machine state dot
-		// never restores; settings.json holds the dot-managed claude-mem MCP
+		// never restores; settings.json holds the dot-managed amem MCP
 		// entry alongside Qwen's own model/auth settings.
 		{Tool: "qwen", Path: ".qwen/AGENTS.md", Description: "Qwen Code global instructions"},
 		{Tool: "opencode", Path: ".config/opencode/AGENTS.md", Description: "OpenCode global instructions"},

@@ -15,209 +15,158 @@ import (
 func newAIMemoryCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "memory",
-		Short: "Manage shared claude-mem integration for Codex, Kimi, Kiro, Copilot, Qwen, and pi",
-		Long: `Use one claude-mem store across Codex, Kimi Code, Kiro CLI, GitHub
-Copilot CLI, Qwen Code, and pi.
+		Short: "Register amem for the agents and retire claude-mem",
+		Long: `Register amem (@staix/agent-mem) as the project memory for Kimi, Qwen,
+Antigravity, Kiro and GitHub Copilot, and print the exact lines for Claude Code
+and Codex, which keep their own plugin and MCP state.
 
-Codex keeps the plugin's native lifecycle hooks. Kimi, Kiro, Copilot, and
-Qwen receive the same MCP recall server plus a workspace-aware transcript
-capture bridge. pi has no MCP support by design and joins the transcript
-bridge only.`,
+dot never installs amem and runs no memory process: install the exact version
+yourself, then run 'dot ai memory install'. amem has no resident worker, so dot
+writes no LaunchAgent for it. Sessions of agents without hooks reach amem
+through 'amem ingest <agent>', run at session end or on demand.
+
+'dot ai memory retire-claude-mem' removes the old claude-mem integration. It is
+a dry run unless --apply is given.`,
 	}
 	cmd.AddCommand(newAIMemoryInstallCmd())
 	cmd.AddCommand(newAIMemoryStatusCmd())
-	cmd.AddCommand(newAIMemorySyncCmd())
-	cmd.AddCommand(newAIMemoryUpdateCmd())
-	cmd.AddCommand(newAIMemoryMCPServerCmd())
-	cmd.AddCommand(newAIMemoryBridgeCmd())
+	cmd.AddCommand(newAIMemoryRetireCmd())
 	return cmd
 }
 
+func newAmemManagerFromCmd(cmd *cobra.Command) (*aisettings.AmemManager, error) {
+	home := homeFromCmd(cmd)
+	amemPath, err := exec.LookPath("amem")
+	if err == nil {
+		amemPath, err = filepath.Abs(amemPath)
+	}
+	if err != nil {
+		amemPath = ""
+	}
+	mgr := aisettings.NewAmemManager(home, amemPath)
+	selected, err := effectiveToolingForCmd(cmd)
+	if err != nil {
+		return nil, err
+	}
+	if selected != nil {
+		mgr.SelectedAgents = append([]string{}, selected.Agents...)
+	} else if path, _ := cmd.Flags().GetString("config"); path != "" {
+		mgr.SelectedAgents = []string{}
+	}
+	override, _ := cmd.Flags().GetString("home")
+	mgr.ExplicitHome = override != ""
+	if override == "" {
+		if adopted := os.Getenv("KIMI_CODE_HOME"); filepath.IsAbs(adopted) {
+			mgr.KimiHome = adopted
+		}
+	}
+	return mgr, nil
+}
+
 func newAIMemoryInstallCmd() *cobra.Command {
-	c := &cobra.Command{
+	return &cobra.Command{
 		Use:   "install",
-		Short: "Prepare selected memory adapters or install the legacy integration",
-		Args:  cobra.NoArgs,
+		Short: "Register amem's MCP server for the selected agents",
+		Long: `Add the amem MCP server ('amem mcp') to the config of each selected agent whose
+MCP file dot owns, and print the lines for Claude Code and Codex. Every other
+server and key in those files is preserved. Re-running changes nothing.
+
+amem must already be installed (the exact @staix/agent-mem version, which
+'dot ai memory status' names) and on PATH. With --dry-run nothing is written.`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dryRun, _ := cmd.Flags().GetBool("dry-run")
-			forceAgents, _ := cmd.Flags().GetBool("force-agents")
-			syncPeer, _ := cmd.Flags().GetString("peer")
-			mgr, err := newClaudeMemManagerFromCmd(cmd)
+			mgr, err := newAmemManagerFromCmd(cmd)
 			if err != nil {
 				return err
+			}
+			if mgr.AmemPath == "" {
+				return fmt.Errorf("amem is not on PATH: install @staix/agent-mem %s exactly (for example `bun add -g @staix/agent-mem@%s`), then re-run", aisettings.AmemPinnedVersion, aisettings.AmemPinnedVersion)
 			}
 			p := printerFrom(cmd)
-			if mgr.SelectedAgents != nil {
-				if syncPeer != "" {
-					return fmt.Errorf("peer bridge registration is not part of selected-agent preparation")
-				}
-				if dryRun {
-					counts, e := mgr.BuildTranscriptConfigForDisplay()
-					if e != nil {
-						return e
-					}
-					p.Line("would prepare selected memory adapters and bridge watches only: %v (%v)", mgr.SelectedAgents, counts)
-					return nil
-				}
-				result, e := mgr.PrepareSelectedIntegration()
-				if e != nil {
-					return e
-				}
-				p.Line("Prepared selected memory adapters: %v; transcript watches: %v", result.ConfigPaths, result.WatchCount)
-				p.Line("Capture remains unverified; no memory worker was started or restarted. Native Claude/Codex hooks remain plugin-owned; Grok/OpenCode capture is unsupported.")
-				return nil
-			}
+			install := mgr.Install
 			if dryRun {
-				config, err := mgr.BuildTranscriptConfigForDisplay()
-				if err != nil {
-					return err
-				}
-				p.Header("Claude-mem Integration")
-				p.Line("would merge MCP config for Kimi, Kiro, Copilot, and Qwen")
-				p.Line("would install %s", mgr.LaunchdPlistPath())
-				if syncPeer != "" {
-					p.Line("would install hourly peer sync agent %s (peer %s)", mgr.SyncLaunchdPlistPath(), syncPeer)
-				}
-				p.KV("Kimi sessions", fmt.Sprintf("%d", config["kimi"]))
-				p.KV("Kiro sessions", fmt.Sprintf("%d", config["kiro"]))
-				p.KV("Copilot sessions", fmt.Sprintf("%d", config["copilot"]))
-				p.KV("Qwen sessions", fmt.Sprintf("%d", config["qwen"]))
-				p.KV("pi sessions", fmt.Sprintf("%d", config["pi"]))
-				if cache, runnable := aisettings.CodexClaudeMemCache(mgr.HomeDir); cache != "" && !runnable {
-					p.Line("would run bun install --frozen-lockfile in %s (network access)", cache)
-				}
-				return nil
+				install = mgr.Plan
 			}
-			// Repair before the plugin gate: when the codex cache is the only
-			// claude-mem copy, LocatePlugin only succeeds once its runtime exists.
-			repairedCache, repairErr := mgr.EnsureCodexCacheRuntime(cmd.Context())
-			if repairErr != nil {
-				p.Warn("codex plugin cache repair failed: %v", repairErr)
-			}
-			if _, err := mgr.LocatePlugin(); err != nil {
-				return err
-			}
-
-			agents := newAgentsManagerFromCmd(cmd)
-			instructionsChanged, err := aisettings.EnsureMemoryInstructions(agents.SSOTPath())
+			result, err := install()
 			if err != nil {
 				return err
 			}
-			apply, err := agents.Apply(aisettings.ApplyOptions{
-				Tools: []string{"codex", "kimi", "pi", "qwen", "kiro", "copilot"}, Force: forceAgents,
-			})
-			if err != nil {
-				return err
+			p.Header("amem Integration")
+			p.KV("amem", mgr.AmemPath)
+			verb := "wrote"
+			if dryRun {
+				verb = "would write"
 			}
-
-			result, err := mgr.Install(cmd.Context())
-			if err != nil {
-				return err
+			if len(result.ConfigPaths) == 0 {
+				p.Line("MCP configs already register amem; nothing to %s", map[bool]string{true: "write", false: "change"}[dryRun])
 			}
-			if syncPeer != "" {
-				if err := mgr.InstallSyncAgent(cmd.Context(), syncPeer); err != nil {
-					return fmt.Errorf("installing peer sync agent: %w", err)
-				}
+			for _, path := range result.ConfigPaths {
+				p.Line("%s %s", verb, path)
 			}
-			auditAIEventBestEffort(cmd, "ai.memory.install", map[string]any{
-				"bridge_path":          result.BridgePath,
-				"config_paths":         result.ConfigPaths,
-				"instructions_changed": instructionsChanged,
-				"kimi_sessions":        result.WatchCount["kimi"],
-				"kiro_sessions":        result.WatchCount["kiro"],
-				"copilot_sessions":     result.WatchCount["copilot"],
-				"qwen_sessions":        result.WatchCount["qwen"],
-				"pi_sessions":          result.WatchCount["pi"],
-			})
-
-			p.Header("Claude-mem Integration")
-			p.KV("Plugin", result.PluginRoot)
-			p.KV("Bridge", result.BridgePath)
-			if syncPeer != "" {
-				p.KV("Peer sync", "hourly → "+syncPeer)
+			p.Line("No LaunchAgent is written and no process is started.")
+			p.Section("Apply by hand (files dot does not own)")
+			for _, line := range result.Manual {
+				p.Line("  %s", line)
 			}
-			p.KV("Kimi sessions", fmt.Sprintf("%d", result.WatchCount["kimi"]))
-			p.KV("Kiro sessions", fmt.Sprintf("%d", result.WatchCount["kiro"]))
-			p.KV("Copilot sessions", fmt.Sprintf("%d", result.WatchCount["copilot"]))
-			p.KV("Qwen sessions", fmt.Sprintf("%d", result.WatchCount["qwen"]))
-			p.KV("pi sessions", fmt.Sprintf("%d", result.WatchCount["pi"]))
-			if cache := firstNonEmpty(repairedCache, result.CodexCachePath); cache != "" {
-				p.Line("Installed the codex plugin cache runtime at %s", cache)
+			if !dryRun {
+				auditAIEventBestEffort(cmd, "ai.memory.install", map[string]any{"config_paths": result.ConfigPaths})
 			}
-			if result.CodexCacheError != "" && repairErr == nil {
-				p.Warn("codex plugin cache repair failed: %s", result.CodexCacheError)
-			}
-			if instructionsChanged {
-				p.Line("Persistent-memory policy added to the agents SSOT.")
-			}
-			printAgentsApplyResult(p, apply)
-			p.Success("Codex, Kimi, Kiro, Copilot, Qwen, and pi now share claude-mem")
 			return nil
 		},
 	}
-	c.Flags().Bool("force-agents", false, "Back up and overwrite externally edited Codex/Kimi/Kiro/Copilot/Qwen/pi instruction targets")
-	c.Flags().String("peer", "", "ssh target for hourly claude-mem replication (installs the sync LaunchAgent)")
-	return c
 }
 
 func newAIMemoryStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
-		Short: "Show claude-mem integration health for all six CLIs",
+		Short: "Show amem integration health",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			mgr, err := newClaudeMemManagerFromCmd(cmd)
+			mgr, err := newAmemManagerFromCmd(cmd)
 			if err != nil {
 				return err
 			}
-			ssot := newAgentsManagerFromCmd(cmd).SSOTPath()
-			status := mgr.Status(cmd.Context(), ssot)
+			status := mgr.Status(cmd.Context(), newAgentsManagerFromCmd(cmd).SSOTPath())
 			p := printerFrom(cmd)
-			p.Header("Claude-mem Status")
-			plugin := status.PluginRoot
-			if plugin == "" {
-				plugin = "not found"
-			} else if status.PluginVersion != "" {
-				plugin += " (" + status.PluginVersion + ")"
+			p.Header("amem Status")
+			version := status.Version
+			switch {
+			case status.AmemPath == "":
+				version = "not found on PATH"
+			case version == "":
+				version = "version unreadable"
 			}
-			p.KV("Plugin", plugin)
-			if status.PluginRoot == "" && status.PluginError != "" {
-				p.Warn("  %s", status.PluginError)
+			p.KV("amem", version+" (expected "+aisettings.AmemPinnedVersion+")")
+			if status.AmemPath != "" && status.Version != "" && !containsVersion(status.Version, aisettings.AmemPinnedVersion) {
+				p.Warn("  installed amem is not the pinned version %s; install it exactly", aisettings.AmemPinnedVersion)
 			}
-			codexDetail := "native hooks + plugin MCP"
-			if status.CodexCachePath != "" && !status.CodexCacheRunnable {
-				codexDetail = "codex plugin cache runtime missing; run: " + aisettings.ClaudeMemRepairCommand
-			}
-			if status.CodexHome != "" {
-				codexDetail += " (CODEX_HOME=" + status.CodexHome + ", not ~/.codex)"
-			}
-			p.Section("Tools")
-			printMemoryState(p, "codex", status.CodexNativeHooks, codexDetail)
-			printMemoryState(p, "kimi", status.KimiMCP, fmt.Sprintf("MCP + %d transcript(s)", status.WatchCount["kimi"]))
-			printMemoryState(p, "qwen", status.QwenMCP, fmt.Sprintf("MCP + %d transcript(s)", status.WatchCount["qwen"]))
-			printMemoryState(p, "agy", status.AntigravityMCP, "MCP recall; no transcript capture")
-			printMemoryState(p, "kiro", status.KiroMCP, fmt.Sprintf("MCP + %d transcript(s)", status.WatchCount["kiro"]))
-			printMemoryState(p, "copilot", status.CopilotMCP, fmt.Sprintf("MCP + %d transcript(s)", status.WatchCount["copilot"]))
-			// pi's readiness is the instructions target, not the transcript
-			// count: a machine that has pi wired but has not run a session yet
-			// is installed, not broken.
-			printMemoryState(p, "pi", status.PiAgents, fmt.Sprintf("instructions + %d transcript(s); no MCP recall (pi has none)", status.WatchCount["pi"]))
-			p.Section("Shared runtime")
-			printMemoryState(p, "instructions", status.InstructionsEnabled, "agents SSOT recall policy")
-			printMemoryState(p, "bridge", status.BridgeInstalled && status.BridgeRunning, bridgeStatusDetail(status))
-			printMemorySyncStatusSection(p, cmd, mgr)
+			p.Section("Agents")
+			printMemoryState(p, "kimi", status.KimiMCP, "MCP")
+			printMemoryState(p, "qwen", status.QwenMCP, "MCP")
+			printMemoryState(p, "agy", status.AntigravityMCP, "MCP")
+			printMemoryState(p, "kiro", status.KiroMCP, "MCP")
+			printMemoryState(p, "copilot", status.CopilotMCP, "MCP")
+			printMemoryState(p, "pi", status.PiAgents, "instructions; capture through `amem ingest pi` (pi has no MCP)")
+			p.Section("Shared")
+			printMemoryState(p, "instructions", status.InstructionsEnabled, "agents SSOT memory block")
+			p.Line("Claude Code and Codex keep their own plugin and MCP state; see `dot ai memory install` for the lines.")
 			return nil
 		},
 	}
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if v != "" {
-			return v
+func containsVersion(output, want string) bool {
+	for i := 0; i+len(want) <= len(output); i++ {
+		if output[i:i+len(want)] == want {
+			before := i == 0 || output[i-1] < '0' || output[i-1] > '9'
+			after := i+len(want) == len(output) || output[i+len(want)] < '0' || output[i+len(want)] > '9'
+			if before && after {
+				return true
+			}
 		}
 	}
-	return ""
+	return false
 }
 
 func printMemoryState(p *Printer, label string, ok bool, detail string) {
@@ -230,143 +179,90 @@ func printMemoryState(p *Printer, label string, ok bool, detail string) {
 	p.Bullet(marker, fmt.Sprintf("%-13s %-7s %s", ui.StyleValue.Render(label), state, detail))
 }
 
-func bridgeStatusDetail(status aisettings.ClaudeMemStatus) string {
-	if !status.BridgeInstalled {
-		return "LaunchAgent not installed"
-	}
-	if !status.BridgeRunning {
-		return "LaunchAgent installed but stopped"
-	}
-	return "LaunchAgent running"
-}
+func newAIMemoryRetireCmd() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "retire-claude-mem",
+		Short: "Remove the claude-mem integration (dry run unless --apply)",
+		Long: `Retire claude-mem after its notes were imported into amem.
 
-func newAIMemoryMCPServerCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:    "mcp-server",
-		Short:  "Run the claude-mem stdio MCP server",
-		Hidden: true,
-		Args:   cobra.NoArgs,
+Without --apply this only lists what would be touched and reads back what is
+left on the machine; it changes nothing. With --apply, in order, it:
+
+  1. disables and uninstalls the claude-mem plugin for Claude Code and Codex,
+     and removes their claude-mem marketplaces (through the native CLIs);
+  2. removes the claude-mem entry from the MCP configs of Kimi, Qwen,
+     Antigravity, Kiro and Copilot;
+  3. boots out and removes the two dotfiles LaunchAgents;
+  4. moves ~/.claude-mem to ~/.claude-mem.archive-<date> (never deletes it,
+     and refuses while a claude-mem process runs);
+  5. reads back that no claude-mem process, port, hook or LaunchAgent remains.
+
+It never edits ~/.claude/settings.json, which Claude Code owns: the exact lines
+to remove are printed for you. --apply refuses unless --import-complete says
+the 'amem import claude-mem' run is done and an amem import cursor exists.`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			mgr, err := newClaudeMemManagerFromCmd(cmd)
-			if err != nil {
-				return err
+			apply, _ := cmd.Flags().GetBool("apply")
+			imported, _ := cmd.Flags().GetBool("import-complete")
+			if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
+				apply = false
 			}
-			return mgr.RunMCPServer(cmd.Context())
-		},
-	}
-}
-
-func newAIMemoryBridgeCmd() *cobra.Command {
-	return newAIMemoryBridgeCmdWithManager(newClaudeMemManagerFromCmd)
-}
-
-func newAIMemoryBridgeCmdWithManager(manager func(*cobra.Command) (*aisettings.ClaudeMemManager, error)) *cobra.Command {
-	return &cobra.Command{
-		Use:    "bridge",
-		Short:  "Run the Kimi/Kiro/Copilot/Qwen/pi transcript bridge",
-		Hidden: true,
-		Args:   cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			mgr, err := manager(cmd)
-			if err != nil {
-				return err
-			}
-			return mgr.RunBridge(cmd.Context())
-		},
-	}
-}
-
-func newAIMemoryUpdateCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "update",
-		Short: "Update claude-mem to the latest marketplace version",
-		Long: `Refresh the thedotmack marketplace checkout, compare the installed
-claude-mem version, and update the Claude Code plugin when behind. The
-codex plugin cache is reinstalled and its bun runtime re-materialized, so
-both CLIs converge on the same version. Idempotent when already current;
-the scheduled peer sync runs this check before every sync.`,
-		Args:         cobra.NoArgs,
-		SilenceUsage: true,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			dryRun, _ := cmd.Flags().GetBool("dry-run")
-			mgr, err := newClaudeMemManagerFromCmd(cmd)
-			if err != nil {
-				return err
-			}
-			p := printerFrom(cmd)
-			result, err := mgr.UpdateClaudeMemPlugin(cmd.Context(), memorySyncRunner(dryRun), false)
-			if err != nil {
-				return err
-			}
-			auditAIEventBestEffort(cmd, "ai.memory.update", map[string]any{
-				"before": result.Before, "after": result.After, "updated": result.Updated,
-			})
-			p.Header("claude-mem update")
-			p.KV("Marketplace", result.MarketplaceVersion)
-			if result.Updated {
-				if dryRun {
-					p.Line("  dry-run: would update %s → %s", result.Before, result.MarketplaceVersion)
-				} else {
-					p.Success("✓ updated %s → %s", result.Before, result.After)
+			opts := aisettings.RetireOptions{HomeDir: homeFromCmd(cmd), Apply: apply, ImportConfirmed: imported}
+			if adopted := os.Getenv("KIMI_CODE_HOME"); filepath.IsAbs(adopted) {
+				if over, _ := cmd.Flags().GetString("home"); over == "" {
+					opts.KimiHome = adopted
 				}
-			} else {
-				p.KV("Installed", result.After+" (current)")
 			}
-			if result.CodexCacheRefresh != "" {
-				p.KV("Codex cache", result.CodexCacheRefresh)
+			result, err := aisettings.RetireClaudeMem(cmd.Context(), opts)
+			if err != nil {
+				return err
+			}
+			printRetireResult(printerFrom(cmd), result)
+			if apply && result.Blocked == "" {
+				auditAIEventBestEffort(cmd, "ai.memory.retire", map[string]any{"archive": result.Archive, "clean": result.Clean()})
+			}
+			if result.Blocked != "" {
+				return fmt.Errorf("%s", result.Blocked)
+			}
+			if apply && !result.Clean() {
+				return fmt.Errorf("claude-mem residue remains; see the read-back above")
 			}
 			return nil
 		},
 	}
+	c.Flags().Bool("apply", false, "Run the retirement (default: dry run)")
+	c.Flags().Bool("import-complete", false, "Confirm that `amem import claude-mem` has finished")
+	return c
 }
 
-func newClaudeMemManagerFromCmd(cmd *cobra.Command) (*aisettings.ClaudeMemManager, error) {
-	home := homeFromCmd(cmd)
-	dotPath, err := os.Executable()
-	if err != nil {
-		return nil, fmt.Errorf("resolve dot executable: %w", err)
+func printRetireResult(p *Printer, r aisettings.RetireResult) {
+	if r.Apply && r.Blocked == "" {
+		p.Header("Retire claude-mem")
+	} else {
+		p.Header("Retire claude-mem (dry run: nothing is changed)")
 	}
-	dotPath, err = filepath.Abs(dotPath)
-	if err != nil {
-		return nil, err
-	}
-	mgr := aisettings.NewClaudeMemManager(home, dotPath, "")
-	selection := func() ([]string, error) {
-		selected, e := effectiveToolingForCmd(cmd)
-		if e != nil {
-			return nil, e
-		}
-		if selected == nil {
-			if path, _ := cmd.Flags().GetString("config"); path != "" {
-				return []string{}, nil
-			}
-			return nil, nil
-		}
-		agents := make([]string, len(selected.Agents))
-		copy(agents, selected.Agents)
-		return agents, nil
-	}
-	mgr.SelectedAgents, err = selection()
-	if err != nil {
-		return nil, err
-	}
-	mgr.AgentSelection = selection
-	override, _ := cmd.Flags().GetString("home")
-	mgr.ExplicitHome = override != ""
-	if override == "" {
-		if adopted := os.Getenv("KIMI_CODE_HOME"); filepath.IsAbs(adopted) {
-			mgr.KimiHome = adopted
+	p.Section("Steps")
+	for _, step := range r.Steps {
+		p.Line("  [%-6s] %-24s %s", step.Status, step.ID, step.Action)
+		if step.Detail != "" && step.Status != aisettings.RetireWould && step.Status != aisettings.RetireAbsent {
+			p.Line("           %s", step.Detail)
 		}
 	}
-	if nodePath, lookupErr := exec.LookPath("node"); lookupErr == nil {
-		if nodePath, absErr := filepath.Abs(nodePath); absErr == nil {
-			mgr.NodePath = nodePath
+	if len(r.Manual) > 0 {
+		p.Section("Edit by hand (Claude Code owns this file; dot never writes it)")
+		for _, line := range r.Manual {
+			p.Line("  %s", line)
 		}
 	}
-	if bunPath, lookupErr := exec.LookPath("bun"); lookupErr == nil {
-		if bunPath, absErr := filepath.Abs(bunPath); absErr == nil {
-			mgr.BunPath = bunPath
+	p.Section("Read-back")
+	for _, item := range r.ReadBack {
+		if item.Clean {
+			p.Line("  [clean ] %s", item.Check)
+		} else {
+			p.Line("  [FOUND ] %s: %s", item.Check, item.Found)
 		}
 	}
-	return mgr, nil
+	if r.Archive != "" {
+		p.Line("Archive: %s (kept; delete it yourself when you are sure)", r.Archive)
+	}
 }

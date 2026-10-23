@@ -66,6 +66,9 @@ func runToolingSelection(cmd *cobra.Command, selection config.AIToolingConfig, o
 		if _, err := mgr.EnsureContinuityPolicy(); err != nil {
 			return err
 		}
+		if err := ensureMemoryBlock(mgr, dry); err != nil {
+			return err
+		}
 		if !dry {
 			if tools := registeredInstructionTools(mgr, selection.Agents); len(tools) > 0 {
 				if _, err := mgr.Apply(aisettings.ApplyOptions{Tools: tools}); err != nil {

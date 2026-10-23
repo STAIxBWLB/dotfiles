@@ -34,7 +34,7 @@ func TestToolingSelectionRoundTripAndClone(t *testing.T) {
 }
 
 func TestToolingIdentifiers(t *testing.T) {
-	for _, id := range []string{"ripwire", "claude-mem", "read-notes"} {
+	for _, id := range []string{"ripwire", "amem", "read-notes"} {
 		if err := ValidateAITooling(&AIToolingConfig{Skills: []string{id}}); err != nil {
 			t.Fatal(err)
 		}

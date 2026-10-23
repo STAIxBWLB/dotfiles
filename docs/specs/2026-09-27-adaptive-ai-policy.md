@@ -77,7 +77,7 @@ A manual override freezes selection. Model/provider changes cannot evade a denia
 
 ## Trusted knowledge access
 
-The user's standing authorization covers claude-mem and vault lookup and
+The user's standing authorization covers amem (which replaced claude-mem, dotfiles#255) and vault lookup and
 recording without confirmation. Native adapters carry exact read/create/patch/
 metadata grants and preserve them through model/provider changes. Deletes,
 moves, corpus builds and new authentication are not newly granted. Vault writes

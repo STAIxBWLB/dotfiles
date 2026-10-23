@@ -212,11 +212,10 @@ self-updates in the background, so `dot ai update` defers to that
 self-updater instead of reinstalling.
 
 Workspace context for Grok and agy: Grok reads the agents SSOT through its
-Claude compat (`~/.claude/CLAUDE.md`) and the claude-mem plugin it shares with
-Claude, so dot renders no Grok instructions file and removes a dot-rendered
-`~/.grok/AGENTS.md`. agy gets `~/.gemini/GEMINI.md` from
-`dot ai agents apply --tool antigravity`, and `dot ai memory install` adds the
-claude-mem MCP server to `~/.gemini/config/mcp_config.json`.
+Claude compat (`~/.claude/CLAUDE.md`), so dot renders no Grok instructions file
+and removes a dot-rendered `~/.grok/AGENTS.md`. agy gets `~/.gemini/GEMINI.md`
+from `dot ai agents apply --tool antigravity`, and `dot ai memory install` adds
+the amem MCP server to `~/.gemini/config/mcp_config.json`.
 
 ```bash
 dot ai setup
@@ -227,14 +226,35 @@ dot ai tools apply
 dot ai update --check --json
 ```
 
-The add-on allowlist is **ripwire, Open Code Review (`ocr`), GSD, claude-mem
-and ponytail**. Native, portable, partial, unsupported and pending-trust states
-must be read separately from installation status. Missing authentication or
-trust remains a user action; setup does not copy credentials or approve hooks.
-With saved selections, claude-mem prepares only the selected supported memory
-adapters and transcript watches; it does not install peer bridge services or
-expand unsupported Grok/OpenCode capture. Curated handoffs below are separate
-from this existing raw-transcript integration.
+The add-on allowlist is **ripwire, Open Code Review (`ocr`), GSD and ponytail**.
+Native, portable, partial, unsupported and pending-trust states must be read
+separately from installation status. Missing authentication or trust remains a
+user action; setup does not copy credentials or approve hooks. A saved selection
+that still lists the retired `claude-mem` add-on is read without it.
+
+Project memory is [amem](https://github.com/STAIxBWLB/agent-mem)
+(`@staix/agent-mem`), which dot registers but never installs. Install the exact
+version `dot ai memory status` names, then:
+
+```bash
+dot ai memory install --dry-run   # what would change; nothing is written
+dot ai memory install             # add `amem mcp` to Kimi, Qwen, agy, Kiro and Copilot
+dot ai memory status
+dot ai agents apply               # writes the amem + vault block into the agents SSOT
+```
+
+`install` prints the exact lines for Claude Code (`claude --plugin-dir ...`) and
+Codex (`codex mcp add amem -- <amem> mcp`), which keep their own plugin and MCP
+state, so dot never writes them. amem has no resident worker, so dot writes no
+LaunchAgent for it; agents without hooks reach it through `amem ingest <agent>`.
+Curated handoffs below are separate from amem.
+
+To remove claude-mem after `amem import claude-mem` has finished, run
+`dot ai memory retire-claude-mem` for a dry run that lists every item and reads
+back what is left, then `--apply --import-complete` to do it. It archives
+`~/.claude-mem` to `~/.claude-mem.archive-<date>` and never deletes it, and it
+prints the lines of `~/.claude/settings.json` for you to remove, because Claude
+Code owns that file.
 
 Portable desired state lives under `modules.ai.tooling`: `agents`, `tools`,
 `skills`, optional version `pins`, and `updates.enabled`. Machine-specific
@@ -311,9 +331,9 @@ policy definition intact; it neither alters a running session nor disables
 explicit policy resolution. Unmanaged native and Orca sessions retain their
 own configuration and are not silently taken over.
 
-Within managed launches, registered claude-mem and Obsidian lookup/record tools
+Within managed launches, registered amem and Obsidian lookup/record tools
 have explicit no-confirmation grants. These include note creation, patches,
-frontmatter/tags and memory recording, while adding no deletion/move permissions.
+frontmatter/tags and amem work-list writes and memory proposals, while adding no deletion/move permissions.
 Vault writes remain MCP-only. The same typed grants travel through resolution,
 native profiles, session changes and Maru invocation mapping. Unrelated tool
 approval rules and native MCP identities are preserved.

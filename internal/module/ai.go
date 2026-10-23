@@ -100,6 +100,11 @@ func (m *AIModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, err
 				changes = append(changes, Change{Description: "install shared development context guidance", Command: "dot ai tools apply"})
 			}
 		}
+		if needed, err := aisettings.MemoryInstructionsNeeded(manager.SSOTPath()); err != nil {
+			return nil, err
+		} else if needed {
+			changes = append(changes, Change{Description: "write the amem memory block and drop the retired claude-mem block", Command: "dot ai agents apply"})
+		}
 		statuses, err := manager.Status()
 		if err != nil {
 			return nil, fmt.Errorf("agents SSOT status: %w", err)
@@ -268,6 +273,16 @@ func (m *AIModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, err
 			}
 			if changed {
 				messages = append(messages, "updated shared development context guidance")
+			}
+		}
+		if !rc.DryRun {
+			// Also right after the scaffold above: a fresh machine gets the block in its first apply.
+			changed, err := aisettings.EnsureMemoryInstructions(manager.SSOTPath())
+			if err != nil {
+				return nil, err
+			}
+			if changed {
+				messages = append(messages, "updated the amem memory block in the agents SSOT")
 			}
 		}
 		if ssotMissing && rc.DryRun {

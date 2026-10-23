@@ -152,9 +152,11 @@ func readOnlyKnowledgeTool(server, tool string) bool {
 		case "read_note", "read_multiple_notes", "search_notes", "list_directory", "get_notes_info", "get_frontmatter", "get_vault_stats", "list_all_tags":
 			return true
 		}
-	case "mcp-search", "plugin_claude-mem_mcp-search":
+	case "amem":
+		// amem's read tools. amem_remember and amem_work_state_write write, so a failed call
+		// of either stays ambiguous and is never routed automatically.
 		switch tool {
-		case "search", "timeline", "get_observations", "get_tool_uses", "session_start_context", "smart_search", "smart_outline", "smart_unfold", "list_corpora", "query_corpus", "observation_search", "observation_context", "observation_generation_status":
+		case "amem_search", "amem_show", "amem_timeline", "amem_graph", "amem_work_state_read", "amem_vault_candidates", "amem_capacity":
 			return true
 		}
 	}

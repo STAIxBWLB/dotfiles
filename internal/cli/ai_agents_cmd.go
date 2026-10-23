@@ -233,6 +233,11 @@ func newAIAgentsApplyCmd() *cobra.Command {
 			if len(ids) == 0 {
 				ids = mgr.DefaultApplyTools()
 			}
+			// The amem memory block lives in the SSOT; write it (and drop the retired
+			// claude-mem block) before rendering so one apply carries both to the targets.
+			if err := ensureMemoryBlock(mgr, dryRun); err != nil {
+				return err
+			}
 			result, err := mgr.Apply(aisettings.ApplyOptions{Tools: ids, DryRun: dryRun, Force: force})
 			if err != nil {
 				return err
@@ -393,4 +398,20 @@ func shortHash(hash string) string {
 		return hash
 	}
 	return hash[:12]
+}
+
+// ensureMemoryBlock puts the amem memory block into the SSOT and removes the
+// claude-mem block. A missing SSOT is left to the scaffolding that already
+// precedes apply; a dry run only checks.
+func ensureMemoryBlock(mgr *aisettings.AgentsManager, dryRun bool) error {
+	path := mgr.SSOTPath()
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil
+	}
+	if dryRun {
+		_, err := aisettings.MemoryInstructionsNeeded(path)
+		return err
+	}
+	_, err := aisettings.EnsureMemoryInstructions(path)
+	return err
 }

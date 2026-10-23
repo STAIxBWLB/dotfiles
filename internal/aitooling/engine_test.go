@@ -67,7 +67,7 @@ func TestCatalogAndSelectionAllowlist(t *testing.T) {
 	if !reflect.DeepEqual(agents, []string{"claude", "codex", "kimi", "qwen", "grok", "opencode", "gencode", "pi", "antigravity"}) {
 		t.Fatal(agents)
 	}
-	if !reflect.DeepEqual(tools, []string{"ripwire", "ocr", "gsd", "claude-mem", "ponytail"}) {
+	if !reflect.DeepEqual(tools, []string{"ripwire", "ocr", "gsd", "ponytail"}) {
 		t.Fatal(tools)
 	}
 	for _, bad := range []string{"skills", "firecrawl", "cursor", "agent-hub"} {
@@ -284,20 +284,17 @@ func TestExplicitHomeClearsNativeRootAndCredentialOverrides(t *testing.T) {
 		t.Fatal("external profile/data/credential override leaked")
 	}
 }
-func TestMemorySupervisorAndProcessDeferral(t *testing.T) {
-	e := testEngine(t)
-	e.exec = func(_ context.Context, c command) (string, error) {
-		if c.Path != "/bin/ps" {
-			t.Fatalf("unexpected command %s", commandDiagnostic(c))
+
+// claude-mem left the add-on catalog (dotfiles#255). A saved selection that still names it is not a
+// supported selection any more here; config.AIToolingConfig.Clone strips it on load so apply keeps working.
+func TestClaudeMemIsNoLongerACatalogAddon(t *testing.T) {
+	for _, entry := range Catalog() {
+		if entry.ID == "claude-mem" || entry.ID == "amem" {
+			t.Fatalf("%s must not be an automatic add-on: amem is registered by `dot ai memory install`, never installed by dot", entry.ID)
 		}
-		return "bun /user/plugins/claude-mem/scripts/worker-service.cjs", nil
 	}
-	if !e.memoryWorkerActive(context.Background()) {
-		t.Fatal("live memory worker missed without pidfile")
-	}
-	e.exec = func(context.Context, command) (string, error) { return "", errors.New("unavailable") }
-	if !e.memoryWorkerActive(context.Background()) {
-		t.Fatal("unavailable process telemetry was treated as idle")
+	if err := ValidateSelection(config.AIToolingConfig{Tools: []string{"claude-mem"}}); err == nil {
+		t.Fatal("a selection naming claude-mem validated")
 	}
 }
 func TestNativePluginPinNeverUpdatesMarketplace(t *testing.T) {

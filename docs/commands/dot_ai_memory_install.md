@@ -1,6 +1,15 @@
 ## dot ai memory install
 
-Prepare selected memory adapters or install the legacy integration
+Register amem's MCP server for the selected agents
+
+### Synopsis
+
+Add the amem MCP server ('amem mcp') to the config of each selected agent whose
+MCP file dot owns, and print the lines for Claude Code and Codex. Every other
+server and key in those files is preserved. Re-running changes nothing.
+
+amem must already be installed (the exact @staix/agent-mem version, which
+'dot ai memory status' names) and on PATH. With --dry-run nothing is written.
 
 ```
 dot ai memory install [flags]
@@ -9,9 +18,7 @@ dot ai memory install [flags]
 ### Options
 
 ```
-      --force-agents   Back up and overwrite externally edited Codex/Kimi/Kiro/Copilot/Qwen/pi instruction targets
-  -h, --help           help for install
-      --peer string    ssh target for hourly claude-mem replication (installs the sync LaunchAgent)
+  -h, --help   help for install
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +34,5 @@ dot ai memory install [flags]
 
 ### SEE ALSO
 
-* [dot ai memory](dot_ai_memory.md)	 - Manage shared claude-mem integration for Codex, Kimi, Kiro, Copilot, Qwen, and pi
+* [dot ai memory](dot_ai_memory.md)	 - Register amem for the agents and retire claude-mem
 
