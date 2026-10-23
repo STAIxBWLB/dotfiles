@@ -164,7 +164,7 @@ tool):
   runs, when the directory is a symlink, when any file it must read cannot be
   read, and under an explicit `--home`: the native `claude` and `codex` CLIs and
   launchd act on the invoking user's real state, so a scratch home can be
-  planned and read back but never applied. `$CLAUDE_MEM_DATA_DIR` is honoured
+  planned and read back but never applied. `$CLAUDE_MEM_DATA_DIR` is honored
   for the person's own home only.
 - `~/.claude-mem.archive-` — the dated archive that retirement creates; a name
   prefix, not a directory, because the date and a same-day counter follow it.

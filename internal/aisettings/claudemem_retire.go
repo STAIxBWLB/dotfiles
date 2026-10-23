@@ -198,7 +198,7 @@ func (o RetireOptions) codexHome() string {
 func (o RetireOptions) codexConfig() string { return filepath.Join(o.codexHome(), "config.toml") }
 
 // dataDir is ~/.claude-mem, or $CLAUDE_MEM_DATA_DIR when the person's own shell sets it
-// (an absolute path, as the add-on engine on main honoured).
+// (an absolute path, as the add-on engine on main honored).
 func (o RetireOptions) dataDir() string {
 	if v := o.ambient("CLAUDE_MEM_DATA_DIR"); filepath.IsAbs(v) {
 		return filepath.Clean(v)

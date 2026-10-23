@@ -374,7 +374,7 @@ func TestRetireImportEvidenceNeedsAPositiveRowInAnyAmemLayout(t *testing.T) {
 		o2.defaults()
 		mustWriteFile(t, filepath.Join(fresh, ".agenthub", "memory", rel), `{"k": 7}`)
 		if o2.ImportEvidence() != 1 {
-			t.Errorf("layout %s not recognised", rel)
+			t.Errorf("layout %s not recognized", rel)
 		}
 	}
 }
