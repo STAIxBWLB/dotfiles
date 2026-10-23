@@ -116,7 +116,7 @@ func TestMemoryInstallOnCleanHomeRegistersEveryAgentWithNoLaunchAgent(t *testing
 			t.Errorf("%s: amem entry %+v, want command %s args [mcp]", path, entry, amem)
 		}
 	}
-	for _, want := range []string{"claude --plugin-dir", "codex mcp add amem -- " + amem + " mcp", "amem ingest pi", "No LaunchAgent is written"} {
+	for _, want := range []string{"claude mcp add -s user amem -- " + amem + " mcp", "claude --plugin-dir", "codex mcp add amem -- " + amem + " mcp", "amem ingest pi", "No LaunchAgent is written"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}
@@ -271,18 +271,27 @@ func TestRetireClaudeMemDryRunIsTheDefaultAndChangesNothing(t *testing.T) {
 	}
 }
 
-func TestRetireClaudeMemApplyRefusesWithoutTheImportConfirmation(t *testing.T) {
+// Under --home the native claude and codex CLIs and launchd would act on the invoking user's real state, so --apply
+// is refused outright, whatever else is true, with nothing changed. The dry run still plans against that home.
+func TestRetireClaudeMemApplyUnderHomeIsRefusedAndChangesNothing(t *testing.T) {
 	home := t.TempDir()
 	seedClaudeMemFootprint(t, home)
+	// even with every other precondition satisfied
+	writeCLITestFile(t, filepath.Join(home, ".agenthub", "memory", "projects", "abc", "import-state.json"), `{"k": 42}`)
 	before := treeOf(t, home)
-	_, errOut, err := runDotForTest("--home", home, "ai", "memory", "retire-claude-mem", "--apply")
-	if err == nil || !strings.Contains(err.Error()+errOut, "import") {
-		t.Fatalf("apply without --import-complete was not refused: %v\n%s", err, errOut)
-	}
-	after := treeOf(t, home)
-	for path, body := range before {
-		if after[path] != body {
-			t.Errorf("a refused apply changed %s", path)
+	for _, args := range [][]string{{"--apply"}, {"--apply", "--import-complete"}} {
+		_, errOut, err := runDotForTest(append([]string{"--home", home, "ai", "memory", "retire-claude-mem"}, args...)...)
+		if err == nil || !strings.Contains(err.Error()+errOut, "refusing to apply under --home") {
+			t.Fatalf("%v under --home was not refused: %v\n%s", args, err, errOut)
+		}
+		after := treeOf(t, home)
+		if len(after) != len(before) {
+			t.Fatalf("a refused apply changed the file set: %d -> %d", len(before), len(after))
+		}
+		for path, body := range before {
+			if after[path] != body {
+				t.Errorf("a refused apply changed %s", path)
+			}
 		}
 	}
 	if _, statErr := os.Stat(filepath.Join(home, ".claude-mem", "claude-mem.db")); statErr != nil {

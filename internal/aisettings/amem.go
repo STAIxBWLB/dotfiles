@@ -169,7 +169,11 @@ func (m *AmemManager) selected(agent string) bool {
 // its own config; neither is written here (docs/BOUNDARIES.md).
 func (m *AmemManager) manualLines() []string {
 	return []string{
-		"Claude Code (amem plugin with its hooks): claude --plugin-dir <the @staix/agent-mem package root>   # the directory holding .claude-plugin/, hooks/ and bin/",
+		// The 0.6.0 plugin declares hooks only and no MCP server, so Claude needs both lines: the MCP
+		// server is what makes mcp__amem__amem_* (the grant in internal/aipolicy and the instruction
+		// block) reachable, and the plugin is what runs the capture hooks.
+		"Claude Code (MCP, the tools): claude mcp add -s user " + AmemServerName + " -- " + m.amemCommand() + " mcp",
+		"Claude Code (hooks, capture and the session brief): claude --plugin-dir <the @staix/agent-mem package root>   # the directory holding .claude-plugin/, hooks/ and bin/; the plugin declares no MCP server",
 		"Codex (MCP): codex mcp add " + AmemServerName + " -- " + m.amemCommand() + " mcp",
 		"pi (no MCP): run `amem ingest pi` at session end or on demand; `amem ingest codex` and `amem ingest kimi` do the same for those agents",
 	}
@@ -240,17 +244,24 @@ func ensureAmemEntry(path, amemPath string, variant mcpEntryVariant, dryRun bool
 		if err := json.Unmarshal(raw, &doc); err != nil {
 			return false, fmt.Errorf("parse MCP config %s: %w", path, err)
 		}
+		if doc == nil { // the file holds a JSON null
+			doc = map[string]json.RawMessage{}
+		}
 	}
+	// "mcpServers": null unmarshals to a nil map, which cannot be assigned to: start from an empty one.
 	servers := map[string]json.RawMessage{}
-	if current := doc["mcpServers"]; len(current) > 0 {
+	if current := doc["mcpServers"]; len(current) > 0 && string(bytes.TrimSpace(current)) != "null" {
 		if err := json.Unmarshal(current, &servers); err != nil {
 			return false, fmt.Errorf("parse mcpServers in %s: %w", path, err)
 		}
+		if servers == nil {
+			servers = map[string]json.RawMessage{}
+		}
 	}
-	entryRaw, _ := json.Marshal(amemEntry(amemPath, variant))
+	entryRaw, _ := marshalNoEscape(amemEntry(amemPath, variant))
 	var existing map[string]any
-	if json.Unmarshal(servers[AmemServerName], &existing) == nil {
-		existingRaw, _ := json.Marshal(existing)
+	if json.Unmarshal(servers[AmemServerName], &existing) == nil && existing != nil {
+		existingRaw, _ := marshalNoEscape(existing)
 		if bytes.Equal(existingRaw, entryRaw) {
 			return false, nil
 		}
@@ -259,13 +270,16 @@ func ensureAmemEntry(path, amemPath string, variant mcpEntryVariant, dryRun bool
 		return true, nil
 	}
 	servers[AmemServerName] = entryRaw
-	serversRaw, _ := json.Marshal(servers)
-	doc["mcpServers"] = serversRaw
-	out, err := json.MarshalIndent(doc, "", "  ")
+	serversRaw, err := marshalNoEscape(servers)
 	if err != nil {
 		return false, err
 	}
-	return true, atomicWriteFile(path, append(out, '\n'), fileModeOrDefault(path, 0o600))
+	doc["mcpServers"] = serversRaw
+	out, err := marshalIndentNoEscape(doc)
+	if err != nil {
+		return false, err
+	}
+	return true, atomicWriteFile(path, out, fileModeOrDefault(path, 0o600))
 }
 
 // hasAmemEntry reports whether a config registers amem as `<amem> mcp`, in the
@@ -470,4 +484,93 @@ func amemVersion(ctx context.Context, amemPath string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// MemoryBlockResult is what EnsureMemoryBlock did, or why it did not.
+type MemoryBlockResult struct {
+	// Changed is true when the SSOT was (or, in a dry run, would be) rewritten.
+	Changed bool
+	// Skipped says why nothing was done: memory is not wanted on this machine, or there is no SSOT.
+	Skipped string
+	// Warning is a finding the person must act on (a malformed marker). It never fails the caller.
+	Warning string
+	// Backup is the copy of the SSOT taken before it was rewritten, empty in a dry run.
+	Backup string
+}
+
+// MemoryWanted reports whether this machine uses amem: the executable is on PATH, one of the MCP
+// configs dot manages registers an amem server, or the SSOT already carries the amem block (so it is kept
+// current). A machine that has none of these still runs claude-mem, and its instruction block stays until
+// amem arrives or `dot ai memory retire-claude-mem` runs.
+func (m *AgentsManager) MemoryWanted() bool {
+	if bytesContainsMarker(m.SSOTPath(), memoryBlockStart) {
+		return true
+	}
+	if path, err := exec.LookPath("amem"); err == nil && path != "" {
+		return true
+	}
+	probe := &AmemManager{HomeDir: m.homeDir()}
+	for _, target := range probe.targets() {
+		if mcpConfigNamesAmem(target.path) {
+			return true
+		}
+	}
+	return false
+}
+
+func bytesContainsMarker(path, marker string) bool {
+	raw, err := os.ReadFile(path)
+	return err == nil && strings.Contains(string(raw), marker)
+}
+
+// mcpConfigNamesAmem reports whether a config registers any server called amem, whatever its command.
+func mcpConfigNamesAmem(path string) bool {
+	state, _ := mcpServerState(path, AmemServerName)
+	return state == present
+}
+
+// EnsureMemoryBlock writes the amem block into the SSOT and drops the claude-mem block, but only when
+// memory is wanted, and only after copying the SSOT to the backup tree (docs/BOUNDARIES.md: every SSOT edit
+// is backed up). A malformed or duplicate marker is reported in Warning with nothing written, so one bad
+// block cannot fail an apply that has other work to do. Only a real I/O failure returns an error.
+func (m *AgentsManager) EnsureMemoryBlock(dryRun bool) (MemoryBlockResult, error) {
+	path := m.SSOTPath()
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return MemoryBlockResult{Skipped: "no agents SSOT yet"}, nil
+	}
+	if err != nil {
+		return MemoryBlockResult{}, fmt.Errorf("read agents SSOT: %w", err)
+	}
+	if !m.MemoryWanted() {
+		return MemoryBlockResult{Skipped: "amem is not installed or registered on this machine; the SSOT is left as it is"}, nil
+	}
+	next, perr := patchMemoryInstructions(string(raw))
+	if perr != nil {
+		return MemoryBlockResult{Warning: perr.Error() + " (" + path + "); the memory block was not written"}, nil
+	}
+	if next == string(raw) {
+		return MemoryBlockResult{}, nil
+	}
+	if dryRun || m.runner().DryRun {
+		return MemoryBlockResult{Changed: true}, nil
+	}
+	backup, err := m.backupSSOT()
+	if err != nil {
+		return MemoryBlockResult{}, fmt.Errorf("back up the agents SSOT before the memory block: %w", err)
+	}
+	if err := atomicWriteFile(path, []byte(next), fileModeOrDefault(path, 0o644)); err != nil {
+		return MemoryBlockResult{}, err
+	}
+	return MemoryBlockResult{Changed: true, Backup: backup}, nil
+}
+
+// MemoryBlockNeeded reports whether EnsureMemoryBlock would change the SSOT, writing nothing. A malformed
+// marker is a warning, not an error.
+func (m *AgentsManager) MemoryBlockNeeded() (needed bool, warning string) {
+	res, err := m.EnsureMemoryBlock(true)
+	if err != nil {
+		return false, err.Error()
+	}
+	return res.Changed, res.Warning
 }

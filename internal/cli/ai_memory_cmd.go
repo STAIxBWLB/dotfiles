@@ -232,11 +232,10 @@ the 'amem import claude-mem' run is done and an amem import cursor exists.`,
 			if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
 				apply = false
 			}
-			opts := aisettings.RetireOptions{HomeDir: homeFromCmd(cmd), Apply: apply, ImportConfirmed: imported}
-			if adopted := os.Getenv("KIMI_CODE_HOME"); filepath.IsAbs(adopted) {
-				if over, _ := cmd.Flags().GetString("home"); over == "" {
-					opts.KimiHome = adopted
-				}
+			over, _ := cmd.Flags().GetString("home")
+			opts := aisettings.RetireOptions{HomeDir: homeFromCmd(cmd), ExplicitHome: over != "", Apply: apply, ImportConfirmed: imported}
+			if adopted := os.Getenv("KIMI_CODE_HOME"); filepath.IsAbs(adopted) && over == "" {
+				opts.KimiHome = adopted
 			}
 			result, err := aisettings.RetireClaudeMem(cmd.Context(), opts)
 			if err != nil {

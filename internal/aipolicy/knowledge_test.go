@@ -268,3 +268,16 @@ func TestKnowledgeCodexCLIUsesNativeRawSegments(t *testing.T) {
 		t.Fatal("TOML file keys lost required quoting")
 	}
 }
+
+// The Claude grant names mcp__amem__<tool>. That only reaches a tool when a server called "amem" is registered
+// with Claude, which `claude mcp add amem` does (the 0.6.0 plugin declares hooks and no MCP server). The server
+// name `dot ai memory install` tells the person to register and the one the grant is keyed on are one constant.
+func TestClaudeGrantNamesTheServerThatInstallRegisters(t *testing.T) {
+	if memoryServer != "amem" {
+		t.Fatalf("memoryServer = %q: `claude mcp add amem` and the mcp__amem__ pattern must agree", memoryServer)
+	}
+	args, err := KnowledgeArgs(Runtime{Agent: "claude"}, []KnowledgeApproval{{Server: memoryServer, Tool: "amem_search", ApprovalMode: "approve"}})
+	if err != nil || len(args) != 2 || args[1] != "mcp__amem__amem_search" {
+		t.Fatalf("claude pattern %v err=%v, want mcp__amem__amem_search", args, err)
+	}
+}

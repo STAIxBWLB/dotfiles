@@ -235,7 +235,7 @@ func newAIAgentsApplyCmd() *cobra.Command {
 			}
 			// The amem memory block lives in the SSOT; write it (and drop the retired
 			// claude-mem block) before rendering so one apply carries both to the targets.
-			if err := ensureMemoryBlock(mgr, dryRun); err != nil {
+			if err := ensureMemoryBlock(cmd, mgr, dryRun); err != nil {
 				return err
 			}
 			result, err := mgr.Apply(aisettings.ApplyOptions{Tools: ids, DryRun: dryRun, Force: force})
@@ -400,18 +400,22 @@ func shortHash(hash string) string {
 	return hash[:12]
 }
 
-// ensureMemoryBlock puts the amem memory block into the SSOT and removes the
-// claude-mem block. A missing SSOT is left to the scaffolding that already
-// precedes apply; a dry run only checks.
-func ensureMemoryBlock(mgr *aisettings.AgentsManager, dryRun bool) error {
-	path := mgr.SSOTPath()
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return nil
-	}
-	if dryRun {
-		_, err := aisettings.MemoryInstructionsNeeded(path)
+// ensureMemoryBlock puts the amem memory block into the SSOT and removes the claude-mem block, only when
+// this machine uses amem, after a backup of the SSOT. A malformed marker is printed as a warning and does
+// not fail the command; a dry run only checks.
+func ensureMemoryBlock(cmd *cobra.Command, mgr *aisettings.AgentsManager, dryRun bool) error {
+	res, err := mgr.EnsureMemoryBlock(dryRun)
+	if err != nil {
 		return err
 	}
-	_, err := aisettings.EnsureMemoryInstructions(path)
-	return err
+	p := printerFrom(cmd)
+	switch {
+	case res.Warning != "":
+		p.Warn("%s", res.Warning)
+	case res.Changed && dryRun:
+		p.Line("would write the amem memory block into %s and drop the claude-mem block", mgr.SSOTPath())
+	case res.Changed:
+		p.Line("wrote the amem memory block into %s (backup: %s)", mgr.SSOTPath(), res.Backup)
+	}
+	return nil
 }

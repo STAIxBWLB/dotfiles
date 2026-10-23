@@ -100,9 +100,8 @@ func (m *AIModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, err
 				changes = append(changes, Change{Description: "install shared development context guidance", Command: "dot ai tools apply"})
 			}
 		}
-		if needed, err := aisettings.MemoryInstructionsNeeded(manager.SSOTPath()); err != nil {
-			return nil, err
-		} else if needed {
+		// Only where amem is in use; a malformed marker is a finding at apply time, never a failed Check.
+		if needed, _ := manager.MemoryBlockNeeded(); needed {
 			changes = append(changes, Change{Description: "write the amem memory block and drop the retired claude-mem block", Command: "dot ai agents apply"})
 		}
 		statuses, err := manager.Status()
@@ -276,13 +275,17 @@ func (m *AIModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, err
 			}
 		}
 		if !rc.DryRun {
-			// Also right after the scaffold above: a fresh machine gets the block in its first apply.
-			changed, err := aisettings.EnsureMemoryInstructions(manager.SSOTPath())
+			// Also right after the scaffold above, and only on a machine that uses amem. A bad marker is a
+			// message the person reads, never a reason to fail the rest of the apply.
+			res, err := manager.EnsureMemoryBlock(false)
 			if err != nil {
 				return nil, err
 			}
-			if changed {
-				messages = append(messages, "updated the amem memory block in the agents SSOT")
+			switch {
+			case res.Warning != "":
+				messages = append(messages, "warning: "+res.Warning)
+			case res.Changed:
+				messages = append(messages, fmt.Sprintf("updated the amem memory block in the agents SSOT (backup: %s)", res.Backup))
 			}
 		}
 		if ssotMissing && rc.DryRun {
