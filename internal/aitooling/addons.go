@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/STAIxBWLB/dotfiles/internal/config"
 )
@@ -34,9 +33,6 @@ func (e *Engine) addon(ctx context.Context, en Entry, s config.AIToolingConfig, 
 		}
 		results = append(results, r)
 	}
-	if en.ID == "claude-mem" && needsMemoryBridge(s) {
-		results = append(results, e.memoryBridge(ctx, s, op))
-	}
 	if len(results) == 0 {
 		results = append(results, ItemResult{ID: en.ID, Kind: "tool", Status: "deferred-no-agent", Detail: "select at least one agent"})
 	}
@@ -47,9 +43,8 @@ type pluginSpec struct{ selector, market, source, metadata string }
 
 func pluginSpecs() map[string]pluginSpec {
 	return map[string]pluginSpec{
-		"ponytail":   {selector: "ponytail@ponytail", market: "ponytail", source: "DietrichGebert/ponytail", metadata: "https://raw.githubusercontent.com/DietrichGebert/ponytail/main/.claude-plugin/plugin.json"},
-		"claude-mem": {selector: "claude-mem@thedotmack", market: "thedotmack", source: "thedotmack/claude-mem", metadata: "https://registry.npmjs.org/claude-mem/latest"},
-		"ocr":        {selector: "open-code-review@open-code-review", market: "open-code-review", source: "alibaba/open-code-review", metadata: "https://raw.githubusercontent.com/alibaba/open-code-review/main/plugins/open-code-review/claude-code/.claude-plugin/plugin.json"},
+		"ponytail": {selector: "ponytail@ponytail", market: "ponytail", source: "DietrichGebert/ponytail", metadata: "https://raw.githubusercontent.com/DietrichGebert/ponytail/main/.claude-plugin/plugin.json"},
+		"ocr":      {selector: "open-code-review@open-code-review", market: "open-code-review", source: "alibaba/open-code-review", metadata: "https://raw.githubusercontent.com/alibaba/open-code-review/main/plugins/open-code-review/claude-code/.claude-plugin/plugin.json"},
 	}
 }
 func (e *Engine) plugin(ctx context.Context, id, agent, pin string, op Operation) ItemResult {
@@ -100,22 +95,6 @@ func (e *Engine) plugin(ctx context.Context, id, agent, pin string, op Operation
 		r.Status = "planned"
 		r.Detail = "native targeted plugin installation: " + spec.selector
 		return r
-	}
-	if id == "claude-mem" {
-		// Native setup/update may start or restart the singleton observer. An agent
-		// selection is not permission to interrupt active captures or cooldowns.
-		if e.memoryWorkerActive(ctx) {
-			r.Status = "deferred-active-worker"
-			r.Detail = "memory worker/service state present; complete native update in an explicit maintenance window"
-			return r
-		}
-		for _, dep := range []string{"bun", "uv"} {
-			if e.find(dep) == "" {
-				r.Status = "deferred-prerequisite"
-				r.Detail = dep + " is required; dot will not auto-install unselected runtimes"
-				return r
-			}
-		}
 	}
 	if installPath != "" && !e.pluginIntegrity(ctx, r.ID, agent, spec.selector, installPath) {
 		r.Status = "deferred-local-change"
@@ -206,34 +185,6 @@ func (e *Engine) localPluginChanges(ctx context.Context, path string) bool {
 	out, err := e.exec(ctx, command{Path: git, Args: []string{"-C", path, "status", "--porcelain", "--untracked-files=no"}, Env: e.environment()})
 	return err != nil || strings.TrimSpace(out) != ""
 }
-func (e *Engine) memoryWorkerActive(ctx context.Context) bool {
-	data := filepath.Join(e.opts.HomeDir, ".claude-mem")
-	if !e.opts.ExplicitHome && filepath.IsAbs(os.Getenv("CLAUDE_MEM_DATA_DIR")) {
-		data = os.Getenv("CLAUDE_MEM_DATA_DIR")
-	}
-	for _, p := range []string{"worker.pid", "worker.lock", "worker.port", "worker-service.pid", "supervisor.json", "observer-health.json", "quota-cooldown.json"} {
-		if pathExists(filepath.Join(data, p)) {
-			return true
-		}
-	}
-	if pathExists(filepath.Join(e.opts.HomeDir, "Library", "LaunchAgents", "com.claude-mem.worker.plist")) {
-		return true
-	}
-	// The current native supervisor does not necessarily leave a PID file.
-	// Inspect command names read-only, and fail closed if process discovery is
-	// unavailable. Never print the process list: unrelated argv may be private.
-	out, err := e.exec(ctx, command{Path: "/bin/ps", Args: []string{"-axo", "command="}, Env: e.environment(), Timeout: 5 * time.Second})
-	if err != nil {
-		return true
-	}
-	for _, line := range strings.Split(out, "\n") {
-		if strings.Contains(line, "worker-service.cjs") || strings.Contains(line, "claude-mem") && strings.Contains(line, "supervisor") {
-			return true
-		}
-	}
-	return false
-}
-
 func (e *Engine) pluginVersion(ctx context.Context, agent, selector string) (string, string) {
 	if agent == "claude" {
 		var doc struct {

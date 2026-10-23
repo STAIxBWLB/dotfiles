@@ -17,7 +17,7 @@ import (
 func newAISetupCmd() *cobra.Command {
 	c := &cobra.Command{Use: "setup", Short: "Select agent CLIs, development add-ons, instructions and shared skills", Args: cobra.NoArgs, RunE: runAISetup}
 	c.Flags().String("agents", "", "Selected agent IDs, comma separated (empty selects none)")
-	c.Flags().String("tools", "", "Selected add-on IDs: ripwire,ocr,gsd,claude-mem,ponytail")
+	c.Flags().String("tools", "", "Selected add-on IDs: ripwire,ocr,gsd,ponytail")
 	c.Flags().String("skills", "", "Selected Maru skill names or IDs, comma separated")
 	c.Flags().Bool("non-interactive", false, "Require explicit or saved selections without prompting")
 	return c

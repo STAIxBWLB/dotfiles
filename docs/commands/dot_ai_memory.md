@@ -1,16 +1,20 @@
 ## dot ai memory
 
-Manage shared claude-mem integration for Codex, Kimi, Kiro, Copilot, Qwen, and pi
+Register amem for the agents and retire claude-mem
 
 ### Synopsis
 
-Use one claude-mem store across Codex, Kimi Code, Kiro CLI, GitHub
-Copilot CLI, Qwen Code, and pi.
+Register amem (@staix/agent-mem) as the project memory for Kimi, Qwen,
+Antigravity, Kiro and GitHub Copilot, and print the exact lines for Claude Code
+and Codex, which keep their own plugin and MCP state.
 
-Codex keeps the plugin's native lifecycle hooks. Kimi, Kiro, Copilot, and
-Qwen receive the same MCP recall server plus a workspace-aware transcript
-capture bridge. pi has no MCP support by design and joins the transcript
-bridge only.
+dot never installs amem and runs no memory process: install the exact version
+yourself, then run 'dot ai memory install'. amem has no resident worker, so dot
+writes no LaunchAgent for it. Sessions of agents without hooks reach amem
+through 'amem ingest <agent>', run at session end or on demand.
+
+'dot ai memory retire-claude-mem' removes the old claude-mem integration. It is
+a dry run unless --apply is given.
 
 ### Options
 
@@ -32,8 +36,7 @@ bridge only.
 ### SEE ALSO
 
 * [dot ai](dot_ai.md)	 - AI CLI/config helpers and settings backup/restore
-* [dot ai memory install](dot_ai_memory_install.md)	 - Prepare selected memory adapters or install the legacy integration
-* [dot ai memory status](dot_ai_memory_status.md)	 - Show claude-mem integration health for all six CLIs
-* [dot ai memory sync](dot_ai_memory_sync.md)	 - Replicate the claude-mem store with a peer over ssh
-* [dot ai memory update](dot_ai_memory_update.md)	 - Update claude-mem to the latest marketplace version
+* [dot ai memory install](dot_ai_memory_install.md)	 - Register amem's MCP server for the selected agents
+* [dot ai memory retire-claude-mem](dot_ai_memory_retire-claude-mem.md)	 - Remove the claude-mem integration (dry run unless --apply)
+* [dot ai memory status](dot_ai_memory_status.md)	 - Show amem integration health
 

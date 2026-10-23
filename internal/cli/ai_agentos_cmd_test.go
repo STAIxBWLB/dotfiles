@@ -133,24 +133,38 @@ func TestAIMemoryStatusAndDryRunAreReadOnly(t *testing.T) {
 	home := t.TempDir()
 	ssot := filepath.Join(home, ".config", "dotfiles", "agents", "AGENTS.md")
 	writeCLITestFile(t, ssot, "# AI Agents\n")
+	// Hermetic: a stand-in amem on a PATH of its own, never whatever amem the machine running the test has.
+	amemDir := t.TempDir()
+	writeCLITestFile(t, filepath.Join(amemDir, "amem"), "#!/bin/sh\necho 0.6.0\n")
+	if err := os.Chmod(filepath.Join(amemDir, "amem"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", amemDir)
+	before := treeOf(t, home)
 
 	status, errOut, err := runDotForTest("--home", home, "ai", "memory", "status")
 	if err != nil {
 		t.Fatalf("memory status: %v\nstderr=%s", err, errOut)
 	}
-	if !strings.Contains(status, "Claude-mem Status") || !strings.Contains(status, "codex") || !strings.Contains(status, "kimi") || !strings.Contains(status, "kiro") || !strings.Contains(status, "copilot") {
-		t.Fatalf("memory status missing tool coverage:\n%s", status)
+	for _, want := range []string{"amem Status", "kimi", "qwen", "agy", "kiro", "copilot", "pi", "instructions", "0.6.0"} {
+		if !strings.Contains(status, want) {
+			t.Fatalf("memory status missing %q:\n%s", want, status)
+		}
 	}
 
 	dryRun, errOut, err := runDotForTest("--home", home, "--dry-run", "ai", "memory", "install")
 	if err != nil {
 		t.Fatalf("memory install --dry-run: %v\nstderr=%s", err, errOut)
 	}
-	if !strings.Contains(dryRun, "would merge MCP config") {
+	if !strings.Contains(dryRun, "would write") && !strings.Contains(dryRun, "nothing to write") {
 		t.Fatalf("memory dry-run missing plan:\n%s", dryRun)
 	}
 	if _, err := os.Stat(filepath.Join(home, ".kimi-code", "mcp.json")); !os.IsNotExist(err) {
 		t.Fatalf("memory dry-run wrote Kimi config, stat err=%v", err)
+	}
+	after := treeOf(t, home)
+	if len(before) != len(after) {
+		t.Fatalf("status and dry run changed the home: %d -> %d files", len(before), len(after))
 	}
 }
 

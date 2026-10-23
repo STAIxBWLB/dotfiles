@@ -13,7 +13,7 @@ dot ai setup [flags]
   -h, --help              help for setup
       --non-interactive   Require explicit or saved selections without prompting
       --skills string     Selected Maru skill names or IDs, comma separated
-      --tools string      Selected add-on IDs: ripwire,ocr,gsd,claude-mem,ponytail
+      --tools string      Selected add-on IDs: ripwire,ocr,gsd,ponytail
 ```
 
 ### Options inherited from parent commands

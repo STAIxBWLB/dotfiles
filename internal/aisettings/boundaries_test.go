@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 // pathClass classifies what a Path-suffixed declaration does with the path
@@ -55,34 +56,24 @@ var pathBoundaryTable = []pathBoundaryEntry{
 	{"AgentsManager.TargetPath", classHomeWrite},
 	{"AgentsManager.backupTargetPath", classHomeWrite},
 	{"AgentsManager.legacyStatePath", classCallerRooted},
-	{"ClaudeMemManager.BridgeLogPath", classHomeWrite},
-	{"ClaudeMemManager.CopilotMCPPath", classHomeWrite},
-	{"ClaudeMemManager.KimiMCPPath", classHomeWrite},
-	{"ClaudeMemManager.QwenMCPPath", classHomeWrite},
-	{"ClaudeMemManager.AntigravityMCPPath", classHomeWrite},
-	{"ClaudeMemManager.PiAgentsPath", classHomeWrite},
-	{"ClaudeMemManager.KiroMCPPath", classHomeWrite},
-	{"ClaudeMemManager.LaunchdPlistPath", classHomeWrite},
-	{"ClaudeMemManager.MarketplaceCheckoutPath", classHomeWrite},
-	{"ClaudeMemManager.SyncLaunchdPlistPath", classHomeWrite},
-	{"ClaudeMemManager.SyncLogPath", classHomeWrite},
-	{"ClaudeMemManager.TranscriptConfigPath", classHomeWrite},
-	{"ClaudeMemManager.codexConfigPath", classReadOnly},
-	{"ClaudeMemManager.TranscriptStatePath", classHomeWrite},
+	{"AmemManager.CopilotMCPPath", classHomeWrite},
+	{"AmemManager.KimiMCPPath", classHomeWrite},
+	{"AmemManager.QwenMCPPath", classHomeWrite},
+	{"AmemManager.AntigravityMCPPath", classHomeWrite},
+	{"AmemManager.PiAgentsPath", classHomeWrite},
+	{"AmemManager.KiroMCPPath", classHomeWrite},
 	{"CoauthorGuardManager.SSOTPath", classHomeWrite},
 	{"CoauthorGuardManager.dotManagedHooksPath", classTransform},
 	{"PreserveForeignHooksPath", classTransform},
+	{"RetireOptions.archivePath", classHomeWrite},
 	{"CoauthorGuardManager.gitConfigPath", classHomeWrite},
 	{"CoauthorGuardManager.hookPath", classHomeWrite},
-	{"DefaultSyncDBPath", classHomeWrite},
 	{"Engine.LatestPointerPath", classCallerRooted},
 	{"Engine.VersionPath", classCallerRooted},
 	{"Engine.copyMaterializedPath", classTransform},
 	{"HUDManager.claudeScriptPath", classHomeWrite},
 	{"HUDManager.codexConfigPath", classHomeWrite},
 	{"SkillsManager.DefaultMaruSSOTPath", classReadOnly},
-	{"SyncStatePath", classHomeWrite},
-	{"canonicalPath", classTransform},
 	{"canonicalSkillPath", classTransform},
 	{"normalizeGitPath", classTransform},
 	{"validateMaterializedPath", classTransform},
@@ -94,7 +85,6 @@ var pathBoundaryTable = []pathBoundaryEntry{
 // prefer naming new resolvers with the Path suffix.
 var extraPathProducers = []pathBoundaryEntry{
 	{"AgentsManager.ssotDir", classCallerRooted},
-	{"ClaudeMemManager.DataDir", classHomeWrite},
 	{"Engine.AIConfigRoot", classCallerRooted},
 	{"Engine.HostRoot", classCallerRooted},
 }
@@ -111,6 +101,8 @@ var allowedBoundaryRoots = []string{
 	"~/.config/git/config",
 	"~/.config/git/hooks/commit-msg",
 	"~/.claude-mem",
+	// A root ending in "-" is a name prefix: the dated archive sits beside ~/.claude-mem.
+	"~/.claude-mem.archive-",
 	"~/Library/LaunchAgents/com.dotfiles.claude-mem-bridge.plist",
 	"~/Library/LaunchAgents/com.dotfiles.claude-mem-sync.plist",
 	"~/.claude/plugins/marketplaces/thedotmack",
@@ -151,6 +143,10 @@ func expandBoundaryRoot(root, home string) string {
 // seam exists to avoid. The separator in the prefix check is what rejects a
 // sibling whose name merely extends the root (~/.claude-mem vs ~/.claude).
 func withinBoundary(path, root string) bool {
+	// A root ending in "-" names a prefix (the dated claude-mem archive), not a directory.
+	if strings.HasSuffix(root, "-") {
+		return strings.HasPrefix(path, root)
+	}
 	return path == root || strings.HasPrefix(path, root+string(filepath.Separator))
 }
 
@@ -308,48 +304,32 @@ func resolveHomeWrite(t *testing.T, name, home string) string {
 		return (&AgentsManager{HomeDir: home}).StatePath()
 	case "AgentsManager.backupTargetPath":
 		return (&AgentsManager{HomeDir: home}).backupTargetPath("claude")
-	case "ClaudeMemManager.BridgeLogPath":
-		return (&ClaudeMemManager{HomeDir: home}).BridgeLogPath()
-	case "ClaudeMemManager.CopilotMCPPath":
-		return (&ClaudeMemManager{HomeDir: home}).CopilotMCPPath()
-	case "ClaudeMemManager.DataDir":
-		return (&ClaudeMemManager{HomeDir: home}).DataDir()
-	case "ClaudeMemManager.KimiMCPPath":
-		return (&ClaudeMemManager{HomeDir: home}).KimiMCPPath()
-	case "ClaudeMemManager.QwenMCPPath":
-		return (&ClaudeMemManager{HomeDir: home}).QwenMCPPath()
-	case "ClaudeMemManager.AntigravityMCPPath":
-		return (&ClaudeMemManager{HomeDir: home}).AntigravityMCPPath()
-	case "ClaudeMemManager.PiAgentsPath":
-		return (&ClaudeMemManager{HomeDir: home}).PiAgentsPath()
-	case "ClaudeMemManager.KiroMCPPath":
-		return (&ClaudeMemManager{HomeDir: home}).KiroMCPPath()
-	case "ClaudeMemManager.LaunchdPlistPath":
-		return (&ClaudeMemManager{HomeDir: home}).LaunchdPlistPath()
-	case "ClaudeMemManager.MarketplaceCheckoutPath":
-		return (&ClaudeMemManager{HomeDir: home}).MarketplaceCheckoutPath()
-	case "ClaudeMemManager.SyncLaunchdPlistPath":
-		return (&ClaudeMemManager{HomeDir: home}).SyncLaunchdPlistPath()
-	case "ClaudeMemManager.SyncLogPath":
-		return (&ClaudeMemManager{HomeDir: home}).SyncLogPath()
-	case "ClaudeMemManager.TranscriptConfigPath":
-		return (&ClaudeMemManager{HomeDir: home}).TranscriptConfigPath()
-	case "ClaudeMemManager.TranscriptStatePath":
-		return (&ClaudeMemManager{HomeDir: home}).TranscriptStatePath()
+	case "AmemManager.CopilotMCPPath":
+		return (&AmemManager{HomeDir: home}).CopilotMCPPath()
+	case "AmemManager.KimiMCPPath":
+		return (&AmemManager{HomeDir: home}).KimiMCPPath()
+	case "AmemManager.QwenMCPPath":
+		return (&AmemManager{HomeDir: home}).QwenMCPPath()
+	case "AmemManager.AntigravityMCPPath":
+		return (&AmemManager{HomeDir: home}).AntigravityMCPPath()
+	case "AmemManager.PiAgentsPath":
+		return (&AmemManager{HomeDir: home}).PiAgentsPath()
+	case "AmemManager.KiroMCPPath":
+		return (&AmemManager{HomeDir: home}).KiroMCPPath()
+	case "RetireOptions.archivePath":
+		// The destination of `dot ai memory retire-claude-mem --apply`: a dated sibling
+		// of ~/.claude-mem, never the data directory itself and never a deletion.
+		return (RetireOptions{HomeDir: home, Now: func() time.Time { return time.Date(2026, 10, 24, 0, 0, 0, 0, time.UTC) }}).archivePath()
 	case "CoauthorGuardManager.SSOTPath":
 		return (&CoauthorGuardManager{HomeDir: home}).SSOTPath()
 	case "CoauthorGuardManager.gitConfigPath":
 		return (&CoauthorGuardManager{HomeDir: home}).gitConfigPath()
 	case "CoauthorGuardManager.hookPath":
 		return (&CoauthorGuardManager{HomeDir: home}).hookPath()
-	case "DefaultSyncDBPath":
-		return DefaultSyncDBPath(home)
 	case "HUDManager.claudeScriptPath":
 		return (&HUDManager{HomeDir: home}).claudeScriptPath()
 	case "HUDManager.codexConfigPath":
 		return (&HUDManager{HomeDir: home}).codexConfigPath()
-	case "SyncStatePath":
-		return SyncStatePath(home)
 	default:
 		t.Fatalf("no home-write invocation for %s; extend resolveHomeWrite", name)
 		return ""

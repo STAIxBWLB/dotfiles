@@ -1,6 +1,6 @@
 ## dot ai memory status
 
-Show claude-mem integration health for all six CLIs
+Show amem integration health
 
 ```
 dot ai memory status [flags]
@@ -25,5 +25,5 @@ dot ai memory status [flags]
 
 ### SEE ALSO
 
-* [dot ai memory](dot_ai_memory.md)	 - Manage shared claude-mem integration for Codex, Kimi, Kiro, Copilot, Qwen, and pi
+* [dot ai memory](dot_ai_memory.md)	 - Register amem for the agents and retire claude-mem
 

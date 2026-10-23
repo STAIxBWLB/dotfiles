@@ -67,7 +67,7 @@ override:
     threshold: 77
   - path: ^internal/aisession$
     threshold: 79
-  - path: ^internal/aisettings$ # measured 67.3594% (2431/3609) on darwin after the claude-mem sync landed; launchd install stays unhit
+  - path: ^internal/aisettings$ # measured 71.6% on darwin after claude-mem sync and bridge were replaced by amem (dotfiles#255); the floor is unchanged
     threshold: 62
   # New package floors: authoritative Ubuntu unit run 36305525701,
   # job 108581294497, coverage artifact 10927082672, head 7227f170.

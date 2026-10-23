@@ -1,18 +1,13 @@
 package aipolicy
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // KnowledgeApproval is a narrow native MCP tool grant, never a server definition.
@@ -25,7 +20,16 @@ type KnowledgeApproval struct {
 }
 
 var vaultKnowledgeTools = []string{"read_note", "read_multiple_notes", "search_notes", "list_directory", "get_notes_info", "get_frontmatter", "get_vault_stats", "list_all_tags", "write_note", "patch_note", "update_frontmatter", "manage_tags"}
-var memoryKnowledgeTools = []string{"search", "timeline", "get_observations", "get_tool_uses", "session_start_context", "smart_search", "smart_outline", "smart_unfold", "important_workflow", "list_corpora", "query_corpus", "observation_add", "observation_record_event", "observation_search", "observation_context", "observation_generation_status"}
+
+// memoryKnowledgeTools is amem's frozen MCP surface (agent-mem src/mcp.ts MCP_TOOLS, #13 P2).
+// None deletes or moves a note: amem_remember only proposes a candidate for the person to accept,
+// and amem_work_state_write appends scalar work-list fields. The names reach Claude Code as
+// mcp__amem__<tool>.
+var memoryKnowledgeTools = []string{"amem_search", "amem_show", "amem_timeline", "amem_graph", "amem_work_state_read", "amem_work_state_write", "amem_remember", "amem_vault_candidates", "amem_capacity"}
+
+// memoryServer is the MCP server name amem is registered under (`codex mcp add amem`,
+// `claude mcp add amem`, and the mcpServers key dot writes for the other agents).
+const memoryServer = "amem"
 
 // KnowledgeApprovals recognizes existing Codex bindings without copying identity
 // or credentials. Claude permission patterns themselves do not register servers.
@@ -41,7 +45,7 @@ func KnowledgeApprovals(runtime Runtime) ([]KnowledgeApproval, error) {
 	switch runtime.Agent {
 	case "claude":
 		add("obsidian", "", vaultKnowledgeTools)
-		add("plugin_claude-mem_mcp-search", "", memoryKnowledgeTools)
+		add(memoryServer, "", memoryKnowledgeTools)
 	case "codex":
 		if runtime.Home == "" {
 			return out, nil
@@ -75,10 +79,8 @@ func KnowledgeApprovals(runtime Runtime) ([]KnowledgeApproval, error) {
 			return nil, fmt.Errorf("multiline Codex config requires manual knowledge binding validation")
 		}
 		section := ""
-		obsidian := false
-		disabled := false
-		pluginEnabled := false
-		pluginServer := false
+		bound := map[string]bool{}    // servers with a command or url
+		disabled := map[string]bool{} // servers with enabled = false
 		for _, line := range strings.Split(string(data), "\n") {
 			line = strings.TrimSpace(line)
 			if line == "" || strings.HasPrefix(line, "#") {
@@ -89,11 +91,7 @@ func KnowledgeApprovals(runtime Runtime) ([]KnowledgeApproval, error) {
 				if end < 0 {
 					return nil, fmt.Errorf("invalid Codex config table")
 				}
-				section = strings.TrimSpace(line[1:end])
-				section = knowledgeTable(section)
-				if strings.HasPrefix(section, "plugins.claude-mem@claude-mem-local.mcp_servers.mcp-search.") || section == "plugins.claude-mem@claude-mem-local.mcp_servers.mcp-search" {
-					pluginServer = true
-				}
+				section = knowledgeTable(strings.TrimSpace(line[1:end]))
 				continue
 			}
 			key, value, ok := strings.Cut(line, "=")
@@ -102,35 +100,27 @@ func KnowledgeApprovals(runtime Runtime) ([]KnowledgeApproval, error) {
 			}
 			key = strings.TrimSpace(key)
 			value = strings.TrimSpace(strings.SplitN(value, "#", 2)[0])
-			if section == "mcp_servers.obsidian" {
+			for _, server := range []string{"obsidian", memoryServer} {
+				if section != "mcp_servers."+server {
+					continue
+				}
 				if key == "enabled" && value == "false" {
-					disabled = true
+					disabled[server] = true
 				}
 				if key == "command" || key == "url" {
 					if len(value) > 2 && ((value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'')) {
-						obsidian = true
+						bound[server] = true
 					}
 				}
 			}
-			if section == "plugins.claude-mem@claude-mem-local" && key == "enabled" && value == "true" {
-				pluginEnabled = true
-			}
 		}
-		if obsidian && !disabled {
+		// Only a server the person registered and left enabled is granted. The old claude-mem
+		// plugin binding is not recognized, so it earns no grant and is never mapped to amem.
+		if bound["obsidian"] && !disabled["obsidian"] {
 			add("obsidian", "", vaultKnowledgeTools)
 		}
-		if pluginEnabled && !pluginServer {
-			known, validationErr := installedMemoryServer(runtime)
-			if validationErr != nil {
-				return nil, validationErr
-			}
-			if !known {
-				return nil, fmt.Errorf("enabled claude-mem plugin binding is unknown; inspect native installed plugin metadata")
-			}
-			pluginServer = true
-		}
-		if pluginEnabled && pluginServer {
-			add("mcp-search", "claude-mem@claude-mem-local", memoryKnowledgeTools)
+		if bound[memoryServer] && !disabled[memoryServer] {
+			add(memoryServer, "", memoryKnowledgeTools)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -147,10 +137,10 @@ func knowledgeTools(agent string, grant KnowledgeApproval) []string {
 	if grant.Server == "obsidian" && grant.Plugin == "" {
 		return vaultKnowledgeTools
 	}
-	if agent == "claude" && grant.Server == "plugin_claude-mem_mcp-search" && grant.Plugin == "" {
-		return memoryKnowledgeTools
-	}
-	if agent == "codex" && grant.Server == "mcp-search" && grant.Plugin == "claude-mem@claude-mem-local" {
+	// amem is a plain MCP server for both agents. Any other server name, the retired
+	// claude-mem ones ("mcp-search", "plugin_claude-mem_mcp-search") included, gets no
+	// tools, so KnowledgeArgs refuses it instead of mapping it onto amem.
+	if (agent == "claude" || agent == "codex") && grant.Server == memoryServer && grant.Plugin == "" {
 		return memoryKnowledgeTools
 	}
 	return nil
@@ -259,110 +249,4 @@ func knowledgeTable(header string) string {
 		}
 	}
 	return strings.Join(parts, ".")
-}
-
-// installedMemoryServer uses the native installed-version registry, never a
-// recursive cache search. Only that exact cached manifest and MCP file are read.
-func installedMemoryServer(runtime Runtime) (bool, error) {
-	if runtime.Executable == "" {
-		return false, nil
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, runtime.Executable, "plugin", "list", "--json", "--marketplace", "claude-mem-local")
-	cmd.Env = append(os.Environ(), "CODEX_HOME="+runtime.Home)
-	output := &knowledgeOutput{}
-	cmd.Stdout = output
-	if err := cmd.Run(); err != nil {
-		return false, fmt.Errorf("native claude-mem binding inspection failed")
-	}
-	var registry struct {
-		Installed []struct {
-			PluginID  string `json:"pluginId"`
-			Version   string
-			Installed bool
-		}
-	}
-	if err := json.Unmarshal(output.Bytes(), &registry); err != nil {
-		return false, fmt.Errorf("invalid native installed-plugin registry")
-	}
-	version := ""
-	for _, plugin := range registry.Installed {
-		if plugin.PluginID == "claude-mem@claude-mem-local" && plugin.Installed {
-			version = plugin.Version
-			break
-		}
-	}
-	if version == "" || filepath.Base(version) != version || version == "." || version == ".." {
-		return false, nil
-	}
-	home, err := canonicalDeclaredHome(runtime.Home)
-	if err != nil {
-		return false, err
-	}
-	// Native plugin trees may intentionally be shared by a symlink (Orca).
-	// Resolve this read-only boundary once, then confine all metadata reads.
-	rootPath, err := filepath.EvalSymlinks(filepath.Join(home, "plugins", "cache", "claude-mem-local", "claude-mem", version))
-	if err != nil {
-		return false, fmt.Errorf("installed claude-mem cache unavailable")
-	}
-	root, err := os.OpenRoot(rootPath)
-	if err != nil {
-		return false, err
-	}
-	defer root.Close()
-	data, err := knowledgeReadJSON(root, filepath.Join(".codex-plugin", "plugin.json"))
-	if err != nil {
-		return false, fmt.Errorf("installed claude-mem manifest unavailable")
-	}
-	var manifest struct {
-		MCPServers json.RawMessage `json:"mcpServers"`
-	}
-	if err = json.Unmarshal(data, &manifest); err != nil {
-		return false, fmt.Errorf("invalid installed claude-mem manifest")
-	}
-	var relative string
-	if err = json.Unmarshal(manifest.MCPServers, &relative); err != nil {
-		return false, fmt.Errorf("unsupported claude-mem MCP manifest shape")
-	}
-	relative = filepath.Clean(relative)
-	if !filepath.IsLocal(relative) {
-		return false, fmt.Errorf("claude-mem MCP path escapes plugin")
-	}
-	data, err = knowledgeReadJSON(root, relative)
-	if err != nil {
-		return false, fmt.Errorf("installed claude-mem MCP definition unavailable")
-	}
-	var mcp struct {
-		Servers map[string]struct {
-			Command string
-			URL     string
-		} `json:"mcpServers"`
-	}
-	if err = json.Unmarshal(data, &mcp); err != nil {
-		return false, fmt.Errorf("invalid claude-mem MCP definition")
-	}
-	server, ok := mcp.Servers["mcp-search"]
-	return ok && (server.Command != "" || server.URL != ""), nil
-}
-func knowledgeReadJSON(root *os.Root, path string) ([]byte, error) {
-	file, err := root.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, 1024*1024+1))
-	if len(data) > 1024*1024 {
-		return nil, fmt.Errorf("plugin metadata exceeds inspection limit")
-	}
-	return data, err
-}
-
-type knowledgeOutput struct{ bytes.Buffer }
-
-func (out *knowledgeOutput) Write(data []byte) (int, error) {
-	if out.Len()+len(data) > 1024*1024 {
-		return 0, fmt.Errorf("plugin registry exceeds inspection limit")
-	}
-	return out.Buffer.Write(data)
 }
