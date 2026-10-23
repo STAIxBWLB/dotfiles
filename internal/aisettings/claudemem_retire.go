@@ -71,6 +71,21 @@ func (r RetireResult) Clean() bool {
 	return true
 }
 
+// Failed lists the steps that ran and failed. A failed archive can leave every read-back check clean
+// (nothing names claude-mem, and the data directory was never moved), so success is Clean and no failed step.
+func (r RetireResult) Failed() []RetireStep {
+	var out []RetireStep
+	for _, step := range r.Steps {
+		if step.Status == RetireFailed {
+			out = append(out, step)
+		}
+	}
+	return out
+}
+
+// OK is the success decision for an apply: it started, no step failed and nothing of claude-mem is left.
+func (r RetireResult) OK() bool { return r.Blocked == "" && len(r.Failed()) == 0 && r.Clean() }
+
 // Runner runs a native command in the given environment and returns its combined
 // output. It is the one seam through which retirement mutates anything outside
 // dot's own files, so a test proves the dry run by counting calls and proves the

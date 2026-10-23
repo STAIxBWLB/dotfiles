@@ -849,3 +849,58 @@ func TestRetireAPluginsKeyThatIsNotAnObjectIsUnknownNotAbsent(t *testing.T) {
 	seedImport(t, home)
 	refused(t, home, rec, applyOpts(home, rec), installed)
 }
+
+// A failed archive leaves every read-back check clean (nothing names claude-mem, and the data directory never moved), so
+// the success decision must include the failed step. The dated name is taken by a plain file's parent being read-only here.
+func TestRetireAFailedArchiveIsNotSuccessEvenWhenTheReadBackIsClean(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root renames anywhere")
+	}
+	home := t.TempDir()
+	mustWriteFile(t, filepath.Join(home, ".claude-mem", "claude-mem.db"), "SQLITE-DATA")
+	seedImport(t, home)
+	if err := os.Chmod(home, 0o500); err != nil { // the data directory cannot be renamed inside a read-only home
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(home, 0o700) })
+	result, err := RetireClaudeMem(context.Background(), applyOpts(home, &recorder{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Blocked != "" {
+		t.Fatalf("blocked: %s", result.Blocked)
+	}
+	if got := stepIDs(result)["archive"]; got != RetireFailed {
+		t.Fatalf("archive step %q, want %q", got, RetireFailed)
+	}
+	if !result.Clean() {
+		t.Fatalf("the point of this case is a clean read-back with a failed step: %+v", result.ReadBack)
+	}
+	if result.OK() {
+		t.Fatal("a failed archive counted as success")
+	}
+	if failed := result.Failed(); len(failed) != 1 || failed[0].ID != "archive" {
+		t.Fatalf("failed steps %+v", failed)
+	}
+	if raw, _ := os.ReadFile(filepath.Join(home, ".claude-mem", "claude-mem.db")); string(raw) != "SQLITE-DATA" {
+		t.Fatal("the data was lost")
+	}
+}
+
+func TestRetireOKNeedsStartedNoFailureAndCleanReadBack(t *testing.T) {
+	clean := []RetireReadBack{{Check: "x", Clean: true}}
+	for name, tc := range map[string]struct {
+		r    RetireResult
+		want bool
+	}{
+		"clean":          {RetireResult{ReadBack: clean}, true},
+		"blocked":        {RetireResult{Blocked: "no", ReadBack: clean}, false},
+		"failed step":    {RetireResult{Steps: []RetireStep{{ID: "archive", Status: RetireFailed}}, ReadBack: clean}, false},
+		"residue":        {RetireResult{ReadBack: []RetireReadBack{{Check: "x", Clean: false}}}, false},
+		"unknown is not": {RetireResult{Steps: []RetireStep{{ID: "mcp-qwen", Status: RetireUnknown}}, ReadBack: []RetireReadBack{{Check: "x", Clean: false}}}, false},
+	} {
+		if got := tc.r.OK(); got != tc.want {
+			t.Errorf("%s: OK() = %v, want %v", name, got, tc.want)
+		}
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -243,13 +244,22 @@ the 'amem import claude-mem' run is done and an amem import cursor exists.`,
 			}
 			printRetireResult(printerFrom(cmd), result)
 			if apply && result.Blocked == "" {
-				auditAIEventBestEffort(cmd, "ai.memory.retire", map[string]any{"archive": result.Archive, "clean": result.Clean()})
+				auditAIEventBestEffort(cmd, "ai.memory.retire", map[string]any{"archive": result.Archive, "clean": result.Clean(), "failed_steps": len(result.Failed())})
 			}
 			if result.Blocked != "" {
 				return fmt.Errorf("%s", result.Blocked)
 			}
-			if apply && !result.Clean() {
-				return fmt.Errorf("claude-mem residue remains; see the read-back above")
+			if apply {
+				if failed := result.Failed(); len(failed) > 0 {
+					names := make([]string, len(failed))
+					for i, step := range failed {
+						names[i] = step.ID
+					}
+					return fmt.Errorf("%d retirement step(s) failed (%s); see the steps above", len(failed), strings.Join(names, ", "))
+				}
+				if !result.Clean() {
+					return fmt.Errorf("claude-mem residue remains; see the read-back above")
+				}
 			}
 			return nil
 		},
