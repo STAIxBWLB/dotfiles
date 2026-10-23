@@ -244,9 +244,13 @@ dot ai memory status
 dot ai agents apply               # writes the amem + vault block into the agents SSOT
 ```
 
-`install` prints the exact lines for Claude Code (`claude --plugin-dir ...`) and
-Codex (`codex mcp add amem -- <amem> mcp`), which keep their own plugin and MCP
-state, so dot never writes them. amem has no resident worker, so dot writes no
+`install` prints the exact lines for Claude Code and Codex, which keep their own
+plugin and MCP state, so dot never writes them: `claude mcp add -s user amem --
+<amem> mcp` (the tools, which the policy grants as `mcp__amem__amem_*`),
+`claude --plugin-dir <package root>` (the capture hooks; the 0.6.0 plugin
+declares no MCP server, so both are needed) and `codex mcp add amem -- <amem>
+mcp`. The memory block in the agents SSOT is written only on a machine that uses
+amem, after a backup of the SSOT. amem has no resident worker, so dot writes no
 LaunchAgent for it; agents without hooks reach it through `amem ingest <agent>`.
 Curated handoffs below are separate from amem.
 
@@ -255,7 +259,10 @@ To remove claude-mem after `amem import claude-mem` has finished, run
 back what is left, then `--apply --import-complete` to do it. It archives
 `~/.claude-mem` to `~/.claude-mem.archive-<date>` and never deletes it, and it
 prints the lines of `~/.claude/settings.json` for you to remove, because Claude
-Code owns that file.
+Code owns that file. `--apply` is refused before any step while a claude-mem
+process is running (quit the Claude and Codex sessions that load it first), when
+a file it must read cannot be read, and under `--home`; the dry run works with
+`--home` and reads nothing from your shell environment.
 
 Portable desired state lives under `modules.ai.tooling`: `agents`, `tools`,
 `skills`, optional version `pins`, and `updates.enabled`. Machine-specific

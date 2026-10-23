@@ -88,7 +88,10 @@ Dot-owned state trees:
   scaffolds a missing SSOT), by `dot apply` (scaffolds it on a fresh
   machine), by `dot ai restore|import`, and by the instruction blocks of `dot ai
   coauthor-guard` and `dot ai agents apply` (the amem memory block, which also
-  removes the retired claude-mem block), and the selected setup continuity
+  removes the retired claude-mem block, and only on a machine that uses amem:
+  `amem` on PATH, an amem server in a managed MCP config, or the block already
+  present; the SSOT is copied to `backup/agents-ssot/<timestamp>/` first, and a
+  malformed marker is reported as a warning and never fails the apply), and the selected setup continuity
   policy block (backed up before upgrading an existing SSOT). This dir is synced between
   machines, so it holds no machine state: every agents apply removes the
   legacy apply-state file (`.state.json`) from it, best-effort, after
@@ -157,7 +160,12 @@ tool):
 - `~/.claude-mem` — retired. dot writes nothing into it any more. The only
   operation on it is `dot ai memory retire-claude-mem --apply`, which moves
   the whole directory to the dated sibling `~/.claude-mem.archive-<YYYYMMDD>`
-  (never a deletion, and refused while a claude-mem process runs).
+  (never a deletion). It is refused, before any step, while a claude-mem process
+  runs, when the directory is a symlink, when any file it must read cannot be
+  read, and under an explicit `--home`: the native `claude` and `codex` CLIs and
+  launchd act on the invoking user's real state, so a scratch home can be
+  planned and read back but never applied. `$CLAUDE_MEM_DATA_DIR` is honoured
+  for the person's own home only.
 - `~/.claude-mem.archive-` — the dated archive that retirement creates; a name
   prefix, not a directory, because the date and a same-day counter follow it.
 - `~/Library/LaunchAgents/com.dotfiles.claude-mem-bridge.plist` and
