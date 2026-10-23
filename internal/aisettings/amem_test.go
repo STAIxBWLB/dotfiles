@@ -402,7 +402,7 @@ func TestAmemStatusReportsEachAgentAndVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	st = m.Status(context.Background(), ssot)
-	if !(st.KimiMCP && st.QwenMCP && st.KiroMCP && st.CopilotMCP && st.AntigravityMCP && st.InstructionsEnabled) {
+	if !st.KimiMCP || !st.QwenMCP || !st.KiroMCP || !st.CopilotMCP || !st.AntigravityMCP || !st.InstructionsEnabled {
 		t.Fatalf("installed home not ready: %+v", st)
 	}
 }

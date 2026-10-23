@@ -457,11 +457,6 @@ func atomicWriteFile(path string, content []byte, mode fs.FileMode) error {
 	return os.Rename(tempPath, path)
 }
 
-func fileExists(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && !info.IsDir()
-}
-
 // amemVersion runs `amem --version` with a short deadline. A failure leaves the
 // version unknown; status reports that rather than guessing.
 func amemVersion(ctx context.Context, amemPath string) (string, error) {

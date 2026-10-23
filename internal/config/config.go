@@ -624,9 +624,7 @@ func (c *AIToolingConfig) Clone() *AIToolingConfig {
 	out.Agents = append([]string{}, c.Agents...)
 	out.Tools = withoutRetiredTools(c.Tools)
 	out.Skills = append([]string{}, c.Skills...)
-	if _, retired := out.Pins["claude-mem"]; retired {
-		delete(out.Pins, "claude-mem")
-	}
+	delete(out.Pins, "claude-mem")
 	return &out
 }
 
