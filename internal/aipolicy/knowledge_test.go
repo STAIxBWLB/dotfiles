@@ -87,6 +87,28 @@ func TestKnowledgeRefusesTheRetiredClaudeMemServerNames(t *testing.T) {
 	}
 }
 
+// An amem tool name asked of any other server is refused too: the allowlist is keyed on the server,
+// so a retired claude-mem name can never be granted an amem tool by mapping.
+func TestKnowledgeAmemToolsAreGrantedOnlyOnTheAmemServer(t *testing.T) {
+	for _, agent := range []string{"claude", "codex"} {
+		for _, server := range []string{"mcp-search", "plugin_claude-mem_mcp-search", "claude-mem", "other", "obsidian"} {
+			for _, tool := range []string{"amem_search", "amem_work_state_write", "amem_remember"} {
+				grant := KnowledgeApproval{Server: server, Tool: tool, ApprovalMode: "approve"}
+				if _, err := KnowledgeArgs(Runtime{Agent: agent}, []KnowledgeApproval{grant}); err == nil {
+					t.Errorf("%s granted %s on server %q", agent, tool, server)
+				}
+			}
+		}
+		if _, err := KnowledgeArgs(Runtime{Agent: agent}, []KnowledgeApproval{{Server: "amem", Tool: "amem_search", ApprovalMode: "approve"}}); err != nil {
+			t.Errorf("%s refused amem's own tool: %v", agent, err)
+		}
+	}
+	// ask and deny modes grant nothing, whatever the server.
+	if _, err := KnowledgeArgs(Runtime{Agent: "claude"}, []KnowledgeApproval{{Server: "amem", Tool: "amem_search", ApprovalMode: "ask"}}); err == nil {
+		t.Error("a non-approve mode was granted")
+	}
+}
+
 // A machine that still has only the claude-mem plugin enabled gets no memory grant: the binding is
 // not recognized, so nothing is silently mapped, and nothing errors either.
 func TestKnowledgeCodexWithOnlyTheOldPluginGrantsNothing(t *testing.T) {

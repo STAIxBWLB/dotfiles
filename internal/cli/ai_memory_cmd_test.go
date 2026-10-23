@@ -305,16 +305,32 @@ func TestRetireClaudeMemDryRunFlagBeatsApply(t *testing.T) {
 	}
 }
 
-// A saved selection that still lists the retired add-on keeps working, without it.
+// A saved selection that still lists the retired add-on keeps working, without it. `tools status`
+// loads the selection and validates it against the catalog, which is what `dot apply` does.
 func TestSavedSelectionNamingClaudeMemKeepsWorking(t *testing.T) {
 	home := t.TempDir()
 	cfg := filepath.Join(t.TempDir(), "dot.yaml")
-	writeCLITestFile(t, cfg, "modules:\n  ai:\n    enabled: true\n    tooling:\n      agents: [\"qwen\"]\n      tools: [\"ripwire\", \"claude-mem\"]\n      pins:\n        claude-mem: \"13.28.0\"\n")
-	out, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "tools", "list", "--json")
+	writeCLITestFile(t, cfg, "modules:\n  ai:\n    enabled: true\n    tooling:\n      agents: [\"qwen\"]\n      tools: [\"claude-mem\"]\n      pins:\n        claude-mem: \"13.28.0\"\n")
+	out, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "tools", "status", "--json")
 	if err != nil {
 		t.Fatalf("a selection that names claude-mem now fails: %v\n%s", err, errOut)
 	}
-	if strings.Contains(out, `"ID": "claude-mem"`) || strings.Contains(out, `"ID":"claude-mem"`) {
-		t.Fatalf("claude-mem is still in the catalog:\n%s", out)
+	if strings.Contains(out, "claude-mem") {
+		t.Fatalf("claude-mem is still reported:\n%s", out)
+	}
+}
+
+func TestToolsListNamesFourAddonsAndNoMemoryAddon(t *testing.T) {
+	out, errOut, err := runDotForTest("--home", t.TempDir(), "ai", "tools", "list")
+	if err != nil {
+		t.Fatalf("%v\n%s", err, errOut)
+	}
+	if strings.Contains(out, "claude-mem") || strings.Contains(out, "amem") {
+		t.Fatalf("a memory add-on is still in the catalog:\n%s", out)
+	}
+	for _, want := range []string{"ripwire", "ocr", "gsd", "ponytail"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("catalog lost %s:\n%s", want, out)
+		}
 	}
 }

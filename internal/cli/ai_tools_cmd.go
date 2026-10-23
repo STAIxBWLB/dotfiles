@@ -11,7 +11,7 @@ import (
 
 func newAIToolsCmd() *cobra.Command {
 	c := &cobra.Command{Use: "tools", Short: "Inspect or reconcile selected development tooling"}
-	list := &cobra.Command{Use: "list", Short: "List selectable agents and five managed add-ons", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	list := &cobra.Command{Use: "list", Short: "List selectable agents and four managed add-ons", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		asJSON, _ := cmd.Flags().GetBool("json")
 		if asJSON {
 			return json.NewEncoder(cmd.OutOrStdout()).Encode(struct {
