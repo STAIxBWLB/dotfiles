@@ -431,7 +431,7 @@ jobs:
       # because .dockerignore excludes bin/.
       - name: Build current binary
         env:
-          GOTOOLCHAIN: go1.26.9
+          GOTOOLCHAIN: go1.26.10
         run: make build BIN=./dot VERSION=diff COMMIT=diff
       # actions/checkout defaults to fetch-depth 1, which does not contain the
       # pinned commit, and the baseline build would fail with a not-a-tree error
@@ -448,11 +448,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: dot-baseline
-          key: baseline-${{ runner.os }}-db057e7ebbd21e0a7256dcd7c1b26ff3870a5478-go1.26.9
+          key: baseline-${{ runner.os }}-db057e7ebbd21e0a7256dcd7c1b26ff3870a5478-go1.26.10
       - name: Build baseline binary
         if: steps.baseline-cache.outputs.cache-hit != 'true'
         env:
-          GOTOOLCHAIN: go1.26.9
+          GOTOOLCHAIN: go1.26.10
         run: |
           git worktree add --detach "$RUNNER_TEMP/baseline" db057e7ebbd21e0a7256dcd7c1b26ff3870a5478
           make -C "$RUNNER_TEMP/baseline" build BIN="$GITHUB_WORKSPACE/dot-baseline" VERSION=diff COMMIT=diff
