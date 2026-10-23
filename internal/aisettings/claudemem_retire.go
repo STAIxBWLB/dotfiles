@@ -31,12 +31,14 @@ const (
 
 // RetireStep is one thing the retirement touches.
 type RetireStep struct {
-	ID      string
-	Kind    string // plugin, marketplace, mcp, launchd, archive
-	Target  string
-	Action  string
-	Status  RetireStatus
-	Detail  string
+	ID     string
+	Kind   string // plugin, marketplace, mcp, launchd, archive
+	Target string
+	Action string
+	Status RetireStatus
+	Detail string
+	// Source is the file whose contents could not be read, set only when Status is unknown.
+	Source  string
 	command []string
 }
 
@@ -355,15 +357,17 @@ func (o RetireOptions) gate(ctx context.Context, steps []RetireStep) string {
 	if info, err := os.Lstat(o.dataDir()); err == nil && info.Mode()&fs.ModeSymlink != 0 {
 		return "refusing to retire: " + o.dataDir() + " is a symlink; moving it would archive the link, not the data. Point it at a real directory or archive it by hand"
 	}
-	var unknown []string
+	seen := map[string]bool{}
+	var unreadable []string
 	for _, step := range steps {
-		if step.Status == RetireUnknown {
-			unknown = append(unknown, step.Target+": "+step.Detail)
+		if step.Status == RetireUnknown && !seen[step.Detail] {
+			seen[step.Detail] = true
+			unreadable = append(unreadable, step.Detail)
 		}
 	}
-	if len(unknown) > 0 {
-		sort.Strings(unknown)
-		return "refusing to retire: could not read " + strings.Join(unknown, "; ") + ". Fix or move the file, then re-run. Nothing was changed"
+	if len(unreadable) > 0 {
+		sort.Strings(unreadable)
+		return "refusing to retire: could not read " + strings.Join(unreadable, "; ") + ". Fix or move the file, then re-run. Nothing was changed"
 	}
 	return ""
 }
@@ -469,8 +473,13 @@ func mcpServerState(path, name string) (presence, error) {
 
 func (o RetireOptions) plan() []RetireStep {
 	var steps []RetireStep
-	add := func(s RetireStep, state presence, err error) {
+	add := func(s RetireStep, state presence, err error, source ...string) {
 		s.Detail = state.detail(err)
+		if state == unknown && len(source) > 0 {
+			// The refusal must name the file that could not be read, not only the thing sought in it.
+			s.Detail = source[0] + " " + s.Detail
+			s.Source = source[0]
+		}
 		switch state {
 		case absent:
 			s.Status = RetireAbsent
@@ -484,18 +493,18 @@ func (o RetireOptions) plan() []RetireStep {
 	codexName, cerr := fileContainsState(o.codexConfig(), "claude-mem@")
 	codexMarket, kerr := fileContainsState(o.codexConfig(), codexClaudeMemMarket)
 	add(RetireStep{ID: "claude-plugin-disable", Kind: "plugin", Target: claudeMemPluginID, Action: "claude plugin disable " + claudeMemPluginID,
-		command: []string{"claude", "plugin", "disable", claudeMemPluginID}}, installed, ierr)
+		command: []string{"claude", "plugin", "disable", claudeMemPluginID}}, installed, ierr, filepath.Join(o.claudeDir(), "plugins", "installed_plugins.json"))
 	add(RetireStep{ID: "claude-plugin-uninstall", Kind: "plugin", Target: claudeMemPluginID, Action: "claude plugin uninstall " + claudeMemPluginID,
-		command: []string{"claude", "plugin", "uninstall", claudeMemPluginID}}, installed, ierr)
+		command: []string{"claude", "plugin", "uninstall", claudeMemPluginID}}, installed, ierr, filepath.Join(o.claudeDir(), "plugins", "installed_plugins.json"))
 	add(RetireStep{ID: "claude-marketplace", Kind: "marketplace", Target: claudeMemMarketplace, Action: "claude plugin marketplace remove " + claudeMemMarketplace,
-		command: []string{"claude", "plugin", "marketplace", "remove", claudeMemMarketplace}}, market, merr)
+		command: []string{"claude", "plugin", "marketplace", "remove", claudeMemMarketplace}}, market, merr, filepath.Join(o.claudeDir(), "plugins", "known_marketplaces.json"))
 	add(RetireStep{ID: "codex-plugin", Kind: "plugin", Target: "claude-mem@" + codexClaudeMemMarket, Action: "codex plugin remove claude-mem --marketplace " + codexClaudeMemMarket,
-		command: []string{"codex", "plugin", "remove", "claude-mem", "--marketplace", codexClaudeMemMarket}}, codexName, cerr)
+		command: []string{"codex", "plugin", "remove", "claude-mem", "--marketplace", codexClaudeMemMarket}}, codexName, cerr, o.codexConfig())
 	add(RetireStep{ID: "codex-marketplace", Kind: "marketplace", Target: codexClaudeMemMarket, Action: "codex plugin marketplace remove " + codexClaudeMemMarket,
-		command: []string{"codex", "plugin", "marketplace", "remove", codexClaudeMemMarket}}, codexMarket, kerr)
+		command: []string{"codex", "plugin", "marketplace", "remove", codexClaudeMemMarket}}, codexMarket, kerr, o.codexConfig())
 	for _, t := range o.mcpTargets() {
 		state, err := mcpServerState(t.path, "claude-mem")
-		add(RetireStep{ID: "mcp-" + t.agent, Kind: "mcp", Target: t.path, Action: "remove the claude-mem entry under mcpServers in " + t.path}, state, err)
+		add(RetireStep{ID: "mcp-" + t.agent, Kind: "mcp", Target: t.path, Action: "remove the claude-mem entry under mcpServers in " + t.path}, state, err, t.path)
 	}
 	for _, label := range []string{claudeMemBridgeLabel, claudeMemSyncLabel} {
 		plist := filepath.Join(o.agentsDir(), label+".plist")
@@ -511,7 +520,7 @@ func (o RetireOptions) plan() []RetireStep {
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		dataState, derr = unknown, err
 	}
-	add(RetireStep{ID: "archive", Kind: "archive", Target: o.dataDir(), Action: "move " + o.dataDir() + " to " + o.archivePath() + " (never deleted)"}, dataState, derr)
+	add(RetireStep{ID: "archive", Kind: "archive", Target: o.dataDir(), Action: "move " + o.dataDir() + " to " + o.archivePath() + " (never deleted)"}, dataState, derr, o.dataDir())
 	return steps
 }
 

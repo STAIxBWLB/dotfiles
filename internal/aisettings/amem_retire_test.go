@@ -829,3 +829,23 @@ func TestRetireWorkerPortReadFromTheDataDirOrTheDatedArchive(t *testing.T) {
 		})
 	}
 }
+
+// "plugins" present but not an object (a list, a string) cannot be searched for claude-mem: that is unknown, not absent.
+func TestRetireAPluginsKeyThatIsNotAnObjectIsUnknownNotAbsent(t *testing.T) {
+	home := t.TempDir()
+	installed := filepath.Join(home, ".claude", "plugins", "installed_plugins.json")
+	mustWriteFile(t, installed, `{"plugins": ["claude-mem@thedotmack"]}`)
+	dry, err := RetireClaudeMem(context.Background(), retireOpts(home, &recorder{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := stepIDs(dry)["claude-plugin-uninstall"]; got != RetireUnknown {
+		t.Fatalf("a plugins list was read as %q, want %q", got, RetireUnknown)
+	}
+	if dry.Clean() {
+		t.Fatalf("read back as clean: %+v", dry.ReadBack)
+	}
+	rec := &recorder{}
+	seedImport(t, home)
+	refused(t, home, rec, applyOpts(home, rec), installed)
+}
