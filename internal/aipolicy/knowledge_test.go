@@ -3,6 +3,7 @@ package aipolicy
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -56,6 +57,30 @@ func TestKnowledgeMemoryToolsAreAmemsFrozenSurface(t *testing.T) {
 		if !strings.HasPrefix(name, "amem_") || strings.Contains(name, "delete") || strings.Contains(name, "forget") || strings.Contains(name, "move") {
 			t.Errorf("unsafe or foreign memory tool %q", name)
 		}
+	}
+}
+
+// AMEM_PACKAGE_DIR names an unpacked @staix/agent-mem tarball (`npm pack @staix/agent-mem@0.6.0`, then
+// extract). When set, the allowlist is compared with that package's own MCP tool list, so a rename in a later
+// amem release fails here and not at the cutover. Unset (CI), the frozen list above is the contract.
+func TestKnowledgeMemoryToolsMatchThePublishedPackage(t *testing.T) {
+	dir := os.Getenv("AMEM_PACKAGE_DIR")
+	if dir == "" {
+		t.Skip("AMEM_PACKAGE_DIR not set; run with an unpacked @staix/agent-mem tarball to compare")
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "src", "mcp.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var published []string
+	for _, part := range strings.Split(string(raw), `tool("amem_`)[1:] {
+		published = append(published, "amem_"+part[:strings.Index(part, `"`)])
+	}
+	sort.Strings(published)
+	ours := append([]string{}, memoryKnowledgeTools...)
+	sort.Strings(ours)
+	if strings.Join(published, ",") != strings.Join(ours, ",") {
+		t.Fatalf("allowlist drifted from the published package\n published: %v\n dotfiles:  %v", published, ours)
 	}
 }
 

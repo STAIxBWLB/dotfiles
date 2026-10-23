@@ -165,15 +165,31 @@ func newAIMemoryStatusCmd() *cobra.Command {
 	}
 }
 
+// containsVersion reports whether output names exactly the version want. A digit or a dot next to the
+// number means it is part of a longer version (10.6.0, 0.6.01, 0.6.0.1, 1.0.6.0), which is not the pin.
+// A trailing dot that ends a sentence ("amem 0.6.0.") is allowed only when no digit follows it, and a
+// prerelease or build suffix (-rc1, +build) is not the release.
 func containsVersion(output, want string) bool {
+	isDigit := func(b byte) bool { return b >= '0' && b <= '9' }
 	for i := 0; i+len(want) <= len(output); i++ {
-		if output[i:i+len(want)] == want {
-			before := i == 0 || output[i-1] < '0' || output[i-1] > '9'
-			after := i+len(want) == len(output) || output[i+len(want)] < '0' || output[i+len(want)] > '9'
-			if before && after {
-				return true
-			}
+		if output[i:i+len(want)] != want {
+			continue
 		}
+		end := i + len(want)
+		if i > 0 && (isDigit(output[i-1]) || output[i-1] == '.') {
+			continue
+		}
+		if end < len(output) && isDigit(output[end]) {
+			continue
+		}
+		if end+1 < len(output) && output[end] == '.' && isDigit(output[end+1]) {
+			continue
+		}
+		// 0.6.0-rc1 and 0.6.0+build are prereleases or builds of the pin, not the release itself.
+		if end+1 < len(output) && (output[end] == '-' || output[end] == '+') && (isDigit(output[end+1]) || output[end+1] >= 'a' && output[end+1] <= 'z' || output[end+1] >= 'A' && output[end+1] <= 'Z') {
+			continue
+		}
+		return true
 	}
 	return false
 }

@@ -353,3 +353,16 @@ func TestMemoryStatusDoesNotCallAnUnselectedAgentMissing(t *testing.T) {
 		}
 	}
 }
+
+// status warns unless amem reports exactly the pinned version: a longer number that merely contains it is not it.
+func TestContainsVersionMatchesTheWholeNumberOnly(t *testing.T) {
+	for output, want := range map[string]bool{
+		"0.6.0": true, "amem 0.6.0": true, "0.6.0\n": true, "agent-mem v0.6.0 (bun)": true,
+		"10.6.0": false, "0.6.01": false, "0.6.0.1": false, "0.6": false, "1.0.6.0": false,
+		"0.5.0": false, "": false, "amem 0.6.0.": true, "0.6.0-rc1": false, "0.6.0+build5": false, "0.6.0 - ok": true,
+	} {
+		if got := containsVersion(output, "0.6.0"); got != want {
+			t.Errorf("containsVersion(%q) = %v, want %v", output, got, want)
+		}
+	}
+}

@@ -234,7 +234,8 @@ that still lists the retired `claude-mem` add-on is read without it.
 
 Project memory is [amem](https://github.com/STAIxBWLB/agent-mem)
 (`@staix/agent-mem`), which dot registers but never installs. Install the exact
-version `dot ai memory status` names, then:
+version `dot ai memory status` names (`@staix/agent-mem` 0.6.0, the first
+release with the P3 hooks and transcript intake), then:
 
 ```bash
 dot ai memory install --dry-run   # what would change; nothing is written

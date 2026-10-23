@@ -14,11 +14,14 @@ import (
 	"time"
 )
 
-// AmemPinnedVersion names the first @staix/agent-mem release that carries the
-// P3 hooks and transcript ingest (agent-mem 0.6.0, the release that follows
-// 0df2cf91). It is the version `dot ai memory status` expects to find. dot
-// never installs the package: the person installs the exact version, and this
-// constant is what status compares against.
+// AmemPinnedVersion is the exact @staix/agent-mem release dot expects: 0.6.0,
+// the first published version with the P3 hooks, bounded SessionStart brief and
+// transcript intake (registry gitHead 2a182f2f, the merge of agent-mem#37 on
+// P3 0df2cf91; read back from the registry with a cache-busting request on
+// 2026-10-23). dot never installs it: the person installs this exact version,
+// and `dot ai memory status` compares against it. The tool names in
+// internal/aipolicy and the `mcp`, `ingest` and `--plugin-dir` forms printed
+// here were checked against the published 0.6.0 tarball, not a checkout.
 const AmemPinnedVersion = "0.6.0"
 
 // AmemServerName is the MCP server name amem is registered under. Tool names
