@@ -1,6 +1,6 @@
 ## dot ai tools list
 
-List selectable agents and five managed add-ons
+List selectable agents and four managed add-ons
 
 ```
 dot ai tools list [flags]

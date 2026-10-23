@@ -191,7 +191,9 @@ func (m *AmemManager) install(dryRun bool) (AmemInstallResult, error) {
 	if m.AmemPath == "" || !filepath.IsAbs(m.AmemPath) {
 		return AmemInstallResult{}, errors.New("amem executable path must be absolute: install the exact @staix/agent-mem version first, then re-run")
 	}
-	if m.ExplicitHome && m.SelectedAgents == nil {
+	// An explicit --home may be another user's live profile: a real write needs the person to have
+	// said which agents. A plan writes nothing, so it can show what a selection would do.
+	if m.ExplicitHome && m.SelectedAgents == nil && !dryRun {
 		return AmemInstallResult{}, errors.New("explicit --home requires an explicit agent selection")
 	}
 	result := AmemInstallResult{Manual: m.manualLines()}

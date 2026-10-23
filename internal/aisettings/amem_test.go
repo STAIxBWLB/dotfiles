@@ -344,6 +344,13 @@ func TestAmemInstallNeedsAbsoluteExecutable(t *testing.T) {
 	if _, err := m.Install(); err == nil {
 		t.Error("explicit --home without a selection must be refused")
 	}
+	// ... but a plan writes nothing, so it may show what every agent would get.
+	if r, err := m.Plan(); err != nil || len(r.ConfigPaths) != 5 {
+		t.Errorf("plan under an explicit --home without a selection: %v %v", r, err)
+	}
+	if entries, _ := os.ReadDir(m.HomeDir); len(entries) != 0 {
+		t.Errorf("the refused install or the plan wrote into the home: %v", entries)
+	}
 }
 
 func TestAmemInstallRefusesUnparsableConfigWithoutOverwriting(t *testing.T) {

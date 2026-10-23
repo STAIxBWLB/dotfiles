@@ -23,6 +23,6 @@ Inspect or reconcile selected development tooling
 
 * [dot ai](dot_ai.md)	 - AI CLI/config helpers and settings backup/restore
 * [dot ai tools apply](dot_ai_tools_apply.md)	 - Inspect or apply saved tooling selections
-* [dot ai tools list](dot_ai_tools_list.md)	 - List selectable agents and five managed add-ons
+* [dot ai tools list](dot_ai_tools_list.md)	 - List selectable agents and four managed add-ons
 * [dot ai tools status](dot_ai_tools_status.md)	 - Inspect or apply saved tooling selections
 
