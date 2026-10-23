@@ -334,3 +334,22 @@ func TestToolsListNamesFourAddonsAndNoMemoryAddon(t *testing.T) {
 		}
 	}
 }
+
+// An agent outside the saved selection is "not selected", never "missing": dot was told not to manage it.
+func TestMemoryStatusDoesNotCallAnUnselectedAgentMissing(t *testing.T) {
+	home := t.TempDir()
+	fakeAmem(t)
+	cfg := writeAgentsConfig(t, home, "qwen")
+	out, _, err := runDotForTest("--home", home, "--config", cfg, "ai", "memory", "status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if line := lineWith(out, "qwen"); !strings.Contains(line, "missing") {
+		t.Errorf("a selected agent without amem must read missing:\n%s", out)
+	}
+	for _, agent := range []string{"kimi", "agy", "kiro", "copilot"} {
+		if line := lineWith(out, agent); !strings.Contains(line, "not selected") || strings.Contains(line, "missing") {
+			t.Errorf("%s: %q, want not selected", agent, line)
+		}
+	}
+}

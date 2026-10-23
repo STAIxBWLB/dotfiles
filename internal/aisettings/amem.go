@@ -66,6 +66,9 @@ type AmemStatus struct {
 	// captures through `amem ingest pi` and reads through the instructions.
 	PiAgents            bool
 	InstructionsEnabled bool
+	// Selected says which MCP agents the saved selection covers. An agent outside it is not
+	// "missing": dot was told not to manage it.
+	Selected map[string]bool
 	// AmemPath is the amem executable found on PATH, empty when missing.
 	AmemPath string
 	// Version is `amem --version` output, empty when it could not be read.
@@ -320,6 +323,10 @@ func (m *AmemManager) Status(ctx context.Context, ssotPath string) AmemStatus {
 		KiroMCP:        hasAmemEntry(m.KiroMCPPath(), m.AmemPath, mcpVariantKiro),
 		CopilotMCP:     hasAmemEntry(m.CopilotMCPPath(), m.AmemPath, mcpVariantCopilot),
 		AmemPath:       m.AmemPath,
+		Selected: map[string]bool{
+			"kimi": m.selected("kimi"), "qwen": m.selected("qwen"), "antigravity": m.selected("antigravity"),
+			"kiro": m.selected("kiro"), "copilot": m.selected("copilot"), "pi": m.selected("pi"),
+		},
 	}
 	if info, err := os.Stat(m.PiAgentsPath()); err == nil && !info.IsDir() {
 		status.PiAgents = true

@@ -142,12 +142,21 @@ func newAIMemoryStatusCmd() *cobra.Command {
 				p.Warn("  installed amem is not the pinned version %s; install it exactly", aisettings.AmemPinnedVersion)
 			}
 			p.Section("Agents")
-			printMemoryState(p, "kimi", status.KimiMCP, "MCP")
-			printMemoryState(p, "qwen", status.QwenMCP, "MCP")
-			printMemoryState(p, "agy", status.AntigravityMCP, "MCP")
-			printMemoryState(p, "kiro", status.KiroMCP, "MCP")
-			printMemoryState(p, "copilot", status.CopilotMCP, "MCP")
-			printMemoryState(p, "pi", status.PiAgents, "instructions; capture through `amem ingest pi` (pi has no MCP)")
+			for _, row := range []struct {
+				label, id, detail string
+				ok                bool
+			}{
+				{"kimi", "kimi", "MCP", status.KimiMCP}, {"qwen", "qwen", "MCP", status.QwenMCP},
+				{"agy", "antigravity", "MCP", status.AntigravityMCP}, {"kiro", "kiro", "MCP", status.KiroMCP},
+				{"copilot", "copilot", "MCP", status.CopilotMCP},
+				{"pi", "pi", "instructions; capture through `amem ingest pi` (pi has no MCP)", status.PiAgents},
+			} {
+				if !status.Selected[row.id] {
+					p.Bullet(ui.StyleHint.Render(ui.MarkAbsent), fmt.Sprintf("%-13s %-12s %s", ui.StyleValue.Render(row.label), "not selected", "dot manages no config for it"))
+					continue
+				}
+				printMemoryState(p, row.label, row.ok, row.detail)
+			}
 			p.Section("Shared")
 			printMemoryState(p, "instructions", status.InstructionsEnabled, "agents SSOT memory block")
 			p.Line("Claude Code and Codex keep their own plugin and MCP state; see `dot ai memory install` for the lines.")
