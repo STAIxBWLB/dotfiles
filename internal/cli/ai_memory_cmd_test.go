@@ -32,6 +32,7 @@ const cliLegacyBlock = "<!-- dotfiles:claude-mem:start -->\n## Persistent Memory
 // AC1: `dot ai agents apply` writes the amem + vault block, removes the claude-mem block, and a
 // re-apply leaves exactly one.
 func TestAgentsApplyWritesAmemBlockAndRemovesClaudeMemBlockOnce(t *testing.T) {
+	fakeAmem(t) // the block is written only where amem is in use; never depend on the host having it
 	home := t.TempDir()
 	ssot := ssotFor(t, home)
 	writeCLITestFile(t, ssot, "# My rules\n\nkeep me\n\n"+cliLegacyBlock+"\n\n## Tail\n\nkeep me too\n")
@@ -60,6 +61,7 @@ func TestAgentsApplyWritesAmemBlockAndRemovesClaudeMemBlockOnce(t *testing.T) {
 }
 
 func TestAgentsApplyDryRunWritesNeitherTheSSOTNorTargets(t *testing.T) {
+	fakeAmem(t) // without amem the apply is a no-op and this test would pass vacuously
 	home := t.TempDir()
 	ssot := ssotFor(t, home)
 	body := "# rules\n\n" + cliLegacyBlock + "\n"
