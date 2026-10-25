@@ -139,12 +139,57 @@ func MoveMirrorLeftovers(cfg *Config, rels []string) (string, int, error) {
 		_, ok := baseline[rel]
 		return baseline != nil && !ok
 	})
+	return moveOutOfMirror(cfg, rels, baseline, "mirror leftover")
+}
+
+// MoveShadowedMirrorFiles moves mirror files whose workspace path is now a
+// symlink into the workspace's .sync-conflicts/<ts>/from-mirror/, as
+// MoveMirrorLeftovers does for leftovers (#298). A proven path moves only
+// while the refreshed baseline still lists it, so a copy edited in the cloud
+// during the run stays. An unproven one is a conflict the operator pushed
+// past, so it moves without that check. Either moves only while the
+// workspace path is still a symlink.
+func MoveShadowedMirrorFiles(cfg *Config, proven, unproven []string) (string, int, error) {
+	if len(proven)+len(unproven) == 0 {
+		return "", 0, nil
+	}
+	local := strings.TrimRight(cfg.LocalPath, "/")
+	var baseline map[string]Fingerprint
+	if cfg.LocalPaths != nil {
+		var err error
+		if baseline, err = LoadBaselineManifest(cfg.LocalPaths.BaselineFile); err != nil {
+			return "", 0, fmt.Errorf("loading baseline: %w", err)
+		}
+	}
+	stillSymlink := func(rel string) bool {
+		info, err := os.Lstat(filepath.Join(local, rel))
+		return err == nil && info.Mode()&os.ModeSymlink != 0
+	}
+	var rels []string
+	for _, rel := range proven {
+		if _, ok := baseline[rel]; stillSymlink(rel) && (baseline == nil || ok) {
+			rels = append(rels, rel)
+		}
+	}
+	for _, rel := range unproven {
+		if stillSymlink(rel) {
+			rels = append(rels, rel)
+		}
+	}
+	return moveOutOfMirror(cfg, rels, baseline, "shadowed mirror file")
+}
+
+// moveOutOfMirror moves rels from the mirror into a fresh
+// .sync-conflicts/<ts>/from-mirror/ in the workspace and drops their baseline
+// rows. what names the paths in errors.
+func moveOutOfMirror(cfg *Config, rels []string, baseline map[string]Fingerprint, what string) (string, int, error) {
 	if len(rels) == 0 {
 		return "", 0, nil
 	}
 	if len(rels) > cfg.MaxDelete {
-		return "", 0, fmt.Errorf("%d mirror leftover(s) exceed max_delete %d; raise max_delete or move them out of %s by hand", len(rels), cfg.MaxDelete, cfg.MirrorPath)
+		return "", 0, fmt.Errorf("%d %s(s) exceed max_delete %d; raise max_delete or move them out of %s by hand", len(rels), what, cfg.MaxDelete, cfg.MirrorPath)
 	}
+	local := strings.TrimRight(cfg.LocalPath, "/")
 	mirror := strings.TrimRight(cfg.MirrorPath, "/")
 	backupRel := NewConflictDir().LeftoverBackupRel()
 	backup := filepath.Join(local, backupRel)
@@ -159,7 +204,7 @@ func MoveMirrorLeftovers(cfg *Config, rels []string) (string, int, error) {
 		for _, part := range strings.Split(filepath.Join(backupRel, filepath.Dir(rel)), string(filepath.Separator)) {
 			dir = filepath.Join(dir, part)
 			if err := ensurePeerLocalDirectory(dir); err != nil {
-				moveErr = fmt.Errorf("moving mirror leftover %s into %s: %w", rel, backup, err)
+				moveErr = fmt.Errorf("moving %s %s into %s: %w", what, rel, backup, err)
 				break
 			}
 		}
@@ -169,11 +214,11 @@ func MoveMirrorLeftovers(cfg *Config, rels []string) (string, int, error) {
 		if _, err := os.Lstat(dst); err == nil {
 			// Two names one filesystem folds together (Unicode
 			// normalization): a rename would replace the first backup.
-			moveErr = fmt.Errorf("moving mirror leftover %s: %s already holds a backup", rel, dst)
+			moveErr = fmt.Errorf("moving %s %s: %s already holds a backup", what, rel, dst)
 			break
 		}
 		if err := moveFile(filepath.Join(mirror, rel), dst); err != nil {
-			moveErr = fmt.Errorf("moving mirror leftover %s into %s: %w", rel, backup, err)
+			moveErr = fmt.Errorf("moving %s %s into %s: %w", what, rel, backup, err)
 			break
 		}
 		pruneUnsupportedDirs(mirror, filepath.Dir(rel))
@@ -186,7 +231,7 @@ func MoveMirrorLeftovers(cfg *Config, rels []string) (string, int, error) {
 			delete(baseline, rel)
 		}
 		if err := SaveBaselineManifest(cfg.LocalPaths.BaselineFile, baseline); err != nil && moveErr == nil {
-			moveErr = fmt.Errorf("saving baseline after moving %d mirror leftover(s) into %s: %w", moved, backup, err)
+			moveErr = fmt.Errorf("saving baseline after moving %d %s(s) into %s: %w", moved, what, backup, err)
 		}
 	}
 	return backup, moved, moveErr

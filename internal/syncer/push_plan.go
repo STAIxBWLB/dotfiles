@@ -15,6 +15,10 @@ type PushConflict struct {
 	LocalPath  string
 	MirrorPath string
 	Reason     string
+	// LocalSymlink marks a mirror file whose workspace path is now a symlink
+	// and whose copy the baseline cannot prove. A push that runs past
+	// conflicts moves it out like a shadowed file (#298).
+	LocalSymlink bool
 }
 
 type PushPlan struct {
@@ -41,6 +45,12 @@ type PushPlan struct {
 	// may hold these names (Google Drive does, Dropbox likely does for a
 	// trailing period), so they may be cloud files and are only listed.
 	MirrorUnsupported []string
+	// Shadowed are mirror files whose workspace path is now a symlink, with
+	// the copy the baseline proves an earlier push wrote. Rsync runs with
+	// --no-links, so the workspace carries no payload there, yet the name
+	// stays in rsync's file list and --delete keeps the copy. The push moves
+	// them into the workspace's .sync-conflicts/<ts>/from-mirror/ (#298).
+	Shadowed []string
 	// MoveLeftovers says the push moves Leftovers out of the mirror: delete
 	// propagation is on.
 	MoveLeftovers bool
@@ -61,7 +71,7 @@ func (p *PushPlan) HasChanges() bool {
 	if p == nil {
 		return false
 	}
-	return len(p.Creates) > 0 || len(p.Updates) > 0 || len(p.Deletes) > 0 ||
+	return len(p.Creates) > 0 || len(p.Updates) > 0 || len(p.Deletes) > 0 || len(p.Shadowed) > 0 ||
 		(p.MoveLeftovers && len(p.Leftovers) > 0)
 }
 
@@ -174,6 +184,23 @@ func PlanPush(cfg *Config) (*PushPlan, error) {
 			}
 		}
 		if mirrorOK {
+			if localInv.nonFile[rel] == "symlink" {
+				// No payload, as for a deleted file, but rsync never removes
+				// the copy, so the push moves it out itself (#298).
+				switch base, ok := baseline[rel]; {
+				case !cfg.Propagation.Delete:
+					plan.SkippedPolicy = append(plan.SkippedPolicy, rel)
+				case ok && !mirrorInv.dehydrated[rel] && FingerprintsCompatible(base, mirrorFP, mirrorAbs):
+					plan.Shadowed = append(plan.Shadowed, rel)
+				default:
+					plan.Conflicts = append(plan.Conflicts, PushConflict{
+						RelPath: rel, LocalPath: localAbs, MirrorPath: mirrorAbs,
+						Reason:       "local replaced the file with a symlink; the mirror copy is not the one last pushed",
+						LocalSymlink: true,
+					})
+				}
+				continue
+			}
 			if kind := localInv.nonFile[rel]; kind != "" {
 				plan.Conflicts = append(plan.Conflicts, PushConflict{
 					RelPath: rel, LocalPath: localAbs, MirrorPath: mirrorAbs,
@@ -318,6 +345,7 @@ func PlanPush(cfg *Config) (*PushPlan, error) {
 	sort.Strings(plan.Unsupported)
 	sort.Strings(plan.Leftovers)
 	sort.Strings(plan.MirrorUnsupported)
+	sort.Strings(plan.Shadowed)
 	sort.Slice(plan.Conflicts, func(i, j int) bool { return plan.Conflicts[i].RelPath < plan.Conflicts[j].RelPath })
 	return plan, nil
 }

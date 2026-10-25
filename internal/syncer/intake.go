@@ -459,6 +459,12 @@ func refreshBaseline(cfg *Config, mode FingerprintMode, written map[string]bool)
 				carryProvenEntry(entries, previous, rel, absPath)
 				return nil
 			}
+			if err == nil && localInfo.Mode()&os.ModeSymlink != 0 && cfg.Propagation.Delete {
+				// A symlink carries no payload either: keep the proof while
+				// the copy is unchanged, so the push moves it out (#298).
+				carryProvenEntry(entries, previous, rel, absPath)
+				return nil
+			}
 			if err != nil || localInfo.IsDir() || localInfo.Mode()&os.ModeSymlink != 0 {
 				return nil
 			}

@@ -227,6 +227,8 @@ func renderSyncEvent(p *Printer, r syncRender) func(syncer.SyncEvent) {
 			_ = reportPushPartial(p, e.Err)
 		case syncer.SyncEventLeftoversMoved:
 			p.Line("  Moved %d mirror leftover(s) to %s", e.Candidates, e.Path)
+		case syncer.SyncEventShadowedMoved:
+			p.Line("  Moved %d mirror file(s) the workspace replaced with a symlink to %s", e.Candidates, e.Path)
 		case syncer.SyncEventPruneSummary:
 			p.Line("Would reclaim %s across %d backup dir(s).", ws.FormatSize(e.Reclaimed), e.Candidates)
 		}
