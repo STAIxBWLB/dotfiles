@@ -147,8 +147,8 @@ func MoveMirrorLeftovers(cfg *Config, rels []string) (string, int, error) {
 // MoveMirrorLeftovers does for leftovers (#298). A proven path moves only
 // while the refreshed baseline still lists it, so a copy edited in the cloud
 // during the run stays. An unproven one is a conflict the operator pushed
-// past, so it moves without that check. Either moves only while the
-// workspace path is still a symlink.
+// past, so it moves without that check unless it is a cloud placeholder.
+// Either moves only while the workspace path is still a symlink.
 func MoveShadowedMirrorFiles(cfg *Config, proven, unproven []string) (string, int, error) {
 	if len(proven)+len(unproven) == 0 {
 		return "", 0, nil
@@ -171,7 +171,14 @@ func MoveShadowedMirrorFiles(cfg *Config, proven, unproven []string) (string, in
 			rels = append(rels, rel)
 		}
 	}
+	mirror := strings.TrimRight(cfg.MirrorPath, "/")
 	for _, rel := range unproven {
+		// A cloud placeholder holds no local content to back up, so it stays
+		// a conflict, as a placeholder leftover does.
+		abs := filepath.Join(mirror, rel)
+		if info, err := os.Lstat(abs); err != nil || dehydratedFile(abs, info) {
+			continue
+		}
 		if stillSymlink(rel) {
 			rels = append(rels, rel)
 		}

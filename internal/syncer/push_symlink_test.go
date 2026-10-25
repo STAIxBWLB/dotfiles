@@ -147,3 +147,19 @@ func TestPushCommand_OnlyForceMovesAnUnprovenShadowedFile(t *testing.T) {
 		t.Errorf("clean push after force: %v", err)
 	}
 }
+
+func TestPushCommand_ForceLeavesAShadowedPlaceholder(t *testing.T) {
+	requireRsync(t)
+	f := newIntakeFixture(t)
+	f.cfg.Propagation.Delete = true
+	f.writeLocal("video/clips/day.mp4", "clip")
+	f.writeMirror(shadowRel, "")
+	makePlaceholder(t, filepath.Join(f.mirror, shadowRel))
+	f.replaceWithSymlink(shadowRel, "../../clips/day.mp4")
+	if _, err := PushCommand(context.Background(), PushOptions{Config: f.cfg, Runner: f.runner, Mode: ModeForce}); err != nil {
+		t.Fatalf("force push: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(f.mirror, shadowRel)); err != nil {
+		t.Errorf("force moved a cloud placeholder out of the mirror: %v", err)
+	}
+}
