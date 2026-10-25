@@ -31,6 +31,7 @@ const (
 	SyncEventPartialTransfer                      // rsync moved some but not all; Err carries it
 	SyncEventPruneSummary                         // Candidates/Reclaimed carry the prune totals
 	SyncEventLeftoversMoved                       // Candidates mirror leftovers moved into Path
+	SyncEventShadowedMoved                        // Candidates mirror files under a workspace symlink moved into Path
 	SyncEventFetchExcluded                        // Path: a requested path a filter layer keeps out
 )
 

@@ -179,6 +179,22 @@ func PushCommand(ctx context.Context, opts PushOptions) (res *PushCommandResult,
 			emitSync(opts.Progress, SyncEvent{Kind: SyncEventLeftoversMoved, Path: dir, Candidates: moved})
 		}
 	}
+	if pushErr == nil {
+		// A clean push refused any conflict above, so an unproven one here
+		// is a conflict the operator pushed past (#298).
+		var unproven []string
+		for _, c := range plan.Conflicts {
+			if c.LocalSymlink {
+				unproven = append(unproven, c.RelPath)
+			}
+		}
+		dir, moved, moveErr := MoveShadowedMirrorFiles(cfg, plan.Shadowed, unproven)
+		if moveErr != nil {
+			pushErr = moveErr
+		} else if moved > 0 {
+			emitSync(opts.Progress, SyncEvent{Kind: SyncEventShadowedMoved, Path: dir, Candidates: moved})
+		}
+	}
 	RecordResult(state, cfg, "push", pushErr, false)
 	if pushErr != nil {
 		return nil, fmt.Errorf("push failed: %w", pushErr)

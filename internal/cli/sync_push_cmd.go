@@ -200,6 +200,11 @@ func printPushPlan(p *Printer, plan *syncer.PushPlan) {
 			p.Line("  Delete propagation is off, so they are listed only; a push without it drops their baseline proof, so move them by hand.")
 		}
 	}
+	if len(plan.Shadowed) > 0 {
+		p.Section(fmt.Sprintf("Replaced by a symlink: %d", len(plan.Shadowed)))
+		printPathList(p, plan.Shadowed)
+		p.Line("  The workspace turned these files into symlinks, which a push never sends; the push moves the mirror copies into the workspace's .sync-conflicts/<ts>/from-mirror/.")
+	}
 	if len(plan.MirrorUnsupported) > 0 {
 		p.Section(fmt.Sprintf("Mirror-only unsupported names: %d", len(plan.MirrorUnsupported)))
 		printPathList(p, plan.MirrorUnsupported)
@@ -220,7 +225,7 @@ func printPushPlan(p *Printer, plan *syncer.PushPlan) {
 			p.Line("  !  %s — %s", c.RelPath, reason)
 		}
 	}
-	if len(affected) == 0 && len(plan.SkippedPolicy) == 0 && len(plan.Unsupported) == 0 && len(plan.Leftovers) == 0 && len(plan.MirrorUnsupported) == 0 {
+	if len(affected) == 0 && len(plan.SkippedPolicy) == 0 && len(plan.Unsupported) == 0 && len(plan.Leftovers) == 0 && len(plan.MirrorUnsupported) == 0 && len(plan.Shadowed) == 0 {
 		p.Line("  No push changes.")
 	}
 }
