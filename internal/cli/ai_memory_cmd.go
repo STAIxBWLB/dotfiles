@@ -101,7 +101,7 @@ amem must already be installed (the exact @staix/agent-mem version, which
 				verb = "would write"
 			}
 			if len(result.ConfigPaths) == 0 {
-				p.Line("MCP configs already register amem; nothing to %s", map[bool]string{true: "write", false: "change"}[dryRun])
+				p.Line("Nothing to %s: Kiro and Copilot already register amem or are not selected", map[bool]string{true: "write", false: "change"}[dryRun])
 			}
 			for _, path := range result.ConfigPaths {
 				p.Line("%s %s", verb, path)

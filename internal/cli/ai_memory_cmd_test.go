@@ -158,6 +158,25 @@ func TestMemoryInstallDryRunWritesNothingAndSaysWhatItWould(t *testing.T) {
 	}
 }
 
+// A selection of only `amem setup` clients writes nothing and must not claim amem is already registered.
+func TestMemoryInstallWithOnlyAmemSetupClientsSaysWhyNothingIsWritten(t *testing.T) {
+	home := t.TempDir()
+	fakeAmem(t)
+	cfg := writeAgentsConfig(t, home, "kimi", "qwen")
+	out, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "memory", "install")
+	if err != nil {
+		t.Fatalf("%v\n%s", err, errOut)
+	}
+	if !strings.Contains(out, "or are not selected") || strings.Contains(out, "wrote ") {
+		t.Fatalf("unclear or wrong output:\n%s", out)
+	}
+	for _, p := range []string{".kimi-code", ".qwen", ".kiro", ".copilot"} {
+		if _, err := os.Stat(filepath.Join(home, p)); err == nil {
+			t.Errorf("install created %s", p)
+		}
+	}
+}
+
 func TestMemoryInstallWithoutAmemOnPathExplainsTheExactInstall(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("PATH", t.TempDir())
