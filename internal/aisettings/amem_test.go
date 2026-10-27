@@ -184,7 +184,7 @@ func newAmem(t *testing.T) (*AmemManager, string) {
 	t.Helper()
 	home := t.TempDir()
 	amem := filepath.Join(home, "bin", "amem")
-	mustWriteFile(t, amem, "#!/bin/sh\necho 0.6.0\n")
+	mustWriteFile(t, amem, "#!/bin/sh\necho 0.11.0\n")
 	if err := os.Chmod(amem, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -206,16 +206,16 @@ func readServers(t *testing.T, path string) map[string]map[string]any {
 	return doc.Servers
 }
 
-func TestAmemInstallRegistersEveryAgentOnCleanHome(t *testing.T) {
+func TestAmemInstallRegistersKiroAndCopilotOnCleanHome(t *testing.T) {
 	m, home := newAmem(t)
 	result, err := m.Install()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.ConfigPaths) != 5 {
-		t.Fatalf("want 5 MCP configs written, got %v", result.ConfigPaths)
+	if len(result.ConfigPaths) != 2 {
+		t.Fatalf("want the Kiro and Copilot configs written, got %v", result.ConfigPaths)
 	}
-	for agent, path := range map[string]string{"kimi": m.KimiMCPPath(), "qwen": m.QwenMCPPath(), "antigravity": m.AntigravityMCPPath(), "kiro": m.KiroMCPPath(), "copilot": m.CopilotMCPPath()} {
+	for agent, path := range map[string]string{"kiro": m.KiroMCPPath(), "copilot": m.CopilotMCPPath()} {
 		entry := readServers(t, path)[AmemServerName]
 		if entry == nil {
 			t.Fatalf("%s: no amem entry in %s", agent, path)
@@ -236,8 +236,41 @@ func TestAmemInstallRegistersEveryAgentOnCleanHome(t *testing.T) {
 	if e := readServers(t, m.CopilotMCPPath())[AmemServerName]; e["type"] != "local" {
 		t.Errorf("copilot entry must be type local: %v", e)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".pi")); err == nil {
-		t.Error("pi has no MCP support: install must not create its directory")
+	for _, dir := range []string{".pi", ".kimi-code", ".qwen", ".gemini"} {
+		if _, err := os.Stat(filepath.Join(home, dir)); err == nil {
+			t.Errorf("install created %s, which `amem setup` owns", dir)
+		}
+	}
+}
+
+// AC: Kimi, Qwen and Antigravity configs belong to `amem setup` and stay byte-identical, whatever they hold
+// and whatever the selection says.
+func TestAmemInstallLeavesTheAmemSetupConfigsByteIdentical(t *testing.T) {
+	m, _ := newAmem(t)
+	files := map[string]string{
+		m.KimiMCPPath():        `{"mcpServers":{"amem":{"command":"/opt/bun","args":["--smol","/x/amem.js","mcp"]}}}`,
+		m.QwenMCPPath():        `{"context":{},"mcpServers":{}}`,
+		m.AntigravityMCPPath(): "",
+	}
+	for path, content := range files {
+		mustWriteFile(t, path, content)
+	}
+	m.SelectedAgents = []string{"kimi", "qwen", "antigravity", "kiro", "copilot"}
+	for _, run := range []func() (AmemInstallResult, error){m.Plan, m.Install} {
+		result, err := run()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, path := range result.ConfigPaths {
+			if _, owned := files[path]; owned {
+				t.Errorf("listed %s, which `amem setup` owns", path)
+			}
+		}
+	}
+	for path, content := range files {
+		if got, _ := os.ReadFile(path); string(got) != content {
+			t.Errorf("%s changed: %q", path, got)
+		}
 	}
 }
 
@@ -262,7 +295,7 @@ func TestAmemInstallPlanWritesNothing(t *testing.T) {
 	m, home := newAmem(t)
 	before := snapshotTree(t, home)
 	result, err := m.Plan()
-	if err != nil || len(result.ConfigPaths) != 5 {
+	if err != nil || len(result.ConfigPaths) != 2 {
 		t.Fatalf("plan: %v %v", result, err)
 	}
 	if !sameTree(before, snapshotTree(t, home)) {
@@ -272,19 +305,19 @@ func TestAmemInstallPlanWritesNothing(t *testing.T) {
 
 func TestAmemInstallPreservesOtherServersAndKeysAndIsIdempotent(t *testing.T) {
 	m, _ := newAmem(t)
-	mustWriteJSON(t, m.QwenMCPPath(), map[string]any{
+	mustWriteJSON(t, m.KiroMCPPath(), map[string]any{
 		"context":    map[string]any{"fileName": []string{"AGENTS.md"}},
 		"mcpServers": map[string]any{"other": map[string]any{"command": "/bin/other", "args": []string{"x"}}},
 	})
 	if _, err := m.Install(); err != nil {
 		t.Fatal(err)
 	}
-	servers := readServers(t, m.QwenMCPPath())
+	servers := readServers(t, m.KiroMCPPath())
 	if servers["other"]["command"] != "/bin/other" || servers[AmemServerName] == nil {
 		t.Fatalf("lost or missed a server: %v", servers)
 	}
 	var doc map[string]json.RawMessage
-	raw, _ := os.ReadFile(m.QwenMCPPath())
+	raw, _ := os.ReadFile(m.KiroMCPPath())
 	_ = json.Unmarshal(raw, &doc)
 	if _, ok := doc["context"]; !ok {
 		t.Fatal("lost the unrelated top-level key")
@@ -295,35 +328,31 @@ func TestAmemInstallPreservesOtherServersAndKeysAndIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestAmemInstallTreatsEmptyAgyConfigAsNoServers(t *testing.T) {
+func TestAmemInstallTreatsAnEmptyConfigAsNoServers(t *testing.T) {
 	m, _ := newAmem(t)
-	mustWriteFile(t, m.AntigravityMCPPath(), "")
+	mustWriteFile(t, m.KiroMCPPath(), "")
 	if _, err := m.Install(); err != nil {
 		t.Fatal(err)
 	}
-	if readServers(t, m.AntigravityMCPPath())[AmemServerName] == nil {
-		t.Fatal("no entry in the formerly empty agy config")
+	if readServers(t, m.KiroMCPPath())[AmemServerName] == nil {
+		t.Fatal("no entry in the formerly empty config")
 	}
 }
 
-func TestAmemInstallRespectsSelectionAndKimiHome(t *testing.T) {
+func TestAmemInstallRespectsSelection(t *testing.T) {
 	m, home := newAmem(t)
-	m.SelectedAgents = []string{"qwen"}
-	kimi := filepath.Join(home, "adopted-kimi")
-	m.KimiHome = kimi
+	m.SelectedAgents = []string{"copilot"}
 	result, err := m.Install()
-	if err != nil || len(result.ConfigPaths) != 1 || result.ConfigPaths[0] != m.QwenMCPPath() {
+	if err != nil || len(result.ConfigPaths) != 1 || result.ConfigPaths[0] != m.CopilotMCPPath() {
 		t.Fatalf("selection ignored: %v %v", result, err)
 	}
-	m.SelectedAgents = []string{"kimi"}
-	if _, err := m.Install(); err != nil {
-		t.Fatal(err)
+	m.SelectedAgents = []string{"kimi", "qwen", "antigravity"}
+	m.KimiHome = filepath.Join(home, "adopted-kimi")
+	if r, err := m.Install(); err != nil || len(r.ConfigPaths) != 0 {
+		t.Fatalf("an `amem setup` client was written: %v %v", r, err)
 	}
-	if readServers(t, filepath.Join(kimi, "mcp.json"))[AmemServerName] == nil {
-		t.Fatal("adopted KIMI_CODE_HOME ignored")
-	}
-	if _, err := os.Stat(filepath.Join(home, ".kimi-code")); err == nil {
-		t.Fatal("wrote ~/.kimi-code although a Kimi home was adopted")
+	if _, err := os.Stat(m.KimiHome); err == nil {
+		t.Fatal("wrote the adopted Kimi home")
 	}
 	m.SelectedAgents = []string{}
 	if r, err := m.Install(); err != nil || len(r.ConfigPaths) != 0 {
@@ -344,7 +373,7 @@ func TestAmemInstallNeedsAbsoluteExecutable(t *testing.T) {
 		t.Error("explicit --home without a selection must be refused")
 	}
 	// ... but a plan writes nothing, so it may show what every agent would get.
-	if r, err := m.Plan(); err != nil || len(r.ConfigPaths) != 5 {
+	if r, err := m.Plan(); err != nil || len(r.ConfigPaths) != 2 {
 		t.Errorf("plan under an explicit --home without a selection: %v %v", r, err)
 	}
 	if entries, _ := os.ReadDir(m.HomeDir); len(entries) != 0 {
@@ -354,25 +383,33 @@ func TestAmemInstallNeedsAbsoluteExecutable(t *testing.T) {
 
 func TestAmemInstallRefusesUnparsableConfigWithoutOverwriting(t *testing.T) {
 	m, _ := newAmem(t)
-	mustWriteFile(t, m.KimiMCPPath(), "{not json")
+	mustWriteFile(t, m.CopilotMCPPath(), "{not json")
 	if _, err := m.Install(); err == nil {
 		t.Fatal("overwrote an unparsable config")
 	}
-	if got, _ := os.ReadFile(m.KimiMCPPath()); string(got) != "{not json" {
+	if got, _ := os.ReadFile(m.CopilotMCPPath()); string(got) != "{not json" {
 		t.Fatalf("config changed: %s", got)
 	}
 }
 
-func TestAmemInstallPrintsExactManualLinesForClaudeAndCodex(t *testing.T) {
+// The forms below were run against the published 0.11.0 tarball: `setup` takes claude, codex, kimi, pi,
+// qwen, jcode, agy and all (all leaves agy out), and `ingest` takes codex, kimi, pi and qwen.
+func TestAmemInstallPrintsTheAmemSetupLines(t *testing.T) {
 	m, _ := newAmem(t)
 	result, err := m.Install()
 	if err != nil {
 		t.Fatal(err)
 	}
 	joined := strings.Join(result.Manual, "\n")
-	for _, want := range []string{"claude mcp add -s user amem -- " + m.AmemPath + " mcp", "claude --plugin-dir", "declares no MCP server", "codex mcp add amem -- " + m.AmemPath + " mcp", "amem ingest pi"} {
+	for _, want := range []string{"amem setup all --apply", "amem setup claude --apply", "amem setup agy --apply", "either `amem setup claude` or the agent-mem plugin", "amem ingest codex"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("manual lines missing %q:\n%s", want, joined)
+		}
+	}
+	// The 0.11.0 plugin declares its own MCP server, so the old two-step Claude registration would duplicate it.
+	for _, gone := range []string{"claude mcp add", "--plugin-dir", "codex mcp add"} {
+		if strings.Contains(joined, gone) {
+			t.Errorf("manual lines still print %q:\n%s", gone, joined)
 		}
 	}
 	for _, c := range []string{".claude/settings.json", ".codex/config.toml"} {
@@ -384,14 +421,14 @@ func TestAmemInstallPrintsExactManualLinesForClaudeAndCodex(t *testing.T) {
 
 func TestAmemStatusReportsEachAgentAndVersion(t *testing.T) {
 	m, _ := newAmem(t)
-	m.Version = func(context.Context, string) (string, error) { return "0.6.0", nil }
+	m.Version = func(context.Context, string) (string, error) { return "0.11.0", nil }
 	ssot := filepath.Join(m.HomeDir, "AGENTS.md")
 	mustWriteFile(t, ssot, "# r\n")
 	st := m.Status(context.Background(), ssot)
-	if st.KimiMCP || st.QwenMCP || st.KiroMCP || st.CopilotMCP || st.AntigravityMCP || st.InstructionsEnabled {
+	if st.KiroMCP || st.CopilotMCP || st.InstructionsEnabled {
 		t.Fatalf("clean home reported ready: %+v", st)
 	}
-	if st.Version != "0.6.0" {
+	if st.Version != "0.11.0" {
 		t.Fatalf("version %q", st.Version)
 	}
 	if _, err := m.Install(); err != nil {
@@ -401,7 +438,7 @@ func TestAmemStatusReportsEachAgentAndVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	st = m.Status(context.Background(), ssot)
-	if !st.KimiMCP || !st.QwenMCP || !st.KiroMCP || !st.CopilotMCP || !st.AntigravityMCP || !st.InstructionsEnabled {
+	if !st.KiroMCP || !st.CopilotMCP || !st.InstructionsEnabled {
 		t.Fatalf("installed home not ready: %+v", st)
 	}
 }
@@ -410,14 +447,17 @@ func TestAmemStatusReportsEachAgentAndVersion(t *testing.T) {
 // must not read as ready.
 func TestAmemStatusRejectsForeignOrMisshapenEntries(t *testing.T) {
 	m, _ := newAmem(t)
-	mustWriteJSON(t, m.KimiMCPPath(), map[string]any{"mcpServers": map[string]any{AmemServerName: map[string]any{"command": "/usr/bin/other", "args": []string{"mcp"}}}})
 	mustWriteJSON(t, m.KiroMCPPath(), map[string]any{"mcpServers": map[string]any{AmemServerName: map[string]any{"command": m.AmemPath, "args": []string{"mcp"}, "disabled": true}}})
 	mustWriteJSON(t, m.CopilotMCPPath(), map[string]any{"mcpServers": map[string]any{AmemServerName: map[string]any{"command": m.AmemPath, "args": []string{"mcp"}}}})
-	mustWriteJSON(t, m.QwenMCPPath(), map[string]any{"mcpServers": map[string]any{AmemServerName: map[string]any{"command": m.AmemPath, "args": []string{"mcp", "--extra"}}}})
 	m.Version = func(context.Context, string) (string, error) { return "", os.ErrNotExist }
 	st := m.Status(context.Background(), "")
-	if st.KimiMCP || st.KiroMCP || st.CopilotMCP || st.QwenMCP {
+	if st.KiroMCP || st.CopilotMCP {
 		t.Fatalf("misshapen entries counted as ready: %+v", st)
+	}
+	mustWriteJSON(t, m.KiroMCPPath(), map[string]any{"mcpServers": map[string]any{AmemServerName: map[string]any{"command": "/usr/bin/other", "args": []string{"mcp"}}}})
+	mustWriteJSON(t, m.CopilotMCPPath(), map[string]any{"mcpServers": map[string]any{AmemServerName: map[string]any{"command": m.AmemPath, "args": []string{"mcp", "--extra"}, "type": "local", "tools": []string{"*"}}}})
+	if st := m.Status(context.Background(), ""); st.KiroMCP || st.CopilotMCP {
+		t.Fatalf("a foreign command or extra args counted as ready: %+v", st)
 	}
 	if st.Version != "" {
 		t.Fatalf("an unreadable version must stay empty, got %q", st.Version)

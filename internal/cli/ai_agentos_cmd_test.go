@@ -135,7 +135,7 @@ func TestAIMemoryStatusAndDryRunAreReadOnly(t *testing.T) {
 	writeCLITestFile(t, ssot, "# AI Agents\n")
 	// Hermetic: a stand-in amem on a PATH of its own, never whatever amem the machine running the test has.
 	amemDir := t.TempDir()
-	writeCLITestFile(t, filepath.Join(amemDir, "amem"), "#!/bin/sh\necho 0.6.0\n")
+	writeCLITestFile(t, filepath.Join(amemDir, "amem"), "#!/bin/sh\necho 0.11.0\n")
 	if err := os.Chmod(filepath.Join(amemDir, "amem"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestAIMemoryStatusAndDryRunAreReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("memory status: %v\nstderr=%s", err, errOut)
 	}
-	for _, want := range []string{"amem Status", "kimi", "qwen", "agy", "kiro", "copilot", "pi", "instructions", "0.6.0"} {
+	for _, want := range []string{"amem Status", "kimi", "qwen", "agy", "kiro", "copilot", "pi", "instructions", "0.11.0"} {
 		if !strings.Contains(status, want) {
 			t.Fatalf("memory status missing %q:\n%s", want, status)
 		}

@@ -72,7 +72,7 @@ Portable AI snapshots exclude skill roots, auth by default, caches, histories, d
 
 ## amem and the claude-mem retirement
 
-`dot ai memory install|status` register amem's MCP server and report its health (`dot` never installs amem). `dot ai memory retire-claude-mem` is a dry run unless `--apply` is given; see the README. The former `dot ai memory sync|update|bridge` commands and the hourly peer sync LaunchAgent are gone: amem syncs through its own git refs and has no resident process.
+`dot ai memory install|status` register amem's MCP server for Kiro and Copilot and report its health (`dot` never installs amem; `amem setup` registers Claude Code, Codex, Kimi, Qwen, pi and Antigravity). `dot ai memory retire-claude-mem` is a dry run unless `--apply` is given; see the README. The former `dot ai memory sync|update|bridge` commands and the hourly peer sync LaunchAgent are gone: amem syncs through its own git refs and has no resident process.
 
 ## Apps and profile snapshots
 

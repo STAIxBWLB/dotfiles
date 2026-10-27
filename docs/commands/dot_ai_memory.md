@@ -4,9 +4,9 @@ Register amem for the agents and retire claude-mem
 
 ### Synopsis
 
-Register amem (@staix/agent-mem) as the project memory for Kimi, Qwen,
-Antigravity, Kiro and GitHub Copilot, and print the exact lines for Claude Code
-and Codex, which keep their own plugin and MCP state.
+Register amem (@staix/agent-mem) as the project memory for Kiro and
+GitHub Copilot, and print the 'amem setup' lines for Claude Code, Codex, Kimi,
+Qwen, pi and Antigravity, which amem registers itself.
 
 dot never installs amem and runs no memory process: install the exact version
 yourself, then run 'dot ai memory install'. amem has no resident worker, so dot
@@ -36,7 +36,7 @@ a dry run unless --apply is given.
 ### SEE ALSO
 
 * [dot ai](dot_ai.md)	 - AI CLI/config helpers and settings backup/restore
-* [dot ai memory install](dot_ai_memory_install.md)	 - Register amem's MCP server for the selected agents
+* [dot ai memory install](dot_ai_memory_install.md)	 - Register amem's MCP server for Kiro and Copilot
 * [dot ai memory retire-claude-mem](dot_ai_memory_retire-claude-mem.md)	 - Remove the claude-mem integration (dry run unless --apply)
 * [dot ai memory status](dot_ai_memory_status.md)	 - Show amem integration health
 

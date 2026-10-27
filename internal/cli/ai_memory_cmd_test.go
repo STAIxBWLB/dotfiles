@@ -77,13 +77,13 @@ func TestAgentsApplyDryRunWritesNeitherTheSSOTNorTargets(t *testing.T) {
 	}
 }
 
-// AC2: `dot ai memory install` on a clean HOME registers amem for every agent, writes no launchd
-// agent, and prints the exact lines for Claude Code and Codex.
+// AC2: `dot ai memory install` on a clean HOME registers amem for Kiro and Copilot, writes no launchd
+// agent, leaves the `amem setup` clients alone, and prints the `amem setup` lines.
 func fakeAmem(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "amem")
-	writeCLITestFile(t, path, "#!/bin/sh\necho 0.6.0\n")
+	writeCLITestFile(t, path, "#!/bin/sh\necho 0.11.0\n")
 	if err := os.Chmod(path, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func fakeAmem(t *testing.T) string {
 	return path
 }
 
-func TestMemoryInstallOnCleanHomeRegistersEveryAgentWithNoLaunchAgent(t *testing.T) {
+func TestMemoryInstallOnCleanHomeRegistersKiroAndCopilotWithNoLaunchAgent(t *testing.T) {
 	home := t.TempDir()
 	amem := fakeAmem(t)
 	cfg := writeAgentsConfig(t, home, "kimi", "qwen", "antigravity", "kiro", "copilot")
@@ -99,11 +99,7 @@ func TestMemoryInstallOnCleanHomeRegistersEveryAgentWithNoLaunchAgent(t *testing
 	if err != nil {
 		t.Fatalf("install: %v\nstderr=%s", err, errOut)
 	}
-	for _, path := range []string{
-		filepath.Join(home, ".kimi-code", "mcp.json"), filepath.Join(home, ".qwen", "settings.json"),
-		filepath.Join(home, ".gemini", "config", "mcp_config.json"), filepath.Join(home, ".kiro", "settings", "mcp.json"),
-		filepath.Join(home, ".copilot", "mcp-config.json"),
-	} {
+	for _, path := range []string{filepath.Join(home, ".kiro", "settings", "mcp.json"), filepath.Join(home, ".copilot", "mcp-config.json")} {
 		var doc struct {
 			Servers map[string]struct {
 				Command string   `json:"command"`
@@ -118,7 +114,7 @@ func TestMemoryInstallOnCleanHomeRegistersEveryAgentWithNoLaunchAgent(t *testing
 			t.Errorf("%s: amem entry %+v, want command %s args [mcp]", path, entry, amem)
 		}
 	}
-	for _, want := range []string{"claude mcp add -s user amem -- " + amem + " mcp", "claude --plugin-dir", "codex mcp add amem -- " + amem + " mcp", "amem ingest pi", "No LaunchAgent is written"} {
+	for _, want := range []string{"amem setup all --apply", "amem setup agy --apply", "amem ingest codex", "No LaunchAgent is written"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}
@@ -126,7 +122,7 @@ func TestMemoryInstallOnCleanHomeRegistersEveryAgentWithNoLaunchAgent(t *testing
 	if _, err := os.Stat(filepath.Join(home, "Library")); err == nil {
 		t.Fatal("install created ~/Library: no launchd agent may be written for amem")
 	}
-	for _, forbidden := range []string{".claude-mem", ".claude", ".codex"} {
+	for _, forbidden := range []string{".claude-mem", ".claude", ".codex", ".kimi-code", ".qwen", ".gemini"} {
 		if _, err := os.Stat(filepath.Join(home, forbidden)); err == nil {
 			t.Errorf("install wrote %s, a path it does not own", forbidden)
 		}
@@ -136,7 +132,7 @@ func TestMemoryInstallOnCleanHomeRegistersEveryAgentWithNoLaunchAgent(t *testing
 func TestMemoryInstallDryRunWritesNothingAndSaysWhatItWould(t *testing.T) {
 	home := t.TempDir()
 	fakeAmem(t)
-	cfg := writeAgentsConfig(t, home, "kimi", "qwen")
+	cfg := writeAgentsConfig(t, home, "kimi", "qwen", "antigravity", "kiro", "copilot")
 	out, errOut, err := runDotForTest("--home", home, "--config", cfg, "--dry-run", "ai", "memory", "install")
 	if err != nil {
 		t.Fatalf("%v\n%s", err, errOut)
@@ -144,9 +140,39 @@ func TestMemoryInstallDryRunWritesNothingAndSaysWhatItWould(t *testing.T) {
 	if !strings.Contains(out, "would write") {
 		t.Fatalf("dry run did not say what it would write:\n%s", out)
 	}
-	for _, p := range []string{filepath.Join(home, ".kimi-code"), filepath.Join(home, ".qwen")} {
+	for _, p := range []string{filepath.Join(home, ".kimi-code"), filepath.Join(home, ".qwen"), filepath.Join(home, ".kiro"), filepath.Join(home, ".copilot")} {
 		if _, err := os.Stat(p); err == nil {
 			t.Errorf("dry run created %s", p)
+		}
+	}
+	// AC: the dry run lists only the Kiro and Copilot config paths.
+	var listed []string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "would write ") {
+			listed = append(listed, strings.TrimSpace(line[strings.Index(line, "would write ")+len("would write "):]))
+		}
+	}
+	want := []string{filepath.Join(home, ".kiro", "settings", "mcp.json"), filepath.Join(home, ".copilot", "mcp-config.json")}
+	if strings.Join(listed, ",") != strings.Join(want, ",") {
+		t.Fatalf("dry run listed %v, want %v:\n%s", listed, want, out)
+	}
+}
+
+// A selection of only `amem setup` clients writes nothing and must not claim amem is already registered.
+func TestMemoryInstallWithOnlyAmemSetupClientsSaysWhyNothingIsWritten(t *testing.T) {
+	home := t.TempDir()
+	fakeAmem(t)
+	cfg := writeAgentsConfig(t, home, "kimi", "qwen")
+	out, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "memory", "install")
+	if err != nil {
+		t.Fatalf("%v\n%s", err, errOut)
+	}
+	if !strings.Contains(out, "or are not selected") || strings.Contains(out, "wrote ") {
+		t.Fatalf("unclear or wrong output:\n%s", out)
+	}
+	for _, p := range []string{".kimi-code", ".qwen", ".kiro", ".copilot"} {
+		if _, err := os.Stat(filepath.Join(home, p)); err == nil {
+			t.Errorf("install created %s", p)
 		}
 	}
 }
@@ -154,12 +180,12 @@ func TestMemoryInstallDryRunWritesNothingAndSaysWhatItWould(t *testing.T) {
 func TestMemoryInstallWithoutAmemOnPathExplainsTheExactInstall(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("PATH", t.TempDir())
-	cfg := writeAgentsConfig(t, home, "kimi")
+	cfg := writeAgentsConfig(t, home, "kiro")
 	_, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "memory", "install")
 	if err == nil || !strings.Contains(err.Error()+errOut, "@staix/agent-mem "+aisettings.AmemPinnedVersion) {
 		t.Fatalf("no actionable message: %v\n%s", err, errOut)
 	}
-	if _, statErr := os.Stat(filepath.Join(home, ".kimi-code")); statErr == nil {
+	if _, statErr := os.Stat(filepath.Join(home, ".kiro")); statErr == nil {
 		t.Fatal("wrote a config although amem is missing")
 	}
 }
@@ -182,14 +208,24 @@ func TestMemoryStatusSaysWhichAgentsAreReady(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, agent := range []string{"kimi", "qwen", "agy", "kiro", "copilot"} {
+	for _, agent := range []string{"kiro", "copilot"} {
 		line := lineWith(out, agent)
 		if !strings.Contains(line, "ready") {
 			t.Errorf("%s not ready after install:\n%s", agent, out)
 		}
 	}
+	// AC: the `amem setup` clients read as managed by amem, never as missing.
+	for _, agent := range []string{"kimi", "qwen", "agy"} {
+		if line := lineWith(out, agent); !strings.Contains(line, "managed by `amem setup") || strings.Contains(line, "missing") {
+			t.Errorf("%s: %q, want managed by amem setup", agent, line)
+		}
+	}
 	if !strings.Contains(out, "expected "+aisettings.AmemPinnedVersion) {
 		t.Errorf("status does not name the pinned version:\n%s", out)
+	}
+	// AC: amem 0.11.0 on PATH is the pin, so no mismatch is reported.
+	if strings.Contains(out, "not the pinned version") {
+		t.Errorf("amem %s reported as a mismatch:\n%s", aisettings.AmemPinnedVersion, out)
 	}
 }
 
@@ -350,15 +386,15 @@ func TestToolsListNamesFourAddonsAndNoMemoryAddon(t *testing.T) {
 func TestMemoryStatusDoesNotCallAnUnselectedAgentMissing(t *testing.T) {
 	home := t.TempDir()
 	fakeAmem(t)
-	cfg := writeAgentsConfig(t, home, "qwen")
+	cfg := writeAgentsConfig(t, home, "kiro")
 	out, _, err := runDotForTest("--home", home, "--config", cfg, "ai", "memory", "status")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if line := lineWith(out, "qwen"); !strings.Contains(line, "missing") {
+	if line := lineWith(out, "kiro"); !strings.Contains(line, "missing") {
 		t.Errorf("a selected agent without amem must read missing:\n%s", out)
 	}
-	for _, agent := range []string{"kimi", "agy", "kiro", "copilot"} {
+	for _, agent := range []string{"copilot"} {
 		if line := lineWith(out, agent); !strings.Contains(line, "not selected") || strings.Contains(line, "missing") {
 			t.Errorf("%s: %q, want not selected", agent, line)
 		}
@@ -368,11 +404,11 @@ func TestMemoryStatusDoesNotCallAnUnselectedAgentMissing(t *testing.T) {
 // status warns unless amem reports exactly the pinned version: a longer number that merely contains it is not it.
 func TestContainsVersionMatchesTheWholeNumberOnly(t *testing.T) {
 	for output, want := range map[string]bool{
-		"0.6.0": true, "amem 0.6.0": true, "0.6.0\n": true, "agent-mem v0.6.0 (bun)": true,
-		"10.6.0": false, "0.6.01": false, "0.6.0.1": false, "0.6": false, "1.0.6.0": false,
-		"0.5.0": false, "": false, "amem 0.6.0.": true, "0.6.0-rc1": false, "0.6.0+build5": false, "0.6.0 - ok": true,
+		"0.11.0": true, "amem 0.11.0": true, "0.11.0\n": true, "agent-mem v0.11.0 (bun)": true,
+		"10.11.0": false, "0.11.01": false, "0.11.0.1": false, "0.11": false, "1.0.11.0": false,
+		"0.6.0": false, "": false, "amem 0.11.0.": true, "0.11.0-rc1": false, "0.11.0+build5": false, "0.11.0 - ok": true,
 	} {
-		if got := containsVersion(output, "0.6.0"); got != want {
+		if got := containsVersion(output, "0.11.0"); got != want {
 			t.Errorf("containsVersion(%q) = %v, want %v", output, got, want)
 		}
 	}

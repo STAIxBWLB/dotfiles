@@ -234,24 +234,27 @@ that still lists the retired `claude-mem` add-on is read without it.
 
 Project memory is [amem](https://github.com/STAIxBWLB/agent-mem)
 (`@staix/agent-mem`), which dot registers but never installs. Install the exact
-version `dot ai memory status` names (`@staix/agent-mem` 0.6.0, the first
-release with the P3 hooks and transcript intake), then:
+version `dot ai memory status` names (`@staix/agent-mem` 0.11.0; every amem that
+shares a memory home must run 0.11.0 or later), then:
 
 ```bash
+amem setup all --apply            # in your terminal: Claude Code, Codex, Kimi, Qwen, pi
+amem setup agy --apply            # inside each repository that uses Antigravity
 dot ai memory install --dry-run   # what would change; nothing is written
-dot ai memory install             # add `amem mcp` to Kimi, Qwen, agy, Kiro and Copilot
+dot ai memory install             # add `amem mcp` to Kiro and Copilot
 dot ai memory status
 dot ai agents apply               # writes the amem + vault block into the agents SSOT
 ```
 
-`install` prints the exact lines for Claude Code and Codex, which keep their own
-plugin and MCP state, so dot never writes them: `claude mcp add -s user amem --
-<amem> mcp` (the tools, which the policy grants as `mcp__amem__amem_*`),
-`claude --plugin-dir <package root>` (the capture hooks; the 0.6.0 plugin
-declares no MCP server, so both are needed) and `codex mcp add amem -- <amem>
-mcp`. The memory block in the agents SSOT is written only on a machine that uses
-amem, after a backup of the SSOT. amem has no resident worker, so dot writes no
-LaunchAgent for it; agents without hooks reach it through `amem ingest <agent>`.
+`amem setup` registers the MCP server (as `amem`, which the policy grants as
+`mcp__amem__amem_*`) and the capture hooks for the clients it covers, and keeps
+undo receipts for every file it writes. dot therefore writes no Kimi, Qwen or
+Antigravity config, and `install` prints the `amem setup` lines instead. For
+Claude Code, use either `amem setup claude` or the agent-mem plugin, not both:
+since 0.11.0 the plugin declares the MCP server too. The memory block in the
+agents SSOT is written only on a machine that uses amem, after a backup of the
+SSOT. amem has no resident worker, so dot writes no LaunchAgent for it; clients
+without the setup hooks reach it through `amem ingest <agent>`.
 Curated handoffs below are separate from amem.
 
 To remove claude-mem after `amem import claude-mem` has finished, run

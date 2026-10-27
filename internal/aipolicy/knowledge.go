@@ -27,8 +27,8 @@ var vaultKnowledgeTools = []string{"read_note", "read_multiple_notes", "search_n
 // mcp__amem__<tool>.
 var memoryKnowledgeTools = []string{"amem_search", "amem_show", "amem_timeline", "amem_graph", "amem_work_state_read", "amem_work_state_write", "amem_remember", "amem_vault_candidates", "amem_capacity"}
 
-// memoryServer is the MCP server name amem is registered under (`codex mcp add amem`,
-// `claude mcp add amem`, and the mcpServers key dot writes for the other agents).
+// memoryServer is the MCP server name amem is registered under (the name `amem setup`
+// registers for Claude Code and Codex, and the mcpServers key dot writes for Kiro and Copilot).
 const memoryServer = "amem"
 
 // KnowledgeApprovals recognizes existing Codex bindings without copying identity

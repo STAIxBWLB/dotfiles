@@ -3,7 +3,6 @@ package aipolicy
 import (
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 )
@@ -60,9 +59,10 @@ func TestKnowledgeMemoryToolsAreAmemsFrozenSurface(t *testing.T) {
 	}
 }
 
-// AMEM_PACKAGE_DIR names an unpacked @staix/agent-mem tarball (`npm pack @staix/agent-mem@0.6.0`, then
-// extract). When set, the allowlist is compared with that package's own MCP tool list, so a rename in a later
-// amem release fails here and not at the cutover. Unset (CI), the frozen list above is the contract.
+// AMEM_PACKAGE_DIR names an unpacked @staix/agent-mem tarball (`npm pack @staix/agent-mem@0.11.0`, then
+// extract). When set, every allowlisted tool must be in that package's own MCP tool list, so a rename or a
+// removal in a later amem release fails here and not at the cutover. A tool the package adds is not granted
+// until it is added to the allowlist on purpose. Unset (CI), the frozen list above is the contract.
 func TestKnowledgeMemoryToolsMatchThePublishedPackage(t *testing.T) {
 	dir := os.Getenv("AMEM_PACKAGE_DIR")
 	if dir == "" {
@@ -76,11 +76,14 @@ func TestKnowledgeMemoryToolsMatchThePublishedPackage(t *testing.T) {
 	for _, part := range strings.Split(string(raw), `tool("amem_`)[1:] {
 		published = append(published, "amem_"+part[:strings.Index(part, `"`)])
 	}
-	sort.Strings(published)
-	ours := append([]string{}, memoryKnowledgeTools...)
-	sort.Strings(ours)
-	if strings.Join(published, ",") != strings.Join(ours, ",") {
-		t.Fatalf("allowlist drifted from the published package\n published: %v\n dotfiles:  %v", published, ours)
+	have := map[string]bool{}
+	for _, name := range published {
+		have[name] = true
+	}
+	for _, name := range memoryKnowledgeTools {
+		if !have[name] {
+			t.Errorf("allowlisted %s is not in the published package (%v)", name, published)
+		}
 	}
 }
 
@@ -270,11 +273,11 @@ func TestKnowledgeCodexCLIUsesNativeRawSegments(t *testing.T) {
 }
 
 // The Claude grant names mcp__amem__<tool>. That only reaches a tool when a server called "amem" is registered
-// with Claude, which `claude mcp add amem` does (the 0.6.0 plugin declares hooks and no MCP server). The server
-// name `dot ai memory install` tells the person to register and the one the grant is keyed on are one constant.
+// with Claude, which `amem setup claude` does (0.11.0 registers `claude mcp add ... amem`). The server name
+// `amem setup` registers and the one the grant is keyed on must agree.
 func TestClaudeGrantNamesTheServerThatInstallRegisters(t *testing.T) {
 	if memoryServer != "amem" {
-		t.Fatalf("memoryServer = %q: `claude mcp add amem` and the mcp__amem__ pattern must agree", memoryServer)
+		t.Fatalf("memoryServer = %q: `amem setup` registers amem, and the mcp__amem__ pattern must agree", memoryServer)
 	}
 	args, err := KnowledgeArgs(Runtime{Agent: "claude"}, []KnowledgeApproval{{Server: memoryServer, Tool: "amem_search", ApprovalMode: "approve"}})
 	if err != nil || len(args) != 2 || args[1] != "mcp__amem__amem_search" {

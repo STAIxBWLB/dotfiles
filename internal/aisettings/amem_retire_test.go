@@ -128,6 +128,12 @@ func TestMemoryWantedFollowsAmemOnPathOrARegisteredServerOrTheBlockItself(t *tes
 	if !m.MemoryWanted() {
 		t.Fatal("not wanted although an amem server is registered")
 	}
+	// A server `amem setup qwen` registered counts too, although dot no longer writes that file.
+	m4, home4 := newAgentsHome(t)
+	mustWriteJSON(t, filepath.Join(home4, ".qwen", "settings.json"), map[string]any{"mcpServers": map[string]any{AmemServerName: map[string]any{}}})
+	if !m4.MemoryWanted() {
+		t.Fatal("not wanted although `amem setup` registered a server")
+	}
 	m2, _ := newAgentsHome(t)
 	mustWriteFile(t, m2.SSOTPath(), "# rules\n"+memoryBlockStart+"\nx\n"+memoryBlockEnd+"\n")
 	if !m2.MemoryWanted() {
@@ -149,11 +155,11 @@ func TestAmemInstallSurvivesAnNullMcpServersAndAnNullFile(t *testing.T) {
 	for name, body := range map[string]string{"null servers": `{"mcpServers": null, "keep": 1}`, "null file": `null`, "empty object": `{}`} {
 		t.Run(name, func(t *testing.T) {
 			m, _ := newAmem(t)
-			mustWriteFile(t, m.QwenMCPPath(), body)
+			mustWriteFile(t, m.KiroMCPPath(), body)
 			if _, err := m.Install(); err != nil {
 				t.Fatalf("install panicked or failed: %v", err)
 			}
-			if readServers(t, m.QwenMCPPath())[AmemServerName] == nil {
+			if readServers(t, m.KiroMCPPath())[AmemServerName] == nil {
 				t.Fatal("no amem entry")
 			}
 		})
@@ -162,11 +168,11 @@ func TestAmemInstallSurvivesAnNullMcpServersAndAnNullFile(t *testing.T) {
 
 func TestAmemInstallDoesNotHTMLEscapeAnArgumentOrAnotherServer(t *testing.T) {
 	m, _ := newAmem(t)
-	mustWriteFile(t, m.QwenMCPPath(), `{"mcpServers":{"other":{"command":"sh","args":["-c","a && b < c > d"]}}}`)
+	mustWriteFile(t, m.KiroMCPPath(), `{"mcpServers":{"other":{"command":"sh","args":["-c","a && b < c > d"]}}}`)
 	if _, err := m.Install(); err != nil {
 		t.Fatal(err)
 	}
-	raw, _ := os.ReadFile(m.QwenMCPPath())
+	raw, _ := os.ReadFile(m.KiroMCPPath())
 	for _, escaped := range []string{`\u0026`, `\u003c`, `\u003e`} {
 		if strings.Contains(string(raw), escaped) {
 			t.Fatalf("the merge rewrote another server's arguments with HTML escapes:\n%s", raw)
