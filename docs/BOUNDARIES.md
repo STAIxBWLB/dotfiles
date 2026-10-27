@@ -9,7 +9,7 @@ Native/plugin/system bundles remain owned by their native installers.
 The selectable agent environments are Claude, Codex, Kimi, Qwen, Grok,
 OpenCode, Genspark Gencode, pi and Antigravity. The automatic add-on catalog
 is limited to ripwire, Open Code Review, GSD and ponytail. Project memory is
-amem, which dot registers but does not install (see `~/.kimi-code/mcp.json`
+amem, which dot registers but does not install (see `~/.kiro/settings/mcp.json`
 below); claude-mem is retired and only `dot ai memory retire-claude-mem`
 touches what is left of it.
 Selection limits managed writes; it does not hide existing globally
@@ -292,16 +292,15 @@ tool):
   `power.json`, and restored by `dot watchdog uninstall` under the
   interactive-only restore prompt. No other pmset/systemsetup key is
   touched.
-- `~/.kimi-code/mcp.json` — the `amem` entry under `mcpServers` (command
-  and `["mcp"]` args only), written by `dot ai memory install`; retirement
-  removes the `claude-mem` entry; every other server entry is preserved
+- `~/.kimi-code/mcp.json` — only retirement writes it, removing the
+  `claude-mem` entry; every other server entry is preserved. Its `amem`
+  entry belongs to `amem setup kimi`, never to dot
 - `~/.gemini/config/mcp_config.json` — the Antigravity CLI (agy) shared MCP
-  config: the `amem` entry under `mcpServers` (command and args only),
-  written by `dot ai memory install`; retirement removes the `claude-mem`
-  entry; every other server entry is preserved
-- `~/.qwen/settings.json` — the `amem` entry under `mcpServers`
-  (command and args only), written by `dot ai memory install`; retirement
-  removes the `claude-mem` entry; every
+  config: only retirement writes it, removing the `claude-mem` entry; every
+  other server entry is preserved. amem is set up per repository by
+  `amem setup agy`, never in this global file
+- `~/.qwen/settings.json` — only retirement writes it, removing the
+  `claude-mem` entry; the `amem` entry belongs to `amem setup qwen`; every
   other key — Qwen's model, provider, auth, and UI settings — is
   preserved. Notably NOT dotfiles-managed: `~/.qwen/.env` (secrets),
   `~/.qwen/projects/**/chats/**`, `~/.qwen/memories/**`, and

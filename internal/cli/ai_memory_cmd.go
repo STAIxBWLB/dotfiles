@@ -17,9 +17,9 @@ func newAIMemoryCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "memory",
 		Short: "Register amem for the agents and retire claude-mem",
-		Long: `Register amem (@staix/agent-mem) as the project memory for Kimi, Qwen,
-Antigravity, Kiro and GitHub Copilot, and print the exact lines for Claude Code
-and Codex, which keep their own plugin and MCP state.
+		Long: `Register amem (@staix/agent-mem) as the project memory for Kiro and
+GitHub Copilot, and print the 'amem setup' lines for Claude Code, Codex, Kimi,
+Qwen, pi and Antigravity, which amem registers itself.
 
 dot never installs amem and runs no memory process: install the exact version
 yourself, then run 'dot ai memory install'. amem has no resident worker, so dot
@@ -67,10 +67,11 @@ func newAmemManagerFromCmd(cmd *cobra.Command) (*aisettings.AmemManager, error) 
 func newAIMemoryInstallCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "install",
-		Short: "Register amem's MCP server for the selected agents",
-		Long: `Add the amem MCP server ('amem mcp') to the config of each selected agent whose
-MCP file dot owns, and print the lines for Claude Code and Codex. Every other
-server and key in those files is preserved. Re-running changes nothing.
+		Short: "Register amem's MCP server for Kiro and Copilot",
+		Long: `Add the amem MCP server ('amem mcp') to the Kiro and Copilot configs when
+those agents are selected, and print the 'amem setup' lines for the other
+agents. dot leaves the Kimi, Qwen and Antigravity configs untouched: 'amem setup'
+owns them. Every other server and key is preserved. Re-running changes nothing.
 
 amem must already be installed (the exact @staix/agent-mem version, which
 'dot ai memory status' names) and on PATH. With --dry-run nothing is written.`,
@@ -147,10 +148,9 @@ func newAIMemoryStatusCmd() *cobra.Command {
 				label, id, detail string
 				ok                bool
 			}{
-				{"kimi", "kimi", "MCP", status.KimiMCP}, {"qwen", "qwen", "MCP", status.QwenMCP},
-				{"agy", "antigravity", "MCP", status.AntigravityMCP}, {"kiro", "kiro", "MCP", status.KiroMCP},
+				{"kiro", "kiro", "MCP", status.KiroMCP},
 				{"copilot", "copilot", "MCP", status.CopilotMCP},
-				{"pi", "pi", "instructions; capture through `amem ingest pi` (pi has no MCP)", status.PiAgents},
+				{"pi", "pi", "instructions; MCP and capture through `amem setup pi`", status.PiAgents},
 			} {
 				if !status.Selected[row.id] {
 					p.Bullet(ui.StyleHint.Render(ui.MarkAbsent), fmt.Sprintf("%-13s %-12s %s", ui.StyleValue.Render(row.label), "not selected", "dot manages no config for it"))
@@ -158,17 +158,20 @@ func newAIMemoryStatusCmd() *cobra.Command {
 				}
 				printMemoryState(p, row.label, row.ok, row.detail)
 			}
+			for _, row := range [][2]string{{"kimi", "amem setup kimi"}, {"qwen", "amem setup qwen"}, {"agy", "amem setup agy, per repository"}} {
+				p.Bullet(ui.StyleHint.Render(ui.MarkPartial), fmt.Sprintf("%-13s %-12s %s", ui.StyleValue.Render(row[0]), "amem setup", "managed by `"+row[1]+"`; dot writes no config"))
+			}
 			p.Section("Shared")
 			printMemoryState(p, "instructions", status.InstructionsEnabled, "agents SSOT memory block")
-			p.Line("Claude Code and Codex keep their own plugin and MCP state; see `dot ai memory install` for the lines.")
+			p.Line("Claude Code and Codex are registered by `amem setup`; see `dot ai memory install` for the lines.")
 			return nil
 		},
 	}
 }
 
 // containsVersion reports whether output names exactly the version want. A digit or a dot next to the
-// number means it is part of a longer version (10.6.0, 0.6.01, 0.6.0.1, 1.0.6.0), which is not the pin.
-// A trailing dot that ends a sentence ("amem 0.6.0.") is allowed only when no digit follows it, and a
+// number means it is part of a longer version (10.11.0, 0.11.01, 0.11.0.1, 1.0.11.0), which is not the pin.
+// A trailing dot that ends a sentence ("amem 0.11.0.") is allowed only when no digit follows it, and a
 // prerelease or build suffix (-rc1, +build) is not the release.
 func containsVersion(output, want string) bool {
 	isDigit := func(b byte) bool { return b >= '0' && b <= '9' }
@@ -186,7 +189,7 @@ func containsVersion(output, want string) bool {
 		if end+1 < len(output) && output[end] == '.' && isDigit(output[end+1]) {
 			continue
 		}
-		// 0.6.0-rc1 and 0.6.0+build are prereleases or builds of the pin, not the release itself.
+		// 0.11.0-rc1 and 0.11.0+build are prereleases or builds of the pin, not the release itself.
 		if end+1 < len(output) && (output[end] == '-' || output[end] == '+') && (isDigit(output[end+1]) || output[end+1] >= 'a' && output[end+1] <= 'z' || output[end+1] >= 'A' && output[end+1] <= 'Z') {
 			continue
 		}

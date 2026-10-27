@@ -14,15 +14,14 @@ import (
 	"time"
 )
 
-// AmemPinnedVersion is the exact @staix/agent-mem release dot expects: 0.6.0,
-// the first published version with the P3 hooks, bounded SessionStart brief and
-// transcript intake (registry gitHead 2a182f2f, the merge of agent-mem#37 on
-// P3 0df2cf91; read back from the registry with a cache-busting request on
-// 2026-10-23). dot never installs it: the person installs this exact version,
-// and `dot ai memory status` compares against it. The tool names in
-// internal/aipolicy and the `mcp`, `ingest` and `--plugin-dir` forms printed
-// here were checked against the published 0.6.0 tarball, not a checkout.
-const AmemPinnedVersion = "0.6.0"
+// AmemPinnedVersion is the exact @staix/agent-mem release dot expects: 0.11.0,
+// the version agent-hub pins and the first one the P5 cutover runs on (registry
+// gitHead 938a9956). Every amem sharing a memory home must run 0.11.0 or later.
+// dot never installs it: the person installs this exact version, and
+// `dot ai memory status` compares against it. The tool names in
+// internal/aipolicy and the `setup`, `ingest` and `mcp` forms printed here were
+// checked against the published 0.11.0 tarball on 2026-10-28, not a checkout.
+const AmemPinnedVersion = "0.11.0"
 
 // AmemServerName is the MCP server name amem is registered under. Tool names
 // reach agents as mcp__amem__amem_search and so on.
@@ -52,21 +51,18 @@ const memoryInstructions = memoryBlockStart + `
 type AmemInstallResult struct {
 	// ConfigPaths are the MCP config files that changed (or would change).
 	ConfigPaths []string
-	// Manual holds the exact lines for files dot does not own: the person
-	// applies them to Claude Code and Codex, which keep their own plugin and
-	// MCP state.
+	// Manual holds the exact lines for the clients `amem setup` registers
+	// (Claude Code, Codex, Kimi, Qwen, pi, Antigravity); dot writes none of
+	// their files.
 	Manual []string
 }
 
 // AmemStatus is the read-only health of the amem integration.
 type AmemStatus struct {
-	KimiMCP        bool
-	QwenMCP        bool
-	AntigravityMCP bool
-	KiroMCP        bool
-	CopilotMCP     bool
-	// PiAgents reports pi's instructions target. pi has no MCP support, so it
-	// captures through `amem ingest pi` and reads through the instructions.
+	KiroMCP    bool
+	CopilotMCP bool
+	// PiAgents reports pi's instructions target. `amem setup pi` registers its
+	// MCP server and capture extension.
 	PiAgents            bool
 	InstructionsEnabled bool
 	// Selected says which MCP agents the saved selection covers. An agent outside it is not
@@ -78,8 +74,8 @@ type AmemStatus struct {
 	Version string
 }
 
-// AmemManager registers amem's MCP stdio server for the agents that read MCP
-// config files dot owns. It writes no launchd agent and starts no process.
+// AmemManager registers amem's MCP stdio server for Kiro and Copilot, the agents
+// `amem setup` does not cover. It writes no launchd agent and starts no process.
 type AmemManager struct {
 	HomeDir string
 	// AmemPath is the absolute path of the amem executable. Required to install.
@@ -131,9 +127,8 @@ func (m *AmemManager) CopilotMCPPath() string {
 type mcpEntryVariant int
 
 const (
-	mcpVariantStandard mcpEntryVariant = iota // kimi, qwen, agy: command + args only
-	mcpVariantKiro                            // kiro: adds "disabled": false
-	mcpVariantCopilot                         // copilot: adds "type": "local", "tools": ["*"]
+	mcpVariantKiro    mcpEntryVariant = iota // kiro: command + args, plus "disabled": false
+	mcpVariantCopilot                        // copilot: adds "type": "local", "tools": ["*"]
 )
 
 type mcpTarget struct {
@@ -142,14 +137,19 @@ type mcpTarget struct {
 	variant mcpEntryVariant
 }
 
+// targets are the MCP configs dot writes. Kimi, Qwen and Antigravity are left to
+// `amem setup`, which keeps undo receipts a second writer would break and sets
+// Antigravity up per repository, never in the global config.
 func (m *AmemManager) targets() []mcpTarget {
 	return []mcpTarget{
-		{"kimi", m.KimiMCPPath(), mcpVariantStandard},
-		{"qwen", m.QwenMCPPath(), mcpVariantStandard},
-		{"antigravity", m.AntigravityMCPPath(), mcpVariantStandard},
 		{"kiro", m.KiroMCPPath(), mcpVariantKiro},
 		{"copilot", m.CopilotMCPPath(), mcpVariantCopilot},
 	}
+}
+
+// memoryConfigPaths are every MCP config that may register amem, whoever wrote it.
+func (m *AmemManager) memoryConfigPaths() []string {
+	return []string{m.KimiMCPPath(), m.QwenMCPPath(), m.AntigravityMCPPath(), m.KiroMCPPath(), m.CopilotMCPPath()}
 }
 
 func (m *AmemManager) selected(agent string) bool {
@@ -164,33 +164,23 @@ func (m *AmemManager) selected(agent string) bool {
 	return false
 }
 
-// Manual lists the exact edits for files dot does not own. Claude Code loads
-// amem as a plugin whose hooks it runs itself, and Codex keeps MCP servers in
-// its own config; neither is written here (docs/BOUNDARIES.md).
+// manualLines are the person's own steps. `amem setup` registers the MCP server
+// as "amem" (the name the grant in internal/aipolicy is keyed on) and the capture
+// hooks, and refuses --apply outside a person's terminal, so dot only prints it.
 func (m *AmemManager) manualLines() []string {
 	return []string{
-		// The 0.6.0 plugin declares hooks only and no MCP server, so Claude needs both lines: the MCP
-		// server is what makes mcp__amem__amem_* (the grant in internal/aipolicy and the instruction
-		// block) reachable, and the plugin is what runs the capture hooks.
-		"Claude Code (MCP, the tools): claude mcp add -s user " + AmemServerName + " -- " + m.amemCommand() + " mcp",
-		"Claude Code (hooks, capture and the session brief): claude --plugin-dir <the @staix/agent-mem package root>   # the directory holding .claude-plugin/, hooks/ and bin/; the plugin declares no MCP server",
-		"Codex (MCP): codex mcp add " + AmemServerName + " -- " + m.amemCommand() + " mcp",
-		"pi (no MCP): run `amem ingest pi` at session end or on demand; `amem ingest codex` and `amem ingest kimi` do the same for those agents",
+		"Claude Code, Codex, Kimi, Qwen, pi (MCP and capture): amem setup all --apply   # in your terminal; one client: amem setup claude --apply",
+		"Claude Code: use either `amem setup claude` or the agent-mem plugin, not both; each registers the MCP server and the hooks",
+		"Antigravity (MCP, per repository): run `amem setup agy --apply` inside each repository; amem never writes the global config",
+		"Without the setup hooks: run `amem ingest codex` (or kimi, pi, qwen) from the project after a session",
 	}
-}
-
-func (m *AmemManager) amemCommand() string {
-	if m.AmemPath != "" {
-		return m.AmemPath
-	}
-	return "amem"
 }
 
 // Plan returns what Install would change, writing nothing.
 func (m *AmemManager) Plan() (AmemInstallResult, error) { return m.install(true) }
 
-// Install registers amem as an MCP server for every selected agent whose MCP
-// config dot owns, and returns the manual lines for the rest. It never starts
+// Install registers amem as an MCP server for Kiro and Copilot when selected,
+// and returns the `amem setup` lines for the rest. It never starts
 // a process and writes no launchd agent.
 func (m *AmemManager) Install() (AmemInstallResult, error) { return m.install(false) }
 
@@ -336,14 +326,10 @@ func sameExecutable(configured, want string) bool {
 // Status reads the integration without writing or starting anything.
 func (m *AmemManager) Status(ctx context.Context, ssotPath string) AmemStatus {
 	status := AmemStatus{
-		KimiMCP:        hasAmemEntry(m.KimiMCPPath(), m.AmemPath, mcpVariantStandard),
-		QwenMCP:        hasAmemEntry(m.QwenMCPPath(), m.AmemPath, mcpVariantStandard),
-		AntigravityMCP: hasAmemEntry(m.AntigravityMCPPath(), m.AmemPath, mcpVariantStandard),
-		KiroMCP:        hasAmemEntry(m.KiroMCPPath(), m.AmemPath, mcpVariantKiro),
-		CopilotMCP:     hasAmemEntry(m.CopilotMCPPath(), m.AmemPath, mcpVariantCopilot),
-		AmemPath:       m.AmemPath,
+		KiroMCP:    hasAmemEntry(m.KiroMCPPath(), m.AmemPath, mcpVariantKiro),
+		CopilotMCP: hasAmemEntry(m.CopilotMCPPath(), m.AmemPath, mcpVariantCopilot),
+		AmemPath:   m.AmemPath,
 		Selected: map[string]bool{
-			"kimi": m.selected("kimi"), "qwen": m.selected("qwen"), "antigravity": m.selected("antigravity"),
 			"kiro": m.selected("kiro"), "copilot": m.selected("copilot"), "pi": m.selected("pi"),
 		},
 	}
@@ -510,8 +496,8 @@ func (m *AgentsManager) MemoryWanted() bool {
 		return true
 	}
 	probe := &AmemManager{HomeDir: m.homeDir()}
-	for _, target := range probe.targets() {
-		if mcpConfigNamesAmem(target.path) {
+	for _, path := range probe.memoryConfigPaths() {
+		if mcpConfigNamesAmem(path) {
 			return true
 		}
 	}

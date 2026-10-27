@@ -1,12 +1,13 @@
 ## dot ai memory install
 
-Register amem's MCP server for the selected agents
+Register amem's MCP server for Kiro and Copilot
 
 ### Synopsis
 
-Add the amem MCP server ('amem mcp') to the config of each selected agent whose
-MCP file dot owns, and print the lines for Claude Code and Codex. Every other
-server and key in those files is preserved. Re-running changes nothing.
+Add the amem MCP server ('amem mcp') to the Kiro and Copilot configs when
+those agents are selected, and print the 'amem setup' lines for the other
+agents. dot leaves the Kimi, Qwen and Antigravity configs untouched: 'amem setup'
+owns them. Every other server and key is preserved. Re-running changes nothing.
 
 amem must already be installed (the exact @staix/agent-mem version, which
 'dot ai memory status' names) and on PATH. With --dry-run nothing is written.
