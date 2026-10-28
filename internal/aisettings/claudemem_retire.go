@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"os"
@@ -344,6 +345,9 @@ func (o RetireOptions) ImportEvidence() int {
 		if dec.Decode(&cursors) != nil {
 			continue
 		}
+		if _, err := dec.Token(); err != io.EOF {
+			continue // trailing content: amem's JSON.parse rejects the whole file
+		}
 		for _, value := range cursors {
 			if num, ok := value.(json.Number); ok && positiveInt(num) {
 				n++
@@ -416,7 +420,7 @@ func (o RetireOptions) gate(ctx context.Context, steps []RetireStep) string {
 		return "refusing to retire: the import into amem is not confirmed; run `amem import claude-mem`, check it, then pass --import-complete"
 	}
 	if o.ImportEvidence() == 0 {
-		return "refusing to retire: no amem import cursor with a handled row under " + o.amemHome() + " (shared, generation and split layouts are checked); run `amem import claude-mem` first"
+		return "refusing to retire: no amem import cursor with a handled row under " + o.amemHome() + " (shared, generation, split, work-list and capture layouts are checked); run `amem import claude-mem` first"
 	}
 	if live := o.runningWorker(ctx); live != "" {
 		return "refusing to retire: " + live + "; stop claude-mem (quit the Claude and Codex sessions that load it), then re-run. Nothing was changed"

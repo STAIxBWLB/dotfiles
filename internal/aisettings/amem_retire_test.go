@@ -932,6 +932,7 @@ func TestRetireImportEvidenceCountsTheWorkAndCaptureTiers(t *testing.T) {
 		"fractional cursor":  {map[string]string{capture: `{"a": 1.5}`}, 0},
 		"malformed cursor":   {map[string]string{work: `[8205]`, capture: `{broken`}, 0},
 		"not a cursor value": {map[string]string{work: `{"k": "8205"}`}, 0},
+		"trailing content":   {map[string]string{work: `{"k": 8205} {"k": 1}`}, 0},
 	} {
 		t.Run(name, func(t *testing.T) {
 			home := t.TempDir()
