@@ -295,6 +295,8 @@ func TestRetireClaudeMemDryRunIsTheDefaultAndChangesNothing(t *testing.T) {
 	}
 	for _, want := range []string{
 		"dry run: nothing is changed",
+		"Claude profile: " + filepath.Join(home, ".claude") + " (default)",
+		"Back up before --apply", "  " + filepath.Join(home, ".claude", "settings.json"),
 		"claude plugin disable claude-mem@thedotmack", "claude plugin uninstall claude-mem@thedotmack", "claude plugin marketplace remove thedotmack",
 		"codex plugin remove claude-mem --marketplace claude-mem-local", "codex plugin marketplace remove claude-mem-local",
 		"claude-mem entry under mcpServers in " + filepath.Join(home, ".qwen", "settings.json"),
@@ -306,6 +308,9 @@ func TestRetireClaudeMemDryRunIsTheDefaultAndChangesNothing(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("dry run output missing %q:\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "Default Claude profile") {
+		t.Errorf("--home reported another Claude profile:\n%s", out)
 	}
 }
 

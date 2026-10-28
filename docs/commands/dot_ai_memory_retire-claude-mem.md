@@ -18,8 +18,13 @@ left on the machine; it changes nothing. With --apply, in order, it:
      and refuses while a claude-mem process runs);
   5. reads back that no claude-mem process, port, hook or LaunchAgent remains.
 
-It never edits ~/.claude/settings.json, which Claude Code owns: the exact lines
-to remove are printed for you. --apply refuses unless --import-complete says
+Claude Code is handled in its active profile: $CLAUDE_CONFIG_DIR when set,
+else ~/.claude. The dry run names that profile, the files to back up before
+--apply, and any claude-mem left in the default ~/.claude while another
+profile is active (that profile is never changed; run again with
+CLAUDE_CONFIG_DIR unset to retire it). It never edits the profile's
+settings.json, which Claude Code owns: the exact lines to remove are printed
+for you. --apply refuses unless --import-complete says
 the 'amem import claude-mem' run is done and an amem import cursor exists.
 
 ```

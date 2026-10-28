@@ -261,8 +261,14 @@ To remove claude-mem after `amem import claude-mem` has finished, run
 `dot ai memory retire-claude-mem` for a dry run that lists every item and reads
 back what is left, then `--apply --import-complete` to do it. It archives
 `~/.claude-mem` to `~/.claude-mem.archive-<date>` and never deletes it, and it
-prints the lines of `~/.claude/settings.json` for you to remove, because Claude
-Code owns that file. `--apply` is refused before any step while a claude-mem
+prints the lines of the Claude profile's `settings.json` for you to remove,
+because Claude Code owns that file. The profile is `$CLAUDE_CONFIG_DIR` when
+set, else `~/.claude`; the dry run names it and lists the files to back up
+before `--apply`. Copy those files first, apply, then compare the read-back and
+the copies. When another profile is active and the default `~/.claude` still
+has claude-mem, the dry run shows it in its own section and leaves it alone;
+retire it with `env -u CLAUDE_CONFIG_DIR dot ai memory retire-claude-mem`.
+`--apply` is refused before any step while a claude-mem
 process is running (quit the Claude and Codex sessions that load it first), when
 a file it must read cannot be read, and under `--home`; the dry run works with
 `--home` and reads nothing from your shell environment.
