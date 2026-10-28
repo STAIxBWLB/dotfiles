@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -374,7 +375,8 @@ func TestRetireImportEvidenceNeedsAPositiveRowInAnyAmemLayout(t *testing.T) {
 	if o.ImportEvidence() != 0 {
 		t.Fatal("a corrupt cursor counted as evidence")
 	}
-	for _, rel := range []string{"import-state.json", "user/import-state.json", "projects/b/import-state.json", "generations/g/import-state.json", "generations/g/projects/c/import-state.json"} {
+	for _, rel := range []string{"import-state.json", "user/import-state.json", "projects/b/import-state.json", "projects/b/work/import-state.json",
+		"projects/b/machine/0123456789abcdef/import-state.json", "generations/g/import-state.json", "generations/g/projects/c/import-state.json", "generations/g/user/import-state.json"} {
 		fresh := t.TempDir()
 		o2 := retireOpts(fresh, &recorder{})
 		o2.defaults()
@@ -908,5 +910,194 @@ func TestRetireOKNeedsStartedNoFailureAndCleanReadBack(t *testing.T) {
 		if got := tc.r.OK(); got != tc.want {
 			t.Errorf("%s: OK() = %v, want %v", name, got, tc.want)
 		}
+	}
+}
+
+// #302: amem 0.11.0 keeps the work-list and capture cursors under projects/<hash>/work and
+// projects/<hash>/machine/<id> of the memory home. Each counts alone; zero, negative, fractional and
+// malformed cursors never do, and the root of a generation holding only 0 adds nothing.
+func TestRetireImportEvidenceCountsTheWorkAndCaptureTiers(t *testing.T) {
+	work := filepath.Join("projects", "h", "work", "import-state.json")
+	capture := filepath.Join("projects", "h", "machine", "0123456789abcdef", "import-state.json")
+	generation := filepath.Join("generations", "g", "import-state.json")
+	for name, tc := range map[string]struct {
+		files map[string]string
+		want  int
+	}{
+		"work only":          {map[string]string{work: `{"k": 8205}`}, 1},
+		"capture only":       {map[string]string{capture: `{"a": 266653, "b": 16790}`}, 1},
+		"mixed":              {map[string]string{work: `{"k": 8205}`, capture: `{"a": 266653}`, generation: `{"z": 0}`}, 2},
+		"zero-only tiers":    {map[string]string{work: `{"k": 0}`, capture: `{"a": 0}`, generation: `{"z": 0}`}, 0},
+		"negative cursor":    {map[string]string{work: `{"k": -5}`}, 0},
+		"fractional cursor":  {map[string]string{capture: `{"a": 1.5}`}, 0},
+		"malformed cursor":   {map[string]string{work: `[8205]`, capture: `{broken`}, 0},
+		"not a cursor value": {map[string]string{work: `{"k": "8205"}`}, 0},
+		"trailing content":   {map[string]string{work: `{"k": 8205} {"k": 1}`}, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			for rel, body := range tc.files {
+				mustWriteFile(t, filepath.Join(home, ".agenthub", "memory", rel), body)
+			}
+			o := retireOpts(home, &recorder{})
+			o.defaults()
+			if got := o.ImportEvidence(); got != tc.want {
+				t.Fatalf("evidence %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+// With only a work-tier cursor the import gate passes, and the other gates still hold: a running
+// claude-mem refuses before any step. Nothing is copied or written into the amem home.
+func TestRetireWorkTierCursorPassesTheImportGateOnly(t *testing.T) {
+	home := seedClaudeMemHome(t)
+	mustWriteFile(t, filepath.Join(home, ".agenthub", "memory", "projects", "h", "work", "import-state.json"), `{"k": 8205}`)
+	amem := filepath.Join(home, ".agenthub", "memory")
+	rec := &recorder{}
+	o := applyOpts(home, rec)
+	o.Ps = func(context.Context) (string, error) { return "node /x/claude-mem/worker-service.cjs\n", nil }
+	before := snapshotTree(t, amem)
+	refused(t, home, rec, o, "claude-mem process")
+	o.ImportConfirmed = false
+	refused(t, home, rec, o, "not confirmed")
+	if !sameTree(before, snapshotTree(t, amem)) {
+		t.Fatal("the amem home changed")
+	}
+	rec2 := &recorder{}
+	result, err := RetireClaudeMem(context.Background(), applyOpts(home, rec2))
+	if err != nil || result.Blocked != "" {
+		t.Fatalf("a work-tier cursor did not satisfy the import gate: %q %v", result.Blocked, err)
+	}
+}
+
+// #303: CLAUDE_CONFIG_DIR selects the Claude profile for the native commands, the plugin and settings reads
+// and the read-back alike. The default ~/.claude is reported in its own list and never changed.
+func TestRetireFollowsTheActiveClaudeProfile(t *testing.T) {
+	home := seedClaudeMemHome(t)
+	profile := filepath.Join(home, "Library", "Application Support", "orca", "claude profiles", "p 1", "home")
+	mustWriteJSON(t, filepath.Join(profile, "plugins", "installed_plugins.json"), map[string]any{"plugins": map[string]any{claudeMemPluginID: []any{}}})
+	mustWriteFile(t, filepath.Join(profile, "settings.json"), "{\n  \"enabledPlugins\": {\"claude-mem@thedotmack\": true},\n  \"apiKeyHelper\": \"SECRET-HELPER\"\n}\n")
+	def := filepath.Join(home, ".claude")
+	seedImport(t, home)
+
+	rec := &recorder{}
+	o := retireOpts(home, rec)
+	o.Ambient = append(o.Ambient, "CLAUDE_CONFIG_DIR="+profile)
+	result, err := RetireClaudeMem(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ClaudeProfile != profile || !result.ClaudeProfileFromEnv {
+		t.Fatalf("profile %q fromEnv=%v, want %q", result.ClaudeProfile, result.ClaudeProfileFromEnv, profile)
+	}
+	if got := stepIDs(result); got["claude-plugin-uninstall"] != RetireWould || got["claude-marketplace"] != RetireAbsent {
+		t.Fatalf("plugin steps did not read the active profile: %v", got)
+	}
+	manual := strings.Join(result.Manual, "\n")
+	if !strings.Contains(manual, filepath.Join(profile, "settings.json")+" line 2:") || strings.Contains(manual, def) {
+		t.Fatalf("manual edits must name the active profile only:\n%s", manual)
+	}
+	if strings.Contains(manual, "SECRET-HELPER") {
+		t.Fatal("a settings value without claude-mem was printed")
+	}
+	if !slices.Contains(result.Backup, filepath.Join(profile, "settings.json")) || !slices.Contains(result.Backup, filepath.Join(profile, "plugins", "installed_plugins.json")) || slices.Contains(result.Backup, filepath.Join(def, "settings.json")) {
+		t.Fatalf("backup list: %v", result.Backup)
+	}
+	other := strings.Join(result.OtherProfile, "\n")
+	if !strings.Contains(other, filepath.Join(def, "plugins", "installed_plugins.json")+": "+claudeMemPluginID) || !strings.Contains(other, filepath.Join(def, "settings.json")+" line") {
+		t.Fatalf("the default profile's claude-mem is not reported:\n%s", other)
+	}
+
+	defBefore := snapshotTree(t, def)
+	rec = &recorder{}
+	o = applyOpts(home, rec)
+	o.Ambient = append(o.Ambient, "CLAUDE_CONFIG_DIR="+profile)
+	if result, err = RetireClaudeMem(context.Background(), o); err != nil || result.Blocked != "" {
+		t.Fatalf("apply: %q %v", result.Blocked, err)
+	}
+	for i, call := range rec.calls {
+		if call[0] != "claude" {
+			continue
+		}
+		if v := ambientValue(rec.envs[i], "CLAUDE_CONFIG_DIR"); v != profile {
+			t.Errorf("%v ran with CLAUDE_CONFIG_DIR=%q, want the active profile", call, v)
+		}
+	}
+	if !sameTree(defBefore, snapshotTree(t, def)) {
+		t.Fatal("the default profile was changed")
+	}
+	for _, item := range result.ReadBack {
+		if item.Check == "no claude-mem plugin or hook" && !strings.Contains(item.Found, profile) && !strings.Contains(item.Found, claudeMemPluginID) {
+			t.Fatalf("the read-back did not inspect the active profile: %+v", item)
+		}
+	}
+}
+
+// An unreadable settings.json in the active profile is named, not skipped, and blocks a clean read-back.
+func TestRetireUnreadableActiveProfileSettingsIsNamed(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root reads every file")
+	}
+	home := t.TempDir()
+	profile := filepath.Join(home, "profile with space")
+	settings := filepath.Join(profile, "settings.json")
+	mustWriteFile(t, settings, "{}\n")
+	if err := os.Chmod(settings, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(settings, 0o600) })
+	o := retireOpts(home, &recorder{})
+	o.Ambient = append(o.Ambient, "CLAUDE_CONFIG_DIR="+profile)
+	result, err := RetireClaudeMem(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(result.Manual, "\n"), settings+": could not be read") || result.Clean() {
+		t.Fatalf("unreadable active settings: manual=%v clean=%v", result.Manual, result.Clean())
+	}
+}
+
+// Under --home the ambient CLAUDE_CONFIG_DIR is ignored: the scratch home's own .claude is planned, nothing
+// is reported for another profile, and apply stays refused. Without the override the default is used.
+func TestRetireClaudeProfileUnderAnExplicitHomeAndWithoutOverride(t *testing.T) {
+	scratch := t.TempDir()
+	real := filepath.Join(t.TempDir(), "real profile")
+	mustWriteJSON(t, filepath.Join(real, "plugins", "installed_plugins.json"), map[string]any{"plugins": map[string]any{claudeMemPluginID: []any{}}})
+	rec := &recorder{}
+	o := RetireOptions{HomeDir: scratch, ExplicitHome: true, Ambient: []string{"CLAUDE_CONFIG_DIR=" + real, "PATH=/usr/bin"}, Run: rec.run, GOOS: "linux",
+		Ps: func(context.Context) (string, error) { return "", nil }, PortOpen: func(int) bool { return false }}
+	result, err := RetireClaudeMem(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ClaudeProfile != filepath.Join(scratch, ".claude") || result.ClaudeProfileFromEnv || len(result.OtherProfile) != 0 {
+		t.Fatalf("--home leaked CLAUDE_CONFIG_DIR: %+v", result)
+	}
+	if stepIDs(result)["claude-plugin-uninstall"] != RetireAbsent {
+		t.Fatal("the real profile's plugin was planned for a scratch home")
+	}
+	for _, kv := range o.nativeEnv() {
+		if strings.HasPrefix(kv, "CLAUDE_CONFIG_DIR=") {
+			t.Fatalf("native env under --home carries %s", kv)
+		}
+	}
+	o.Apply, o.ImportConfirmed = true, true
+	if res, _ := RetireClaudeMem(context.Background(), o); !strings.Contains(res.Blocked, "--home") || len(rec.calls) != 0 {
+		t.Fatalf("apply under --home: %q %v", res.Blocked, rec.calls)
+	}
+
+	home := seedClaudeMemHome(t)
+	plain, err := RetireClaudeMem(context.Background(), retireOpts(home, &recorder{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain.ClaudeProfile != filepath.Join(home, ".claude") || plain.ClaudeProfileFromEnv || len(plain.OtherProfile) != 0 {
+		t.Fatalf("default profile: %+v", plain)
+	}
+	tilde := retireOpts(home, &recorder{})
+	tilde.Ambient = append(tilde.Ambient, "CLAUDE_CONFIG_DIR=~/.claude")
+	if tilde.defaults(); tilde.ClaudeProfileFromEnv() || tilde.claudeDir() != filepath.Join(home, ".claude") {
+		t.Fatalf("~/.claude is the default profile, got %q", tilde.claudeDir())
 	}
 }

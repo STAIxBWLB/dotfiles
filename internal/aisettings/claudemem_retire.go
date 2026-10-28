@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"os"
@@ -59,6 +60,15 @@ type RetireResult struct {
 	Archive  string
 	// Blocked is why --apply refused to start, empty otherwise. Nothing was changed.
 	Blocked string
+	// ClaudeProfile is the Claude config directory acted on; ClaudeProfileFromEnv says
+	// CLAUDE_CONFIG_DIR chose it instead of ~/.claude.
+	ClaudeProfile        string
+	ClaudeProfileFromEnv bool
+	// Backup are the existing files to copy before --apply: the run or the hand edits rewrite them.
+	Backup []string
+	// OtherProfile is claude-mem found in the default ~/.claude when another profile is
+	// active. The run leaves that profile alone.
+	OtherProfile []string
 }
 
 // Clean reports whether the read-back found no claude-mem residue.
@@ -191,7 +201,41 @@ func (o RetireOptions) ambient(key string) string {
 	return ambientValue(o.Ambient, key)
 }
 
-func (o RetireOptions) claudeDir() string { return filepath.Join(o.HomeDir, ".claude") }
+// expandHome expands a leading ~ against HomeDir and cleans the path.
+func (o RetireOptions) expandHome(raw string) string {
+	if raw == "~" || strings.HasPrefix(raw, "~/") {
+		raw = filepath.Join(o.HomeDir, strings.TrimPrefix(raw, "~"))
+	}
+	return filepath.Clean(raw)
+}
+
+// claudeDir is the active Claude profile: $CLAUDE_CONFIG_DIR (own home only, ~ expanded),
+// else ~/.claude. nativeEnv keeps the same ambient value, so the claude CLI and every file
+// read here name one profile. It is not resolved through symlinks: the path is shown as set.
+func (o RetireOptions) claudeDir() string {
+	if v := o.ambient("CLAUDE_CONFIG_DIR"); v != "" {
+		return o.expandHome(v)
+	}
+	return o.defaultClaudeDir()
+}
+
+func (o RetireOptions) defaultClaudeDir() string { return filepath.Join(o.HomeDir, ".claude") }
+
+// ClaudeProfileFromEnv says the active Claude profile is not the default ~/.claude.
+func (o RetireOptions) ClaudeProfileFromEnv() bool {
+	return !sameLocation(o.claudeDir(), o.defaultClaudeDir())
+}
+
+func sameLocation(a, b string) bool {
+	if ra, err := filepath.EvalSymlinks(a); err == nil {
+		a = ra
+	}
+	if rb, err := filepath.EvalSymlinks(b); err == nil {
+		b = rb
+	}
+	return filepath.Clean(a) == filepath.Clean(b)
+}
+
 func (o RetireOptions) agentsDir() string { return filepath.Join(o.HomeDir, "Library", "LaunchAgents") }
 
 // codexHome is $CODEX_HOME (own home only, ~ expanded), else ~/.codex.
@@ -200,10 +244,7 @@ func (o RetireOptions) codexHome() string {
 	if raw == "" {
 		return filepath.Join(o.HomeDir, ".codex")
 	}
-	if raw == "~" || strings.HasPrefix(raw, "~/") {
-		raw = filepath.Join(o.HomeDir, strings.TrimPrefix(raw, "~"))
-	}
-	raw = filepath.Clean(raw)
+	raw = o.expandHome(raw)
 	if resolved, err := filepath.EvalSymlinks(raw); err == nil {
 		return resolved
 	}
@@ -275,17 +316,19 @@ func (o RetireOptions) nativeEnv() []string {
 }
 
 // ImportEvidence counts the amem import cursors that hold a positive row id. `amem import
-// claude-mem` keeps one cursor file per curated store (<store>/import-state.json), keyed
+// claude-mem` keeps one cursor file per store it fills (<store>/import-state.json), keyed
 // by a hash of the source, alias and project, which dot cannot recompute: this proves an
 // import ran, not that it covered every project, and the person's confirmation covers the
-// rest. A shared-v1 home keeps it at the home itself, a generation home under
-// generations/<id>, a split home under projects/<hash> and user. A cursor of 0 means
-// nothing was handled and is not evidence.
+// rest. The curated store keeps it at the home itself (shared-v1), under generations/<id>
+// (generation) or under projects/<hash> and user (split). The work-list and capture stores
+// always live under the home's own projects/<hash>, as work and machine/<id> (amem 0.11.0
+// passes the memory home, never a generation or the user tier, as their base). A cursor of
+// 0 means nothing was handled and is not evidence.
 func (o RetireOptions) ImportEvidence() int {
 	home := o.amemHome()
 	var candidates []string
 	candidates = append(candidates, filepath.Join(home, "import-state.json"), filepath.Join(home, "user", "import-state.json"))
-	for _, pattern := range []string{"projects/*/import-state.json", "generations/*/import-state.json", "generations/*/projects/*/import-state.json", "generations/*/user/import-state.json"} {
+	for _, pattern := range []string{"projects/*/import-state.json", "projects/*/work/import-state.json", "projects/*/machine/*/import-state.json", "generations/*/import-state.json", "generations/*/projects/*/import-state.json", "generations/*/user/import-state.json"} {
 		matches, _ := filepath.Glob(filepath.Join(home, pattern))
 		candidates = append(candidates, matches...)
 	}
@@ -295,18 +338,29 @@ func (o RetireOptions) ImportEvidence() int {
 		if err != nil {
 			continue
 		}
-		var cursors map[string]json.Number
-		if json.Unmarshal(raw, &cursors) != nil {
+		// UseNumber keeps a quoted "8205" a string, which amem does not read as a cursor either.
+		var cursors map[string]any
+		dec := json.NewDecoder(bytes.NewReader(raw))
+		dec.UseNumber()
+		if dec.Decode(&cursors) != nil {
 			continue
 		}
+		if _, err := dec.Token(); err != io.EOF {
+			continue // trailing content: amem's JSON.parse rejects the whole file
+		}
 		for _, value := range cursors {
-			if id, err := value.Int64(); err == nil && id > 0 {
+			if num, ok := value.(json.Number); ok && positiveInt(num) {
 				n++
 				break
 			}
 		}
 	}
 	return n
+}
+
+func positiveInt(num json.Number) bool {
+	id, err := num.Int64()
+	return err == nil && id > 0
 }
 
 // RetireClaudeMem plans, and with Apply runs, the retirement of claude-mem:
@@ -325,9 +379,11 @@ func RetireClaudeMem(ctx context.Context, opts RetireOptions) (RetireResult, err
 	if opts.HomeDir == "" || !filepath.IsAbs(opts.HomeDir) {
 		return RetireResult{}, fmt.Errorf("retire needs an absolute home directory")
 	}
-	result := RetireResult{Apply: opts.Apply}
+	result := RetireResult{Apply: opts.Apply, ClaudeProfile: opts.claudeDir(), ClaudeProfileFromEnv: opts.ClaudeProfileFromEnv()}
 	result.Steps = opts.plan()
 	result.Manual = opts.manualEdits()
+	result.Backup = opts.backupFiles(result.Steps)
+	result.OtherProfile = opts.otherProfile()
 	if opts.Apply {
 		if blocked := opts.gate(ctx, result.Steps); blocked != "" {
 			result.Blocked = blocked
@@ -364,7 +420,7 @@ func (o RetireOptions) gate(ctx context.Context, steps []RetireStep) string {
 		return "refusing to retire: the import into amem is not confirmed; run `amem import claude-mem`, check it, then pass --import-complete"
 	}
 	if o.ImportEvidence() == 0 {
-		return "refusing to retire: no amem import cursor with a handled row under " + o.amemHome() + " (shared, generation and split layouts are checked); run `amem import claude-mem` first"
+		return "refusing to retire: no amem import cursor with a handled row under " + o.amemHome() + " (shared, generation, split, work-list and capture layouts are checked); run `amem import claude-mem` first"
 	}
 	if live := o.runningWorker(ctx); live != "" {
 		return "refusing to retire: " + live + "; stop claude-mem (quit the Claude and Codex sessions that load it), then re-run. Nothing was changed"
@@ -593,23 +649,69 @@ func (o RetireOptions) removeLaunchAgent(ctx context.Context, env []string, plis
 // dot did not write. A file that cannot be read is named, never skipped.
 func (o RetireOptions) manualEdits() []string {
 	var out []string
-	scan := func(path string) {
-		raw, state, err := readFileState(path)
-		switch state {
-		case unknown:
-			out = append(out, fmt.Sprintf("%s: could not be read (%v); check it for claude-mem lines by hand", path, err))
-		case present:
-			for n, line := range strings.Split(string(raw), "\n") {
-				if strings.Contains(line, "claude-mem") {
-					out = append(out, fmt.Sprintf("%s line %d: remove %s", path, n+1, strings.TrimSpace(line)))
-				}
+	for _, path := range []string{filepath.Join(o.claudeDir(), "settings.json"), filepath.Join(o.claudeDir(), "settings.local.json"),
+		o.codexConfig(), filepath.Join(o.agentsDir(), claudeMemWorkerLabel+".plist")} {
+		out = append(out, claudeMemLines(path)...)
+	}
+	return out
+}
+
+// claudeMemLines names every line of path that mentions claude-mem, or says the file could not be read.
+func claudeMemLines(path string) []string {
+	var out []string
+	raw, state, err := readFileState(path)
+	switch state {
+	case unknown:
+		out = append(out, fmt.Sprintf("%s: could not be read (%v); check it for claude-mem lines by hand", path, err))
+	case present:
+		for n, line := range strings.Split(string(raw), "\n") {
+			if strings.Contains(line, "claude-mem") {
+				out = append(out, fmt.Sprintf("%s line %d: remove %s", path, n+1, strings.TrimSpace(line)))
 			}
 		}
 	}
-	scan(filepath.Join(o.claudeDir(), "settings.json"))
-	scan(filepath.Join(o.claudeDir(), "settings.local.json"))
-	scan(o.codexConfig())
-	scan(filepath.Join(o.agentsDir(), claudeMemWorkerLabel+".plist"))
+	return out
+}
+
+// backupFiles are the existing files the run or the person's hand edits rewrite: the active Claude
+// profile's settings and plugin registry, the Codex config, and each MCP config with a claude-mem entry.
+func (o RetireOptions) backupFiles(steps []RetireStep) []string {
+	paths := []string{filepath.Join(o.claudeDir(), "settings.json"), filepath.Join(o.claudeDir(), "settings.local.json"),
+		filepath.Join(o.claudeDir(), "plugins", "installed_plugins.json"), filepath.Join(o.claudeDir(), "plugins", "known_marketplaces.json"), o.codexConfig()}
+	for _, step := range steps {
+		if step.Kind == "mcp" && step.Status != RetireAbsent {
+			paths = append(paths, step.Target)
+		}
+	}
+	var out []string
+	seen := map[string]bool{}
+	for _, path := range paths {
+		if !seen[path] && exists(path) {
+			seen[path] = true
+			out = append(out, path)
+		}
+	}
+	return out
+}
+
+// otherProfile is claude-mem left in the default ~/.claude while CLAUDE_CONFIG_DIR selects another
+// Claude profile. The run never touches that profile; it is reported so the person can retire it too.
+func (o RetireOptions) otherProfile() []string {
+	if !o.ClaudeProfileFromEnv() {
+		return nil
+	}
+	def := o.defaultClaudeDir()
+	var out []string
+	plugins := filepath.Join(def, "plugins", "installed_plugins.json")
+	switch state, err := jsonKeyState(plugins, "plugins", claudeMemPluginID); state {
+	case present:
+		out = append(out, plugins+": "+claudeMemPluginID+" is installed")
+	case unknown:
+		out = append(out, plugins+": could not be read ("+err.Error()+")")
+	}
+	for _, name := range []string{"settings.json", "settings.local.json"} {
+		out = append(out, claudeMemLines(filepath.Join(def, name))...)
+	}
 	return out
 }
 

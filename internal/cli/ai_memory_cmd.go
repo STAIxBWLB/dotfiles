@@ -226,8 +226,13 @@ left on the machine; it changes nothing. With --apply, in order, it:
      and refuses while a claude-mem process runs);
   5. reads back that no claude-mem process, port, hook or LaunchAgent remains.
 
-It never edits ~/.claude/settings.json, which Claude Code owns: the exact lines
-to remove are printed for you. --apply refuses unless --import-complete says
+Claude Code is handled in its active profile: $CLAUDE_CONFIG_DIR when set,
+else ~/.claude. The dry run names that profile, the files to back up before
+--apply, and any claude-mem left in the default ~/.claude while another
+profile is active (that profile is never changed; run again with
+CLAUDE_CONFIG_DIR unset to retire it). It never edits the profile's
+settings.json, which Claude Code owns: the exact lines to remove are printed
+for you. --apply refuses unless --import-complete says
 the 'amem import claude-mem' run is done and an amem import cursor exists.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -278,6 +283,11 @@ func printRetireResult(p *Printer, r aisettings.RetireResult) {
 	} else {
 		p.Header("Retire claude-mem (dry run: nothing is changed)")
 	}
+	source := "default"
+	if r.ClaudeProfileFromEnv {
+		source = "CLAUDE_CONFIG_DIR"
+	}
+	p.Line("Claude profile: %s (%s)", r.ClaudeProfile, source)
 	p.Section("Steps")
 	for _, step := range r.Steps {
 		p.Line("  [%-6s] %-24s %s", step.Status, step.ID, step.Action)
@@ -288,6 +298,18 @@ func printRetireResult(p *Printer, r aisettings.RetireResult) {
 	if len(r.Manual) > 0 {
 		p.Section("Edit by hand (Claude Code owns this file; dot never writes it)")
 		for _, line := range r.Manual {
+			p.Line("  %s", line)
+		}
+	}
+	if len(r.Backup) > 0 && (!r.Apply || r.Blocked != "") {
+		p.Section("Back up before --apply (the run or your edits rewrite these)")
+		for _, path := range r.Backup {
+			p.Line("  %s", path)
+		}
+	}
+	if len(r.OtherProfile) > 0 {
+		p.Section("Default Claude profile (not changed by this run; retire it with `env -u CLAUDE_CONFIG_DIR dot ai memory retire-claude-mem`)")
+		for _, line := range r.OtherProfile {
 			p.Line("  %s", line)
 		}
 	}

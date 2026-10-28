@@ -178,8 +178,10 @@ tool):
   and plugin through `claude plugin marketplace remove` and `claude plugin
   uninstall`, and the Codex ones through `codex plugin remove` and `codex
   plugin marketplace remove`, never by editing their files directly. Lines in
-  `~/.claude/settings.json` that name claude-mem are printed for the person to
-  remove; dot never writes that file.
+  the active Claude profile's `settings.json` (`$CLAUDE_CONFIG_DIR`, else
+  `~/.claude`) that name claude-mem are printed for the person to remove; dot
+  never writes that file, and never touches a Claude profile other than the
+  active one.
 - the Homebrew service `sh.brew.container`
   (`~/Library/LaunchAgents/sh.brew.container.plist`) — created by
   `brew services start container`, which `dot container setup` runs on macOS
