@@ -12,7 +12,7 @@ func fakeVmem(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "vmem")
-	writeCLITestFile(t, path, "#!/bin/sh\necho 0.2.0\n")
+	writeCLITestFile(t, path, "#!/bin/sh\necho 0.2.1\n")
 	if err := os.Chmod(path, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestVaultStatusWarnsWhileObsidianIsRegistered(t *testing.T) {
 			t.Fatalf("status misses the obsidian warning for %s:\n%s", path, combined)
 		}
 	}
-	if !strings.Contains(combined, "0.2.0 (expected 0.2.0)") {
+	if !strings.Contains(combined, "0.2.1 (expected 0.2.1)") {
 		t.Fatalf("version line:\n%s", combined)
 	}
 	clean := t.TempDir()

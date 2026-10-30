@@ -277,7 +277,7 @@ The vault is written only through [vmem](https://github.com/STAIxBWLB/vault-mem)
 (`@staix/vault-mem`), which replaces the generic Obsidian MCP server
 (`obsidian`, `@bitbonsai/mcpvault`). dot registers it but never installs it.
 Install the exact version `dot ai vault status` names (`@staix/vault-mem`
-0.2.0), then:
+0.2.1), then:
 
 ```bash
 vmem setup all --apply             # Claude Code, Codex, Kimi, Qwen, pi, jcode
