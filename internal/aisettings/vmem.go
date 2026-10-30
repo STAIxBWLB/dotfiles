@@ -14,10 +14,10 @@ import (
 )
 
 // VmemPinnedVersion is the exact @staix/vault-mem release dot expects. dot never installs it: the person
-// installs this exact version (`bun add -g @staix/vault-mem@0.1.2`) and `dot ai vault status` compares
+// installs this exact version (`bun add -g @staix/vault-mem@0.2.0`) and `dot ai vault status` compares
 // against it. The `vmem mcp` and `vmem setup <host>` forms printed here and the tool names in
-// internal/aipolicy match the 0.1.2 release (tag v0.1.2; its tool list is unchanged from 0.1.0).
-const VmemPinnedVersion = "0.1.2"
+// internal/aipolicy match the 0.2.0 release (tag v0.2.0; its tool list is unchanged from 0.1.0).
+const VmemPinnedVersion = "0.2.0"
 
 // VmemServerName is the MCP server name vmem is registered under. Tool names reach agents as
 // mcp__vmem__vmem_search and so on.
