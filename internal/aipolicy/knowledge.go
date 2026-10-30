@@ -19,7 +19,7 @@ type KnowledgeApproval struct {
 	ApprovalMode string `json:"approval_mode"`
 }
 
-// vaultKnowledgeTools is vmem's frozen MCP surface (@staix/vault-mem 0.1.1 VMEM_TOOL_NAMES, plan
+// vaultKnowledgeTools is vmem's frozen MCP surface (@staix/vault-mem 0.1.2 VMEM_TOOL_NAMES, plan
 // ai-workspace#60 §3.2): every tool, the two-step ones included. vmem_move, vmem_delete, vmem_promote and
 // vmem_promote_from_amem return a preview and a fingerprint and write only on a second call with
 // confirm=true and that fingerprint, so the preview is the guard; a narrower list for unattended tasks is
