@@ -238,12 +238,12 @@ func TestCodexEndpointOverrideConflicts(t *testing.T) {
 	}
 }
 func TestKnowledgeAskDenyPrecedence(t *testing.T) {
-	for _, rule := range []string{"mcp__obsidian__write_note", "mcp__obsidian__*", "mcp__*", "mcp__obsidian"} {
+	for _, rule := range []string{"mcp__vmem__vmem_create", "mcp__vmem__*", "mcp__*", "mcp__vmem"} {
 		home := t.TempDir()
 		if err := os.WriteFile(filepath.Join(home, "settings.json"), []byte(`{"permissions":{"ask":["`+rule+`"]}}`), 0600); err != nil {
 			t.Fatal(err)
 		}
-		conflicts, err := KnowledgeConflicts(Runtime{Agent: "claude", Home: home}, "", []KnowledgeApproval{{Server: "obsidian", Tool: "write_note", ApprovalMode: "approve"}})
+		conflicts, err := KnowledgeConflicts(Runtime{Agent: "claude", Home: home}, "", []KnowledgeApproval{{Server: "vmem", Tool: "vmem_create", ApprovalMode: "approve"}})
 		if err != nil || len(conflicts) == 0 {
 			t.Fatalf("rule %s: %v %v", rule, conflicts, err)
 		}
@@ -252,20 +252,20 @@ func TestKnowledgeAskDenyPrecedence(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, ".claude"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, ".claude", "settings.local.json"), []byte(`{"permissions":{"deny":["mcp__obsidian__write_note"]}}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".claude", "settings.local.json"), []byte(`{"permissions":{"deny":["mcp__vmem__vmem_create"]}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	conflicts, err := KnowledgeConflicts(Runtime{Agent: "claude", Home: t.TempDir()}, filepath.Join(root, "nested"), []KnowledgeApproval{{Server: "obsidian", Tool: "write_note", ApprovalMode: "approve"}})
+	conflicts, err := KnowledgeConflicts(Runtime{Agent: "claude", Home: t.TempDir()}, filepath.Join(root, "nested"), []KnowledgeApproval{{Server: "vmem", Tool: "vmem_create", ApprovalMode: "approve"}})
 	if err != nil || len(conflicts) == 0 {
 		t.Fatalf("ancestor deny: %v %v", conflicts, err)
 	}
 }
 func TestKnowledgeDeleteOnlyRulePreserved(t *testing.T) {
 	home := t.TempDir()
-	if err := os.WriteFile(filepath.Join(home, "settings.json"), []byte(`{"permissions":{"ask":["mcp__obsidian__delete_note"]}}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(home, "settings.json"), []byte(`{"permissions":{"ask":["mcp__vmem__vmem_delete"]}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	conflicts, err := KnowledgeConflicts(Runtime{Agent: "claude", Home: home}, "", []KnowledgeApproval{{Server: "obsidian", Tool: "write_note", ApprovalMode: "approve"}})
+	conflicts, err := KnowledgeConflicts(Runtime{Agent: "claude", Home: home}, "", []KnowledgeApproval{{Server: "vmem", Tool: "vmem_create", ApprovalMode: "approve"}})
 	if err != nil || len(conflicts) != 0 {
 		t.Fatalf("unrelated delete ask: %v %v", conflicts, err)
 	}
@@ -273,7 +273,7 @@ func TestKnowledgeDeleteOnlyRulePreserved(t *testing.T) {
 
 func TestKnowledgeConflictDoesNotFallbackToOtherTarget(t *testing.T) {
 	p, i := fixture(t)
-	if err := os.WriteFile(filepath.Join(i[0].Home, "settings.json"), []byte(`{"permissions":{"deny":["mcp__obsidian__write_note"]}}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(i[0].Home, "settings.json"), []byte(`{"permissions":{"deny":["mcp__vmem__vmem_create"]}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	other := p.Targets[0]

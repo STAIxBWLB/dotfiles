@@ -74,6 +74,8 @@ Portable AI snapshots exclude skill roots, auth by default, caches, histories, d
 
 `dot ai memory install|status` register amem's MCP server for Kiro and Copilot and report its health (`dot` never installs amem; `amem setup` registers Claude Code, Codex, Kimi, Qwen, pi and Antigravity). `dot ai memory retire-claude-mem` is a dry run unless `--apply` is given; see the README. The former `dot ai memory sync|update|bridge` commands and the hourly peer sync LaunchAgent are gone: amem syncs through its own git refs and has no resident process.
 
+`dot ai vault install|status` register vmem's MCP server for Kiro and Copilot and report its health, warning while the retired `obsidian` server is still registered (`dot` never installs vmem; `vmem setup` registers Claude Code, Codex, Kimi, Qwen, pi, jcode and Antigravity). `dot ai vault retire-mcpvault` is a dry run unless `--apply` is given and only edits the Kiro and Copilot configs.
+
 ## Apps and profile snapshots
 
 `dot apps` manages cask installation and per-host settings. A profile snapshot contains config, install and backup lists, metadata, and optional age keys at `<backup-root>/profiles/<hostname>/<version>/`.

@@ -273,6 +273,30 @@ process is running (quit the Claude and Codex sessions that load it first), when
 a file it must read cannot be read, and under `--home`; the dry run works with
 `--home` and reads nothing from your shell environment.
 
+The vault is written only through [vmem](https://github.com/STAIxBWLB/vault-mem)
+(`@staix/vault-mem`), which replaces the generic Obsidian MCP server
+(`obsidian`, `@bitbonsai/mcpvault`). dot registers it but never installs it.
+Install the exact version `dot ai vault status` names (`@staix/vault-mem`
+0.1.1), then:
+
+```bash
+vmem setup all --apply             # Claude Code, Codex, Kimi, Qwen, pi, jcode
+vmem setup agy --apply             # inside each workspace that uses Antigravity
+dot ai vault install --dry-run     # what would change; nothing is written
+dot ai vault install               # add `vmem mcp` to Kiro and Copilot, write the vault block
+dot ai vault status                # warns while `obsidian` is still registered
+dot ai vault retire-mcpvault       # dry run: every file it would change
+dot ai vault retire-mcpvault --apply
+```
+
+`vmem setup` registers the server as `vmem` (granted as `mcp__vmem__vmem_*`)
+and keeps undo receipts, so dot writes only the Kiro and Copilot entries and the
+agents SSOT vault block (after a backup). Bindings to `obsidian` earn no grant.
+`retire-mcpvault` removes `mcpServers.obsidian` from the Kiro and Copilot
+configs only; for Claude Code and Codex it prints `claude mcp remove obsidian
+--scope user` and the `[mcp_servers.obsidian*]` tables to delete, and it refuses
+while vmem is not on PATH.
+
 Portable desired state lives under `modules.ai.tooling`: `agents`, `tools`,
 `skills`, optional version `pins`, and `updates.enabled`. Machine-specific
 paths and installation provenance are resolved locally and recorded in private

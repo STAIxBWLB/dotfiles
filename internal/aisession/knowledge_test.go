@@ -13,8 +13,8 @@ import (
 func testKnowledgeGrants(agent string) []aipolicy.KnowledgeApproval {
 	server, plugin := "amem", ""
 	return []aipolicy.KnowledgeApproval{
-		{Server: "obsidian", Tool: "read_note", ApprovalMode: "approve"},
-		{Server: "obsidian", Tool: "write_note", ApprovalMode: "approve"},
+		{Server: "vmem", Tool: "vmem_read", ApprovalMode: "approve"},
+		{Server: "vmem", Tool: "vmem_create", ApprovalMode: "approve"},
 		{Server: server, Plugin: plugin, Tool: "amem_search", ApprovalMode: "approve"},
 		{Server: server, Plugin: plugin, Tool: "amem_work_state_write", ApprovalMode: "approve"},
 	}
@@ -36,7 +36,7 @@ func TestKnowledgeSemanticRetention(t *testing.T) {
 	}
 }
 func TestReducedKnowledgeStopsBeforeBudgetAndLaunch(t *testing.T) {
-	for _, removed := range []string{"write_note", "amem_work_state_write", "all"} {
+	for _, removed := range []string{"vmem_create", "amem_work_state_write", "all"} {
 		t.Run(removed, func(t *testing.T) {
 			o, home := fixture(t, "claude")
 			o.Resolution.KnowledgeApprovals = testKnowledgeGrants("claude")
@@ -71,8 +71,10 @@ func TestReducedKnowledgeStopsBeforeBudgetAndLaunch(t *testing.T) {
 func TestKnowledgeNormalizationRejectsUntrustedBindings(t *testing.T) {
 	for _, grant := range []aipolicy.KnowledgeApproval{
 		{Server: "other-memory", Tool: "amem_search", ApprovalMode: "approve"},
-		{Server: "obsidian", Tool: "delete_note", ApprovalMode: "approve"},
-		{Server: "obsidian", Tool: "read_note", ApprovalMode: "ask"},
+		{Server: "obsidian", Tool: "read_note", ApprovalMode: "approve"}, // the retired Obsidian server earns no grant
+		{Server: "obsidian", Tool: "vmem_read", ApprovalMode: "approve"},
+		{Server: "vmem", Tool: "delete_note", ApprovalMode: "approve"},
+		{Server: "vmem", Tool: "vmem_read", ApprovalMode: "ask"},
 	} {
 		if err := RetainKnowledge(aipolicy.Resolution{Agent: "claude"}, aipolicy.Resolution{Agent: "claude", KnowledgeApprovals: []aipolicy.KnowledgeApproval{grant}}); err == nil {
 			t.Fatalf("invalid grant accepted: %+v", grant)

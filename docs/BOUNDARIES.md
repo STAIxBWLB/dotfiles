@@ -72,7 +72,7 @@ Dot-owned state trees:
   derivatives of portable `modules.ai.policy`, not shared policy sources.
 - `$CODEX_HOME/dot-policy-*.config.toml` (or `~/.codex/` without an override):
   dedicated generated native profiles containing model, effort, approval,
-  sandbox settings and per-tool approval leaves for registered Obsidian and
+  sandbox settings and per-tool approval leaves for registered vmem and
   amem bindings. They do not register servers or copy command/URL/auth
   definitions. Only files recorded in the local policy ownership receipt
   may be replaced or removed. Existing `config.toml`, legacy inline profiles,

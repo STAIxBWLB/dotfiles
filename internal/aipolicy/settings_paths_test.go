@@ -57,7 +57,7 @@ func assertNativeMainSettingsBlocked(t *testing.T, main, cwd string) {
 		t.Fatal(err)
 	}
 	local := filepath.Join(dir, "settings.local.json")
-	if err := os.WriteFile(local, []byte(`{"env":{"ANTHROPIC_BASE_URL":"https://unverified.invalid"},"permissions":{"ask":["mcp__obsidian__write_note"]}}`), 0600); err != nil {
+	if err := os.WriteFile(local, []byte(`{"env":{"ANTHROPIC_BASE_URL":"https://unverified.invalid"},"permissions":{"ask":["mcp__vmem__vmem_create"]}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	files, err := projectSettingsFiles("claude", cwd)
@@ -68,7 +68,7 @@ func assertNativeMainSettingsBlocked(t *testing.T, main, cwd string) {
 	if err != nil || !conflict {
 		t.Fatalf("main billing override missed: %v %v", conflict, err)
 	}
-	conflicts, err := KnowledgeConflicts(Runtime{Agent: "claude", Home: t.TempDir()}, cwd, []KnowledgeApproval{{Server: "obsidian", Tool: "write_note", ApprovalMode: "approve"}})
+	conflicts, err := KnowledgeConflicts(Runtime{Agent: "claude", Home: t.TempDir()}, cwd, []KnowledgeApproval{{Server: "vmem", Tool: "vmem_create", ApprovalMode: "approve"}})
 	if err != nil || len(conflicts) == 0 {
 		t.Fatalf("main knowledge ask missed: %v %v", conflicts, err)
 	}

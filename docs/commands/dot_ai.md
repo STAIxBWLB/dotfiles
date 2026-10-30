@@ -55,4 +55,5 @@ they are machine state pi rebuilds itself.
 * [dot ai status](dot_ai_status.md)	 - Show AI settings live/backup status
 * [dot ai tools](dot_ai_tools.md)	 - Inspect or reconcile selected development tooling
 * [dot ai update](dot_ai_update.md)	 - Update explicitly selected agent CLIs and development tools
+* [dot ai vault](dot_ai_vault.md)	 - Register vmem as the vault writer and retire the Obsidian MCP server
 
