@@ -42,7 +42,7 @@ func knowledgeSet(resolution aipolicy.Resolution) (map[string]bool, error) {
 	result := map[string]bool{}
 	for _, grant := range resolution.KnowledgeApprovals {
 		scope := "memory"
-		if grant.Server == "obsidian" {
+		if grant.Server == "vmem" {
 			scope = "vault"
 		}
 		result[scope+"/"+grant.Tool] = true

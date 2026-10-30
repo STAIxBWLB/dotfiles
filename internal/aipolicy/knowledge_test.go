@@ -17,7 +17,7 @@ func TestKnowledgeCodexRequiresExistingBindings(t *testing.T) {
 	if err != nil || len(grants) != 0 {
 		t.Fatalf("%+v %v", grants, err)
 	}
-	native := []byte("[mcp_servers.obsidian]\ncommand = \"obsidian-mcp\"\n[mcp_servers.amem]\ncommand = \"/opt/bin/amem\"\nargs = [\"mcp\"]\n")
+	native := []byte("[mcp_servers.vmem]\ncommand = \"/opt/bin/vmem\"\nargs = [\"mcp\"]\n[mcp_servers.amem]\ncommand = \"/opt/bin/amem\"\nargs = [\"mcp\"]\n")
 	if err = os.WriteFile(filepath.Join(home, "config.toml"), native, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -30,12 +30,12 @@ func TestKnowledgeCodexRequiresExistingBindings(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(args, " ")
-	for _, expected := range []string{"write_note", "mcp_servers.amem.tools.amem_search.approval_mode", "mcp_servers.amem.tools.amem_work_state_write.approval_mode", "mcp_servers.amem.tools.amem_remember.approval_mode", "approval_mode=\"approve\""} {
+	for _, expected := range []string{"mcp_servers.vmem.tools.vmem_create.approval_mode", "mcp_servers.vmem.tools.vmem_move.approval_mode", "mcp_servers.amem.tools.amem_search.approval_mode", "mcp_servers.amem.tools.amem_work_state_write.approval_mode", "mcp_servers.amem.tools.amem_remember.approval_mode", "approval_mode=\"approve\""} {
 		if !strings.Contains(joined, expected) {
 			t.Fatalf("missing %s in %s", expected, joined)
 		}
 	}
-	for _, excluded := range []string{"delete_note", "move_file", "move_note", "build_corpus", "prime_corpus", "command=", "url=", "claude-mem", "mcp-search", "plugins."} {
+	for _, excluded := range []string{"obsidian", "write_note", "delete_note", "move_file", "build_corpus", "prime_corpus", "command=", "url=", "claude-mem", "mcp-search", "plugins."} {
 		if strings.Contains(joined, excluded) {
 			t.Fatalf("unexpected %s", excluded)
 		}
@@ -186,13 +186,13 @@ func TestKnowledgeClaudePreciseGrants(t *testing.T) {
 	if err != nil || len(args) != 2 || args[0] != "--allowedTools" {
 		t.Fatalf("%+v %v", args, err)
 	}
-	for _, name := range []string{"mcp__obsidian__write_note", "mcp__obsidian__patch_note", "mcp__amem__amem_work_state_write", "mcp__amem__amem_remember", "mcp__amem__amem_search"} {
+	for _, name := range []string{"mcp__vmem__vmem_create", "mcp__vmem__vmem_patch", "mcp__vmem__vmem_delete", "mcp__amem__amem_work_state_write", "mcp__amem__amem_remember", "mcp__amem__amem_search"} {
 		if !strings.Contains(args[1], name) {
 			t.Fatal(name)
 		}
 	}
-	for _, tool := range []string{"delete_note", "move_note", "build_corpus", "*"} {
-		if _, err := KnowledgeArgs(runtime, []KnowledgeApproval{{Server: "obsidian", Tool: tool, ApprovalMode: "approve"}}); err == nil {
+	for _, tool := range []string{"delete_note", "move_note", "build_corpus", "*", "vmem_*"} {
+		if _, err := KnowledgeArgs(runtime, []KnowledgeApproval{{Server: "vmem", Tool: tool, ApprovalMode: "approve"}}); err == nil {
 			t.Fatal("unsafe grant accepted")
 		}
 	}
@@ -205,7 +205,7 @@ func TestKnowledgeOverlayContainsOnlyPermissionLeaves(t *testing.T) {
 	if err := os.MkdirAll(home, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("[mcp_servers.obsidian]\ncommand = \"private-executable\"\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("[mcp_servers.vmem]\ncommand = \"private-executable\"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	inventory := []Runtime{{Agent: "codex", Home: home, Version: "0.157.1", Available: true, AutoReview: true, SubscriptionVerified: true}}
@@ -217,14 +217,14 @@ func TestKnowledgeOverlayContainsOnlyPermissionLeaves(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "\"write_note\".approval_mode = \"approve\"") || strings.Contains(string(data), "private-executable") {
+	if !strings.Contains(string(data), "\"vmem_create\".approval_mode = \"approve\"") || strings.Contains(string(data), "private-executable") {
 		t.Fatalf("%s", data)
 	}
 }
 
 func TestKnowledgeCanonicalDeclaredHome(t *testing.T) {
 	home := t.TempDir()
-	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("[mcp_servers.obsidian]\ncommand = \"obsidian-mcp\"\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("[mcp_servers.vmem]\ncommand = \"/opt/bin/vmem\"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	grants, err := KnowledgeApprovals(Runtime{Agent: "codex", Home: home})
@@ -236,7 +236,7 @@ func TestKnowledgeCanonicalDeclaredHome(t *testing.T) {
 func TestKnowledgeCodexCLIUsesNativeRawSegments(t *testing.T) {
 	runtime := Runtime{Agent: "codex"}
 	grants := []KnowledgeApproval{
-		{Server: "obsidian", Tool: "write_note", ApprovalMode: "approve"},
+		{Server: "vmem", Tool: "vmem_create", ApprovalMode: "approve"},
 		{Server: "amem", Tool: "amem_work_state_write", ApprovalMode: "approve"},
 	}
 	args, err := KnowledgeArgs(runtime, grants)
@@ -246,7 +246,7 @@ func TestKnowledgeCodexCLIUsesNativeRawSegments(t *testing.T) {
 	// Model Codex's actual override-key parser: split raw key by dots. Quotes
 	// are literal key characters here, although native TOML files need them.
 	expected := [][]string{
-		{"mcp_servers", "obsidian", "tools", "write_note", "approval_mode"},
+		{"mcp_servers", "vmem", "tools", "vmem_create", "approval_mode"},
 		{"mcp_servers", "amem", "tools", "amem_work_state_write", "approval_mode"},
 	}
 	for i, parts := range expected {
@@ -282,5 +282,53 @@ func TestClaudeGrantNamesTheServerThatInstallRegisters(t *testing.T) {
 	args, err := KnowledgeArgs(Runtime{Agent: "claude"}, []KnowledgeApproval{{Server: memoryServer, Tool: "amem_search", ApprovalMode: "approve"}})
 	if err != nil || len(args) != 2 || args[1] != "mcp__amem__amem_search" {
 		t.Fatalf("claude pattern %v err=%v, want mcp__amem__amem_search", args, err)
+	}
+}
+
+// vmem's grant set is its frozen 0.1.0 tool list, and only the vmem server earns it.
+func TestKnowledgeVaultToolsAreVmemsFrozenSurface(t *testing.T) {
+	want := []string{"vmem_append", "vmem_check", "vmem_create", "vmem_delete", "vmem_graph_build", "vmem_graph_neighbors", "vmem_link", "vmem_links", "vmem_lint", "vmem_list", "vmem_log_append", "vmem_log_tail", "vmem_mocs", "vmem_move", "vmem_patch", "vmem_promote", "vmem_promote_from_amem", "vmem_read", "vmem_read_many", "vmem_search", "vmem_set_frontmatter", "vmem_status", "vmem_supersede"}
+	if strings.Join(vaultKnowledgeTools, ",") != strings.Join(want, ",") {
+		t.Fatalf("vault tools drifted from vault-mem VMEM_TOOL_NAMES: %v", vaultKnowledgeTools)
+	}
+	for _, agent := range []string{"claude", "codex"} {
+		if _, err := KnowledgeArgs(Runtime{Agent: agent}, []KnowledgeApproval{{Server: "vmem", Tool: "vmem_search", ApprovalMode: "approve"}}); err != nil {
+			t.Errorf("%s refused vmem's own tool: %v", agent, err)
+		}
+		for _, grant := range []KnowledgeApproval{
+			{Server: "obsidian", Tool: "read_note", ApprovalMode: "approve"},
+			{Server: "obsidian", Tool: "write_note", ApprovalMode: "approve"},
+			{Server: "obsidian", Tool: "vmem_search", ApprovalMode: "approve"},
+			{Server: "vmem", Tool: "read_note", ApprovalMode: "approve"},
+			{Server: "amem", Tool: "vmem_search", ApprovalMode: "approve"},
+		} {
+			if _, err := KnowledgeArgs(Runtime{Agent: agent}, []KnowledgeApproval{grant}); err == nil {
+				t.Errorf("%s granted %+v", agent, grant)
+			}
+		}
+	}
+}
+
+// A Codex config that still registers the retired obsidian server earns no vault grant.
+func TestKnowledgeCodexObsidianBindingEarnsNoGrant(t *testing.T) {
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("[mcp_servers.obsidian]\ncommand = \"obsidian-mcp\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	grants, err := KnowledgeApprovals(Runtime{Agent: "codex", Home: home})
+	if err != nil || len(grants) != 0 {
+		t.Fatalf("obsidian binding granted: %+v %v", grants, err)
+	}
+	grants, err = KnowledgeApprovals(Runtime{Agent: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, grant := range grants {
+		if grant.Server == "obsidian" {
+			t.Fatalf("claude grant on obsidian: %+v", grant)
+		}
 	}
 }

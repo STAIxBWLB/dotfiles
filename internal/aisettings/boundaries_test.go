@@ -49,23 +49,20 @@ type pathBoundaryEntry struct {
 // resolvers, not a cleverer matcher.
 var pathBoundaryTable = []pathBoundaryEntry{
 	{"AIEventsPath", classHomeWrite},
-	{"InstructionPath", classHomeWrite},
 	{"AgentsManager.SSOTDirPath", classCallerRooted},
 	{"AgentsManager.SSOTPath", classCallerRooted},
 	{"AgentsManager.StatePath", classHomeWrite},
 	{"AgentsManager.TargetPath", classHomeWrite},
 	{"AgentsManager.backupTargetPath", classHomeWrite},
 	{"AgentsManager.legacyStatePath", classCallerRooted},
+	{"AmemManager.AntigravityMCPPath", classHomeWrite},
 	{"AmemManager.CopilotMCPPath", classHomeWrite},
 	{"AmemManager.KimiMCPPath", classHomeWrite},
-	{"AmemManager.QwenMCPPath", classHomeWrite},
-	{"AmemManager.AntigravityMCPPath", classHomeWrite},
-	{"AmemManager.PiAgentsPath", classHomeWrite},
 	{"AmemManager.KiroMCPPath", classHomeWrite},
+	{"AmemManager.PiAgentsPath", classHomeWrite},
+	{"AmemManager.QwenMCPPath", classHomeWrite},
 	{"CoauthorGuardManager.SSOTPath", classHomeWrite},
 	{"CoauthorGuardManager.dotManagedHooksPath", classTransform},
-	{"PreserveForeignHooksPath", classTransform},
-	{"RetireOptions.archivePath", classHomeWrite},
 	{"CoauthorGuardManager.gitConfigPath", classHomeWrite},
 	{"CoauthorGuardManager.hookPath", classHomeWrite},
 	{"Engine.LatestPointerPath", classCallerRooted},
@@ -73,7 +70,14 @@ var pathBoundaryTable = []pathBoundaryEntry{
 	{"Engine.copyMaterializedPath", classTransform},
 	{"HUDManager.claudeScriptPath", classHomeWrite},
 	{"HUDManager.codexConfigPath", classHomeWrite},
+	{"InstructionPath", classHomeWrite},
+	{"PreserveForeignHooksPath", classTransform},
+	{"RetireOptions.archivePath", classHomeWrite},
 	{"SkillsManager.DefaultMaruSSOTPath", classReadOnly},
+	{"VmemManager.ClaudeConfigPath", classReadOnly}, // status and the retire dry run only read it; Claude Code owns it
+	{"VmemManager.CodexConfigPath", classReadOnly},  // status and the retire dry run only read it; the person owns it
+	{"VmemManager.CopilotMCPPath", classHomeWrite},
+	{"VmemManager.KiroMCPPath", classHomeWrite},
 	{"canonicalSkillPath", classTransform},
 	{"normalizeGitPath", classTransform},
 	{"validateMaterializedPath", classTransform},
@@ -316,6 +320,10 @@ func resolveHomeWrite(t *testing.T, name, home string) string {
 		return (&AmemManager{HomeDir: home}).PiAgentsPath()
 	case "AmemManager.KiroMCPPath":
 		return (&AmemManager{HomeDir: home}).KiroMCPPath()
+	case "VmemManager.KiroMCPPath":
+		return (&VmemManager{HomeDir: home}).KiroMCPPath()
+	case "VmemManager.CopilotMCPPath":
+		return (&VmemManager{HomeDir: home}).CopilotMCPPath()
 	case "RetireOptions.archivePath":
 		// The destination of `dot ai memory retire-claude-mem --apply`: a dated sibling
 		// of ~/.claude-mem, never the data directory itself and never a deletion.

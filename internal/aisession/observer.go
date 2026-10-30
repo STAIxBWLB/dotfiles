@@ -147,9 +147,10 @@ func (o *observer) event(line []byte) {
 // Tool-result text never establishes permission authority.
 func readOnlyKnowledgeTool(server, tool string) bool {
 	switch server {
-	case "obsidian":
+	case "vmem":
+		// vmem's read tools. Every write, the two-step previews included, stays ambiguous on failure.
 		switch tool {
-		case "read_note", "read_multiple_notes", "search_notes", "list_directory", "get_notes_info", "get_frontmatter", "get_vault_stats", "list_all_tags":
+		case "vmem_status", "vmem_search", "vmem_read", "vmem_read_many", "vmem_list", "vmem_links", "vmem_mocs", "vmem_check", "vmem_log_tail", "vmem_graph_neighbors":
 			return true
 		}
 	case "amem":

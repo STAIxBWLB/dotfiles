@@ -19,7 +19,17 @@ type KnowledgeApproval struct {
 	ApprovalMode string `json:"approval_mode"`
 }
 
-var vaultKnowledgeTools = []string{"read_note", "read_multiple_notes", "search_notes", "list_directory", "get_notes_info", "get_frontmatter", "get_vault_stats", "list_all_tags", "write_note", "patch_note", "update_frontmatter", "manage_tags"}
+// vaultKnowledgeTools is vmem's frozen MCP surface (@staix/vault-mem 0.1.0 VMEM_TOOL_NAMES, plan
+// ai-workspace#60 §3.2): every tool, the two-step ones included. vmem_move, vmem_delete, vmem_promote and
+// vmem_promote_from_amem return a preview and a fingerprint and write only on a second call with
+// confirm=true and that fingerprint, so the preview is the guard; a narrower list for unattended tasks is
+// Maru's own policy. The names reach Claude Code as mcp__vmem__<tool>.
+var vaultKnowledgeTools = []string{"vmem_append", "vmem_check", "vmem_create", "vmem_delete", "vmem_graph_build", "vmem_graph_neighbors", "vmem_link", "vmem_links", "vmem_lint", "vmem_list", "vmem_log_append", "vmem_log_tail", "vmem_mocs", "vmem_move", "vmem_patch", "vmem_promote", "vmem_promote_from_amem", "vmem_read", "vmem_read_many", "vmem_search", "vmem_set_frontmatter", "vmem_status", "vmem_supersede"}
+
+// vaultServer is the MCP server name vmem is registered under (`vmem setup` and the mcpServers key dot
+// writes for Kiro and Copilot). The retired Obsidian MCP server ("obsidian", @bitbonsai/mcpvault) earns
+// no grant: its bindings are never recognized and never mapped onto vmem.
+const vaultServer = "vmem"
 
 // memoryKnowledgeTools is amem's frozen MCP surface (agent-mem src/mcp.ts MCP_TOOLS, #13 P2).
 // None deletes or moves a note: amem_remember only proposes a candidate for the person to accept,
@@ -44,7 +54,7 @@ func KnowledgeApprovals(runtime Runtime) ([]KnowledgeApproval, error) {
 	}
 	switch runtime.Agent {
 	case "claude":
-		add("obsidian", "", vaultKnowledgeTools)
+		add(vaultServer, "", vaultKnowledgeTools)
 		add(memoryServer, "", memoryKnowledgeTools)
 	case "codex":
 		if runtime.Home == "" {
@@ -100,7 +110,7 @@ func KnowledgeApprovals(runtime Runtime) ([]KnowledgeApproval, error) {
 			}
 			key = strings.TrimSpace(key)
 			value = strings.TrimSpace(strings.SplitN(value, "#", 2)[0])
-			for _, server := range []string{"obsidian", memoryServer} {
+			for _, server := range []string{vaultServer, memoryServer} {
 				if section != "mcp_servers."+server {
 					continue
 				}
@@ -115,9 +125,10 @@ func KnowledgeApprovals(runtime Runtime) ([]KnowledgeApproval, error) {
 			}
 		}
 		// Only a server the person registered and left enabled is granted. The old claude-mem
-		// plugin binding is not recognized, so it earns no grant and is never mapped to amem.
-		if bound["obsidian"] && !disabled["obsidian"] {
-			add("obsidian", "", vaultKnowledgeTools)
+		// plugin binding and the retired obsidian server are not recognized, so they earn no grant
+		// and are never mapped to amem or vmem.
+		if bound[vaultServer] && !disabled[vaultServer] {
+			add(vaultServer, "", vaultKnowledgeTools)
 		}
 		if bound[memoryServer] && !disabled[memoryServer] {
 			add(memoryServer, "", memoryKnowledgeTools)
@@ -134,7 +145,7 @@ func knowledgeTools(agent string, grant KnowledgeApproval) []string {
 	if grant.ApprovalMode != "approve" {
 		return nil
 	}
-	if grant.Server == "obsidian" && grant.Plugin == "" {
+	if (agent == "claude" || agent == "codex") && grant.Server == vaultServer && grant.Plugin == "" {
 		return vaultKnowledgeTools
 	}
 	// amem is a plain MCP server for both agents. Any other server name, the retired
@@ -164,7 +175,8 @@ func knowledgeCLIKey(grant KnowledgeApproval) string {
 }
 
 // KnowledgeArgs emits only permission leaves, preserving native MCP identity.
-// It never accepts wildcard grants, delete/move operations or corpus-build tools.
+// It never accepts wildcard grants, unlisted tools or corpus-build tools; vmem's move and delete
+// are listed because they are two-step (preview + fingerprint, then confirm).
 func KnowledgeArgs(runtime Runtime, grants []KnowledgeApproval) ([]string, error) {
 	args := []string{}
 	patterns := []string{}
