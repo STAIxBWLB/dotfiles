@@ -35,7 +35,9 @@ const (
 const vaultInstructions = vaultBlockStart + `
 ## Vault
 
-- The vault is read and written only through the ` + "`vmem`" + ` MCP server (vmem_search, vmem_read, vmem_create, ...). Do not edit vault notes as plain files or through another MCP server.
+- Vault notes are read and written through the ` + "`vmem`" + ` MCP tools (vmem_search, vmem_read, vmem_create, ...).
+- Files under ` + "`ops/`" + ` and ` + "`reports/`" + ` are written with ` + "`vmem report`" + ` and may be read read-only from files, as may the vault's root docs.
+- Never edit vault files directly or through another MCP server.
 - vmem validates every write; a refusal names the rule to fix. vmem_move, vmem_delete, vmem_promote and vmem_promote_from_amem preview first and need confirm=true with the returned fingerprint.
 ` + vaultBlockEnd
 
