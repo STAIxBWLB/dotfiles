@@ -285,7 +285,7 @@ func TestClaudeGrantNamesTheServerThatInstallRegisters(t *testing.T) {
 	}
 }
 
-// vmem's grant set is its frozen 0.1.3 tool list, and only the vmem server earns it.
+// vmem's grant set is its frozen 0.1.4 tool list, and only the vmem server earns it.
 func TestKnowledgeVaultToolsAreVmemsFrozenSurface(t *testing.T) {
 	want := []string{"vmem_append", "vmem_check", "vmem_create", "vmem_delete", "vmem_graph_build", "vmem_graph_neighbors", "vmem_link", "vmem_links", "vmem_lint", "vmem_list", "vmem_log_append", "vmem_log_tail", "vmem_mocs", "vmem_move", "vmem_patch", "vmem_promote", "vmem_promote_from_amem", "vmem_read", "vmem_read_many", "vmem_search", "vmem_set_frontmatter", "vmem_status", "vmem_supersede"}
 	if strings.Join(vaultKnowledgeTools, ",") != strings.Join(want, ",") {
