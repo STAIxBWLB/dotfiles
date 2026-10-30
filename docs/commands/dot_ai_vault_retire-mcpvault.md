@@ -9,7 +9,8 @@ after vmem is registered.
 
 Without --apply this lists every file it would change and changes nothing.
 With --apply it removes mcpServers.obsidian from the Kiro and Copilot configs,
-the files dot owns. It never edits Claude Code's or Codex's config: the exact
+the files dot owns, for the selected agents only, and only from a config that
+already registers a working vmem entry; any other is skipped and reported. It never edits Claude Code's or Codex's config: the exact
 lines to run or delete are printed instead. It refuses while vmem is not on
 PATH, so the vault is never left without an agent-facing server.
 

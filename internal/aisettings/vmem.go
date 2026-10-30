@@ -375,24 +375,36 @@ type RetireMcpvaultResult struct {
 	Removed []string
 	// Manual are the person-run lines for configs dot does not own.
 	Manual []string
+	// Skipped are selected, owned configs that still register obsidian but have no working vmem entry yet.
+	Skipped []string
 	// Remaining lists configs that still register obsidian after the run.
 	Remaining []string
 }
 
-// RetireMcpvault removes mcpServers.obsidian from the configs dot owns (Kiro, Copilot) and prints the
-// lines for the rest (Claude Code, Codex). It is a dry run unless apply, and refuses without vmem on PATH,
-// so a vault is never left without an agent-facing server.
+// RetireMcpvault removes mcpServers.obsidian from the selected configs dot owns (Kiro, Copilot) that already
+// register a working vmem entry, and prints the lines for the rest (Claude Code, Codex). It is a dry run
+// unless apply, refuses without vmem on PATH, and skips (and reports) any config without vmem, so no agent
+// is left without a vault server.
 func (m *VmemManager) RetireMcpvault(apply bool) (RetireMcpvaultResult, error) {
 	result := RetireMcpvaultResult{Apply: apply}
 	if m.VmemPath == "" {
 		return result, errors.New("vmem is not on PATH: install @staix/vault-mem " + VmemPinnedVersion + " and register it before retiring the obsidian server")
 	}
 	for _, target := range m.ownedTargets() {
+		// The saved selection bounds every write, as for install (docs/BOUNDARIES.md).
+		if !m.selected(target.agent) {
+			continue
+		}
 		state, err := mcpServerState(target.path, ObsidianServerName)
 		if err != nil {
 			return result, fmt.Errorf("%s: %w", target.path, err)
 		}
 		if state != present {
+			continue
+		}
+		// Never leave an agent without a vault server: obsidian goes only where a working vmem entry already is.
+		if !hasMCPServer(target.path, VmemServerName, m.VmemPath, target.variant) {
+			result.Skipped = append(result.Skipped, fmt.Sprintf("%s: %s has no working vmem entry; run `dot ai vault install` first, obsidian is kept", target.agent, target.path))
 			continue
 		}
 		result.Files = append(result.Files, target.path)

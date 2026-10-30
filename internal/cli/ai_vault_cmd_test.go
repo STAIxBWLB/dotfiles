@@ -144,8 +144,12 @@ func TestVaultStatusWarnsWhileObsidianIsRegistered(t *testing.T) {
 func TestVaultRetireIsDryRunByDefaultAndNeverTouchesUnownedFiles(t *testing.T) {
 	fakeVmem(t)
 	home, files := vaultFixture(t)
+	cfg := writeAgentsConfig(t, home, "kiro", "copilot")
+	if _, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "vault", "install"); err != nil {
+		t.Fatalf("%v %s", err, errOut)
+	}
 	before := snapshotFiles(t, files)
-	out, errOut, err := runDotForTest("--home", home, "ai", "vault", "retire-mcpvault")
+	out, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "vault", "retire-mcpvault")
 	if err != nil {
 		t.Fatalf("%v %s", err, errOut)
 	}
@@ -157,7 +161,7 @@ func TestVaultRetireIsDryRunByDefaultAndNeverTouchesUnownedFiles(t *testing.T) {
 	if !equalMaps(snapshotFiles(t, files), before) {
 		t.Fatal("dry run changed files")
 	}
-	if _, errOut, err := runDotForTest("--home", home, "ai", "vault", "retire-mcpvault", "--apply"); err != nil {
+	if _, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "vault", "retire-mcpvault", "--apply"); err != nil {
 		t.Fatalf("%v %s", err, errOut)
 	}
 	for _, key := range []string{"kiro", "copilot"} {
@@ -186,6 +190,62 @@ func TestVaultRetireRefusesWithoutVmem(t *testing.T) {
 	}
 	if _, _, err := runDotForTest("--home", home, "ai", "vault", "install"); err == nil {
 		t.Fatal("install without vmem succeeded")
+	}
+}
+
+// P1: retire honors the saved selection. An unselected agent's config is never rewritten.
+func TestVaultRetireSkipsUnselectedAgents(t *testing.T) {
+	fakeVmem(t)
+	home, files := vaultFixture(t)
+	both := writeAgentsConfig(t, home, "kiro", "copilot")
+	if _, errOut, err := runDotForTest("--home", home, "--config", both, "ai", "vault", "install"); err != nil {
+		t.Fatalf("%v %s", err, errOut)
+	}
+	copilotBefore := readFile(t, files["copilot"])
+	onlyKiro := writeAgentsConfig(t, home, "kiro")
+	out, errOut, err := runDotForTest("--home", home, "--config", onlyKiro, "ai", "vault", "retire-mcpvault", "--apply")
+	if err != nil {
+		t.Fatalf("%v %s", err, errOut)
+	}
+	if strings.Contains(readFile(t, files["kiro"]), `"obsidian"`) {
+		t.Fatal("selected kiro still registers obsidian")
+	}
+	if readFile(t, files["copilot"]) != copilotBefore || strings.Contains(out, files["copilot"]) {
+		t.Fatalf("unselected copilot was touched or listed:\n%s", out)
+	}
+}
+
+// P2: retire removes obsidian only where a working vmem entry already exists; otherwise it skips and says so.
+func TestVaultRetireRequiresAWorkingVmemEntry(t *testing.T) {
+	fakeVmem(t)
+	home, files := vaultFixture(t)
+	cfg := writeAgentsConfig(t, home, "kiro", "copilot")
+	before := snapshotFiles(t, files)
+	for _, args := range [][]string{{"ai", "vault", "retire-mcpvault"}, {"ai", "vault", "retire-mcpvault", "--apply"}} {
+		out, errOut, err := runDotForTest(append([]string{"--home", home, "--config", cfg}, args...)...)
+		if err != nil {
+			t.Fatalf("%v %s", err, errOut)
+		}
+		combined := out + errOut
+		for _, key := range []string{"kiro", "copilot"} {
+			if !strings.Contains(combined, files[key]+" has no working vmem entry; run `dot ai vault install` first, obsidian is kept") {
+				t.Fatalf("%v: missing skip message for %s:\n%s", args, key, combined)
+			}
+			if strings.Contains(combined, "remove mcpServers.obsidian from "+files[key]) {
+				t.Fatalf("%v: planned removal without vmem for %s", args, key)
+			}
+		}
+	}
+	if !equalMaps(snapshotFiles(t, files), before) {
+		t.Fatal("retire removed obsidian from a config without vmem")
+	}
+	// A vmem entry pointing at another executable is not working either.
+	writeCLITestFile(t, files["kiro"], `{"mcpServers":{"obsidian":`+obsidianEntry+`,"vmem":{"command":"/nonexistent/vmem","args":["mcp"]}}}`)
+	if _, _, err := runDotForTest("--home", home, "--config", cfg, "ai", "vault", "retire-mcpvault", "--apply"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(readFile(t, files["kiro"]), `"obsidian"`) {
+		t.Fatal("obsidian removed although the vmem entry is not this vmem")
 	}
 }
 
