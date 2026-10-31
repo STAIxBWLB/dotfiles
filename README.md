@@ -234,8 +234,8 @@ that still lists the retired `claude-mem` add-on is read without it.
 
 Project memory is [amem](https://github.com/STAIxBWLB/agent-mem)
 (`@staix/agent-mem`), which dot registers but never installs. Install the exact
-version `dot ai memory status` names (`@staix/agent-mem` 0.13.0; every amem that
-shares a memory home must run 0.13.0 or later), then:
+version `dot ai memory status` names (`@staix/agent-mem` 0.14.0; every amem that
+shares a memory home must run 0.14.0 or later), then:
 
 ```bash
 amem setup all --apply            # in your terminal: Claude Code, Codex, Kimi, Qwen, pi

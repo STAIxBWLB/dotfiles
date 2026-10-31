@@ -83,7 +83,7 @@ func fakeAmem(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "amem")
-	writeCLITestFile(t, path, "#!/bin/sh\necho 0.13.0\n")
+	writeCLITestFile(t, path, "#!/bin/sh\necho 0.14.0\n")
 	if err := os.Chmod(path, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +223,7 @@ func TestMemoryStatusSaysWhichAgentsAreReady(t *testing.T) {
 	if !strings.Contains(out, "expected "+aisettings.AmemPinnedVersion) {
 		t.Errorf("status does not name the pinned version:\n%s", out)
 	}
-	// AC: amem 0.13.0 on PATH is the pin, so no mismatch is reported.
+	// AC: amem 0.14.0 on PATH is the pin, so no mismatch is reported.
 	if strings.Contains(out, "not the pinned version") {
 		t.Errorf("amem %s reported as a mismatch:\n%s", aisettings.AmemPinnedVersion, out)
 	}

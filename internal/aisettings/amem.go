@@ -14,14 +14,14 @@ import (
 	"time"
 )
 
-// AmemPinnedVersion is the exact @staix/agent-mem release dot expects: 0.13.0,
-// the version agent-hub 0.23.0 pins and the one the P5 cutover runs on (registry
-// gitHead 1c384693). Every amem sharing a memory home must run 0.13.0 or later.
+// AmemPinnedVersion is the exact @staix/agent-mem release dot expects: 0.14.0,
+// the version agent-hub pins since agent-hub#998 (registry
+// gitHead 3451e420). Every amem sharing a memory home must run 0.14.0 or later.
 // dot never installs it: the person installs this exact version, and
 // `dot ai memory status` compares against it. The tool names in
 // internal/aipolicy and the `setup`, `ingest` and `mcp` forms printed here were
-// checked against the published 0.13.0 tarball on 2026-10-31, not a checkout.
-const AmemPinnedVersion = "0.13.0"
+// checked against the published 0.14.0 tarball on 2026-10-31, not a checkout.
+const AmemPinnedVersion = "0.14.0"
 
 // AmemServerName is the MCP server name amem is registered under. Tool names
 // reach agents as mcp__amem__amem_search and so on.

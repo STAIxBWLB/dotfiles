@@ -59,7 +59,7 @@ func TestKnowledgeMemoryToolsAreAmemsFrozenSurface(t *testing.T) {
 	}
 }
 
-// AMEM_PACKAGE_DIR names an unpacked @staix/agent-mem tarball (`npm pack @staix/agent-mem@0.13.0`, then
+// AMEM_PACKAGE_DIR names an unpacked @staix/agent-mem tarball (`npm pack @staix/agent-mem@0.14.0`, then
 // extract). When set, every allowlisted tool must be in that package's own MCP tool list, so a rename or a
 // removal in a later amem release fails here and not at the cutover. A tool the package adds is not granted
 // until it is added to the allowlist on purpose. Unset (CI), the frozen list above is the contract.
@@ -273,7 +273,7 @@ func TestKnowledgeCodexCLIUsesNativeRawSegments(t *testing.T) {
 }
 
 // The Claude grant names mcp__amem__<tool>. That only reaches a tool when a server called "amem" is registered
-// with Claude, which `amem setup claude` does (0.13.0 registers `claude mcp add ... amem`). The server name
+// with Claude, which `amem setup claude` does (0.14.0 registers `claude mcp add ... amem`). The server name
 // `amem setup` registers and the one the grant is keyed on must agree.
 func TestClaudeGrantNamesTheServerThatInstallRegisters(t *testing.T) {
 	if memoryServer != "amem" {
