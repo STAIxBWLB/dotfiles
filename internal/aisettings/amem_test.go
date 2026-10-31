@@ -392,7 +392,7 @@ func TestAmemInstallRefusesUnparsableConfigWithoutOverwriting(t *testing.T) {
 	}
 }
 
-// The forms below were run against the published 0.14.0 tarball: `setup` takes claude, codex, kimi, pi,
+// The forms below were checked in the published 0.14.0 tarball source: `setup` takes claude, codex, kimi, pi,
 // qwen, jcode, agy and all (all leaves agy out), and `ingest` takes codex, kimi, pi and qwen.
 func TestAmemInstallPrintsTheAmemSetupLines(t *testing.T) {
 	m, _ := newAmem(t)
