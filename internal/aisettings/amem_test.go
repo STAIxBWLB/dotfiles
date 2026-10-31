@@ -184,7 +184,7 @@ func newAmem(t *testing.T) (*AmemManager, string) {
 	t.Helper()
 	home := t.TempDir()
 	amem := filepath.Join(home, "bin", "amem")
-	mustWriteFile(t, amem, "#!/bin/sh\necho 0.13.0\n")
+	mustWriteFile(t, amem, "#!/bin/sh\necho 0.14.0\n")
 	if err := os.Chmod(amem, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -392,7 +392,7 @@ func TestAmemInstallRefusesUnparsableConfigWithoutOverwriting(t *testing.T) {
 	}
 }
 
-// The forms below were run against the published 0.13.0 tarball: `setup` takes claude, codex, kimi, pi,
+// The forms below were checked in the published 0.14.0 tarball source: `setup` takes claude, codex, kimi, pi,
 // qwen, jcode, agy and all (all leaves agy out), and `ingest` takes codex, kimi, pi and qwen.
 func TestAmemInstallPrintsTheAmemSetupLines(t *testing.T) {
 	m, _ := newAmem(t)
@@ -421,14 +421,14 @@ func TestAmemInstallPrintsTheAmemSetupLines(t *testing.T) {
 
 func TestAmemStatusReportsEachAgentAndVersion(t *testing.T) {
 	m, _ := newAmem(t)
-	m.Version = func(context.Context, string) (string, error) { return "0.13.0", nil }
+	m.Version = func(context.Context, string) (string, error) { return "0.14.0", nil }
 	ssot := filepath.Join(m.HomeDir, "AGENTS.md")
 	mustWriteFile(t, ssot, "# r\n")
 	st := m.Status(context.Background(), ssot)
 	if st.KiroMCP || st.CopilotMCP || st.InstructionsEnabled {
 		t.Fatalf("clean home reported ready: %+v", st)
 	}
-	if st.Version != "0.13.0" {
+	if st.Version != "0.14.0" {
 		t.Fatalf("version %q", st.Version)
 	}
 	if _, err := m.Install(); err != nil {
