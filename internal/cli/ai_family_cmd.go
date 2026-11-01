@@ -26,7 +26,9 @@ A 'current' link names the active version and 'previous' the one before it;
 sessions start the new version, running processes keep the files they started
 with and are listed, and nothing is stopped. Versions other than current and
 previous are removed once no running process uses them. 'dot ai rollback <id>'
-makes previous current again.`}
+makes previous current again.
+
+ahub is skipped: 'ahub upgrade' manages its releases in ~/.agenthub/releases.`}
 	install := &cobra.Command{Use: "install <id>", Short: "Install a version of a family tool and make it current", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		version, _ := cmd.Flags().GetString("version")
 		adopt, _ := cmd.Flags().GetBool("adopt")

@@ -12,7 +12,7 @@ func TestAIFamilyCommands(t *testing.T) {
 		t.Fatalf("install acon = %q, %v", out, err)
 	}
 	out, _, err = runDotForTest("--home", home, "ai", "family", "status")
-	if err != nil || !strings.Contains(out, "ahub: not-installed") || !strings.Contains(out, "ares: unpublished") {
+	if err != nil || !strings.Contains(out, "ahub: external") || !strings.Contains(out, "managed by ahub upgrade") || !strings.Contains(out, "vmem: not-installed") || !strings.Contains(out, "ares: unpublished") {
 		t.Fatalf("status = %q, %v", out, err)
 	}
 	if _, _, err = runDotForTest("--home", home, "ai", "rollback", "amem"); err == nil || !strings.Contains(err.Error(), "no previous version") {

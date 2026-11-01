@@ -122,7 +122,8 @@ Dot-owned state trees:
   also removes `~/.config/shell/45-container.sh`, only when it still matches
   the old hand-written workaround byte for byte
 - `~/.local/share/dotfiles/tools/<id>/` — versioned family-tool installs
-  (ahub, amem, vmem, acon, ares), written only by `dot ai family install` and
+  (amem, vmem, acon, ares; never ahub, whose releases `ahub upgrade` owns in
+  `~/.agenthub/releases`), written only by `dot ai family install` and
   `dot ai rollback`: one npm prefix per `<version>/` (staged in
   `.staging-<version>-*` and renamed into place), and the `current` and
   `previous` links, each moved by an atomic rename. A version directory other

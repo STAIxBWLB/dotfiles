@@ -14,6 +14,8 @@ with and are listed, and nothing is stopped. Versions other than current and
 previous are removed once no running process uses them. 'dot ai rollback <id>'
 makes previous current again.
 
+ahub is skipped: 'ahub upgrade' manages its releases in ~/.agenthub/releases.
+
 ### Options
 
 ```

@@ -235,8 +235,11 @@ separately from installation status. Missing authentication or trust remains a
 user action; setup does not copy credentials or approve hooks. A saved selection
 that still lists the retired `claude-mem` add-on is read without it.
 
-The agent-hub family (ahub, amem, vmem; acon and ares once they publish an npm
-package) installs side by side with `dot ai family install <id> [--version X.Y.Z]`.
+The agent-hub family tools amem and vmem (acon and ares once they publish an
+npm package) install side by side with `dot ai family install <id> [--version X.Y.Z]`.
+ahub is left out: `ahub upgrade` manages its own releases in
+`~/.agenthub/releases`, so `install` and `rollback` skip it and `status` shows
+it as externally managed.
 Each version gets its own npm prefix in `~/.local/share/dotfiles/tools/<id>/<version>/`,
 a `current` link names the active one and `previous` the one before it, and
 `~/.local/bin/<bin>` points through `current`. Activation is one rename: new

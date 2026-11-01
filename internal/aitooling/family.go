@@ -14,21 +14,24 @@ import (
 	"github.com/STAIxBWLB/dotfiles/internal/resourceguard"
 )
 
-// Family tools (#319): ahub, amem, vmem, acon and ares install side by side, one npm prefix per
+// Family tools (#319): amem and vmem (and acon and ares once published) install side by side, one npm prefix per
 // version under ~/.local/share/dotfiles/tools/<id>/<version>/. The `current` link names the active
 // version and `previous` the one before it; ~/.local/bin/<bin> points through `current`. Switching
 // `current` is one rename: new sessions start the new version and running ones keep their files.
 
-// FamilyTool is one family tool; an empty Package means it has no published npm package yet.
-type FamilyTool struct{ ID, Package, Binary string }
+// FamilyTool is one family tool; an empty Package means it has no published npm package yet. A
+// non-empty External names the manager that owns the tool's installs, and dot installs none of it.
+type FamilyTool struct{ ID, Package, Binary, External string }
 
 func FamilyTools() []FamilyTool {
 	return []FamilyTool{
-		{"ahub", "@staix/agent-hub", "ahub"},
-		{"amem", "@staix/agent-mem", "amem"},
-		{"vmem", "@staix/vault-mem", "vmem"},
-		{"acon", "", "acon"},
-		{"ares", "", "ares"},
+		// ahub stages its own releases and a PATH link here would shadow every later ahub upgrade, so it
+		// stays out until agent-hub#1039 defines the hand-off.
+		{"ahub", "@staix/agent-hub", "ahub", "managed by ahub upgrade (~/.agenthub/releases)"},
+		{"amem", "@staix/agent-mem", "amem", ""},
+		{"vmem", "@staix/vault-mem", "vmem", ""},
+		{"acon", "", "acon", ""},
+		{"ares", "", "ares", ""},
 	}
 }
 
@@ -72,6 +75,11 @@ func (e *Engine) FamilyInstall(ctx context.Context, id, version string, adopt bo
 		return FamilyResult{}, err
 	}
 	r := FamilyResult{ID: id}
+	if t.External != "" {
+		r.Status = "skipped"
+		r.Notes = []string{t.External + "; dot installs nothing for it"}
+		return r, nil
+	}
 	if t.Package == "" {
 		r.Status = "skipped"
 		r.Notes = []string{id + " has no published npm package yet; nothing was installed"}
@@ -172,6 +180,11 @@ func (e *Engine) FamilyRollback(ctx context.Context, id string) (FamilyResult, e
 		return FamilyResult{}, err
 	}
 	r := FamilyResult{ID: id}
+	if t.External != "" {
+		r.Status = "skipped"
+		r.Notes = []string{t.External + "; roll it back there"}
+		return r, nil
+	}
 	noPrevious := fmt.Errorf("%s has no previous version to roll back to", id)
 	if readVersionLink(filepath.Join(e.FamilyRoot(), id, "previous")) == "" {
 		return r, noPrevious
@@ -347,6 +360,9 @@ func (e *Engine) FamilyStatus() []FamilyResult {
 		toolDir := filepath.Join(e.FamilyRoot(), t.ID)
 		r := FamilyResult{ID: t.ID, Current: readVersionLink(filepath.Join(toolDir, "current")), Previous: readVersionLink(filepath.Join(toolDir, "previous")), Versions: familyVersions(toolDir)}
 		switch {
+		case t.External != "":
+			r.Status = "external"
+			r.Notes = []string{t.External}
 		case t.Package == "":
 			r.Status = "unpublished"
 		case r.Current == "":
