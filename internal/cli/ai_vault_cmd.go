@@ -75,7 +75,7 @@ those agents are selected, write the vault block into the agents SSOT (after a
 backup), and print the 'vmem setup' lines for the other agents. Every other
 server and key is preserved. Re-running changes nothing.
 
-vmem must already be installed (the exact @staix/vault-mem version, which
+vmem must already be installed (an @staix/vault-mem release inside the range
 'dot ai vault status' names) and on PATH. With --dry-run nothing is written.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -85,7 +85,7 @@ vmem must already be installed (the exact @staix/vault-mem version, which
 				return err
 			}
 			if mgr.VmemPath == "" {
-				return fmt.Errorf("vmem is not on PATH: install @staix/vault-mem %s exactly (for example `bun add -g @staix/vault-mem@%s`), then re-run", aisettings.VmemPinnedVersion, aisettings.VmemPinnedVersion)
+				return fmt.Errorf("vmem is not on PATH: install %s %s (for example `bun add -g %s`), then re-run", aisettings.VmemPackage, aisettings.VmemSupportedRange, aisettings.VmemPackage)
 			}
 			agents := newAgentsManagerFromCmd(cmd)
 			install := mgr.Install
@@ -141,17 +141,7 @@ func newAIVaultStatusCmd() *cobra.Command {
 			status := mgr.Status(cmd.Context(), newAgentsManagerFromCmd(cmd).SSOTPath())
 			p := printerFrom(cmd)
 			p.Header("vmem Status")
-			version := status.Version
-			switch {
-			case status.VmemPath == "":
-				version = "not found on PATH"
-			case version == "":
-				version = "version unreadable"
-			}
-			p.KV("vmem", version+" (expected "+aisettings.VmemPinnedVersion+")")
-			if status.VmemPath != "" && status.Version != "" && !containsVersion(status.Version, aisettings.VmemPinnedVersion) {
-				p.Warn("  installed vmem is not the pinned version %s; install it exactly", aisettings.VmemPinnedVersion)
-			}
+			printFamilyVersion(p, "vmem", status.VmemPath, status.Version, status.Installed(), status.Range(), status.Manifest.Supported != "")
 			p.Section("Agents")
 			for _, row := range []struct {
 				label, id string

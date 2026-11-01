@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/STAIxBWLB/dotfiles/internal/aisettings"
+	"github.com/STAIxBWLB/dotfiles/internal/toolversion"
 	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
@@ -73,7 +74,7 @@ those agents are selected, and print the 'amem setup' lines for the other
 agents. dot leaves the Kimi, Qwen and Antigravity configs untouched: 'amem setup'
 owns them. Every other server and key is preserved. Re-running changes nothing.
 
-amem must already be installed (the exact @staix/agent-mem version, which
+amem must already be installed (an @staix/agent-mem release inside the range
 'dot ai memory status' names) and on PATH. With --dry-run nothing is written.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -83,7 +84,7 @@ amem must already be installed (the exact @staix/agent-mem version, which
 				return err
 			}
 			if mgr.AmemPath == "" {
-				return fmt.Errorf("amem is not on PATH: install @staix/agent-mem %s exactly (for example `bun add -g @staix/agent-mem@%s`), then re-run", aisettings.AmemPinnedVersion, aisettings.AmemPinnedVersion)
+				return fmt.Errorf("amem is not on PATH: install %s %s (for example `bun add -g %s`), then re-run", aisettings.AmemPackage, aisettings.AmemSupportedRange, aisettings.AmemPackage)
 			}
 			p := printerFrom(cmd)
 			install := mgr.Install
@@ -132,17 +133,7 @@ func newAIMemoryStatusCmd() *cobra.Command {
 			status := mgr.Status(cmd.Context(), newAgentsManagerFromCmd(cmd).SSOTPath())
 			p := printerFrom(cmd)
 			p.Header("amem Status")
-			version := status.Version
-			switch {
-			case status.AmemPath == "":
-				version = "not found on PATH"
-			case version == "":
-				version = "version unreadable"
-			}
-			p.KV("amem", version+" (expected "+aisettings.AmemPinnedVersion+")")
-			if status.AmemPath != "" && status.Version != "" && !containsVersion(status.Version, aisettings.AmemPinnedVersion) {
-				p.Warn("  installed amem is not the pinned version %s; install it exactly", aisettings.AmemPinnedVersion)
-			}
+			printFamilyVersion(p, "amem", status.AmemPath, status.Version, status.Installed(), status.Range(), status.Manifest.Supported != "")
 			p.Section("Agents")
 			for _, row := range []struct {
 				label, id, detail string
@@ -169,33 +160,27 @@ func newAIMemoryStatusCmd() *cobra.Command {
 	}
 }
 
-// containsVersion reports whether output names exactly the version want. A digit or a dot next to the
-// number means it is part of a longer version (10.11.0, 0.11.01, 0.11.0.1, 1.0.11.0), which is not the pin.
-// A trailing dot that ends a sentence ("amem 0.11.0.") is allowed only when no digit follows it, and a
-// prerelease or build suffix (-rc1, +build) is not the release.
-func containsVersion(output, want string) bool {
-	isDigit := func(b byte) bool { return b >= '0' && b <= '9' }
-	for i := 0; i+len(want) <= len(output); i++ {
-		if output[i:i+len(want)] != want {
-			continue
-		}
-		end := i + len(want)
-		if i > 0 && (isDigit(output[i-1]) || output[i-1] == '.') {
-			continue
-		}
-		if end < len(output) && isDigit(output[end]) {
-			continue
-		}
-		if end+1 < len(output) && output[end] == '.' && isDigit(output[end+1]) {
-			continue
-		}
-		// 0.11.0-rc1 and 0.11.0+build are prereleases or builds of the pin, not the release itself.
-		if end+1 < len(output) && (output[end] == '-' || output[end] == '+') && (isDigit(output[end+1]) || output[end+1] >= 'a' && output[end+1] <= 'z' || output[end+1] >= 'A' && output[end+1] <= 'Z') {
-			continue
-		}
-		return true
+// printFamilyVersion prints the installed amem or vmem against its supported range, and warns only
+// outside it. The range is the installed release's manifest, else dot's compiled fallback.
+// raw is the `--version` output, shown when it names no stable release (a prerelease warns too).
+func printFamilyVersion(p *Printer, name, path, raw, installed, supported string, fromManifest bool) {
+	source := "compiled fallback"
+	if fromManifest {
+		source = "from its manifest"
 	}
-	return false
+	shown := installed
+	switch {
+	case path == "":
+		shown = "not found on PATH"
+	case installed == "" && raw == "":
+		shown = "version unreadable"
+	case installed == "":
+		shown = raw
+	}
+	p.KV(name, fmt.Sprintf("%s (supported %s, %s)", shown, supported, source))
+	if path != "" && (installed != "" || raw != "") && !toolversion.Satisfies(supported, installed) {
+		p.Warn("  installed %s %s is outside the supported range %s; install a stable release inside it", name, shown, supported)
+	}
 }
 
 func printMemoryState(p *Printer, label string, ok bool, detail string) {

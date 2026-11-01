@@ -11,13 +11,21 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/STAIxBWLB/dotfiles/internal/toolversion"
 )
 
-// VmemPinnedVersion is the exact @staix/vault-mem release dot expects. dot never installs it: the person
-// installs this exact version (`bun add -g @staix/vault-mem@0.2.1`) and `dot ai vault status` compares
-// against it. The `vmem mcp` and `vmem setup <host>` forms printed here and the tool names in
-// internal/aipolicy match the 0.2.1 release (tag v0.2.1; its tool list is unchanged from 0.1.0).
+// VmemPinnedVersion is the oldest @staix/vault-mem release dot supports. dot never installs it. The
+// `vmem mcp` and `vmem setup <host>` forms printed here match the 0.2.1 release (tag v0.2.1). It is only
+// the fallback floor: the range and the tool list come from the installed release's manifest (see
+// VmemStatus.Range), so a new vmem release needs no dot release.
 const VmemPinnedVersion = "0.2.1"
+
+// VmemSupportedRange is the compiled fallback range, used when the installed vmem publishes none.
+const VmemSupportedRange = ">=" + VmemPinnedVersion + " <1.0.0"
+
+// VmemPackage is the npm package vmem is published as.
+const VmemPackage = "@staix/vault-mem"
 
 // VmemServerName is the MCP server name vmem is registered under. Tool names reach agents as
 // mcp__vmem__vmem_search and so on.
@@ -63,7 +71,15 @@ type VmemStatus struct {
 	Version             string
 	// ObsidianRegistered lists the MCP configs that still register the retired obsidian server.
 	ObsidianRegistered []string
+	// Manifest is what the installed vmem publishes about itself; zero when it publishes nothing.
+	Manifest toolversion.Manifest
 }
+
+// Installed is the installed vmem version: the manifest's, else the one in `vmem --version`.
+func (s VmemStatus) Installed() string { return installedVersion(s.Manifest, s.Version) }
+
+// Range is the supported range: the manifest's when it publishes one, else VmemSupportedRange.
+func (s VmemStatus) Range() string { return supportedRange(s.Manifest, VmemSupportedRange) }
 
 // VmemManager registers vmem's MCP stdio server for Kiro and Copilot, the agents `vmem setup` does not
 // cover, and retires the obsidian server from the files dot owns. It never starts a process.
@@ -78,6 +94,8 @@ type VmemManager struct {
 	CodexHome string
 	// Version reads the installed vmem version; nil runs `vmem --version`.
 	Version func(ctx context.Context, vmemPath string) (string, error)
+	// Manifest reads what the installed vmem publishes; nil runs toolversion.Read.
+	Manifest func(ctx context.Context, vmemPath string) toolversion.Manifest
 }
 
 func NewVmemManager(homeDir, vmemPath string) *VmemManager {
@@ -348,6 +366,13 @@ func (m *VmemManager) Status(ctx context.Context, ssotPath string) VmemStatus {
 		if version, err := read(ctx, m.VmemPath); err == nil {
 			status.Version = version
 		}
+		manifest := m.Manifest
+		if manifest == nil {
+			manifest = func(ctx context.Context, path string) toolversion.Manifest {
+				return toolversion.Read(ctx, path, VmemPackage)
+			}
+		}
+		status.Manifest = manifest(ctx, m.VmemPath)
 	}
 	return status
 }

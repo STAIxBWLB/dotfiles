@@ -1,13 +1,19 @@
 package aipolicy
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+
+	"github.com/STAIxBWLB/dotfiles/internal/toolversion"
 )
 
 // KnowledgeApproval is a narrow native MCP tool grant, never a server definition.
@@ -19,27 +25,78 @@ type KnowledgeApproval struct {
 	ApprovalMode string `json:"approval_mode"`
 }
 
-// vaultKnowledgeTools is vmem's frozen MCP surface (@staix/vault-mem 0.2.1 VMEM_TOOL_NAMES, plan
-// ai-workspace#60 §3.2): every tool, the two-step ones included. vmem_move, vmem_delete, vmem_promote and
-// vmem_promote_from_amem return a preview and a fingerprint and write only on a second call with
-// confirm=true and that fingerprint, so the preview is the guard; a narrower list for unattended tasks is
-// Maru's own policy. The names reach Claude Code as mcp__vmem__<tool>.
-var vaultKnowledgeTools = []string{"vmem_append", "vmem_check", "vmem_create", "vmem_delete", "vmem_graph_build", "vmem_graph_neighbors", "vmem_link", "vmem_links", "vmem_lint", "vmem_list", "vmem_log_append", "vmem_log_tail", "vmem_mocs", "vmem_move", "vmem_patch", "vmem_promote", "vmem_promote_from_amem", "vmem_read", "vmem_read_many", "vmem_search", "vmem_set_frontmatter", "vmem_status", "vmem_supersede"}
+// vaultKnowledgeTools is vmem's MCP surface as dot last verified it (@staix/vault-mem 0.2.4
+// VMEM_TOOL_NAMES, plan ai-workspace#60 §3.2): the fallback when the installed vmem publishes no
+// manifest (knowledgeToolList). vmem_move, vmem_delete, vmem_promote and vmem_promote_from_amem return
+// a preview and a fingerprint and write only on a second call with confirm=true and that fingerprint,
+// so the preview is the guard; a narrower list for unattended tasks is Maru's own policy. The names
+// reach Claude Code as mcp__vmem__<tool>.
+var vaultKnowledgeTools = []string{"vmem_append", "vmem_check", "vmem_create", "vmem_delete", "vmem_graph_build", "vmem_graph_neighbors", "vmem_link", "vmem_links", "vmem_lint", "vmem_list", "vmem_log_append", "vmem_log_tail", "vmem_mocs", "vmem_move", "vmem_patch", "vmem_promote", "vmem_promote_from_amem", "vmem_read", "vmem_read_many", "vmem_search", "vmem_set_frontmatter", "vmem_skills_mine", "vmem_status", "vmem_supersede"}
 
 // vaultServer is the MCP server name vmem is registered under (`vmem setup` and the mcpServers key dot
 // writes for Kiro and Copilot). The retired Obsidian MCP server ("obsidian", @bitbonsai/mcpvault) earns
 // no grant: its bindings are never recognized and never mapped onto vmem.
 const vaultServer = "vmem"
 
-// memoryKnowledgeTools is amem's frozen MCP surface (agent-mem src/mcp.ts MCP_TOOLS, #13 P2).
-// None deletes or moves a note: amem_remember only proposes a candidate for the person to accept,
-// and amem_work_state_write appends scalar work-list fields. The names reach Claude Code as
+// memoryKnowledgeTools is amem's MCP surface as dot last verified it (agent-mem 0.17.0 src/mcp.ts
+// MCP_TOOLS): the fallback when the installed amem publishes no manifest (knowledgeToolList). None
+// deletes or moves a note: amem_remember and amem_correct only propose a candidate for the person to
+// accept, and amem_work_state_write appends scalar work-list fields. The names reach Claude Code as
 // mcp__amem__<tool>.
-var memoryKnowledgeTools = []string{"amem_search", "amem_show", "amem_timeline", "amem_graph", "amem_work_state_read", "amem_work_state_write", "amem_remember", "amem_vault_candidates", "amem_capacity"}
+var memoryKnowledgeTools = []string{"amem_search", "amem_evidence", "amem_show", "amem_timeline", "amem_brief", "amem_graph", "amem_work_state_read", "amem_work_state_write", "amem_remember", "amem_correct", "amem_vault_candidates", "amem_capacity"}
 
 // memoryServer is the MCP server name amem is registered under (the name `amem setup`
 // registers for Claude Code and Codex, and the mcpServers key dot writes for Kiro and Copilot).
 const memoryServer = "amem"
+
+// knowledgeManifest returns the MCP tool names the installed amem or vmem publishes in its manifest,
+// nil when it publishes none. Tests replace it so they never read a real install.
+var knowledgeManifest = cachedManifestTools()
+
+func cachedManifestTools() func(server string) []string {
+	var mu sync.Mutex
+	cache := map[string][]string{}
+	return func(server string) []string {
+		mu.Lock()
+		defer mu.Unlock()
+		if tools, ok := cache[server]; ok {
+			return tools
+		}
+		var tools []string
+		pkg := map[string]string{memoryServer: "@staix/agent-mem", vaultServer: "@staix/vault-mem"}[server]
+		if bin, err := exec.LookPath(server); err == nil && pkg != "" {
+			tools = toolversion.Read(context.Background(), bin, pkg).Tools
+		}
+		cache[server] = tools
+		return tools
+	}
+}
+
+var grantableTool = regexp.MustCompile(`^[a-z][a-z0-9_]{1,63}$`)
+
+// knowledgeToolList is the grant list for server: the installed release's manifest when it publishes
+// one, else the compiled list. A published name earns a grant only when it is the server's own
+// (`amem_` on amem), is a plain identifier, and, on amem, cannot delete, forget, move or purge
+// anything: a manifest can widen the grant only inside the rules the compiled list follows.
+func knowledgeToolList(server string) []string {
+	fallback := map[string][]string{memoryServer: memoryKnowledgeTools, vaultServer: vaultKnowledgeTools}[server]
+	published := []string{}
+	seen := map[string]bool{}
+	for _, name := range knowledgeManifest(server) {
+		if seen[name] || !strings.HasPrefix(name, server+"_") || !grantableTool.MatchString(name) {
+			continue
+		}
+		if server == memoryServer && (strings.Contains(name, "delete") || strings.Contains(name, "forget") || strings.Contains(name, "move") || strings.Contains(name, "purge")) {
+			continue
+		}
+		seen[name] = true
+		published = append(published, name)
+	}
+	if len(published) == 0 {
+		return fallback
+	}
+	return published
+}
 
 // KnowledgeApprovals recognizes existing Codex bindings without copying identity
 // or credentials. Claude permission patterns themselves do not register servers.
@@ -54,8 +111,8 @@ func KnowledgeApprovals(runtime Runtime) ([]KnowledgeApproval, error) {
 	}
 	switch runtime.Agent {
 	case "claude":
-		add(vaultServer, "", vaultKnowledgeTools)
-		add(memoryServer, "", memoryKnowledgeTools)
+		add(vaultServer, "", knowledgeToolList(vaultServer))
+		add(memoryServer, "", knowledgeToolList(memoryServer))
 	case "codex":
 		if runtime.Home == "" {
 			return out, nil
@@ -128,10 +185,10 @@ func KnowledgeApprovals(runtime Runtime) ([]KnowledgeApproval, error) {
 		// plugin binding and the retired obsidian server are not recognized, so they earn no grant
 		// and are never mapped to amem or vmem.
 		if bound[vaultServer] && !disabled[vaultServer] {
-			add(vaultServer, "", vaultKnowledgeTools)
+			add(vaultServer, "", knowledgeToolList(vaultServer))
 		}
 		if bound[memoryServer] && !disabled[memoryServer] {
-			add(memoryServer, "", memoryKnowledgeTools)
+			add(memoryServer, "", knowledgeToolList(memoryServer))
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -146,13 +203,13 @@ func knowledgeTools(agent string, grant KnowledgeApproval) []string {
 		return nil
 	}
 	if (agent == "claude" || agent == "codex") && grant.Server == vaultServer && grant.Plugin == "" {
-		return vaultKnowledgeTools
+		return knowledgeToolList(vaultServer)
 	}
 	// amem is a plain MCP server for both agents. Any other server name, the retired
 	// claude-mem ones ("mcp-search", "plugin_claude-mem_mcp-search") included, gets no
 	// tools, so KnowledgeArgs refuses it instead of mapping it onto amem.
 	if (agent == "claude" || agent == "codex") && grant.Server == memoryServer && grant.Plugin == "" {
-		return memoryKnowledgeTools
+		return knowledgeToolList(memoryServer)
 	}
 	return nil
 }

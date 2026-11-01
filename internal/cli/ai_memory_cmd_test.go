@@ -182,7 +182,7 @@ func TestMemoryInstallWithoutAmemOnPathExplainsTheExactInstall(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	cfg := writeAgentsConfig(t, home, "kiro")
 	_, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "memory", "install")
-	if err == nil || !strings.Contains(err.Error()+errOut, "@staix/agent-mem "+aisettings.AmemPinnedVersion) {
+	if err == nil || !strings.Contains(err.Error()+errOut, "@staix/agent-mem "+aisettings.AmemSupportedRange) {
 		t.Fatalf("no actionable message: %v\n%s", err, errOut)
 	}
 	if _, statErr := os.Stat(filepath.Join(home, ".kiro")); statErr == nil {
@@ -220,11 +220,11 @@ func TestMemoryStatusSaysWhichAgentsAreReady(t *testing.T) {
 			t.Errorf("%s: %q, want managed by amem setup", agent, line)
 		}
 	}
-	if !strings.Contains(out, "expected "+aisettings.AmemPinnedVersion) {
-		t.Errorf("status does not name the pinned version:\n%s", out)
+	if !strings.Contains(out, "supported "+aisettings.AmemSupportedRange) {
+		t.Errorf("status does not name the supported range:\n%s", out)
 	}
-	// AC: amem 0.14.0 on PATH is the pin, so no mismatch is reported.
-	if strings.Contains(out, "not the pinned version") {
+	// AC: amem 0.14.0 on PATH is inside the range, so no mismatch is reported.
+	if strings.Contains(out, "outside the supported range") {
 		t.Errorf("amem %s reported as a mismatch:\n%s", aisettings.AmemPinnedVersion, out)
 	}
 }
@@ -406,15 +406,43 @@ func TestMemoryStatusDoesNotCallAnUnselectedAgentMissing(t *testing.T) {
 	}
 }
 
-// status warns unless amem reports exactly the pinned version: a longer number that merely contains it is not it.
-func TestContainsVersionMatchesTheWholeNumberOnly(t *testing.T) {
-	for output, want := range map[string]bool{
-		"0.11.0": true, "amem 0.11.0": true, "0.11.0\n": true, "agent-mem v0.11.0 (bun)": true,
-		"10.11.0": false, "0.11.01": false, "0.11.0.1": false, "0.11": false, "1.0.11.0": false,
-		"0.6.0": false, "": false, "amem 0.11.0.": true, "0.11.0-rc1": false, "0.11.0+build5": false, "0.11.0 - ok": true,
+func fakeAmemScript(t *testing.T, body string) {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "amem")
+	writeCLITestFile(t, path, "#!/bin/sh\n"+body)
+	if err := os.Chmod(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// #319 AC1: a release newer than the compiled floor is inside the range and needs no dot release; the
+// manifest's range replaces the compiled one; a release outside it, or a prerelease, still warns.
+func TestMemoryStatusWarnsOnlyOutsideTheSupportedRange(t *testing.T) {
+	for _, c := range []struct {
+		name, script, want string
+		warn               bool
+	}{
+		{"newer release, no manifest", "echo 0.17.0\n", "0.17.0 (supported " + aisettings.AmemSupportedRange + ", compiled fallback)", false},
+		{"older than the floor", "echo 0.13.0\n", "0.13.0 (supported", true},
+		{"prerelease", "echo 0.18.0-rc1\n", "0.18.0-rc1 (supported", true},
+		{"manifest range", `[ "$1" = manifest ] && { echo '{"name":"@staix/agent-mem","version":"0.20.0","supported":">=0.16.0 <2.0.0"}'; exit 0; }; echo 0.20.0` + "\n", "0.20.0 (supported >=0.16.0 <2.0.0, from its manifest)", false},
 	} {
-		if got := containsVersion(output, "0.11.0"); got != want {
-			t.Errorf("containsVersion(%q) = %v, want %v", output, got, want)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			home := t.TempDir()
+			fakeAmemScript(t, c.script)
+			cfg := writeAgentsConfig(t, home, "kiro")
+			out, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "memory", "status")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(out, c.want) {
+				t.Errorf("want %q in:\n%s", c.want, out)
+			}
+			if got := strings.Contains(out+errOut, "outside the supported range"); got != c.warn {
+				t.Errorf("warned=%v, want %v:\n%s%s", got, c.warn, out, errOut)
+			}
+		})
 	}
 }
