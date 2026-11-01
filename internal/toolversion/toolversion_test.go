@@ -69,6 +69,18 @@ echo '{"name":"@staix/agent-mem","version":"0.18.0","supported":">=0.14.0 <1.0.0
 	}
 }
 
+// The shape vault-mem ships (STAIxBWLB/vault-mem#83) reads unchanged: no `supported`, extra keys ignored.
+func TestReadAcceptsTheVaultMemManifestShape(t *testing.T) {
+	bin := script(t, t.TempDir(), `[ "$1 $2" = "manifest --json" ] || exit 2
+echo '{"name":"@staix/vault-mem","version":"0.3.0","configVersion":1,"mcp":{"server":"vmem","tools":["vmem_status","vmem_search","vmem_delete"]},"commands":["status","search","manifest"]}'
+`)
+	got := Read(context.Background(), bin, "@staix/vault-mem")
+	want := Manifest{Version: "0.3.0", Tools: []string{"vmem_status", "vmem_search", "vmem_delete"}, Source: "manifest"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+}
+
 // A release without `manifest` (every amem up to 0.17.0) falls back to its package.json version.
 func TestReadFallsBackToThePackageJSONVersion(t *testing.T) {
 	pkg := filepath.Join(t.TempDir(), "node_modules", "@staix", "agent-mem")

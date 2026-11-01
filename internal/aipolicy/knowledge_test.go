@@ -75,6 +75,28 @@ func TestKnowledgeToolsComeFromTheManifestInsideTheRules(t *testing.T) {
 	if _, err := KnowledgeArgs(Runtime{Agent: "claude"}, []KnowledgeApproval{{Server: memoryServer, Tool: "amem_forget", ApprovalMode: "approve"}}); err == nil {
 		t.Fatal("a forget tool earned a grant from a manifest")
 	}
+	// The compiled list is the ceiling for destructive verbs on vmem too: the two-step vmem_delete it
+	// already grants stays, and no manifest adds vmem_purge_all, vmem_remove_note or vmem_forget_all.
+	published[vaultServer] = []string{"vmem_read", "vmem_delete", "vmem_purge_all", "vmem_remove_note", "vmem_forget_all", "vmem_move"}
+	if got := strings.Join(knowledgeToolList(vaultServer), ","); got != "vmem_read,vmem_delete,vmem_move" {
+		t.Fatalf("vmem destructive grants %s", got)
+	}
+	for _, tool := range []string{"vmem_purge_all", "vmem_remove_note"} {
+		if _, err := KnowledgeArgs(Runtime{Agent: "codex"}, []KnowledgeApproval{{Server: vaultServer, Tool: tool, ApprovalMode: "approve"}}); err == nil {
+			t.Fatalf("%s earned a grant from a manifest", tool)
+		}
+	}
+	// Under a compiled list without vmem_delete, a manifest publishing it earns no grant.
+	compiled := vaultKnowledgeTools
+	vaultKnowledgeTools = []string{"vmem_read", "vmem_search"}
+	t.Cleanup(func() { vaultKnowledgeTools = compiled })
+	published[vaultServer] = []string{"vmem_read", "vmem_delete", "vmem_purge_all"}
+	if got := strings.Join(knowledgeToolList(vaultServer), ","); got != "vmem_read" {
+		t.Fatalf("vmem_delete above the compiled ceiling was granted: %s", got)
+	}
+	if _, err := KnowledgeArgs(Runtime{Agent: "claude"}, []KnowledgeApproval{{Server: vaultServer, Tool: "vmem_delete", ApprovalMode: "approve"}}); err == nil {
+		t.Fatal("vmem_delete above the compiled ceiling earned a grant")
+	}
 	published[memoryServer] = []string{"amem_forget", "other_tool"}
 	if got := strings.Join(knowledgeToolList(memoryServer), ","); got != strings.Join(memoryKnowledgeTools, ",") {
 		t.Fatalf("nothing grantable must fall back to the compiled list, got %s", got)

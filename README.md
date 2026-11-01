@@ -267,8 +267,9 @@ amem and vmem describe themselves, so a new release of either needs no new
 `amem manifest --json` / `vmem manifest --json`. A release without that command
 is read from its installed `package.json` version, and dot's compiled range and
 tool list fill in what is missing. A published tool name is granted only when it
-is the server's own (`amem_`, `vmem_`) and, on amem, cannot delete, forget,
-move or purge.
+is the server's own (`amem_`, `vmem_`). A name that can delete, forget, move,
+purge or remove is granted only when dot's compiled list already grants it
+(vmem's two-step `vmem_delete` and `vmem_move`), so a manifest never adds one.
 
 To remove claude-mem after `amem import claude-mem` has finished, run
 `dot ai memory retire-claude-mem` for a dry run that lists every item and reads

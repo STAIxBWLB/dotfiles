@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -74,10 +75,15 @@ func cachedManifestTools() func(server string) []string {
 
 var grantableTool = regexp.MustCompile(`^[a-z][a-z0-9_]{1,63}$`)
 
+// destructiveVerbs mark a tool that can delete, forget, move, purge or remove something.
+var destructiveVerbs = []string{"delete", "forget", "move", "purge", "remove"}
+
 // knowledgeToolList is the grant list for server: the installed release's manifest when it publishes
 // one, else the compiled list. A published name earns a grant only when it is the server's own
-// (`amem_` on amem), is a plain identifier, and, on amem, cannot delete, forget, move or purge
-// anything: a manifest can widen the grant only inside the rules the compiled list follows.
+// (`amem_` on amem, `vmem_` on vmem) and a plain identifier. A name with a destructive verb earns one
+// only when the compiled list already grants it (vmem_delete and vmem_move, which are two-step): the
+// compiled list is the ceiling for destructive tools, so a manifest can never widen auto-approval to
+// a new one.
 func knowledgeToolList(server string) []string {
 	fallback := map[string][]string{memoryServer: memoryKnowledgeTools, vaultServer: vaultKnowledgeTools}[server]
 	published := []string{}
@@ -86,7 +92,7 @@ func knowledgeToolList(server string) []string {
 		if seen[name] || !strings.HasPrefix(name, server+"_") || !grantableTool.MatchString(name) {
 			continue
 		}
-		if server == memoryServer && (strings.Contains(name, "delete") || strings.Contains(name, "forget") || strings.Contains(name, "move") || strings.Contains(name, "purge")) {
+		if destructive(name) && !slices.Contains(fallback, name) {
 			continue
 		}
 		seen[name] = true
@@ -96,6 +102,15 @@ func knowledgeToolList(server string) []string {
 		return fallback
 	}
 	return published
+}
+
+func destructive(name string) bool {
+	for _, verb := range destructiveVerbs {
+		if strings.Contains(name, verb) {
+			return true
+		}
+	}
+	return false
 }
 
 // KnowledgeApprovals recognizes existing Codex bindings without copying identity
