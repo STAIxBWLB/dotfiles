@@ -92,15 +92,9 @@ func (e *Engine) FamilyInstall(ctx context.Context, id, version string, adopt bo
 		r.Notes = []string{fmt.Sprintf("would install %s@%s into %s and make it current", t.Package, version, dir)}
 		return r, nil
 	}
-	release, err := e.acquire(ctx, resourceguard.Options{HomeDir: e.opts.HomeDir, Purpose: "family tool install", ScopeKey: "tooling"})
-	if err != nil {
-		var deferred *resourceguard.DeferredError
-		if errors.As(err, &deferred) {
-			r.Status = "deferred-resource-pressure"
-			r.Notes = []string{deferred.Reason}
-			return r, nil
-		}
-		return r, err
+	release, deferredR, err := e.familySlot(ctx, r)
+	if release == nil {
+		return deferredR, err
 	}
 	defer release()
 	if _, err := os.Lstat(dir); err == nil {
@@ -112,6 +106,22 @@ func (e *Engine) FamilyInstall(ctx context.Context, id, version string, adopt bo
 		return r, err
 	}
 	return e.familyActivate(ctx, t, version, adopt, r)
+}
+
+// familySlot takes the maintenance slot `dot ai update` uses, so installs, rollbacks and their
+// pruning never interleave. A nil release means the caller returns the result and error as they are.
+func (e *Engine) familySlot(ctx context.Context, r FamilyResult) (func(), FamilyResult, error) {
+	release, err := e.acquire(ctx, resourceguard.Options{HomeDir: e.opts.HomeDir, Purpose: "family tool " + r.ID, ScopeKey: "tooling"})
+	if err != nil {
+		var deferred *resourceguard.DeferredError
+		if errors.As(err, &deferred) {
+			r.Status = "deferred-resource-pressure"
+			r.Notes = []string{deferred.Reason}
+			return nil, r, nil
+		}
+		return nil, r, err
+	}
+	return release, r, nil
 }
 
 // familyNPMInstall installs into a staging prefix and renames it into place, so a failed install
@@ -162,9 +172,20 @@ func (e *Engine) FamilyRollback(ctx context.Context, id string) (FamilyResult, e
 		return FamilyResult{}, err
 	}
 	r := FamilyResult{ID: id}
+	noPrevious := fmt.Errorf("%s has no previous version to roll back to", id)
+	if readVersionLink(filepath.Join(e.FamilyRoot(), id, "previous")) == "" {
+		return r, noPrevious
+	}
+	if !e.opts.DryRun {
+		release, deferredR, err := e.familySlot(ctx, r)
+		if release == nil {
+			return deferredR, err
+		}
+		defer release()
+	}
 	prev := readVersionLink(filepath.Join(e.FamilyRoot(), id, "previous"))
 	if prev == "" {
-		return r, fmt.Errorf("%s has no previous version to roll back to", id)
+		return r, noPrevious
 	}
 	if err := verifyFamilyDir(t, filepath.Join(e.FamilyRoot(), id, prev), prev); err != nil {
 		return r, fmt.Errorf("previous %s %s is not a verified install: %w", id, prev, err)
@@ -256,6 +277,14 @@ func (e *Engine) familyPathEntry(t FamilyTool, adopt bool) []string {
 // familyPrune keeps current and previous and every version a running process uses.
 func (e *Engine) familyPrune(t FamilyTool, toolDir, current, previous string, lines []string) []string {
 	var notes []string
+	if slices.ContainsFunc(lines, func(l string) bool { return !strings.Contains(l, "/node_modules/"+t.Package+"/") }) {
+		for _, v := range familyVersions(toolDir) {
+			if v != current && v != previous {
+				notes = append(notes, fmt.Sprintf("kept %s %s: a running process started through %s cannot be tied to one version", t.ID, v, e.familyLink(t)))
+			}
+		}
+		return notes
+	}
 	for _, v := range familyVersions(toolDir) {
 		if v == current || v == previous {
 			continue
@@ -274,16 +303,23 @@ func (e *Engine) familyPrune(t FamilyTool, toolDir, current, previous string, li
 	return notes
 }
 
-// familyProcesses lists process-table lines that run the tool's package from any install.
+// familyProcesses lists process-table lines that run the tool: its package file from any install,
+// or (when the runtime keeps the invoked path) the PATH link or the `current` link, or, for the
+// person's own home, the bare command name.
 func (e *Engine) familyProcesses(ctx context.Context, t FamilyTool) []string {
 	out, err := e.processes(ctx)
 	if err != nil {
 		return nil
 	}
-	marker := "/node_modules/" + t.Package + "/"
+	markers := []string{"/node_modules/" + t.Package + "/", e.familyLink(t), filepath.Join(e.FamilyRoot(), t.ID, "current") + string(os.PathSeparator)}
 	var lines []string
 	for _, line := range strings.Split(out, "\n") {
-		if strings.Contains(line, marker) {
+		fields := strings.Fields(line)
+		match := len(fields) > 1 && fields[1] == t.Binary && !e.opts.ExplicitHome
+		for _, m := range markers {
+			match = match || strings.Contains(line, m)
+		}
+		if match {
 			lines = append(lines, line)
 		}
 	}

@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/STAIxBWLB/dotfiles/internal/resourceguard"
 )
 
 // fakeFamilyNPM makes npm write a package.json and a relative bin link into its --prefix, as npm does.
@@ -99,6 +101,13 @@ func TestFamilyInstallActivateAndRollback(t *testing.T) {
 	if err != nil || !hasNote(r, "kept amem 1.0.0") || !slices.Equal(r.Versions, []string{"1.0.0", "2.0.0", "3.0.0"}) {
 		t.Fatalf("third install = %+v, %v", r, err)
 	}
+	// A session launched through the PATH link names no version: every version stays.
+	link = filepath.Join(e.opts.HomeDir, ".local", "bin", "amem")
+	e.processes = func(context.Context) (string, error) { return "  5151 node " + link + " mcp\n", nil }
+	r, err = e.FamilyInstall(ctx, "amem", "3.0.0", false)
+	if err != nil || !hasNote(r, "cannot be tied to one version") || !slices.Equal(r.Versions, []string{"1.0.0", "2.0.0", "3.0.0"}) {
+		t.Fatalf("link-launched session = %+v, %v", r, err)
+	}
 	// Nothing runs it any more: the next activation removes it, never N-1.
 	e.processes = func(context.Context) (string, error) { return "", nil }
 	r, err = e.FamilyInstall(ctx, "amem", "3.0.0", false)
@@ -150,6 +159,16 @@ func TestFamilyInstallLatestDryRunAndUnpublished(t *testing.T) {
 	}
 	if _, err := e.FamilyRollback(ctx, "ahub"); err == nil {
 		t.Fatal("rollback without a previous version succeeded")
+	}
+	// Rollback takes the same slot as install, so the two never interleave.
+	if _, err := e.FamilyInstall(ctx, "ahub", "1.0.0", false); err != nil {
+		t.Fatal(err)
+	}
+	e.acquire = func(context.Context, resourceguard.Options) (func(), error) {
+		return nil, &resourceguard.DeferredError{Reason: "busy"}
+	}
+	if r, err := e.FamilyRollback(ctx, "ahub"); err != nil || r.Status != "deferred-resource-pressure" {
+		t.Fatalf("rollback under a busy slot = %+v, %v", r, err)
 	}
 }
 
