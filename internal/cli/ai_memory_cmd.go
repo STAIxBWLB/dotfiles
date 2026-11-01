@@ -22,8 +22,8 @@ func newAIMemoryCmd() *cobra.Command {
 GitHub Copilot, and print the 'amem setup' lines for Claude Code, Codex, Kimi,
 Qwen, pi and Antigravity, which amem registers itself.
 
-dot never installs amem and runs no memory process: install the exact version
-yourself, then run 'dot ai memory install'. amem has no resident worker, so dot
+dot runs no memory process and installs amem only on request: install the exact
+version yourself or with 'dot ai family install amem', then run 'dot ai memory install'. amem has no resident worker, so dot
 writes no LaunchAgent for it. Sessions of agents without hooks reach amem
 through 'amem ingest <agent>', run at session end or on demand.
 

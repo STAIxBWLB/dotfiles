@@ -46,6 +46,8 @@ they are machine state pi rebuilds itself.`,
 	cmd.AddCommand(newAIMemoryCmd())
 	cmd.AddCommand(newAIVaultCmd())
 	cmd.AddCommand(newAIUpdateCmd())
+	cmd.AddCommand(newAIFamilyCmd())
+	cmd.AddCommand(newAIRollbackCmd())
 	cmd.AddCommand(newAIAuthCmd())
 	cmd.AddCommand(newAIAuditCmd())
 	return cmd

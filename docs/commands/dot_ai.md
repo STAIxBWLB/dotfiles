@@ -40,6 +40,7 @@ they are machine state pi rebuilds itself.
 * [dot ai backup](dot_ai_backup.md)	 - Create a versioned AI settings snapshot
 * [dot ai coauthor-guard](dot_ai_coauthor-guard.md)	 - Warn or block AI-added Co-authored commit trailers
 * [dot ai export](dot_ai_export.md)	 - Export AI settings to a portable tar.gz archive
+* [dot ai family](dot_ai_family.md)	 - Install agent-hub family tools side by side, one directory per version
 * [dot ai handoff](dot_ai_handoff.md)	 - Share explicit local development notes across selected agents
 * [dot ai hud](dot_ai_hud.md)	 - Manage dot-native Claude Code and Codex HUD status lines
 * [dot ai import](dot_ai_import.md)	 - Import AI settings from a portable tar.gz archive
@@ -48,6 +49,7 @@ they are machine state pi rebuilds itself.
 * [dot ai policy](dot_ai_policy.md)	 - Inspect, resolve and reconcile adaptive AI operating policies
 * [dot ai prune](dot_ai_prune.md)	 - Delete older AI config snapshots, keeping the newest N
 * [dot ai restore](dot_ai_restore.md)	 - Restore AI settings from a versioned snapshot
+* [dot ai rollback](dot_ai_rollback.md)	 - Make a family tool's previous version current again
 * [dot ai run](dot_ai_run.md)	 - Run one repository heavyweight command under the admission controller
 * [dot ai session](dot_ai_session.md)	 - Launch controlled agents with adaptive policy and native continuation
 * [dot ai setup](dot_ai_setup.md)	 - Select agent CLIs, development add-ons, instructions and shared skills

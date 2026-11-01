@@ -235,8 +235,28 @@ separately from installation status. Missing authentication or trust remains a
 user action; setup does not copy credentials or approve hooks. A saved selection
 that still lists the retired `claude-mem` add-on is read without it.
 
+The agent-hub family (ahub, amem, vmem; acon and ares once they publish an npm
+package) installs side by side with `dot ai family install <id> [--version X.Y.Z]`.
+Each version gets its own npm prefix in `~/.local/share/dotfiles/tools/<id>/<version>/`,
+a `current` link names the active one and `previous` the one before it, and
+`~/.local/bin/<bin>` points through `current`. Activation is one rename: new
+sessions start the new version, running processes keep their files and are
+listed, and nothing is stopped. Versions other than current and previous are
+removed once no running process uses them. An existing `~/.local/bin/<bin>`
+from another install is left alone unless `--adopt` repoints it (a regular file
+is never replaced). After amem or vmem activates, dot prints the
+`amem setup <target> --root ...` or `vmem setup <target> --root ...` line that
+registers that release with an agent; it does not run it.
+
+```bash
+dot ai family install amem --version 0.17.0
+dot ai family status
+dot ai rollback amem              # previous becomes current again
+```
+
 Project memory is [amem](https://github.com/STAIxBWLB/agent-mem)
-(`@staix/agent-mem`), which dot registers but never installs. Install a release
+(`@staix/agent-mem`), which dot registers but installs only through
+`dot ai family install amem`. Install a release
 inside the range `dot ai memory status` names (`>=0.14.0 <1.0.0` unless the
 installed amem publishes its own; every amem that shares a memory home must run
 0.14.0 or later), then:
