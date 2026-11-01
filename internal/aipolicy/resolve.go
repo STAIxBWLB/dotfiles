@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/toolversion"
 )
 
 func classify(task string) string {
@@ -87,7 +88,9 @@ func Resolve(policy *config.AIPolicyConfig, request Request, inventory []Runtime
 			reject("workload not validated")
 			continue
 		}
-		idx := slices.IndexFunc(inventory, func(r Runtime) bool { return r.Agent == t.Agent && r.Available && r.Version == t.Version })
+		idx := slices.IndexFunc(inventory, func(r Runtime) bool {
+			return r.Agent == t.Agent && r.Available && toolversion.Satisfies(t.Version, r.Version)
+		})
 		if idx < 0 {
 			reject("validated runtime version unavailable; inspect and revalidate target")
 			continue
@@ -203,11 +206,11 @@ func Resolve(policy *config.AIPolicyConfig, request Request, inventory []Runtime
 func permissionArgs(r Runtime, unattended bool) ([]string, string, error) {
 	switch r.Agent {
 	case "claude":
-		if r.Version == "2.1.283" && r.AutoReview {
+		if autoReviewVersion(r.Agent, r.Version) && r.AutoReview {
 			return []string{"--permission-mode", "auto"}, "native-auto-review", nil
 		}
 	case "codex":
-		if r.Version == "0.157.1" && r.AutoReview {
+		if autoReviewVersion(r.Agent, r.Version) && r.AutoReview {
 			return []string{"--approve-for-me"}, "native-auto-review", nil
 		}
 	case "kimi":

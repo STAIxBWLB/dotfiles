@@ -42,7 +42,61 @@ func testEngine(t *testing.T) *Engine {
 	})}
 	e.exec = func(context.Context, command) (string, error) { t.Fatal("unexpected command"); return "", nil }
 	e.acquire = func(context.Context, resourceguard.Options) (func(), error) { return func() {}, nil }
+	e.processes = func(context.Context) (string, error) { return "", nil }
 	return e
+}
+
+// #319 AC3: replacing an installed tool reports its live processes and stops none; the install
+// still runs, and new sessions get the new version.
+func TestUpdateReportsLiveProcessesAndStopsNone(t *testing.T) {
+	e := testEngine(t)
+	home, err := filepath.EvalSymlinks(e.opts.HomeDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.opts.HomeDir = home
+	fakeBinary(t, e, "npm")
+	pkg := filepath.Join(home, ".local", "lib", "node_modules", "@openai", "codex")
+	if err := os.MkdirAll(filepath.Join(pkg, "bin"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkg, "bin", "codex.js"), []byte("fixture"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	codex := filepath.Join(e.opts.HomeDir, ".local", "bin", "codex")
+	if err := os.Symlink(filepath.Join(pkg, "bin", "codex.js"), codex); err != nil {
+		t.Fatal(err)
+	}
+	e.processes = func(context.Context) (string, error) {
+		return "  101 " + codex + " exec\n  102 node " + pkg + "/bin/codex.js\n  103 codex resume\n  104 /usr/bin/vim notes\n", nil
+	}
+	version := "codex-cli 1.0.0"
+	var commands []command
+	e.exec = func(_ context.Context, c command) (string, error) {
+		commands = append(commands, c)
+		if filepath.Base(c.Path) == "npm" {
+			version = "codex-cli 2.0.0"
+			return "", nil
+		}
+		return version, nil
+	}
+	r, runErr := e.Run(context.Background(), config.AIToolingConfig{Agents: []string{"codex"}}, Update)
+	if runErr != nil || r.Failed != 0 || r.Items[0].Status != "updated" {
+		t.Fatalf("%+v %v", r, runErr)
+	}
+	detail := r.Items[0].Detail
+	// The bare name 103 is not matched under an explicit --home: it may be another home's codex.
+	if !strings.Contains(detail, "2 running process(es) left as they are (pid 101, 102)") || !strings.Contains(detail, "nothing was stopped") {
+		t.Fatalf("detail %q", detail)
+	}
+	for _, c := range commands {
+		if b := filepath.Base(c.Path); b == "kill" || b == "pkill" {
+			t.Fatalf("stopped a process: %v", c)
+		}
+	}
+	if got := drainNote(nil); got != "" {
+		t.Fatalf("no live process must add nothing, got %q", got)
+	}
 }
 func fakeBinary(t *testing.T, e *Engine, name string) string {
 	t.Helper()

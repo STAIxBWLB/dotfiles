@@ -9,7 +9,7 @@ those agents are selected, write the vault block into the agents SSOT (after a
 backup), and print the 'vmem setup' lines for the other agents. Every other
 server and key is preserved. Re-running changes nothing.
 
-vmem must already be installed (the exact @staix/vault-mem version, which
+vmem must already be installed (an @staix/vault-mem release inside the range
 'dot ai vault status' names) and on PATH. With --dry-run nothing is written.
 
 ```

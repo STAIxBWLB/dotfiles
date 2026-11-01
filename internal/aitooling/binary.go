@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -133,9 +135,15 @@ func (e *Engine) binary(ctx context.Context, en Entry, pin string, op Operation)
 		r.Detail = en.Name + " self-updates in the background; remove " + path + " and run dot ai ensure to reinstall"
 		return r
 	}
+	// Drain-aware activation (#319): the install changes what new sessions start; running processes of
+	// the old version are reported and never stopped.
+	live := ""
+	if path != "" {
+		live = drainNote(e.liveProcesses(ctx, en.Binary, path, prefix, spec))
+	}
 	if err = e.installBinary(ctx, en.ID, target, path, provider, prefix, spec); err != nil {
 		r.Status = "failed"
-		r.Detail = err.Error()
+		r.Detail = err.Error() + live
 		return r
 	}
 	afterPath := e.find(en.Binary)
@@ -155,9 +163,71 @@ func (e *Engine) binary(ctx context.Context, en Entry, pin string, op Operation)
 	if before == "" {
 		r.Status = "installed"
 	}
-	r.Detail = fmt.Sprintf("%s: %s -> %s; authentication not changed", provider, before, after)
+	r.Detail = fmt.Sprintf("%s: %s -> %s; authentication not changed", provider, before, after) + live
 	e.record(en.ID, provider, afterPath, after, r.Status)
 	return r
+}
+
+// liveProcesses lists the running processes of an installed tool before it is replaced: argv[0] is
+// its PATH entry or the file that entry resolves to, or (for the person's own home, not an explicit
+// --home) its bare PATH name, or the command line runs a file inside its npm package. An unreadable
+// process table lists nothing; it never blocks the install.
+func (e *Engine) liveProcesses(ctx context.Context, name, path, prefix string, spec binarySpec) []int {
+	out, err := e.processes(ctx)
+	if err != nil {
+		return nil
+	}
+	resolved, _ := filepath.EvalSymlinks(path)
+	contains := []string{}
+	if spec.npm != "" && prefix != "" {
+		contains = append(contains, filepath.Join(prefix, "lib", "node_modules", spec.npm)+"/")
+	}
+	var pids []int
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		pid, err := strconv.Atoi(fields[0])
+		if err != nil || pid == os.Getpid() {
+			continue
+		}
+		argv0 := fields[1]
+		match := (argv0 == name && !e.opts.ExplicitHome) || argv0 == path || (resolved != "" && argv0 == resolved)
+		for _, c := range contains {
+			match = match || strings.Contains(line, c)
+		}
+		if match {
+			pids = append(pids, pid)
+		}
+	}
+	return pids
+}
+
+// drainNote reports live processes: they keep the files they started with, and only new sessions get
+// the new version. Nothing is stopped and nothing waits for them.
+func drainNote(pids []int) string {
+	if len(pids) == 0 {
+		return ""
+	}
+	shown := pids
+	more := ""
+	if len(shown) > 10 {
+		shown, more = shown[:10], fmt.Sprintf(" and %d more", len(pids)-10)
+	}
+	list := make([]string, len(shown))
+	for i, pid := range shown {
+		list[i] = strconv.Itoa(pid)
+	}
+	return fmt.Sprintf("; %d running process(es) left as they are (pid %s%s): new sessions get the new version, nothing was stopped", len(pids), strings.Join(list, ", "), more)
+}
+
+// listProcesses reads `ps -Ao pid=,args=`; the process table is read-only and stays in memory.
+func listProcesses(ctx context.Context) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	out, err := osexec.CommandContext(ctx, "ps", "-Ao", "pid=,args=").Output()
+	return string(out), err
 }
 
 // metadataURL resolves the latest-version metadata endpoint, expanding the
@@ -439,9 +509,13 @@ func (e *Engine) brewBinary(ctx context.Context, en Entry, pin string, op Operat
 		}
 		return r
 	}
+	live := ""
+	if path != "" {
+		live = drainNote(e.liveProcesses(ctx, en.Binary, path, "", s))
+	}
 	if err = e.applyBrew(ctx, fresh, target, path != ""); err != nil {
 		r.Status = "failed"
-		r.Detail = err.Error()
+		r.Detail = err.Error() + live
 		return r
 	}
 	out, err := e.exec(ctx, command{Path: path, Args: []string{"--version"}, Env: e.environment(), Dir: e.opts.HomeDir, Timeout: 15 * time.Second})
@@ -454,7 +528,7 @@ func (e *Engine) brewBinary(ctx context.Context, en Entry, pin string, op Operat
 	before := r.Installed
 	r.Installed = after
 	r.Status = "updated"
-	r.Detail = fmt.Sprintf("brew: %s -> %s", before, after)
+	r.Detail = fmt.Sprintf("brew: %s -> %s", before, after) + live
 	e.record(en.ID, "brew", path, after, r.Status)
 	return r
 }

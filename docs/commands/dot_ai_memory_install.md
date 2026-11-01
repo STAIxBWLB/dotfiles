@@ -9,7 +9,7 @@ those agents are selected, and print the 'amem setup' lines for the other
 agents. dot leaves the Kimi, Qwen and Antigravity configs untouched: 'amem setup'
 owns them. Every other server and key is preserved. Re-running changes nothing.
 
-amem must already be installed (the exact @staix/agent-mem version, which
+amem must already be installed (an @staix/agent-mem release inside the range
 'dot ai memory status' names) and on PATH. With --dry-run nothing is written.
 
 ```

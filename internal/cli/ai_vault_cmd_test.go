@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/STAIxBWLB/dotfiles/internal/aisettings"
 )
 
 func fakeVmem(t *testing.T) string {
@@ -130,7 +132,7 @@ func TestVaultStatusWarnsWhileObsidianIsRegistered(t *testing.T) {
 			t.Fatalf("status misses the obsidian warning for %s:\n%s", path, combined)
 		}
 	}
-	if !strings.Contains(combined, "0.2.1 (expected 0.2.1)") {
+	if !strings.Contains(combined, "0.2.1 (supported "+aisettings.VmemSupportedRange+", compiled fallback)") {
 		t.Fatalf("version line:\n%s", combined)
 	}
 	clean := t.TempDir()

@@ -15,9 +15,22 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/toolversion"
 )
 
 var nativeVersion = regexp.MustCompile(`\b[0-9]+\.[0-9]+\.[0-9]+\b`)
+
+// autoReviewRanges are the claude and codex releases whose automatic-review launch flags dot supports:
+// from the release the adapter was verified on (Claude 2.1.283, Codex 0.157.1) up to the next major.
+// Inside the range the --help probe still has to show the flags, so an upgrade keeps eligibility
+// without trusting a version number alone, and a release that drops a flag loses it.
+var autoReviewRanges = map[string]string{"claude": ">=2.1.283 <3.0.0", "codex": ">=0.157.1 <1.0.0"}
+
+// autoReviewVersion reports whether agent's version is inside its automatic-review range.
+func autoReviewVersion(agent, version string) bool {
+	spec, ok := autoReviewRanges[agent]
+	return ok && toolversion.Satisfies(spec, version)
+}
 
 // Inspect executes only version/help probes. Explicit homes deliberately ignore
 // ambient profile overrides so examining a fixture cannot inspect another account.
@@ -98,10 +111,10 @@ func Inspect(ctx context.Context, home string, explicit bool) ([]Runtime, error)
 		if err != nil {
 			r.Constraints = append(r.Constraints, "help probe failed")
 		} else {
-			if agent == "codex" && r.Version == "0.157.1" && strings.Contains(help, "--approve-for-me") {
+			if agent == "codex" && autoReviewVersion(agent, r.Version) && strings.Contains(help, "--approve-for-me") {
 				r.AutoReview = true
 			}
-			if agent == "claude" && r.Version == "2.1.283" && strings.Contains(help, "--permission-mode") && strings.Contains(help, "auto") && strings.Contains(help, "--effort") {
+			if agent == "claude" && autoReviewVersion(agent, r.Version) && strings.Contains(help, "--permission-mode") && strings.Contains(help, "auto") && strings.Contains(help, "--effort") {
 				r.AutoReview = true
 			}
 		}

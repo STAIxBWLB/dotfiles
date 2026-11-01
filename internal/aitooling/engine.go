@@ -51,6 +51,8 @@ type Engine struct {
 	acquire     func(context.Context, resourceguard.Options) (func(), error)
 	waitAcquire func(context.Context, resourceguard.Options, time.Duration) (func(), error)
 	receipts    map[string]receipt
+	// processes reads the process table for drain-aware activation; tests replace it.
+	processes func(context.Context) (string, error)
 }
 type receipt struct {
 	Provider  string    `json:"provider"`
@@ -65,7 +67,7 @@ func New(o Options) *Engine {
 	if o.HomeDir == "" {
 		o.HomeDir, _ = os.UserHomeDir()
 	}
-	return &Engine{opts: o, exec: execute, http: &http.Client{Timeout: 20 * time.Second}, acquire: resourceguard.Acquire, waitAcquire: resourceguard.WaitAcquire, receipts: map[string]receipt{}}
+	return &Engine{opts: o, exec: execute, http: &http.Client{Timeout: 20 * time.Second}, acquire: resourceguard.Acquire, waitAcquire: resourceguard.WaitAcquire, receipts: map[string]receipt{}, processes: listProcesses}
 }
 func (e *Engine) Run(ctx context.Context, s config.AIToolingConfig, op Operation) (Report, error) {
 	r := Report{Items: []ItemResult{}}

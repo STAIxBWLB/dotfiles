@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/STAIxBWLB/dotfiles/internal/toolversion"
 )
 
 func TestKnowledgeCodexRequiresExistingBindings(t *testing.T) {
@@ -46,9 +48,85 @@ func TestKnowledgeCodexRequiresExistingBindings(t *testing.T) {
 	}
 }
 
-// amem's grant set is its frozen P2 tool list and nothing a note can be deleted or moved with.
+// No test reads the machine's amem or vmem: the compiled lists are the fallback under test unless a test
+// sets knowledgeManifest itself.
+func TestMain(m *testing.M) {
+	knowledgeManifest = func(string) []toolversion.Tool { return nil }
+	os.Exit(m.Run())
+}
+
+func plain(names ...string) []toolversion.Tool {
+	out := make([]toolversion.Tool, len(names))
+	for i, n := range names {
+		out[i] = toolversion.Tool{Name: n}
+	}
+	return out
+}
+
+func readOnly(names ...string) []toolversion.Tool {
+	out := plain(names...)
+	for i := range out {
+		out[i].ReadOnly = true
+	}
+	return out
+}
+
+// #319: the grant list is what the installed release publishes, inside the compiled rules. The compiled
+// list is the ceiling for anything that writes: a new name earns a grant only when the manifest marks
+// it readOnly and its name has no destructive verb. Nothing grantable falls back to the compiled list.
+func TestKnowledgeToolsComeFromTheManifestInsideTheRules(t *testing.T) {
+	published := map[string][]toolversion.Tool{}
+	knowledgeManifest = func(server string) []toolversion.Tool { return published[server] }
+	t.Cleanup(func() { knowledgeManifest = func(string) []toolversion.Tool { return nil } })
+	grants := func(server string) string { return strings.Join(knowledgeToolList(server), ",") }
+	approved := func(agent, server, tool string) bool {
+		_, err := KnowledgeArgs(Runtime{Agent: agent}, []KnowledgeApproval{{Server: server, Tool: tool, ApprovalMode: "approve"}})
+		return err == nil
+	}
+
+	published[memoryServer] = append(plain("amem_search", "amem_new_write", "vmem_read", "amem_*", "amem_search", "AMEM_X", "amem_"+strings.Repeat("x", 64)),
+		readOnly("amem_new_read", "amem_forget", "amem_purge_all", "amem_move_entry")...)
+	if got := grants(memoryServer); got != "amem_search,amem_new_read" {
+		t.Fatalf("amem grants %s", got)
+	}
+	if !approved("claude", memoryServer, "amem_new_read") || approved("claude", memoryServer, "amem_forget") || approved("claude", memoryServer, "amem_new_write") {
+		t.Fatal("amem grant rule broken")
+	}
+
+	// A new plain-string mutating name is not approved; a new readOnly one is; a readOnly claim on a
+	// destructive verb is not; the compiled two-step vmem_delete and vmem_move stay.
+	published[vaultServer] = append(plain("vmem_read", "vmem_delete", "vmem_move", "vmem_overwrite", "vmem_rename", "vmem_reset", "vmem_prune", "vmem_clear"),
+		readOnly("vmem_stats", "vmem_purge_x", "vmem_remove_note", "vmem_forget_all")...)
+	if got := grants(vaultServer); got != "vmem_read,vmem_delete,vmem_move,vmem_stats" {
+		t.Fatalf("vmem grants %s", got)
+	}
+	for _, tool := range []string{"vmem_overwrite", "vmem_rename", "vmem_reset", "vmem_prune", "vmem_clear", "vmem_purge_x", "vmem_remove_note"} {
+		if approved("codex", vaultServer, tool) {
+			t.Errorf("%s earned a grant from a manifest", tool)
+		}
+	}
+	if !approved("claude", vaultServer, "vmem_stats") {
+		t.Error("a readOnly vmem_stats was refused")
+	}
+
+	// Under a compiled list without vmem_delete, a manifest publishing it earns no grant, readOnly or not.
+	compiled := vaultKnowledgeTools
+	vaultKnowledgeTools = []string{"vmem_read", "vmem_search"}
+	t.Cleanup(func() { vaultKnowledgeTools = compiled })
+	published[vaultServer] = append(plain("vmem_read", "vmem_delete"), readOnly("vmem_delete", "vmem_purge_all")...)
+	if got := grants(vaultServer); got != "vmem_read" {
+		t.Fatalf("vmem_delete above the compiled ceiling was granted: %s", got)
+	}
+
+	published[memoryServer] = append(plain("amem_forget", "amem_new_write"), readOnly("other_tool")...)
+	if got := grants(memoryServer); got != strings.Join(memoryKnowledgeTools, ",") {
+		t.Fatalf("nothing grantable must fall back to the compiled list, got %s", got)
+	}
+}
+
+// amem's fallback grant set is its verified tool list and nothing a note can be deleted or moved with.
 func TestKnowledgeMemoryToolsAreAmemsFrozenSurface(t *testing.T) {
-	want := []string{"amem_search", "amem_show", "amem_timeline", "amem_graph", "amem_work_state_read", "amem_work_state_write", "amem_remember", "amem_vault_candidates", "amem_capacity"}
+	want := []string{"amem_search", "amem_evidence", "amem_show", "amem_timeline", "amem_brief", "amem_graph", "amem_work_state_read", "amem_work_state_write", "amem_remember", "amem_correct", "amem_vault_candidates", "amem_capacity"}
 	if strings.Join(memoryKnowledgeTools, ",") != strings.Join(want, ",") {
 		t.Fatalf("memory tools drifted from agent-mem src/mcp.ts: %v", memoryKnowledgeTools)
 	}
@@ -285,9 +363,9 @@ func TestClaudeGrantNamesTheServerThatInstallRegisters(t *testing.T) {
 	}
 }
 
-// vmem's grant set is its frozen 0.2.1 tool list, and only the vmem server earns it.
+// vmem's fallback grant set is its verified 0.2.4 tool list, and only the vmem server earns it.
 func TestKnowledgeVaultToolsAreVmemsFrozenSurface(t *testing.T) {
-	want := []string{"vmem_append", "vmem_check", "vmem_create", "vmem_delete", "vmem_graph_build", "vmem_graph_neighbors", "vmem_link", "vmem_links", "vmem_lint", "vmem_list", "vmem_log_append", "vmem_log_tail", "vmem_mocs", "vmem_move", "vmem_patch", "vmem_promote", "vmem_promote_from_amem", "vmem_read", "vmem_read_many", "vmem_search", "vmem_set_frontmatter", "vmem_status", "vmem_supersede"}
+	want := []string{"vmem_append", "vmem_check", "vmem_create", "vmem_delete", "vmem_graph_build", "vmem_graph_neighbors", "vmem_link", "vmem_links", "vmem_lint", "vmem_list", "vmem_log_append", "vmem_log_tail", "vmem_mocs", "vmem_move", "vmem_patch", "vmem_promote", "vmem_promote_from_amem", "vmem_read", "vmem_read_many", "vmem_search", "vmem_set_frontmatter", "vmem_skills_mine", "vmem_status", "vmem_supersede"}
 	if strings.Join(vaultKnowledgeTools, ",") != strings.Join(want, ",") {
 		t.Fatalf("vault tools drifted from vault-mem VMEM_TOOL_NAMES: %v", vaultKnowledgeTools)
 	}

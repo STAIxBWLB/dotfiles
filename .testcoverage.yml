@@ -119,6 +119,8 @@ override:
     threshold: 59
   - path: ^internal/template$ # measured 80.0000% (16/20)
     threshold: 65
+  - path: ^internal/toolversion$ # measured 95.6897% (111/116)
+    threshold: 94
   - path: ^internal/tunnel$ # measured 31.6964% (142/448)
     threshold: 30
   - path: ^internal/ui$ # measured 19.9442% (143/717)

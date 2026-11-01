@@ -15,6 +15,7 @@ import (
 
 	"github.com/STAIxBWLB/dotfiles/internal/config"
 	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
+	"github.com/STAIxBWLB/dotfiles/internal/toolversion"
 )
 
 // Preferences manages generated launch overlays, never native base settings.
@@ -283,8 +284,8 @@ func (p Preferences) Plan(policy *config.AIPolicyConfig, inventory []Runtime) ([
 				break
 			}
 		}
-		if !target.Validated || runtime == nil || !runtime.Available || runtime.Version != target.Version || !runtime.AutoReview {
-			change.Constraint = "requires available, version-matched, validated automatic-review runtime"
+		if !target.Validated || runtime == nil || !runtime.Available || !toolversion.Satisfies(target.Version, runtime.Version) || !runtime.AutoReview {
+			change.Constraint = "requires available, validated automatic-review runtime inside the target version range"
 			out = append(out, change)
 			continue
 		}

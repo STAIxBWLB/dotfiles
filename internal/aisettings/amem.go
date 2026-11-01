@@ -12,16 +12,22 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/STAIxBWLB/dotfiles/internal/toolversion"
 )
 
-// AmemPinnedVersion is the exact @staix/agent-mem release dot expects: 0.14.0,
-// the version agent-hub pins since agent-hub#998 (registry
-// gitHead 3451e420). Every amem sharing a memory home must run 0.14.0 or later.
-// dot never installs it: the person installs this exact version, and
-// `dot ai memory status` compares against it. The tool names in
-// internal/aipolicy and the `setup`, `ingest` and `mcp` forms printed here were
-// checked against the published 0.14.0 tarball on 2026-10-31, not a checkout.
+// AmemPinnedVersion is the oldest @staix/agent-mem release dot supports: 0.14.0, the version agent-hub
+// pins since agent-hub#998. Every amem sharing a memory home must run 0.14.0 or later. dot never installs
+// it. The `setup`, `ingest` and `mcp` forms printed here were checked against the published 0.14.0
+// tarball on 2026-10-31. It is only the fallback floor: the range and the tool list come from the
+// installed release's manifest (see AmemStatus.Range), so a new amem release needs no dot release.
 const AmemPinnedVersion = "0.14.0"
+
+// AmemSupportedRange is the compiled fallback range, used when the installed amem publishes none.
+const AmemSupportedRange = ">=" + AmemPinnedVersion + " <1.0.0"
+
+// AmemPackage is the npm package amem is published as.
+const AmemPackage = "@staix/agent-mem"
 
 // AmemServerName is the MCP server name amem is registered under. Tool names
 // reach agents as mcp__amem__amem_search and so on.
@@ -72,6 +78,28 @@ type AmemStatus struct {
 	AmemPath string
 	// Version is `amem --version` output, empty when it could not be read.
 	Version string
+	// Manifest is what the installed amem publishes about itself; zero when it publishes nothing.
+	Manifest toolversion.Manifest
+}
+
+// Installed is the installed amem version: the manifest's, else the one in `amem --version`.
+func (s AmemStatus) Installed() string { return installedVersion(s.Manifest, s.Version) }
+
+// Range is the supported range: the manifest's when it publishes one, else AmemSupportedRange.
+func (s AmemStatus) Range() string { return supportedRange(s.Manifest, AmemSupportedRange) }
+
+func installedVersion(m toolversion.Manifest, versionOutput string) string {
+	if m.Version != "" {
+		return m.Version
+	}
+	return toolversion.Find(versionOutput)
+}
+
+func supportedRange(m toolversion.Manifest, fallback string) string {
+	if m.Supported != "" {
+		return m.Supported
+	}
+	return fallback
 }
 
 // AmemManager registers amem's MCP stdio server for Kiro and Copilot, the agents
@@ -89,6 +117,8 @@ type AmemManager struct {
 	ExplicitHome bool
 	// Version reads the installed amem version; nil runs `amem --version`.
 	Version func(ctx context.Context, amemPath string) (string, error)
+	// Manifest reads what the installed amem publishes; nil runs toolversion.Read.
+	Manifest func(ctx context.Context, amemPath string) toolversion.Manifest
 }
 
 func NewAmemManager(homeDir, amemPath string) *AmemManager {
@@ -345,6 +375,13 @@ func (m *AmemManager) Status(ctx context.Context, ssotPath string) AmemStatus {
 		if version, err := read(ctx, m.AmemPath); err == nil {
 			status.Version = version
 		}
+		manifest := m.Manifest
+		if manifest == nil {
+			manifest = func(ctx context.Context, path string) toolversion.Manifest {
+				return toolversion.Read(ctx, path, AmemPackage)
+			}
+		}
+		status.Manifest = manifest(ctx, m.AmemPath)
 	}
 	return status
 }
