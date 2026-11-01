@@ -50,20 +50,20 @@ var memoryKnowledgeTools = []string{"amem_search", "amem_evidence", "amem_show",
 // registers for Claude Code and Codex, and the mcpServers key dot writes for Kiro and Copilot).
 const memoryServer = "amem"
 
-// knowledgeManifest returns the MCP tool names the installed amem or vmem publishes in its manifest,
-// nil when it publishes none. Tests replace it so they never read a real install.
+// knowledgeManifest returns the MCP tools the installed amem or vmem publishes in its manifest, nil
+// when it publishes none. Tests replace it so they never read a real install.
 var knowledgeManifest = cachedManifestTools()
 
-func cachedManifestTools() func(server string) []string {
+func cachedManifestTools() func(server string) []toolversion.Tool {
 	var mu sync.Mutex
-	cache := map[string][]string{}
-	return func(server string) []string {
+	cache := map[string][]toolversion.Tool{}
+	return func(server string) []toolversion.Tool {
 		mu.Lock()
 		defer mu.Unlock()
 		if tools, ok := cache[server]; ok {
 			return tools
 		}
-		var tools []string
+		var tools []toolversion.Tool
 		pkg := map[string]string{memoryServer: "@staix/agent-mem", vaultServer: "@staix/vault-mem"}[server]
 		if bin, err := exec.LookPath(server); err == nil && pkg != "" {
 			tools = toolversion.Read(context.Background(), bin, pkg).Tools
@@ -79,20 +79,21 @@ var grantableTool = regexp.MustCompile(`^[a-z][a-z0-9_]{1,63}$`)
 var destructiveVerbs = []string{"delete", "forget", "move", "purge", "remove"}
 
 // knowledgeToolList is the grant list for server: the installed release's manifest when it publishes
-// one, else the compiled list. A published name earns a grant only when it is the server's own
-// (`amem_` on amem, `vmem_` on vmem) and a plain identifier. A name with a destructive verb earns one
-// only when the compiled list already grants it (vmem_delete and vmem_move, which are two-step): the
-// compiled list is the ceiling for destructive tools, so a manifest can never widen auto-approval to
-// a new one.
+// one, else the compiled list. A published tool earns a grant only when it is the server's own
+// (`amem_` on amem, `vmem_` on vmem), a plain identifier, and either already in the compiled list or
+// marked `readOnly: true` by the manifest without a destructive verb in its name. The compiled list is
+// the ceiling for anything that writes: a new plain-string name (vmem_overwrite, vmem_reset) stays
+// unapproved, and so does a readOnly claim on a name that can delete, forget, move, purge or remove.
 func knowledgeToolList(server string) []string {
 	fallback := map[string][]string{memoryServer: memoryKnowledgeTools, vaultServer: vaultKnowledgeTools}[server]
 	published := []string{}
 	seen := map[string]bool{}
-	for _, name := range knowledgeManifest(server) {
+	for _, tool := range knowledgeManifest(server) {
+		name := tool.Name
 		if seen[name] || !strings.HasPrefix(name, server+"_") || !grantableTool.MatchString(name) {
 			continue
 		}
-		if destructive(name) && !slices.Contains(fallback, name) {
+		if !slices.Contains(fallback, name) && (!tool.ReadOnly || destructive(name)) {
 			continue
 		}
 		seen[name] = true

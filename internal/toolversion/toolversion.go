@@ -142,11 +142,18 @@ type Manifest struct {
 	// Supported is the version range the tool declares (for example the
 	// releases that may share its home), empty when not published or unreadable.
 	Supported string
-	// Tools are the MCP tool names the release serves, nil when not published.
-	Tools []string
+	// Tools are the MCP tools the release serves, nil when not published.
+	Tools []Tool
 	// Source is "manifest" (`<tool> manifest --json`), "package.json" (the
 	// installed package's version only) or "" (nothing found).
 	Source string
+}
+
+// Tool is one published MCP tool. ReadOnly is the tool's own claim that it changes nothing; a plain
+// string entry makes no such claim.
+type Tool struct {
+	Name     string
+	ReadOnly bool
 }
 
 // manifestJSON is the reader contract for `<tool> manifest --json`. Unknown
@@ -199,19 +206,21 @@ func fromCommand(ctx context.Context, bin, pkg string) (Manifest, bool) {
 	if ValidSpec(raw.Supported) {
 		m.Supported = raw.Supported
 	}
+	// A tool is a name string, or an object {name, readOnly}; readOnly counts only when it is true.
 	for _, item := range raw.MCP.Tools {
-		var name string
-		if json.Unmarshal(item, &name) != nil {
+		var tool Tool
+		if json.Unmarshal(item, &tool.Name) != nil {
 			var named struct {
-				Name string `json:"name"`
+				Name     string `json:"name"`
+				ReadOnly bool   `json:"readOnly"`
 			}
 			if json.Unmarshal(item, &named) != nil {
 				continue
 			}
-			name = named.Name
+			tool = Tool{Name: named.Name, ReadOnly: named.ReadOnly}
 		}
-		if name != "" {
-			m.Tools = append(m.Tools, name)
+		if tool.Name != "" {
+			m.Tools = append(m.Tools, tool)
 		}
 	}
 	return m, true

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/STAIxBWLB/dotfiles/internal/toolversion"
 )
 
 func TestKnowledgeCodexRequiresExistingBindings(t *testing.T) {
@@ -49,56 +51,75 @@ func TestKnowledgeCodexRequiresExistingBindings(t *testing.T) {
 // No test reads the machine's amem or vmem: the compiled lists are the fallback under test unless a test
 // sets knowledgeManifest itself.
 func TestMain(m *testing.M) {
-	knowledgeManifest = func(string) []string { return nil }
+	knowledgeManifest = func(string) []toolversion.Tool { return nil }
 	os.Exit(m.Run())
 }
 
-// #319: the grant list is what the installed release publishes, inside the compiled rules; a manifest
-// with nothing grantable falls back to the compiled list.
-func TestKnowledgeToolsComeFromTheManifestInsideTheRules(t *testing.T) {
-	published := map[string][]string{
-		memoryServer: {"amem_search", "amem_new_read", "amem_forget", "amem_purge_all", "amem_move_entry", "vmem_read", "amem_*", "amem_search", "AMEM_X", "amem_" + strings.Repeat("x", 64)},
-		vaultServer:  {"vmem_read", "vmem_delete", "vmem_future"},
+func plain(names ...string) []toolversion.Tool {
+	out := make([]toolversion.Tool, len(names))
+	for i, n := range names {
+		out[i] = toolversion.Tool{Name: n}
 	}
-	knowledgeManifest = func(server string) []string { return published[server] }
-	t.Cleanup(func() { knowledgeManifest = func(string) []string { return nil } })
-	if got := strings.Join(knowledgeToolList(memoryServer), ","); got != "amem_search,amem_new_read" {
+	return out
+}
+
+func readOnly(names ...string) []toolversion.Tool {
+	out := plain(names...)
+	for i := range out {
+		out[i].ReadOnly = true
+	}
+	return out
+}
+
+// #319: the grant list is what the installed release publishes, inside the compiled rules. The compiled
+// list is the ceiling for anything that writes: a new name earns a grant only when the manifest marks
+// it readOnly and its name has no destructive verb. Nothing grantable falls back to the compiled list.
+func TestKnowledgeToolsComeFromTheManifestInsideTheRules(t *testing.T) {
+	published := map[string][]toolversion.Tool{}
+	knowledgeManifest = func(server string) []toolversion.Tool { return published[server] }
+	t.Cleanup(func() { knowledgeManifest = func(string) []toolversion.Tool { return nil } })
+	grants := func(server string) string { return strings.Join(knowledgeToolList(server), ",") }
+	approved := func(agent, server, tool string) bool {
+		_, err := KnowledgeArgs(Runtime{Agent: agent}, []KnowledgeApproval{{Server: server, Tool: tool, ApprovalMode: "approve"}})
+		return err == nil
+	}
+
+	published[memoryServer] = append(plain("amem_search", "amem_new_write", "vmem_read", "amem_*", "amem_search", "AMEM_X", "amem_"+strings.Repeat("x", 64)),
+		readOnly("amem_new_read", "amem_forget", "amem_purge_all", "amem_move_entry")...)
+	if got := grants(memoryServer); got != "amem_search,amem_new_read" {
 		t.Fatalf("amem grants %s", got)
 	}
-	if got := strings.Join(knowledgeToolList(vaultServer), ","); got != "vmem_read,vmem_delete,vmem_future" {
+	if !approved("claude", memoryServer, "amem_new_read") || approved("claude", memoryServer, "amem_forget") || approved("claude", memoryServer, "amem_new_write") {
+		t.Fatal("amem grant rule broken")
+	}
+
+	// A new plain-string mutating name is not approved; a new readOnly one is; a readOnly claim on a
+	// destructive verb is not; the compiled two-step vmem_delete and vmem_move stay.
+	published[vaultServer] = append(plain("vmem_read", "vmem_delete", "vmem_move", "vmem_overwrite", "vmem_rename", "vmem_reset", "vmem_prune", "vmem_clear"),
+		readOnly("vmem_stats", "vmem_purge_x", "vmem_remove_note", "vmem_forget_all")...)
+	if got := grants(vaultServer); got != "vmem_read,vmem_delete,vmem_move,vmem_stats" {
 		t.Fatalf("vmem grants %s", got)
 	}
-	args, err := KnowledgeArgs(Runtime{Agent: "claude"}, []KnowledgeApproval{{Server: memoryServer, Tool: "amem_new_read", ApprovalMode: "approve"}})
-	if err != nil || !strings.Contains(strings.Join(args, " "), "mcp__amem__amem_new_read") {
-		t.Fatalf("a published tool was refused: %v %v", args, err)
-	}
-	if _, err := KnowledgeArgs(Runtime{Agent: "claude"}, []KnowledgeApproval{{Server: memoryServer, Tool: "amem_forget", ApprovalMode: "approve"}}); err == nil {
-		t.Fatal("a forget tool earned a grant from a manifest")
-	}
-	// The compiled list is the ceiling for destructive verbs on vmem too: the two-step vmem_delete it
-	// already grants stays, and no manifest adds vmem_purge_all, vmem_remove_note or vmem_forget_all.
-	published[vaultServer] = []string{"vmem_read", "vmem_delete", "vmem_purge_all", "vmem_remove_note", "vmem_forget_all", "vmem_move"}
-	if got := strings.Join(knowledgeToolList(vaultServer), ","); got != "vmem_read,vmem_delete,vmem_move" {
-		t.Fatalf("vmem destructive grants %s", got)
-	}
-	for _, tool := range []string{"vmem_purge_all", "vmem_remove_note"} {
-		if _, err := KnowledgeArgs(Runtime{Agent: "codex"}, []KnowledgeApproval{{Server: vaultServer, Tool: tool, ApprovalMode: "approve"}}); err == nil {
-			t.Fatalf("%s earned a grant from a manifest", tool)
+	for _, tool := range []string{"vmem_overwrite", "vmem_rename", "vmem_reset", "vmem_prune", "vmem_clear", "vmem_purge_x", "vmem_remove_note"} {
+		if approved("codex", vaultServer, tool) {
+			t.Errorf("%s earned a grant from a manifest", tool)
 		}
 	}
-	// Under a compiled list without vmem_delete, a manifest publishing it earns no grant.
+	if !approved("claude", vaultServer, "vmem_stats") {
+		t.Error("a readOnly vmem_stats was refused")
+	}
+
+	// Under a compiled list without vmem_delete, a manifest publishing it earns no grant, readOnly or not.
 	compiled := vaultKnowledgeTools
 	vaultKnowledgeTools = []string{"vmem_read", "vmem_search"}
 	t.Cleanup(func() { vaultKnowledgeTools = compiled })
-	published[vaultServer] = []string{"vmem_read", "vmem_delete", "vmem_purge_all"}
-	if got := strings.Join(knowledgeToolList(vaultServer), ","); got != "vmem_read" {
+	published[vaultServer] = append(plain("vmem_read", "vmem_delete"), readOnly("vmem_delete", "vmem_purge_all")...)
+	if got := grants(vaultServer); got != "vmem_read" {
 		t.Fatalf("vmem_delete above the compiled ceiling was granted: %s", got)
 	}
-	if _, err := KnowledgeArgs(Runtime{Agent: "claude"}, []KnowledgeApproval{{Server: vaultServer, Tool: "vmem_delete", ApprovalMode: "approve"}}); err == nil {
-		t.Fatal("vmem_delete above the compiled ceiling earned a grant")
-	}
-	published[memoryServer] = []string{"amem_forget", "other_tool"}
-	if got := strings.Join(knowledgeToolList(memoryServer), ","); got != strings.Join(memoryKnowledgeTools, ",") {
+
+	published[memoryServer] = append(plain("amem_forget", "amem_new_write"), readOnly("other_tool")...)
+	if got := grants(memoryServer); got != strings.Join(memoryKnowledgeTools, ",") {
 		t.Fatalf("nothing grantable must fall back to the compiled list, got %s", got)
 	}
 }

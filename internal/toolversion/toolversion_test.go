@@ -60,10 +60,10 @@ func script(t *testing.T, dir, body string) string {
 
 func TestReadPrefersThePublishedManifest(t *testing.T) {
 	bin := script(t, t.TempDir(), `[ "$1 $2" = "manifest --json" ] || exit 2
-echo '{"name":"@staix/agent-mem","version":"0.18.0","supported":">=0.14.0 <1.0.0","mcp":{"tools":["amem_search",{"name":"amem_brief"},7]}}'
+echo '{"name":"@staix/agent-mem","version":"0.18.0","supported":">=0.14.0 <1.0.0","mcp":{"tools":["amem_search",{"name":"amem_brief"},{"name":"amem_stats","readOnly":true},{"name":"amem_x","readOnly":"yes"},7]}}'
 `)
 	got := Read(context.Background(), bin, "@staix/agent-mem")
-	want := Manifest{Version: "0.18.0", Supported: ">=0.14.0 <1.0.0", Tools: []string{"amem_search", "amem_brief"}, Source: "manifest"}
+	want := Manifest{Version: "0.18.0", Supported: ">=0.14.0 <1.0.0", Tools: []Tool{{Name: "amem_search"}, {Name: "amem_brief"}, {Name: "amem_stats", ReadOnly: true}}, Source: "manifest"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
@@ -75,7 +75,7 @@ func TestReadAcceptsTheVaultMemManifestShape(t *testing.T) {
 echo '{"name":"@staix/vault-mem","version":"0.3.0","configVersion":1,"mcp":{"server":"vmem","tools":["vmem_status","vmem_search","vmem_delete"]},"commands":["status","search","manifest"]}'
 `)
 	got := Read(context.Background(), bin, "@staix/vault-mem")
-	want := Manifest{Version: "0.3.0", Tools: []string{"vmem_status", "vmem_search", "vmem_delete"}, Source: "manifest"}
+	want := Manifest{Version: "0.3.0", Tools: []Tool{{Name: "vmem_status"}, {Name: "vmem_search"}, {Name: "vmem_delete"}}, Source: "manifest"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
