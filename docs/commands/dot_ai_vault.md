@@ -8,8 +8,8 @@ Register vmem (@staix/vault-mem) as the agents' vault server for Kiro and
 GitHub Copilot, and print the 'vmem setup' lines for Claude Code, Codex, Kimi,
 Qwen, pi, jcode and Antigravity, which vmem registers itself.
 
-dot never installs vmem and runs no vault process: install the exact version
-yourself, then run 'dot ai vault install'.
+dot runs no vault process and installs vmem only on request: install the exact
+version yourself or with 'dot ai family install vmem', then run 'dot ai vault install'.
 
 'dot ai vault retire-mcpvault' removes the generic Obsidian MCP server
 ("obsidian", @bitbonsai/mcpvault) from the configs dot owns and prints the

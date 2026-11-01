@@ -9,8 +9,8 @@ Native/plugin/system bundles remain owned by their native installers.
 The selectable agent environments are Claude, Codex, Kimi, Qwen, Grok,
 OpenCode, Genspark Gencode, pi and Antigravity. The automatic add-on catalog
 is limited to ripwire, Open Code Review, GSD and ponytail. Project memory is
-amem, which dot registers but does not install (see `~/.kiro/settings/mcp.json`
-below); claude-mem is retired and only `dot ai memory retire-claude-mem`
+amem, which dot registers and installs only through `dot ai family install`
+(see `~/.kiro/settings/mcp.json` below); claude-mem is retired and only `dot ai memory retire-claude-mem`
 touches what is left of it.
 Selection limits managed writes; it does not hide existing globally
 discoverable skills from unselected agents. Gencode and pi install through
@@ -121,6 +121,17 @@ Dot-owned state trees:
   directory goes on PATH through the shell module's `00-exports.sh`. Setup
   also removes `~/.config/shell/45-container.sh`, only when it still matches
   the old hand-written workaround byte for byte
+- `~/.local/share/dotfiles/tools/<id>/` — versioned family-tool installs
+  (amem, vmem, acon, ares; never ahub, whose releases `ahub upgrade` owns in
+  `~/.agenthub/releases`), written only by `dot ai family install` and
+  `dot ai rollback`: one npm prefix per `<version>/` (staged in
+  `.staging-<version>-*` and renamed into place), and the `current` and
+  `previous` links, each moved by an atomic rename. A version directory other
+  than current and previous is removed only when no running process uses it.
+  The PATH entry `~/.local/bin/<bin>` is a symlink to
+  `tools/<id>/current/bin/<bin>`; it is written when absent, and an existing
+  symlink from another install is repointed only with `--adopt` (its target is
+  left in place). A regular file there is never replaced
 - `~/.local/share/dotfiles/ai/tooling-state.json` — private machine-local
   installation receipts: adopted provider/path/version/status/check time.
   Native provider files remain native-installer owned.
