@@ -270,7 +270,7 @@ func (e *Engine) familyPathEntry(t FamilyTool, adopt bool) []string {
 	case st.Mode()&os.ModeSymlink == 0:
 		return []string{link + " is a file from another install and was left alone; new sessions keep starting it"}
 	default:
-		got, _ := os.Readlink(link)
+		got := readLinkAbs(link)
 		if got != want {
 			if !adopt {
 				return []string{fmt.Sprintf("%s points at %s, another install, and was left alone; rerun with --adopt to point it at %s", link, got, want)}
@@ -369,7 +369,7 @@ func (e *Engine) FamilyStatus() []FamilyResult {
 			r.Status = "not-installed"
 		default:
 			r.Status = "active"
-			if got, _ := os.Readlink(e.familyLink(t)); got != filepath.Join(toolDir, "current", "bin", t.Binary) {
+			if got := readLinkAbs(e.familyLink(t)); got != filepath.Join(toolDir, "current", "bin", t.Binary) {
 				r.Notes = []string{e.familyLink(t) + " does not point at current"}
 			}
 		}
@@ -396,6 +396,19 @@ func readVersionLink(link string) string {
 		return ""
 	}
 	return v
+}
+
+// readLinkAbs returns link's target as an absolute path, resolving a relative target against the
+// link's directory, so ../share/dotfiles/tools/<id>/current/bin/<bin> matches its absolute form.
+func readLinkAbs(link string) string {
+	got, err := os.Readlink(link)
+	if err != nil || got == "" {
+		return got
+	}
+	if !filepath.IsAbs(got) {
+		got = filepath.Join(filepath.Dir(link), got)
+	}
+	return filepath.Clean(got)
 }
 
 // swapLink points link at target with one rename, so a reader sees the old or the new link, never none.

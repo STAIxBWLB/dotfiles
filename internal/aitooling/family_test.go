@@ -227,6 +227,32 @@ func TestFamilyPathEntryOwnership(t *testing.T) {
 	}
 }
 
+// A relative ~/.local/bin link that resolves to current is dot's own: no status note, no --adopt (#324).
+func TestFamilyRelativePathEntryIsOwn(t *testing.T) {
+	e := testEngine(t)
+	calls := 0
+	fakeFamilyNPM(t, e, &calls)
+	ctx := context.Background()
+	link := filepath.Join(e.opts.HomeDir, ".local", "bin", "amem")
+	if _, err := e.FamilyInstall(ctx, "amem", "1.0.0", false); err != nil {
+		t.Fatal(err)
+	}
+	rel := filepath.Join("..", "share", "dotfiles", "tools", "amem", "current", "bin", "amem")
+	if err := swapLink(link, rel); err != nil {
+		t.Fatal(err)
+	}
+	if st := e.FamilyStatus(); len(st[1].Notes) != 0 {
+		t.Fatalf("relative link to current flagged: %+v", st[1])
+	}
+	r, err := e.FamilyInstall(ctx, "amem", "2.0.0", false)
+	if err != nil || hasNote(r, "--adopt") || r.Current != "2.0.0" {
+		t.Fatalf("relative link to current treated as foreign: %+v, %v", r, err)
+	}
+	if got, _ := os.Readlink(link); got != rel {
+		t.Fatalf("own relative link rewritten: %q", got)
+	}
+}
+
 // A failed or unverifiable npm run leaves no version directory behind, and an unverified directory
 // is refused rather than activated.
 func TestFamilyInstallFailureLeavesNothing(t *testing.T) {
