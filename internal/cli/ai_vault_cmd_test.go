@@ -101,8 +101,8 @@ func TestVaultInstallRegistersKiroAndCopilotIdempotently(t *testing.T) {
 	if strings.Count(ssot, "<!-- dotfiles:vmem:start -->") != 1 || !strings.Contains(ssot, "keep me") {
 		t.Fatalf("vault block: %s", ssot)
 	}
-	// Notes go through vmem; ops/ and reports/ are written with `vmem report` and may be read from files.
-	for _, want := range []string{"Vault notes are read and written through the `vmem` MCP tools", "written with `vmem report` and may be read read-only from files", "Never edit vault files directly or through another MCP server"} {
+	// Notes are written through vmem and found with vmem_search first; notes, root docs, ops/ and reports/ may be read from files.
+	for _, want := range []string{"Vault notes are written through the `vmem` MCP tools", "Find notes with vmem_search first", "may then be read read-only from files", "are written with `vmem report`", "Never edit vault files directly or through another MCP server"} {
 		if !strings.Contains(ssot, want) {
 			t.Fatalf("vault block misses %q:\n%s", want, ssot)
 		}
