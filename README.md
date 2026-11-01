@@ -209,7 +209,10 @@ subsequent maintenance. Deselecting stops future managed writes without
 uninstalling software or deleting data. Gencode and pi install through the
 npm provider; Antigravity installs its `agy` binary into `~/.local/bin` and
 self-updates in the background, so `dot ai update` defers to that
-self-updater instead of reinstalling.
+self-updater instead of reinstalling. An install never waits for or stops
+running sessions: before replacing a tool, the update lists its live processes
+in the result, they keep the files they started with, and new sessions get the
+new version.
 
 Workspace context for Grok and agy: Grok reads the agents SSOT through its
 Claude compat (`~/.claude/CLAUDE.md`), so dot renders no Grok instructions file
@@ -233,9 +236,10 @@ user action; setup does not copy credentials or approve hooks. A saved selection
 that still lists the retired `claude-mem` add-on is read without it.
 
 Project memory is [amem](https://github.com/STAIxBWLB/agent-mem)
-(`@staix/agent-mem`), which dot registers but never installs. Install the exact
-version `dot ai memory status` names (`@staix/agent-mem` 0.14.0; every amem that
-shares a memory home must run 0.14.0 or later), then:
+(`@staix/agent-mem`), which dot registers but never installs. Install a release
+inside the range `dot ai memory status` names (`>=0.14.0 <1.0.0` unless the
+installed amem publishes its own; every amem that shares a memory home must run
+0.14.0 or later), then:
 
 ```bash
 amem setup all --apply            # in your terminal: Claude Code, Codex, Kimi, Qwen, pi
@@ -257,6 +261,15 @@ SSOT. amem has no resident worker, so dot writes no LaunchAgent for it; clients
 without the setup hooks reach it through `amem ingest <agent>`.
 Curated handoffs below are separate from amem.
 
+amem and vmem describe themselves, so a new release of either needs no new
+`dot`: status and the policy's `mcp__amem__*` / `mcp__vmem__*` grants read
+`version`, `supported` (a range such as `>=0.14.0 <1.0.0`) and `mcp.tools` from
+`amem manifest --json` / `vmem manifest --json`. A release without that command
+is read from its installed `package.json` version, and dot's compiled range and
+tool list fill in what is missing. A published tool name is granted only when it
+is the server's own (`amem_`, `vmem_`) and, on amem, cannot delete, forget,
+move or purge.
+
 To remove claude-mem after `amem import claude-mem` has finished, run
 `dot ai memory retire-claude-mem` for a dry run that lists every item and reads
 back what is left, then `--apply --import-complete` to do it. It archives
@@ -276,8 +289,9 @@ a file it must read cannot be read, and under `--home`; the dry run works with
 The vault is written only through [vmem](https://github.com/STAIxBWLB/vault-mem)
 (`@staix/vault-mem`), which replaces the generic Obsidian MCP server
 (`obsidian`, `@bitbonsai/mcpvault`). dot registers it but never installs it.
-Install the exact version `dot ai vault status` names (`@staix/vault-mem`
-0.2.1), then:
+Install a release inside the range `dot ai vault status` names
+(`@staix/vault-mem` `>=0.2.1 <1.0.0` unless the installed vmem publishes its
+own), then:
 
 ```bash
 vmem setup all --apply             # Claude Code, Codex, Kimi, Qwen, pi, jcode
@@ -353,10 +367,13 @@ usable overlays are applied. Enabled policies also participate in `dot
 apply/check/diff`. User-state schema version 3 prevents older binaries from
 silently rewriting away the policy.
 
-Automatic review is distinct from YOLO bypass. Managed launches currently
-support verified Claude 2.1.283 and Codex 0.157.1 adapters. Other agents are
-inspected and report unsupported or unavailable review capabilities. A version
-change requires revalidation, never fallback to unconditional approval.
+Automatic review is distinct from YOLO bypass. Managed launches support the
+Claude adapter from 2.1.283 up to 3.0.0 and the Codex adapter from 0.157.1 up
+to 1.0.0, and only while `--help` still shows the flags they launch with. Other
+agents are inspected and report unsupported or unavailable review capabilities.
+A target's `version` is an exact `X.Y.Z` or a range such as `">=2.1.283
+<3.0.0"`; a runtime outside it needs revalidation, never fallback to
+unconditional approval.
 Subscription targets require native subscription authentication and reject
 detected API/provider overrides. DGX launch remains deferred until an adapter
 verifies its endpoint and authentication binding; a billing label alone cannot
