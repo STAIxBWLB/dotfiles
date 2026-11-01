@@ -287,3 +287,42 @@ func TestKnowledgeConflictDoesNotFallbackToOtherTarget(t *testing.T) {
 		t.Fatal("native deny bypassed by fallback target")
 	}
 }
+
+// #319 AC5: a target that names a range stays eligible across an upgrade inside it, and the built-in
+// automatic-review gate takes any release in its range whose help still shows the flags.
+func TestPolicyGateAcceptsAVersionInsideItsRange(t *testing.T) {
+	p, inv := fixture(t)
+	p.Targets[0].Version = ">=2.1.283 <3.0.0"
+	inv[0].Version = "2.1.316"
+	r, err := Resolve(p, Request{Task: "implement parser"}, inv)
+	if err != nil || !r.Eligible || r.Version != "2.1.316" || !strings.Contains(strings.Join(r.LaunchArgs, " "), "--permission-mode auto") {
+		t.Fatalf("%#v %v", r, err)
+	}
+	inv[0].Version = "3.0.0"
+	if _, err := Resolve(p, Request{Task: "implement parser"}, inv); err == nil {
+		t.Fatal("a release outside the range stayed eligible")
+	}
+	for _, c := range []struct {
+		agent, version string
+		want           bool
+	}{{"claude", "2.1.283", true}, {"claude", "2.1.316", true}, {"claude", "2.1.282", false}, {"claude", "3.0.0", false}, {"codex", "0.157.1", true}, {"codex", "0.166.0", true}, {"codex", "0.157.0", false}, {"kimi", "1.0.0", false}} {
+		if got := autoReviewVersion(c.agent, c.version); got != c.want {
+			t.Errorf("autoReviewVersion(%s, %s) = %v, want %v", c.agent, c.version, got, c.want)
+		}
+	}
+	bin := t.TempDir()
+	t.Setenv("PATH", bin)
+	script := "#!/bin/sh\ncase \"$1\" in\n--version) echo 'codex-cli 0.166.0';;\n--help) echo '--approve-for-me --model';;\nesac\n"
+	if err := os.WriteFile(filepath.Join(bin, "codex"), []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	inventory, err := Inspect(context.Background(), t.TempDir(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range inventory {
+		if r.Agent == "codex" && (!r.AutoReview || r.Version != "0.166.0") {
+			t.Fatalf("codex 0.166.0 with the flag lost automatic review: %#v", r)
+		}
+	}
+}

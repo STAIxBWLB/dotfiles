@@ -47,7 +47,9 @@ required capabilities, model, verified subscription authentication and priority.
 It returns a schema-versioned JSON resolution before an application constructs
 native argv. Explicit choices are authoritative. Unknown providers, missing
 capabilities and permission-review gaps produce actionable errors. Current
-managed launch adapters cover Claude 2.1.283 and Codex 0.157.1 only. DGX declarations
+managed launch adapters cover Claude >=2.1.283 <3.0.0 and Codex >=0.157.1 <1.0.0
+while `--help` still shows their launch flags (#319: a range, not one exact
+version, so an agent upgrade keeps eligibility). DGX declarations
 remain excluded until endpoint/auth binding can be verified; changing a billing
 label must never enable an unverified metered endpoint.
 
