@@ -323,7 +323,11 @@ func TestGuardPathPrefersHomebrewOverStaleSavedCurrent(t *testing.T) {
 	if err := os.Symlink(cellar, stable); err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(home, "brew", "opt", "dotfiles", "bin", "dot")
+	physicalHome, err := filepath.EvalSymlinks(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(physicalHome, "brew", "opt", "dotfiles", "bin", "dot")
 	if got := resolveGuardDotPath(home); got != want {
 		t.Fatalf("guard uses %s, want owning brew %s", got, want)
 	}
