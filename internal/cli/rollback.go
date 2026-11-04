@@ -18,7 +18,16 @@ import (
 var upgradeExecutable = os.Executable
 
 func standaloneDotRoot(home string) string {
-	return filepath.Join(home, ".local", "share", "dotfiles", "tools", "dot")
+	root := filepath.Join(home, ".local", "share", "dotfiles", "tools", "dot")
+	// os.Executable/EvalSymlinks returns physical paths (notably /private/var
+	// for macOS temp homes). Compare like paths before replacing a flat install.
+	if resolved, err := filepath.EvalSymlinks(root); err == nil {
+		return resolved
+	}
+	if resolved, err := filepath.EvalSymlinks(home); err == nil {
+		return filepath.Join(resolved, ".local", "share", "dotfiles", "tools", "dot")
+	}
+	return root
 }
 
 func standaloneDotBinary(home, version string) string {

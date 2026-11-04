@@ -83,7 +83,12 @@ func executeDotFixtureCommand(t *testing.T, current string, args ...string) (str
 }
 
 func TestDotSelectedReleaseRollbackAndStableGuard(t *testing.T) {
-	home := t.TempDir()
+	// Mirror macOS /var -> /private/var and other symlinked HOME layouts.
+	realHome := t.TempDir()
+	home := filepath.Join(t.TempDir(), "home")
+	if err := os.Symlink(realHome, home); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("HOME", home)
 	t.Setenv("GITHUB_TOKEN", "")
 	old := buildVersionedDotFixture(t, "1.0.0")
