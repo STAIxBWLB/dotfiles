@@ -132,6 +132,23 @@ Dot-owned state trees:
   `tools/<id>/current/bin/<bin>`; it is written when absent, and an existing
   symlink from another install is repointed only with `--adopt` (its target is
   left in place). A regular file there is never replaced
+- `~/.local/share/dotfiles/tools/dot/` is written by standalone `dot update`
+  and `dot rollback`: verified release binaries in `<version>/bin/dot`, the
+  previously installed binary (a `snapshot-<sha256>` directory for a development
+  build), `.staging-<version>-*` directories renamed into place, and relative
+  `current`/`previous` links moved by temporary symlink + rename. Existing version
+  files are never overwritten; activation prunes versions other than current and
+  previous only when the shared family retention rule finds no process using
+  them. Unknown process ownership or failed process inspection keeps them. `dot update` replaces
+  the running flat standalone executable with a link through `current` (only
+  without an explicit `--home`) and
+  writes `~/.local/bin/dot` as a relative link through it; a conflicting PATH
+  install is refused. Homebrew Cellar files are never written. `dot rollback`
+  switches saved links and applies the same retention rule. With `--home X`,
+  update and rollback write only X's install tree and PATH entry, leaving the
+  invoking user's standalone executable intact. Guard hooks keep `current` unresolved (or use the
+  owning Homebrew `opt/<formula>/bin/dot`), so no settings rewrite is needed
+  during activation
 - `~/.local/share/dotfiles/ai/tooling-state.json` — private machine-local
   installation receipts: adopted provider/path/version/status/check time.
   Native provider files remain native-installer owned.

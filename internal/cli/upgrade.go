@@ -26,8 +26,12 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "update",
 		Aliases: []string{"upgrade"},
-		Short:   "Update dot binary to latest version",
-		Long: `Download and install the latest dot release from GitHub.
+		Short:   "Update dot binary to the latest or a selected version",
+		Long: `Download and install the latest dot release from GitHub, or select an exact
+stable release with --version X.Y.Z (including a downgrade). Standalone installs
+keep versioned binaries and activate them through current; dot rollback restores
+the previous binary without downloading. Homebrew owns its versions, so
+--version and dot rollback are unavailable for Homebrew installs.
 
 A Homebrew install is upgraded through the brew that owns it instead: when the
 installed tap recipe matches the verified native release, dot uses its bounded
@@ -41,6 +45,7 @@ maintenance slot instead of deferring at once.`,
 			return runUpgrade(cmd, currentVersion)
 		},
 	}
+	cmd.Flags().String("version", "", "Install this exact stable release (X.Y.Z or vX.Y.Z), including downgrades")
 	cmd.Flags().Bool("check", false, "Only check for updates without installing")
 	cmd.Flags().Bool("homebrew", false, "Target the installed Homebrew dot formula")
 	cmd.Flags().Duration("wait", 0, "wait up to this long for the maintenance slot instead of deferring (e.g. 30m)")
@@ -54,6 +59,14 @@ type githubRelease struct {
 
 func runUpgrade(cmd *cobra.Command, currentVersion string) error {
 	ctx := cmd.Context()
+	requested, _ := cmd.Flags().GetString("version")
+	explicitVersion := cmd.Flags().Changed("version")
+	if explicitVersion {
+		requested = "v" + strings.TrimPrefix(requested, "v")
+		if !stableReleaseTag.MatchString(requested) {
+			return fmt.Errorf("release version %q is not a stable X.Y.Z version; use dot update --version X.Y.Z", requested)
+		}
+	}
 	checkOnly, _ := cmd.Flags().GetBool("check")
 	homebrewTarget, _ := cmd.Flags().GetBool("homebrew")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
@@ -81,7 +94,7 @@ func runUpgrade(cmd *cobra.Command, currentVersion string) error {
 		// recorded brew version disagreeing with the bytes on disk (#233), so
 		// brew upgrades it instead (#235).
 		var err error
-		execPath, err = os.Executable()
+		execPath, err = upgradeExecutable()
 		if err != nil {
 			return fmt.Errorf("finding executable path: %w", err)
 		}
@@ -89,18 +102,44 @@ func runUpgrade(cmd *cobra.Command, currentVersion string) error {
 		if err != nil {
 			return fmt.Errorf("resolving executable path: %w", err)
 		}
+		if explicitUpdateHome(cmd) {
+			target := filepath.Join(homeFromCmd(cmd), ".local", "bin", "dot")
+			if _, err := os.Lstat(target); err == nil {
+				execPath, err = filepath.EvalSymlinks(target)
+				if err != nil {
+					return fmt.Errorf("resolving target dot %s: %w; repair that target home PATH entry before retrying", target, err)
+				}
+				currentVersion, err = readDotBinaryVersion(ctx, execPath)
+				if err != nil {
+					return fmt.Errorf("reading target dot version at %s: %w; repair or remove that target PATH entry before retrying", target, err)
+				}
+			} else if !os.IsNotExist(err) {
+				return fmt.Errorf("inspecting target dot %s: %w; check target home permissions before retrying", target, err)
+			}
+		}
 		brew, viaBrew = homebrewDotFor(execPath)
 	}
 
-	latest, err := fetchLatestRelease(ctx)
-	if err != nil {
-		return fmt.Errorf("checking latest version: %w", err)
+	if explicitVersion && viaBrew {
+		return homebrewVersionControlError(brew)
+	}
+	latest := &githubRelease{TagName: requested}
+	if !explicitVersion {
+		var err error
+		latest, err = fetchLatestRelease(ctx)
+		if err != nil {
+			return fmt.Errorf("checking latest version: %w", err)
+		}
 	}
 
 	latestVersion := strings.TrimPrefix(latest.TagName, "v")
 	currentClean := strings.TrimPrefix(currentVersion, "v")
 
-	p.Line("Latest version:  %s", latestVersion)
+	if explicitVersion {
+		p.Line("Selected version: %s", latestVersion)
+	} else {
+		p.Line("Latest version:  %s", latestVersion)
+	}
 
 	cmp := compareSemver(currentClean, latestVersion)
 	switch {
@@ -110,7 +149,7 @@ func runUpgrade(cmd *cobra.Command, currentVersion string) error {
 			p.Line("Update path: %s", updatePath(ctx, brew, viaBrew, currentClean, latestVersion, latest.TagName))
 		}
 		return nil
-	case cmp > 0:
+	case cmp > 0 && !explicitVersion:
 		p.Line("Current version %s is newer than latest release %s.", currentClean, latestVersion)
 		if checkOnly {
 			return nil
@@ -122,14 +161,16 @@ func runUpgrade(cmd *cobra.Command, currentVersion string) error {
 	if checkOnly {
 		p.Line("\nUpdate available: %s → %s", currentClean, latestVersion)
 		p.Line("Update path: %s", updatePath(ctx, brew, viaBrew, currentClean, latestVersion, latest.TagName))
-		if homebrewTarget {
+		if explicitVersion {
+			p.Line("Run 'dot update --version %s' to install.", latestVersion)
+		} else if homebrewTarget {
 			p.Line("Run 'dot update --homebrew' to install.")
 		} else {
 			p.Line("Run 'dot update' to install.")
 		}
 		return nil
 	}
-	return performVerifiedUpdate(ctx, p, execPath, brew, viaBrew, currentClean, latestVersion, latest.TagName, dryRun, wait)
+	return performVerifiedUpdate(ctx, p, homeFromCmd(cmd), explicitUpdateHome(cmd), execPath, brew, viaBrew, currentClean, latestVersion, latest.TagName, dryRun, wait)
 }
 
 // updatePath says, read-only, which path `dot update` would take (#266).
@@ -213,12 +254,12 @@ func retrySlotHint(wait time.Duration) string {
 	return "retry later, or wait for it with dot update --wait 30m"
 }
 
-func performVerifiedUpdate(ctx context.Context, p *Printer, execPath string, brew homebrewDot, viaBrew bool, current, latest, tag string, dryRun bool, wait time.Duration) error {
+func performVerifiedUpdate(ctx context.Context, p *Printer, home string, explicitHome bool, execPath string, brew homebrewDot, viaBrew bool, current, latest, tag string, dryRun bool, wait time.Duration) error {
 	if dryRun {
 		if viaBrew {
 			return upgradeHomebrew(ctx, p, brew, current, latest, true, wait)
 		}
-		p.Line("[dry-run] would download and verify dot %s, then replace %s under verified-prebuilt admission", latest, execPath)
+		p.Line("[dry-run] would download and verify dot %s, then activate it through current (preserving %s) under verified-prebuilt admission", latest, execPath)
 		return nil
 	}
 
@@ -270,7 +311,7 @@ func performVerifiedUpdate(ctx context.Context, p *Printer, execPath string, bre
 		}
 		return fullHomebrewFallback("the formula changed while the update was being prepared")
 	}
-	return installStandalonePrebuilt(ctx, p, newBinary, execPath, latest, osName, archName, wait)
+	return installStandalonePrebuilt(ctx, p, home, explicitHome, newBinary, execPath, latest, osName, archName, wait)
 }
 
 // downloadVerifiedArchive downloads the release archive and the release's
@@ -453,4 +494,9 @@ func compareSemver(a, b string) int {
 		return 1
 	}
 	return 0
+}
+
+func explicitUpdateHome(cmd *cobra.Command) bool {
+	home, _ := cmd.Flags().GetString("home")
+	return home != ""
 }

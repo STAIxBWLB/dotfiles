@@ -51,13 +51,14 @@ dot [flags]
 * [dot reconfigure](dot_reconfigure.md)	 - Re-run init prompts with current values as defaults
 * [dot register](dot_register.md)	 - Register a project for workspace management
 * [dot restore](dot_restore.md)	 - One-stop interactive restore (profile, apps, AI, secrets)
+* [dot rollback](dot_rollback.md)	 - Activate the previous standalone dot binary
 * [dot secrets](dot_secrets.md)	 - Manage encrypted secrets
 * [dot status](dot_status.md)	 - Show full environment status at a glance
 * [dot stop](dot_stop.md)	 - Stop a tmux workspace session
 * [dot sync](dot_sync.md)	 - Sync workspace to a local mirror or SSH remote via rsync
 * [dot tunnel](dot_tunnel.md)	 - Manage Cloudflare Tunnel SSH access for this Mac
 * [dot unregister](dot_unregister.md)	 - Remove a registered project
-* [dot update](dot_update.md)	 - Update dot binary to latest version
+* [dot update](dot_update.md)	 - Update dot binary to the latest or a selected version
 * [dot usecase](dot_usecase.md)	 - Show detailed use cases and workflows
 * [dot version](dot_version.md)	 - Print version information
 * [dot watchdog](dot_watchdog.md)	 - Reap runaway processes and alert on host health

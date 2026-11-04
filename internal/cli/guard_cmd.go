@@ -340,10 +340,24 @@ func newGuardHookCmd() *cobra.Command {
 func resolveGuardDotPath(homeDir string) string {
 	stable := filepath.Join(homeDir, ".local", "bin", "dot")
 	if _, err := os.Stat(stable); err == nil {
+		if resolved, err := filepath.EvalSymlinks(stable); err == nil {
+			if brew, ok := homebrewDotFor(resolved); ok {
+				return brew.optDot()
+			}
+			// Saved current is authoritative only when PATH actually uses it.
+			// make install and Homebrew adoption may leave stale saved state.
+			managed := standaloneDotBinary(homeDir, "current")
+			if active, err := filepath.EvalSymlinks(managed); err == nil && active == resolved {
+				return managed // keep current unresolved in the registered hook
+			}
+		}
 		return stable
 	}
 	if self, err := os.Executable(); err == nil {
 		if resolved, err := filepath.EvalSymlinks(self); err == nil {
+			if brew, ok := homebrewDotFor(resolved); ok {
+				return brew.optDot()
+			}
 			return resolved
 		}
 		return self
