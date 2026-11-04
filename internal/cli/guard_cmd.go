@@ -338,16 +338,17 @@ func newGuardHookCmd() *cobra.Command {
 // Prefer the stable install target so upgrades don't strand the hook on a
 // stale build path; fall back to the running binary, then bare "dot".
 func resolveGuardDotPath(homeDir string) string {
-	// Do not resolve current: guard follows only explicit activation/rollback.
-	managed := standaloneDotBinary(homeDir, "current")
-	if _, err := os.Stat(managed); err == nil {
-		return managed
-	}
 	stable := filepath.Join(homeDir, ".local", "bin", "dot")
 	if _, err := os.Stat(stable); err == nil {
 		if resolved, err := filepath.EvalSymlinks(stable); err == nil {
 			if brew, ok := homebrewDotFor(resolved); ok {
 				return brew.optDot()
+			}
+			// Saved current is authoritative only when PATH actually uses it.
+			// make install and Homebrew adoption may leave stale saved state.
+			managed := standaloneDotBinary(homeDir, "current")
+			if active, err := filepath.EvalSymlinks(managed); err == nil && active == resolved {
+				return managed // keep current unresolved in the registered hook
 			}
 		}
 		return stable

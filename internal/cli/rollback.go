@@ -208,11 +208,22 @@ func activateStandalonePrebuilt(ctx context.Context, p *Printer, home string, ex
 		if _, err := os.Lstat(filepath.Join(standaloneDotRoot(home), "current")); !os.IsNotExist(err) {
 			return linkErr
 		}
+	}
+	// make install can replace the PATH link with a new flat binary while
+	// leaving saved current intact. Preserve the actual predecessor, not that
+	// stale link. Existing version files still stay immutable.
+	adoptingFlat := linkErr != nil || destination != standaloneDotBinary(home, cur)
+	if adoptingFlat {
 		old, err := os.ReadFile(destination)
 		if err != nil {
 			return dotInstallError("preserving previous dot", destination, err)
 		}
 		cur, err = readDotBinaryVersion(ctx, destination)
+		if err == nil && stableReleaseTag.MatchString("v"+cur) {
+			if saved, readErr := os.ReadFile(standaloneDotBinary(home, cur)); readErr == nil && !bytes.Equal(saved, old) {
+				cur = "" // same reported release, different development bytes
+			}
+		}
 		if err != nil || !stableReleaseTag.MatchString("v"+cur) {
 			cur = fmt.Sprintf("snapshot-%x", sha256.Sum256(old))
 		}
@@ -223,7 +234,7 @@ func activateStandalonePrebuilt(ctx context.Context, p *Printer, home string, ex
 	if err := stageDotBinary(home, version, data); err != nil {
 		return err
 	}
-	if linkErr != nil {
+	if adoptingFlat {
 		if err := aitooling.SwapInstallLink(filepath.Join(standaloneDotRoot(home), "current"), cur); err != nil {
 			return dotInstallError("initializing current link", standaloneDotRoot(home), err)
 		}

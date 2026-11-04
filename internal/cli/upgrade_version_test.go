@@ -196,6 +196,30 @@ func TestDotSelectedReleaseRollbackAndStableGuard(t *testing.T) {
 	if _, err := os.Lstat(standaloneDotRoot(userHome)); !os.IsNotExist(err) {
 		t.Fatalf("update wrote the user HOME versions tree: %v", err)
 	}
+	// make install replaces the PATH link, leaving saved current behind. The
+	// next update must preserve that flat build and rollback must restore it.
+	dev := buildVersionedDotFixture(t, "dev")
+	flat := filepath.Join(filepath.Dir(stable), ".dot.make-install")
+	if err := os.WriteFile(flat, dev, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(flat, stable); err != nil {
+		t.Fatal(err)
+	}
+	if got := resolveGuardDotPath(home); got != stable {
+		t.Fatalf("stale saved current won over flat PATH binary: %s", got)
+	}
+	if _, err := run("dev", "update", "--version", "3.0.0"); err != nil {
+		t.Fatal(err)
+	}
+	previous, err := dotVersionLink(home, "previous")
+	if err != nil || previous != fmt.Sprintf("snapshot-%x", sha256.Sum256(dev)) {
+		t.Fatalf("flat predecessor lost: %s, %v", previous, err)
+	}
+	if _, err := run("3.0.0", "rollback"); err != nil {
+		t.Fatal(err)
+	}
+	assertHook("dev")
 	for _, request := range tr.requests {
 		if strings.Contains(request, "/latest") || strings.Contains(request, "api.github.com") {
 			t.Fatalf("explicit version queried latest: %s", request)
@@ -274,5 +298,33 @@ func TestDotPruneRetainsInUseAndUnresolvedVersions(t *testing.T) {
 	versions, err := dotVersions(home)
 	if err != nil || !slices.Equal(versions, []string{"2.0.0", "3.0.0"}) {
 		t.Fatalf("idle prune = %v, %v", versions, err)
+	}
+}
+
+func TestGuardPathPrefersHomebrewOverStaleSavedCurrent(t *testing.T) {
+	home := t.TempDir()
+	if err := stageDotBinary(home, "1.0.0", []byte("stale saved binary")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("1.0.0", filepath.Join(standaloneDotRoot(home), "current")); err != nil {
+		t.Fatal(err)
+	}
+	cellar := filepath.Join(home, "brew", "Cellar", "dotfiles", "2.0.0", "bin", "dot")
+	if err := os.MkdirAll(filepath.Dir(cellar), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cellar, []byte("active brew binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stable := filepath.Join(home, ".local", "bin", "dot")
+	if err := os.MkdirAll(filepath.Dir(stable), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(cellar, stable); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(home, "brew", "opt", "dotfiles", "bin", "dot")
+	if got := resolveGuardDotPath(home); got != want {
+		t.Fatalf("guard uses %s, want owning brew %s", got, want)
 	}
 }
