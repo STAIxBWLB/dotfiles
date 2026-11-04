@@ -534,7 +534,7 @@ func verifyExactPrebuiltBinary(ctx context.Context, path, version, goos, goarch 
 	return nil
 }
 
-func installStandalonePrebuilt(ctx context.Context, p *Printer, source, destination, version, goos, goarch string, wait time.Duration) error {
+func installStandalonePrebuilt(ctx context.Context, p *Printer, home string, explicitHome bool, source, destination, version, goos, goarch string, wait time.Duration) error {
 	if err := verifyExactPrebuiltBinary(ctx, source, version, goos, goarch); err != nil {
 		return err
 	}
@@ -550,9 +550,5 @@ func installStandalonePrebuilt(ctx context.Context, p *Printer, source, destinat
 		return fmt.Errorf("the verified prebuilt update needs the maintenance slot: %w; %s", err, retrySlotHint(wait))
 	}
 	defer release()
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	return activateStandalonePrebuilt(ctx, p, home, data, destination, version)
+	return activateStandalonePrebuilt(ctx, p, home, explicitHome, data, destination, version)
 }

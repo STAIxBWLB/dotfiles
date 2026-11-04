@@ -532,3 +532,7 @@ func (e *Engine) brewBinary(ctx context.Context, en Entry, pin string, op Operat
 	e.record(en.ID, "brew", path, after, r.Status)
 	return r
 }
+
+// ListInstallProcesses is the bounded read-only process snapshot shared by
+// native and family install retention. Its output must not be persisted.
+func ListInstallProcesses(ctx context.Context) (string, error) { return listProcesses(ctx) }

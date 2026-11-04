@@ -125,7 +125,7 @@ func TestStandalonePromotionRequiresExactRuntimeVersion(t *testing.T) {
 	if err := os.WriteFile(destination, []byte("old executable"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := installStandalonePrebuilt(context.Background(), &Printer{}, source, destination, "2.70.35", goos, goarch, 0); err == nil || !strings.Contains(err.Error(), "expected exact dot version") {
+	if err := installStandalonePrebuilt(context.Background(), &Printer{}, t.TempDir(), false, source, destination, "2.70.35", goos, goarch, 0); err == nil || !strings.Contains(err.Error(), "expected exact dot version") {
 		t.Fatal("accepted binary reporting the wrong release version")
 	}
 	if acquired != 0 {

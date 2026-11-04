@@ -102,6 +102,21 @@ func runUpgrade(cmd *cobra.Command, currentVersion string) error {
 		if err != nil {
 			return fmt.Errorf("resolving executable path: %w", err)
 		}
+		if explicitUpdateHome(cmd) {
+			target := filepath.Join(homeFromCmd(cmd), ".local", "bin", "dot")
+			if _, err := os.Lstat(target); err == nil {
+				execPath, err = filepath.EvalSymlinks(target)
+				if err != nil {
+					return fmt.Errorf("resolving target dot %s: %w; repair that target home PATH entry before retrying", target, err)
+				}
+				currentVersion, err = readDotBinaryVersion(ctx, execPath)
+				if err != nil {
+					return fmt.Errorf("reading target dot version at %s: %w; repair or remove that target PATH entry before retrying", target, err)
+				}
+			} else if !os.IsNotExist(err) {
+				return fmt.Errorf("inspecting target dot %s: %w; check target home permissions before retrying", target, err)
+			}
+		}
 		brew, viaBrew = homebrewDotFor(execPath)
 	}
 
@@ -155,7 +170,7 @@ func runUpgrade(cmd *cobra.Command, currentVersion string) error {
 		}
 		return nil
 	}
-	return performVerifiedUpdate(ctx, p, execPath, brew, viaBrew, currentClean, latestVersion, latest.TagName, dryRun, wait)
+	return performVerifiedUpdate(ctx, p, homeFromCmd(cmd), explicitUpdateHome(cmd), execPath, brew, viaBrew, currentClean, latestVersion, latest.TagName, dryRun, wait)
 }
 
 // updatePath says, read-only, which path `dot update` would take (#266).
@@ -239,7 +254,7 @@ func retrySlotHint(wait time.Duration) string {
 	return "retry later, or wait for it with dot update --wait 30m"
 }
 
-func performVerifiedUpdate(ctx context.Context, p *Printer, execPath string, brew homebrewDot, viaBrew bool, current, latest, tag string, dryRun bool, wait time.Duration) error {
+func performVerifiedUpdate(ctx context.Context, p *Printer, home string, explicitHome bool, execPath string, brew homebrewDot, viaBrew bool, current, latest, tag string, dryRun bool, wait time.Duration) error {
 	if dryRun {
 		if viaBrew {
 			return upgradeHomebrew(ctx, p, brew, current, latest, true, wait)
@@ -296,7 +311,7 @@ func performVerifiedUpdate(ctx context.Context, p *Printer, execPath string, bre
 		}
 		return fullHomebrewFallback("the formula changed while the update was being prepared")
 	}
-	return installStandalonePrebuilt(ctx, p, newBinary, execPath, latest, osName, archName, wait)
+	return installStandalonePrebuilt(ctx, p, home, explicitHome, newBinary, execPath, latest, osName, archName, wait)
 }
 
 // downloadVerifiedArchive downloads the release archive and the release's
@@ -479,4 +494,9 @@ func compareSemver(a, b string) int {
 		return 1
 	}
 	return 0
+}
+
+func explicitUpdateHome(cmd *cobra.Command) bool {
+	home, _ := cmd.Flags().GetString("home")
+	return home != ""
 }

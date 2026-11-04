@@ -289,29 +289,38 @@ func (e *Engine) familyPathEntry(t FamilyTool, adopt bool) []string {
 
 // familyPrune keeps current and previous and every version a running process uses.
 func (e *Engine) familyPrune(t FamilyTool, toolDir, current, previous string, lines []string) []string {
+	return PruneInstallVersions(t.ID, toolDir, current, previous, e.familyLink(t), familyVersions(toolDir), lines, func(line string) bool {
+		return strings.Contains(line, "/node_modules/"+t.Package+"/")
+	})
+}
+
+// PruneInstallVersions keeps current, previous and versions used by processes.
+// If any process cannot be tied to a version, all versions stay. Callers supply
+// validated directory names and hold their install's maintenance slot.
+func PruneInstallVersions(id, toolDir, current, previous, pathEntry string, versions, lines []string, versioned func(string) bool) []string {
 	var notes []string
-	if slices.ContainsFunc(lines, func(l string) bool { return !strings.Contains(l, "/node_modules/"+t.Package+"/") }) {
-		for _, v := range familyVersions(toolDir) {
+	if slices.ContainsFunc(lines, func(l string) bool { return !versioned(l) }) {
+		for _, v := range versions {
 			if v != current && v != previous {
-				notes = append(notes, fmt.Sprintf("kept %s %s: a running process started through %s cannot be tied to one version", t.ID, v, e.familyLink(t)))
+				notes = append(notes, fmt.Sprintf("kept %s %s: a running process started through %s cannot be tied to one version", id, v, pathEntry))
 			}
 		}
 		return notes
 	}
-	for _, v := range familyVersions(toolDir) {
+	for _, v := range versions {
 		if v == current || v == previous {
 			continue
 		}
 		marker := filepath.Join(toolDir, v) + string(os.PathSeparator)
 		if slices.ContainsFunc(lines, func(l string) bool { return strings.Contains(l, marker) }) {
-			notes = append(notes, fmt.Sprintf("kept %s %s: a running process uses it", t.ID, v))
+			notes = append(notes, fmt.Sprintf("kept %s %s: a running process uses it", id, v))
 			continue
 		}
 		if err := os.RemoveAll(filepath.Join(toolDir, v)); err != nil {
-			notes = append(notes, fmt.Sprintf("could not remove %s %s: %v", t.ID, v, err))
+			notes = append(notes, fmt.Sprintf("could not remove %s %s: %v; check permissions at %s before the next update or rollback", id, v, err, filepath.Join(toolDir, v)))
 			continue
 		}
-		notes = append(notes, fmt.Sprintf("removed %s %s", t.ID, v))
+		notes = append(notes, fmt.Sprintf("removed %s %s", id, v))
 	}
 	return notes
 }
