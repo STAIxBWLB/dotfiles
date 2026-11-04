@@ -57,6 +57,7 @@ Also available as 'dotfiles' for back-compat.`,
 	root.AddCommand(newPreflightCmd())
 	root.AddCommand(newSecretsCmd())
 	root.AddCommand(newUpgradeCmd(version))
+	root.AddCommand(newRollbackCmd())
 	root.AddCommand(newReconfigureCmd())
 	root.AddCommand(newVersionCmd(version, commit))
 	root.AddCommand(newConfigCmd())

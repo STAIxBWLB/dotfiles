@@ -550,31 +550,9 @@ func installStandalonePrebuilt(ctx context.Context, p *Printer, source, destinat
 		return fmt.Errorf("the verified prebuilt update needs the maintenance slot: %w; %s", err, retrySlotHint(wait))
 	}
 	defer release()
-	tmp, err := os.CreateTemp(filepath.Dir(destination), ".dot.*.new")
+	home, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("creating staging file in %s: %w", filepath.Dir(destination), err)
-	}
-	tmpPath := tmp.Name()
-	cleanup := func() { _ = os.Remove(tmpPath) }
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		cleanup()
-		return fmt.Errorf("writing staging executable: %w", err)
-	}
-	if err := tmp.Chmod(0o755); err != nil {
-		_ = tmp.Close()
-		cleanup()
 		return err
 	}
-	if err := tmp.Close(); err != nil {
-		cleanup()
-		return err
-	}
-	if err := os.Rename(tmpPath, destination); err != nil {
-		cleanup()
-		return fmt.Errorf("replacing binary %s: %w", destination, err)
-	}
-	p.Line("Upgraded to %s", version)
-	p.Line("Binary: %s", destination)
-	return nil
+	return activateStandalonePrebuilt(ctx, p, home, data, destination, version)
 }

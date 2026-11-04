@@ -21,7 +21,8 @@ const hookTimeoutSeconds = 10
 // inspects Bash commands, freeze inspects file mutations.
 var guardMatchers = []string{"Bash", "Edit|Write|MultiEdit|NotebookEdit"}
 
-// HookCommand composes the settings.json command string for a dot binary.
+// HookCommand composes the settings.json command for the stable activation path.
+// Keep current/opt links unresolved so updates and rollbacks need no hook rewrite.
 // The path is single-quoted so homes containing spaces survive `sh -c`.
 func HookCommand(dotPath string) string {
 	return fmt.Sprintf("'%s' guard hook %s", dotPath, HookMarker)

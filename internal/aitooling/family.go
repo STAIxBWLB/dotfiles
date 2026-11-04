@@ -424,3 +424,7 @@ func swapLink(link, target string) error {
 	}
 	return nil
 }
+
+// SwapInstallLink activates a staged install link by the same atomic rename used
+// for family current/previous links. The caller must hold its maintenance slot.
+func SwapInstallLink(link, target string) error { return swapLink(link, target) }

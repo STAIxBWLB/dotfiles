@@ -1,10 +1,14 @@
 ## dot update
 
-Update dot binary to latest version
+Update dot binary to the latest or a selected version
 
 ### Synopsis
 
-Download and install the latest dot release from GitHub.
+Download and install the latest dot release from GitHub, or select an exact
+stable release with --version X.Y.Z (including a downgrade). Standalone installs
+keep versioned binaries and activate them through current; dot rollback restores
+the previous binary without downloading. Homebrew owns its versions, so
+--version and dot rollback are unavailable for Homebrew installs.
 
 A Homebrew install is upgraded through the brew that owns it instead: when the
 installed tap recipe matches the verified native release, dot uses its bounded
@@ -22,10 +26,11 @@ dot update [flags]
 ### Options
 
 ```
-      --check           Only check for updates without installing
-  -h, --help            help for update
-      --homebrew        Target the installed Homebrew dot formula
-      --wait duration   wait up to this long for the maintenance slot instead of deferring (e.g. 30m)
+      --check            Only check for updates without installing
+  -h, --help             help for update
+      --homebrew         Target the installed Homebrew dot formula
+      --version string   Install this exact stable release (X.Y.Z or vX.Y.Z), including downgrades
+      --wait duration    wait up to this long for the maintenance slot instead of deferring (e.g. 30m)
 ```
 
 ### Options inherited from parent commands
