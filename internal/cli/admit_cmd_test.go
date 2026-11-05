@@ -562,6 +562,42 @@ func TestAdmitBusyGateRetriesWithinWait(t *testing.T) {
 	}
 }
 
+// The recovery countdown is resampled inside --wait: a one-shot defer would
+// leave every later sample past the 45s gap and the episode never closes.
+func TestAdmitRecoveringGateRetriesWithinWait(t *testing.T) {
+	admitSandbox(t)
+	stubAdmitMonitor(t, healthyAdmitSnapshot())
+	calls := stubAdmitGate(t, []admission.Decision{
+		{Admit: false, Reasons: []string{"recovering"}, Recovering: true, RetryAfter: time.Millisecond},
+		{Admit: true},
+		{Admit: true},
+	})
+	if _, _, err := runDotForTest("admit", "--wait", "1m", "--", "true"); err != nil {
+		t.Fatalf("admit = %v, want the recovery countdown resampled to admission", err)
+	}
+	if *calls < 2 {
+		t.Errorf("gate evaluations = %d, want the countdown resampled", *calls)
+	}
+}
+
+// Hard pressure still defers at once, whatever the wait budget.
+func TestAdmitHardPressureDefersWithoutRetry(t *testing.T) {
+	admitSandbox(t)
+	stubAdmitMonitor(t, healthyAdmitSnapshot())
+	calls := stubAdmitGate(t, []admission.Decision{
+		{Admit: false, Reasons: []string{"memory pressure critical"}, RetryAfter: time.Millisecond},
+		{Admit: true},
+	})
+	_, _, err := runDotForTest("admit", "--wait", "1m", "--", "true")
+	var exitErr *ExitCodeError
+	if !errors.As(err, &exitErr) || exitErr.Code != ExitDeferred {
+		t.Fatalf("err = %v, want ExitCodeError %d", err, ExitDeferred)
+	}
+	if *calls != 1 {
+		t.Errorf("gate evaluations = %d, want 1", *calls)
+	}
+}
+
 // AC1 (#168): contention defers with exit 75 only once the wait is used up.
 func TestAdmitBusyGateDefersWhenWaitExhausted(t *testing.T) {
 	admitSandbox(t)

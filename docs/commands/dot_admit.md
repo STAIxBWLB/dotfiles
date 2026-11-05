@@ -9,7 +9,8 @@ update) through the resource-admission controller. The gate defers while the
 host shows memory pressure warning/critical, verifiable thermal pressure, a
 WindowServer watchdog termination inside its grace window, or CPU/load
 saturation sustained past the policy thresholds; recovery requires five
-continuous minutes of normal telemetry. One heavy slot is held per project
+continuous minutes of normal telemetry, and admit keeps sampling through
+that countdown within --wait. One heavy slot is held per project
 repo (shared across its worktrees, branches, and sessions); different repos
 run in parallel. --class maintenance takes the single host-wide maintenance
 slot instead. On defer the exit code is 75 (EX_TEMPFAIL) with a

@@ -348,8 +348,14 @@ func TestRecoveryRetryCadencePreservesContinuity(t *testing.T) {
 		t.Fatalf("blocked recovery retry after %v exceeds sample gap %v", d.RetryAfter, th.MaxSampleGap)
 	}
 	now := evalT0.Add(d.RetryAfter)
+	if d.Recovering {
+		t.Fatal("blocked recovery marked as a countdown")
+	}
 	d = EvaluatePressure(healthyDarwin(), th, d.Next, now)
 	for attempts := 0; !d.Admit && attempts < 32; attempts++ {
+		if !d.Recovering {
+			t.Fatalf("countdown defer not marked Recovering: %+v", d)
+		}
 		if d.RetryAfter <= 0 || d.RetryAfter > th.MaxSampleGap {
 			t.Fatalf("retry after %v exceeds sample gap %v", d.RetryAfter, th.MaxSampleGap)
 		}

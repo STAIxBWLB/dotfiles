@@ -46,13 +46,15 @@ var admitGate = func(ctx context.Context, store *admission.Store, m *admission.M
 	return store.Gate(ctx, m, th)
 }
 
-// gateWithBusyRetry re-evaluates history-lock contention inside the wait
-// budget: contention is a transient busy state, not host pressure, so it
-// defers only once the budget is spent. Pressure defers return immediately.
+// gateWithBusyRetry re-evaluates history-lock contention and the recovery
+// countdown inside the wait budget. Neither is current host pressure, and the
+// countdown only completes when samples arrive within the 45s gap, so a
+// one-shot caller retrying minutes later could never close the episode.
+// Pressure defers return immediately.
 func gateWithBusyRetry(ctx context.Context, store *admission.Store, monitor *admission.Monitor, deadline time.Time) (admission.Decision, error) {
 	for {
 		d, err := admitGate(ctx, store, monitor, admission.DefaultThresholds())
-		if err != nil || d.Admit || !admission.IsGateBusy(d) {
+		if err != nil || d.Admit || (!admission.IsGateBusy(d) && !d.Recovering) {
 			return d, err
 		}
 		backoff := d.RetryAfter
@@ -83,7 +85,8 @@ update) through the resource-admission controller. The gate defers while the
 host shows memory pressure warning/critical, verifiable thermal pressure, a
 WindowServer watchdog termination inside its grace window, or CPU/load
 saturation sustained past the policy thresholds; recovery requires five
-continuous minutes of normal telemetry. One heavy slot is held per project
+continuous minutes of normal telemetry, and admit keeps sampling through
+that countdown within --wait. One heavy slot is held per project
 repo (shared across its worktrees, branches, and sessions); different repos
 run in parallel. --class maintenance takes the single host-wide maintenance
 slot instead. On defer the exit code is 75 (EX_TEMPFAIL) with a
