@@ -153,7 +153,10 @@ type Decision struct {
 	// ProfileRetry marks a warning-tolerant profile window defer that is safe
 	// to resample. Hard pressure and telemetry blockers never set it.
 	ProfileRetry bool
-	Next         History
+	// Recovering marks the recovery countdown: telemetry is normal and only
+	// more continuous samples are needed, so waiting callers should resample.
+	Recovering bool
+	Next       History
 }
 
 // EvaluatePressure decides admission from one snapshot. Pure: same inputs,
@@ -260,6 +263,7 @@ func EvaluatePressure(snap PressureSnapshot, th Thresholds, hist History, now ti
 		Admit:      false,
 		Reasons:    []string{fmt.Sprintf("recovering from resource pressure (%s of normal telemetry still required)", remaining.Round(time.Second))},
 		RetryAfter: boundedRetryAfter(th, remaining),
+		Recovering: true,
 		Next:       next,
 	}
 }
