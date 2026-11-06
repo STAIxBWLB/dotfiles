@@ -173,6 +173,7 @@ func TestRender_ToolsInitAIToolPaths(t *testing.T) {
 		`[ -d "$HOME/.opencode/bin" ] && export PATH="$HOME/.opencode/bin:$PATH"`,
 		`[ -d "$HOME/.kilo/bin" ] && export PATH="$HOME/.kilo/bin:$PATH"`,
 		`[ -d "$HOME/.kimi-code/bin" ] && export PATH="$HOME/.kimi-code/bin:$PATH"`,
+		`[ -d "$HOME/.bun/bin" ] && export PATH="$PATH:$HOME/.bun/bin"`,
 	} {
 		if !strings.Contains(content, line) {
 			t.Errorf("Render shell/50-tools-init.sh.tmpl: expected guard line %q in output", line)
