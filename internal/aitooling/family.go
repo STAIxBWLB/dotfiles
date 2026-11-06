@@ -239,7 +239,9 @@ func (e *Engine) familyActivate(ctx context.Context, t FamilyTool, version strin
 	}
 	if t.ID == "ahub" {
 		// `ahub setup` writes the shared Claude plugin, outside what dot may write (docs/BOUNDARIES.md).
-		r.Notes = append(r.Notes, fmt.Sprintf("to move the shared Claude plugin to %s, run: %s setup, then restart Claude sessions. dot did not run it", version, e.familyLink(t)))
+		// The version's own bin, not the PATH link, which may still name another install.
+		bin := filepath.Join(toolDir, version, "bin", t.Binary)
+		r.Notes = append(r.Notes, fmt.Sprintf("to move the shared Claude plugin to %s, run: %s setup, then restart Claude sessions. dot did not run it", version, bin))
 		if e.find("bun") == "" {
 			r.Notes = append(r.Notes, "ahub runs on bun, which is not on PATH; install bun before starting it")
 		}

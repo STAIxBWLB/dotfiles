@@ -276,7 +276,7 @@ func TestFamilyInstallAhub(t *testing.T) {
 	link := filepath.Join(e.opts.HomeDir, ".local", "bin", "ahub")
 
 	r, err := e.FamilyInstall(ctx, "ahub", "0.31.0", false)
-	if err != nil || r.Status != "activated" || calls != 1 || !hasNote(r, "run: "+link+" setup") || !hasNote(r, "dot did not run it") || !hasNote(r, "bun, which is not on PATH") {
+	if err != nil || r.Status != "activated" || calls != 1 || !hasNote(r, "run: "+filepath.Join(e.FamilyRoot(), "ahub", "0.31.0", "bin", "ahub")+" setup") || !hasNote(r, "dot did not run it") || !hasNote(r, "bun, which is not on PATH") {
 		t.Fatalf("install = %+v, %v", r, err)
 	}
 	if got := readLinkAbs(link); got != filepath.Join(e.FamilyRoot(), "ahub", "current", "bin", "ahub") {
