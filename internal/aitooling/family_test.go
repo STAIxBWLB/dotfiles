@@ -123,7 +123,7 @@ func TestFamilyInstallActivateAndRollback(t *testing.T) {
 		t.Fatalf("current = %q", got)
 	}
 	st := e.FamilyStatus()
-	if st[1].ID != "amem" || st[1].Current != "2.0.0" || st[1].Status != "active" || len(st[1].Notes) != 0 || st[3].Status != "unpublished" || st[0].Status != "external" || st[2].Status != "not-installed" {
+	if st[1].ID != "amem" || st[1].Current != "2.0.0" || st[1].Status != "active" || len(st[1].Notes) != 0 || st[3].Status != "unpublished" || st[0].Status != "not-installed" || st[2].Status != "not-installed" {
 		t.Fatalf("status = %+v", st)
 	}
 }
@@ -134,18 +134,6 @@ func TestFamilyInstallLatestDryRunAndUnpublished(t *testing.T) {
 	fakeFamilyNPM(t, e, &calls)
 	ctx := context.Background()
 
-	// ahub manages its own releases: dot installs and rolls back nothing for it.
-	for _, op := range []func() (FamilyResult, error){
-		func() (FamilyResult, error) { return e.FamilyInstall(ctx, "ahub", "1.0.0", false) },
-		func() (FamilyResult, error) { return e.FamilyRollback(ctx, "ahub") },
-	} {
-		if r, err := op(); err != nil || r.Status != "skipped" || !hasNote(r, "managed by ahub upgrade (~/.agenthub/releases)") || calls != 0 {
-			t.Fatalf("ahub = %+v, %v", r, err)
-		}
-	}
-	if _, err := os.Lstat(filepath.Join(e.opts.HomeDir, ".local", "bin", "ahub")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("ahub PATH entry written")
-	}
 	r, err := e.FamilyInstall(ctx, "acon", "", false)
 	if err != nil || r.Status != "skipped" || !hasNote(r, "no published npm package") {
 		t.Fatalf("acon = %+v, %v", r, err)
@@ -275,5 +263,35 @@ func TestFamilyInstallFailureLeavesNothing(t *testing.T) {
 	}
 	if _, err := e.FamilyInstall(ctx, "amem", "1.0.0", false); err == nil || !strings.Contains(err.Error(), "remove it and retry") {
 		t.Fatalf("unverified dir = %v", err)
+	}
+}
+
+// #335: ahub's global CLI installs like any family tool; dot prints `ahub setup` for the shared
+// Claude plugin, never runs it, and says when bun, ahub's runtime, is missing.
+func TestFamilyInstallAhub(t *testing.T) {
+	e := testEngine(t)
+	calls := 0
+	fakeFamilyNPM(t, e, &calls)
+	ctx := context.Background()
+	link := filepath.Join(e.opts.HomeDir, ".local", "bin", "ahub")
+
+	r, err := e.FamilyInstall(ctx, "ahub", "0.31.0", false)
+	if err != nil || r.Status != "activated" || calls != 1 || !hasNote(r, "run: "+filepath.Join(e.FamilyRoot(), "ahub", "0.31.0", "bin", "ahub")+" setup") || !hasNote(r, "dot did not run it") || !hasNote(r, "bun, which is not on PATH") {
+		t.Fatalf("install = %+v, %v", r, err)
+	}
+	if got := readLinkAbs(link); got != filepath.Join(e.FamilyRoot(), "ahub", "current", "bin", "ahub") {
+		t.Fatalf("PATH entry = %q", got)
+	}
+	fakeBinary(t, e, "bun")
+	r, err = e.FamilyInstall(ctx, "ahub", "0.32.0", false)
+	if err != nil || r.Previous != "0.31.0" || hasNote(r, "bun, which is not on PATH") || !hasNote(r, "plugin to 0.32.0") {
+		t.Fatalf("upgrade = %+v, %v", r, err)
+	}
+	r, err = e.FamilyRollback(ctx, "ahub")
+	if err != nil || r.Current != "0.31.0" || !hasNote(r, "plugin to 0.31.0") {
+		t.Fatalf("rollback = %+v, %v", r, err)
+	}
+	if st := e.FamilyStatus(); st[0].ID != "ahub" || st[0].Status != "active" || st[0].Current != "0.31.0" || len(st[0].Notes) != 0 {
+		t.Fatalf("status = %+v", st[0])
 	}
 }

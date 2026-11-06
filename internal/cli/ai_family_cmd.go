@@ -28,7 +28,9 @@ with and are listed, and nothing is stopped. Versions other than current and
 previous are removed once no running process uses them. 'dot ai rollback <id>'
 makes previous current again.
 
-ahub is skipped: 'ahub upgrade' manages its releases in ~/.agenthub/releases.`}
+For ahub this is the global CLI only: 'ahub upgrade' still runs each project's
+daemon from ~/.agenthub/releases. After ahub activates, run the printed
+'ahub setup' to move the shared Claude plugin to the same version.`}
 	install := &cobra.Command{Use: "install <id>", Short: "Install a version of a family tool and make it current", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		version, _ := cmd.Flags().GetString("version")
 		adopt, _ := cmd.Flags().GetBool("adopt")

@@ -14,24 +14,23 @@ import (
 	"github.com/STAIxBWLB/dotfiles/internal/resourceguard"
 )
 
-// Family tools (#319): amem and vmem (and acon and ares once published) install side by side, one npm prefix per
+// Family tools (#319, #335): ahub, amem and vmem (and acon and ares once published) install side by side, one npm prefix per
 // version under ~/.local/share/dotfiles/tools/<id>/<version>/. The `current` link names the active
 // version and `previous` the one before it; ~/.local/bin/<bin> points through `current`. Switching
 // `current` is one rename: new sessions start the new version and running ones keep their files.
 
-// FamilyTool is one family tool; an empty Package means it has no published npm package yet. A
-// non-empty External names the manager that owns the tool's installs, and dot installs none of it.
-type FamilyTool struct{ ID, Package, Binary, External string }
+// FamilyTool is one family tool; an empty Package means it has no published npm package yet.
+type FamilyTool struct{ ID, Package, Binary string }
 
 func FamilyTools() []FamilyTool {
 	return []FamilyTool{
-		// ahub stages its own releases and a PATH link here would shadow every later ahub upgrade, so it
-		// stays out until agent-hub#1039 defines the hand-off.
-		{"ahub", "@staix/agent-hub", "ahub", "managed by ahub upgrade (~/.agenthub/releases)"},
-		{"amem", "@staix/agent-mem", "amem", ""},
-		{"vmem", "@staix/vault-mem", "vmem", ""},
-		{"acon", "", "acon", ""},
-		{"ares", "", "ares", ""},
+		// Only ahub's global CLI lives here: `ahub upgrade` runs each project's daemon from
+		// ~/.agenthub/releases/<v>/ and, since agent-hub 0.26.0 (#1039), leaves the CLI alone.
+		{"ahub", "@staix/agent-hub", "ahub"},
+		{"amem", "@staix/agent-mem", "amem"},
+		{"vmem", "@staix/vault-mem", "vmem"},
+		{"acon", "", "acon"},
+		{"ares", "", "ares"},
 	}
 }
 
@@ -75,11 +74,6 @@ func (e *Engine) FamilyInstall(ctx context.Context, id, version string, adopt bo
 		return FamilyResult{}, err
 	}
 	r := FamilyResult{ID: id}
-	if t.External != "" {
-		r.Status = "skipped"
-		r.Notes = []string{t.External + "; dot installs nothing for it"}
-		return r, nil
-	}
 	if t.Package == "" {
 		r.Status = "skipped"
 		r.Notes = []string{id + " has no published npm package yet; nothing was installed"}
@@ -180,11 +174,6 @@ func (e *Engine) FamilyRollback(ctx context.Context, id string) (FamilyResult, e
 		return FamilyResult{}, err
 	}
 	r := FamilyResult{ID: id}
-	if t.External != "" {
-		r.Status = "skipped"
-		r.Notes = []string{t.External + "; roll it back there"}
-		return r, nil
-	}
 	noPrevious := fmt.Errorf("%s has no previous version to roll back to", id)
 	if readVersionLink(filepath.Join(e.FamilyRoot(), id, "previous")) == "" {
 		return r, noPrevious
@@ -247,6 +236,15 @@ func (e *Engine) familyActivate(ctx context.Context, t FamilyTool, version strin
 			note += "; --root needs an amem release that has it (agent-mem#199)"
 		}
 		r.Notes = append(r.Notes, note)
+	}
+	if t.ID == "ahub" {
+		// `ahub setup` writes the shared Claude plugin, outside what dot may write (docs/BOUNDARIES.md).
+		// The version's own bin, not the PATH link, which may still name another install.
+		bin := filepath.Join(toolDir, version, "bin", t.Binary)
+		r.Notes = append(r.Notes, fmt.Sprintf("to move the shared Claude plugin to %s, run: %s setup, then restart Claude sessions. dot did not run it", version, bin))
+		if e.find("bun") == "" {
+			r.Notes = append(r.Notes, "ahub runs on bun, which is not on PATH; install bun before starting it")
+		}
 	}
 	return r, nil
 }
@@ -369,9 +367,6 @@ func (e *Engine) FamilyStatus() []FamilyResult {
 		toolDir := filepath.Join(e.FamilyRoot(), t.ID)
 		r := FamilyResult{ID: t.ID, Current: readVersionLink(filepath.Join(toolDir, "current")), Previous: readVersionLink(filepath.Join(toolDir, "previous")), Versions: familyVersions(toolDir)}
 		switch {
-		case t.External != "":
-			r.Status = "external"
-			r.Notes = []string{t.External}
 		case t.Package == "":
 			r.Status = "unpublished"
 		case r.Current == "":
