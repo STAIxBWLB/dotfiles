@@ -23,3 +23,6 @@ fi
 [ -d "$HOME/.opencode/bin" ] && export PATH="$HOME/.opencode/bin:$PATH"
 [ -d "$HOME/.kilo/bin" ] && export PATH="$HOME/.kilo/bin:$PATH"
 [ -d "$HOME/.kimi-code/bin" ] && export PATH="$HOME/.kimi-code/bin:$PATH"
+# bun global bin (`bun add -g @staix/agent-hub` puts ahub here). Appended, not prepended, so stale
+# bun-global amem/vmem links never shadow the dot-managed ones in ~/.local/bin.
+[ -d "$HOME/.bun/bin" ] && export PATH="$PATH:$HOME/.bun/bin"
