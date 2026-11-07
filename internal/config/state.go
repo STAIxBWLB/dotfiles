@@ -318,6 +318,7 @@ type UserWorkspaceState struct {
 	GdriveSymlink string       `yaml:"gdrive_symlink,omitempty"` // symlink name for the cloud root (e.g. ~/gdrive-workspace, ~/Dropbox)
 	Symlink       string       `yaml:"symlink,omitempty"`        // explicit symlink target for Path
 	Repos         []RepoConfig `yaml:"repos,omitempty"`          // git repos to clone into workspace
+	AhubKeys      bool         `yaml:"ahub_keys,omitempty"`      // tmux prefix+A ahub menu (#331)
 }
 
 // UserFontsState holds font config from user state.
@@ -777,6 +778,7 @@ func ApplyStateToConfig(cfg *Config, state *UserState) {
 		cfg.Modules.Workspace.GdriveSymlink = state.Modules.Workspace.GdriveSymlink
 		cfg.Modules.Workspace.Symlink = state.Modules.Workspace.Symlink
 		cfg.Modules.Workspace.Repos = state.Modules.Workspace.Repos
+		cfg.Modules.Workspace.AhubKeys = state.Modules.Workspace.AhubKeys
 	}
 	if state.Modules.AI.Policy != nil {
 		cfg.Modules.AI.Enabled = true

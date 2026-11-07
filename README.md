@@ -711,7 +711,7 @@ status [--probe]` reports the backend, service, shim, DNS and WARP state.
 
 The session takes the terminal's size. Below 200x56 it becomes **ahub-compact**: one full-size window each for `hub`, `peer-a`, `peer-b` and `verify`. AHUB opens `ahub console` when the project's hub runs (`--panels` at 80x24 or more, the plain console below), otherwise it shows why and starts `ahub up --no-agents` only when you press Enter. The peer slots take the first two of `start.agents` in the project's `.agenthub/config.local.json` (then codex, claude) and start a peer only on Enter. A running session is never rebuilt: `--layout` applies to a new session only.
 
-`dot hub <project> [console|status|ui]` opens the project's hub: in this terminal outside tmux, or inside its workspace by focusing AHUB, adding one `hub` window to an older session. It starts nothing and never relayouts. Design: `docs/specs/2026-11-07-ahub-workspace-layouts.md`.
+`dot hub <project> [console|status|ui|git|files]` opens the project's hub: in this terminal outside tmux, or inside its workspace by focusing AHUB, adding one `hub` window to an older session. Inside the workspace, `git` and `files` focus or add a `git` (lazygit, else `git status`) or `files` (yazi, eza, tree, else `ls`) window. It starts nothing and never relayouts. With `modules.workspace.ahub_keys: true`, `C-a A` opens a menu with these (off by default; no other binding changes). Design: `docs/specs/2026-11-07-ahub-workspace-layouts.md`.
 
 ### Themes
 

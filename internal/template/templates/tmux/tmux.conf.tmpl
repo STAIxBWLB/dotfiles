@@ -70,10 +70,24 @@ Pane       C-a h/j/k/l  navigate\n\
 Copy       C-a Enter → v select → y copy → Esc cancel\n\
 Mouse      ON (scroll, select, resize)\n\
 Reload     C-a r\n\
+{{- if .AhubKeys }}
+ahub       C-a A menu: hub, git, files, status\n\
+{{- end }}
 Help       C-a ? all keys   C-a / this cheatsheet\n\
 EOF\n\
 read -n 1"
 
+{{ if .AhubKeys -}}
+# ── ahub menu (modules.workspace.ahub_keys) ─────────────────────────────────
+# 'dot hub' acts only in the project workspace named after the session; the
+# pane id tells it which session called, since run-shell has no client.
+bind A display-menu -T "#[align=centre] ahub: #S " \
+  "Hub console" a "run-shell \"TMUX_PANE=#{pane_id} dot hub #{q:session_name}\"" \
+  "Git"         g "run-shell \"TMUX_PANE=#{pane_id} dot hub #{q:session_name} git\"" \
+  "Files"       f "run-shell \"TMUX_PANE=#{pane_id} dot hub #{q:session_name} files\"" \
+  "Status"      s "display-popup -E -w 90% -h 80% \"dot hub #{q:session_name} status; read -r -n 1 -s\""
+
+{{ end -}}
 # ── Status bar ───────────────────────────────────────────────────────────────
 set -g status on
 set -g status-interval 5
