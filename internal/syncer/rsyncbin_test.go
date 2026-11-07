@@ -278,3 +278,20 @@ func TestRsyncHighByteEscapesDecode(t *testing.T) {
 		t.Fatalf("literal \\# accepted by the host plan: %v", err)
 	}
 }
+
+// The peer's rsync, not the client, writes the non-regular warning and
+// escapes bytes 0x80-0x9f of a Korean symlink name in it (#364).
+func TestParsePeerRemoteInventory_EscapedNonRegularWarning(t *testing.T) {
+	line := "skipping non-regular file \"admin/2025-2/\xed\\#225\\#234\xeb\\#235\xbc\xeb\\#214\\#200 AI\"\n"
+	snap, err := parsePeerRemoteInventory(line+"@@4\t2026/09/28-01:02:03\tdocs/a.md\n", nil, nil, true)
+	if err != nil {
+		t.Fatalf("half-escaped warning: %v", err)
+	}
+	if _, ok := snap["docs/a.md"]; !ok || len(snap) != 1 {
+		t.Fatalf("snapshot %v", snap)
+	}
+	baseline := map[string]Fingerprint{"admin/2025-2/한라대 AI": {}}
+	if _, err := parsePeerRemoteInventory(line, nil, baseline, true); err == nil || !strings.Contains(err.Error(), "non-regular on the peer") {
+		t.Fatalf("a tracked path that became a link must still fail: %v", err)
+	}
+}

@@ -483,7 +483,9 @@ func parsePeerRemoteInventory(stdout string, remoteLoc *time.Location, baseline 
 		if !strings.HasPrefix(raw, "@@") {
 			const skippedPrefix = "skipping non-regular file "
 			if strings.HasPrefix(raw, skippedPrefix) {
-				skipped, err := strconv.Unquote(strings.TrimPrefix(raw, skippedPrefix))
+				// The peer's rsync writes this warning, so -8 (a client option)
+				// does not reach it and it escapes bytes 0x80-0x9f (#364).
+				skipped, err := strconv.Unquote(decodeRsyncHighBytes(strings.TrimPrefix(raw, skippedPrefix)))
 				if err != nil {
 					return nil, fmt.Errorf("peer inventory: malformed non-regular warning %q", raw)
 				}
