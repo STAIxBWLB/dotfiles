@@ -91,6 +91,7 @@ Also available as 'dotfiles' for back-compat.`,
 
 	// Workspace commands
 	root.AddCommand(newOpenCmd())
+	root.AddCommand(newHubCmd())
 	root.AddCommand(newStopCmd())
 	root.AddCommand(newListCmd())
 	root.AddCommand(newRegisterCmd())

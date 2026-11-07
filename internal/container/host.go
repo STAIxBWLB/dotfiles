@@ -121,7 +121,9 @@ exec ` + backend + ` "$@"
 // DotPath is the dot binary the shim runs: ~/.local/bin/dot when it has the
 // container command (the stable target the guard hook also pins), else this
 // executable. A Homebrew keg path (<prefix>/Cellar/<formula>/<version>/bin/dot)
-// is mapped to the formula's opt link so a brew upgrade keeps the shim valid.
+// is mapped to the formula's opt link, and a cask path
+// (<prefix>/Caskroom/<cask>/<version>/dot) to the cask's prefix/bin link, so a
+// brew upgrade keeps the shim valid.
 func DotPath(home string) string {
 	self := filepath.Join(home, ".local", "bin", "dot")
 	if !hasContainerCommand(self) {
@@ -151,6 +153,11 @@ func optLinkFor(self string) string {
 			if _, bin, ok := strings.Cut(rest, "/"); ok {
 				return filepath.FromSlash(p[:i] + "/opt/" + formula + "/" + bin)
 			}
+		}
+	}
+	if i := strings.Index(p, "/Caskroom/"); i >= 0 {
+		if parts := strings.Split(p[i+len("/Caskroom/"):], "/"); len(parts) == 3 {
+			return filepath.FromSlash(p[:i] + "/bin/" + parts[2])
 		}
 	}
 	return self

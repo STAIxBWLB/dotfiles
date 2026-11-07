@@ -76,6 +76,8 @@ Portable AI snapshots exclude skill roots, auth by default, caches, histories, d
 
 `dot ai vault install|status` register vmem's MCP server for Kiro and Copilot and report its health, warning while the retired `obsidian` server is still registered (`dot` never installs vmem; `vmem setup` registers Claude Code, Codex, Kimi, Qwen, pi, jcode and Antigravity). `dot ai vault retire-mcpvault` is a dry run unless `--apply` is given and only edits the Kiro and Copilot configs.
 
+`dot ai research install|status` register ares's MCP server for Kiro and Copilot, write the research block into the agents SSOT and report its health (`ares setup` registers Claude Code, Codex, Kimi, Qwen, pi, jcode and Antigravity). The policy auto-approves ares's read tools only.
+
 ## Apps and profile snapshots
 
 `dot apps` manages cask installation and per-host settings. A profile snapshot contains config, install and backup lists, metadata, and optional age keys at `<backup-root>/profiles/<hostname>/<version>/`.

@@ -42,8 +42,11 @@ func knowledgeSet(resolution aipolicy.Resolution) (map[string]bool, error) {
 	result := map[string]bool{}
 	for _, grant := range resolution.KnowledgeApprovals {
 		scope := "memory"
-		if grant.Server == "vmem" {
+		switch grant.Server {
+		case "vmem":
 			scope = "vault"
+		case "ares":
+			scope = "research"
 		}
 		result[scope+"/"+grant.Tool] = true
 	}

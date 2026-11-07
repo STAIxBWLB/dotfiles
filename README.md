@@ -54,7 +54,7 @@ Updating from v2.70.29 or earlier: `dot update` in those versions refuses a rele
 
 Standalone installs support `dot update --version 2.71.5` (or `v2.71.5`) to select an exact stable release, including a downgrade. The archive checksum, native architecture and exact runtime version are verified before activation. Binaries live in `~/.local/share/dotfiles/tools/dot/<version>/bin/dot`; `current` and `previous` are relative links, and `~/.local/bin/dot` points through `current`. The first update preserves the existing standalone binary (development builds use a content-hashed `snapshot-*` directory) and keeps its old path working through `current`. `dot rollback` activates the previous binary without downloading; another rollback switches back when that release also supports `rollback` (for an older release, run the saved newer binary at `<version>/bin/dot rollback`). Activation keeps current, previous and any version a running process uses; older idle versions are pruned with the family-tool retention rule. If a process uses an unresolved PATH/current entry or process inspection fails, versions are kept conservatively until a later activation. `--home X` writes the version tree and PATH entry only under X and leaves the invoking user's standalone executable in place. Guard hooks use a stable `current` or Homebrew `opt` path, so they follow explicit activation and rollback without rewriting settings. Homebrew owns its versions: `dot update --version` and `dot rollback` refuse there and name the brew commands to use instead.
 
-On a Homebrew install (the resolved executable sits in the Cellar), `dot update` upgrades through the brew that owns it and never writes the Cellar itself (#235). For a verified native release with the exact trusted tap recipe, it uses the bounded prebuilt path described under [Resource admission](#resource-admission-dot-admit). A stale or changed recipe falls back to the full maintenance gate, runs `brew update` only when the tap lags the GitHub release, then runs `brew upgrade <tap>/dotfiles` and checks the new version. A pinned formula is left alone with a `brew unpin` hint; `--dry-run` prints the full-gate brew commands; `--check` reports the latest version and which path an update would take, naming the check that keeps it off the verified-prebuilt path; `--wait 30m` waits for a busy maintenance slot instead of deferring at once. A standalone `dot` can target an existing managed Homebrew install with `dot update --homebrew`.
+On a Homebrew install (the resolved executable sits in the Cellar for the formula, or in the Caskroom for the cask), `dot update` upgrades through the brew that owns it and never writes the Cellar or Caskroom itself (#235, #344). For a verified native release with the exact trusted tap recipe (`Formula/dotfiles.rb` or `Casks/dotfiles.rb`), it uses the bounded prebuilt path described under [Resource admission](#resource-admission-dot-admit). A stale or changed recipe falls back to the full maintenance gate, runs `brew update` only when the tap lags the GitHub release, then runs `brew upgrade --formula <tap>/dotfiles` (`--cask` for the cask) and checks the new version. When that `brew update` moves a formula install to the cask (the tap's `tap_migrations.json`), `dot update` carries on as the cask and lists what still runs the formula's opt link (guard hooks, the noindex agent, the container shim) before you remove the old keg; when brew could not move it, for example on a Linuxbrew prefix without a `Caskroom`, it names `brew uninstall --formula --force dotfiles && brew install --cask staixbwlb/cask/dotfiles`. A pinned formula is left alone with a `brew unpin` hint; `--dry-run` prints the full-gate brew commands; `--check` reports the latest version and which path an update would take, naming the check that keeps it off the verified-prebuilt path; `--wait 30m` waits for a busy maintenance slot instead of deferring at once. A standalone `dot` can target an existing managed Homebrew install with `dot update --homebrew`.
 
 After a Homebrew upgrade, launchd fails the next spawn of a dot LaunchAgent (`spawn failed`, `needs LWCR update`): its managed launch constraint did not follow the replaced binary. `dot update` therefore reloads (bootout, then bootstrap) every loaded `com.dotfiles.*` agent that runs the upgraded binary; an unloaded one, such as a paused sync, stays unloaded. After a manual `brew upgrade`, `dot sync status` and `dot peer status` name that state with the reload command: `dot sync pause && dot sync resume` for `com.dotfiles.sync*`, `dot peer setup` for `com.dotfiles.peer` (#233).
 
@@ -132,6 +132,8 @@ dot apply
 ```bash
 dot open myproject   # launch or resume a multi-panel tmux workspace
 dot open myproject   # SSH dropped? just run it again — resumes exactly
+dot open myproject --layout ahub   # agent-hub console beside two peer slots
+dot hub myproject    # jump to the project's ahub console
 ```
 
 When the workspace module is enabled, the rendered shell environment also
@@ -242,7 +244,7 @@ separately from installation status. Missing authentication or trust remains a
 user action; setup does not copy credentials or approve hooks. A saved selection
 that still lists the retired `claude-mem` add-on is read without it.
 
-The agent-hub family tools ahub, amem and vmem (acon and ares once they publish an
+The agent-hub family tools ahub, amem, vmem and ares (acon once it publishes an
 npm package) install side by side with `dot ai family install <id> [--version X.Y.Z]`.
 For ahub this covers the global CLI only: `ahub upgrade` still runs each
 project's daemon from `~/.agenthub/releases`, and dot never touches that.
@@ -253,12 +255,12 @@ sessions start the new version, running processes keep their files and are
 listed, and nothing is stopped. Versions other than current and previous are
 removed once no running process uses them. An existing `~/.local/bin/<bin>`
 from another install is left alone unless `--adopt` repoints it (a regular file
-is never replaced). After amem or vmem activates, dot prints the
-`amem setup <target> --root ...` or `vmem setup <target> --root ...` line that
-registers that release with an agent; it does not run it. After ahub
-activates, dot prints the `ahub setup` line that moves the shared Claude plugin
-to the same version (and notes when `bun`, ahub's runtime, is not on PATH); it
-does not run it either.
+is never replaced). After amem, vmem or ares activates, dot prints the
+`<tool> setup <target> --root ...` line that registers that release with an
+agent; it does not run it. After ahub activates, dot prints the `ahub setup`
+line that moves the shared Claude plugin to the same version; it does not run
+it either. For ahub and ares it also notes when `bun`, their runtime, is not on
+PATH.
 
 ```bash
 dot ai family install amem --version 0.17.0
@@ -345,6 +347,30 @@ agents SSOT vault block (after a backup). Bindings to `obsidian` earn no grant.
 configs only; for Claude Code and Codex it prints `claude mcp remove obsidian
 --scope user` and the `[mcp_servers.obsidian*]` tables to delete, and it refuses
 while vmem is not on PATH.
+
+Research studies run through [ares](https://github.com/STAIxBWLB/agent-research)
+(`@staix/agent-research`), which dot registers and installs only through
+`dot ai family install ares`. Install a release inside the range
+`dot ai research status` names (`>=0.1.0 <1.0.0` unless the installed ares
+publishes its own), then:
+
+```bash
+ares setup all --apply             # Claude Code, Codex, Kimi, Qwen, pi, jcode
+ares setup agy --apply             # inside each workspace that uses Antigravity
+dot ai research install --dry-run  # every file it would change; nothing is written
+dot ai research install            # add `ares mcp` to Kiro and Copilot, write the research block
+dot ai research status             # version against the supported range, registrations, block
+```
+
+`ares setup` registers the server as `ares` and keeps undo receipts, so dot
+writes only the Kiro and Copilot entries and the agents SSOT research block
+(after a backup). The policy grants `mcp__ares__*` for ares's read tools only:
+a tool is granted when dot's compiled list names it or `ares manifest --json`
+marks it `"readOnly": true`, and a `"readOnly": false` entry is never granted,
+whatever the compiled list says. ares marks every tool that writes a study,
+decides a gate, reaches the network or starts or reads a container
+`readOnly: false`, so `ares_lit_search`, `ares_lit_verify`, `ares_attempt_run`,
+`ares_executor_check` and the rest keep their approval prompt.
 
 Portable desired state lives under `modules.ai.tooling`: `agents`, `tools`,
 `skills`, optional version `pins`, and `updates.enabled`. Machine-specific
@@ -667,6 +693,19 @@ status [--probe]` reports the backend, service, shim, DNS and WARP state.
 └──────────────┴──────────┘
 ```
 
+**ahub** (agent-hub first, opt-in with `dot open <project> --layout ahub` or `dot register --layout ahub`):
+```
+┌──────────┬──────────────────┐
+│          │  PEER A          │
+│  AHUB    ├──────────────────┤
+│  ≥80 col │  PEER B          │
+└──────────┴──────────────────┘   + window "verify" (project shell)
+```
+
+The session takes the terminal's size. Below 200x56 it becomes **ahub-compact**: one full-size window each for `hub`, `peer-a`, `peer-b` and `verify`. AHUB opens `ahub console` when the project's hub runs (`--panels` at 80x24 or more, the plain console below), otherwise it shows why and starts `ahub up --no-agents` only when you press Enter. The peer slots take the first two of `start.agents` in the project's `.agenthub/config.local.json` (then codex, claude) and start a peer only on Enter. A running session is never rebuilt: `--layout` applies to a new session only.
+
+`dot hub <project> [console|status|ui]` opens the project's hub: in this terminal outside tmux, or inside its workspace by focusing AHUB, adding one `hub` window to an older session. It starts nothing and never relayouts. Design: `docs/specs/2026-11-07-ahub-workspace-layouts.md`.
+
 ### Themes
 
 5 built-in themes: `default`, `dracula`, `nord`, `catppuccin`, `tokyo-night`.
@@ -812,7 +851,7 @@ One controller admits heavy work (builds, full test runs, indexing, bulk copies,
 
 A host-pressure gate defers new work on memory pressure warning/critical, a serious or critical macOS thermal state, CPU idle below 15% or load1 at the CPU count sustained 60s, or a recent WindowServer watchdog termination; after such an episode, recovery requires five continuous minutes of normal telemetry. Both the 60-second CPU excursion and 5-minute recovery require completed samples no more than 45 seconds apart. Missing/stale samples, timestamp rollback, or a larger gap reset the streak, and an active defer stays active until a fresh sequence completes. Missing or failed telemetry always defers: the gate never reports a machine it cannot measure as healthy. Once a slot is held, both entry points also scan the process table for heavy work that holds no slot (builds, tests, installs, bulk copies, or anything at 100% CPU) and defer when it runs in the same repository or its repository is unknown (for the maintenance slot: install, update, upgrade, sync or CI work in any repository). Work inside a live slot holder's process tree is not counted; `dot peer sync` and `dot sync push` hold a background lease while they run (listed by `dot admit status`), so their rsync never defers other work. The scan is a bounded heuristic, not proof that every process on the machine is controlled; the controller never kills other sessions or restarts system services.
 
-`dot update` has a narrowly scoped exception for a verified native release prebuilt. It still takes the host-wide maintenance slot. Memory warning is tolerated only after 30 seconds of fresh healthy samples with no swap-in or swap-out; samples more than 45 seconds apart, missing telemetry, critical memory, serious/critical thermal state, recent WindowServer watchdog, idle below 30%, load1 at or above 70% of CPU count, or any swap activity defer the update. This policy has its own history and does not modify heavy-work admission history. The release must be the exact stable GitHub asset for the native platform, match `checksums.txt`, contain one root `dot` executable and at most the bounded root `LICENSE` and `README.md`, and report the requested version. Limits are 32 MiB compressed archive, 64 MiB binary, 1 MiB per release document, 67 MiB for the entire expanded gzip stream including tar metadata and padding, and 1 MiB for `checksums.txt`. For Homebrew, the installed binary and keg version, exact raw recipe under the trusted tap, native URL, checksum, target version, and unpinned state must match. The warning-tolerant path also requires Homebrew's existing portable Ruby and Bundler to be ready: the version marker must match the `portable-ruby/current` link and both binaries must be executable. Both default and XDG Homebrew `brew.env` locations are scanned; any active `HOMEBREW_` assignment, Ruby-mode or XDG process override, or relative Homebrew config path sends the operation through the full maintenance gate. Before and after admission, dot checks the recipe, pin, installed version, runtime readiness, the running updater's native architecture, and the current Homebrew opt binary's native architecture. After `brew upgrade`, it verifies both the installed version and native architecture. The canonical recipe has no dependencies or post-install hook. Any unverified recipe or stale metadata uses the full maintenance gate. A standalone binary can target an existing Homebrew install with `dot update --homebrew`; Homebrew performs the managed update and dot does not write the Cellar directly. This exception does not cover generic refreshes, installs, or other tool updates.
+`dot update` has a narrowly scoped exception for a verified native release prebuilt. It still takes the host-wide maintenance slot. Memory warning is tolerated only after 30 seconds of fresh healthy samples with no swap-in or swap-out; samples more than 45 seconds apart, missing telemetry, critical memory, serious/critical thermal state, recent WindowServer watchdog, idle below 30%, load1 at or above 70% of CPU count, or any swap activity defer the update. This policy has its own history and does not modify heavy-work admission history. The release must be the exact stable GitHub asset for the native platform, match `checksums.txt`, contain one root `dot` executable and at most the bounded root `LICENSE` and `README.md`, and report the requested version. Limits are 32 MiB compressed archive, 64 MiB binary, 1 MiB per release document, 67 MiB for the entire expanded gzip stream including tar metadata and padding, and 1 MiB for `checksums.txt`. For Homebrew, the installed binary and keg (or Caskroom) version, exact raw recipe under the trusted tap, native URL, checksum, target version, and unpinned state (formula only) must match. The warning-tolerant path also requires Homebrew's existing portable Ruby and Bundler to be ready: the version marker must match the `portable-ruby/current` link and both binaries must be executable. Both default and XDG Homebrew `brew.env` locations are scanned; any active `HOMEBREW_` assignment, Ruby-mode or XDG process override, or relative Homebrew config path sends the operation through the full maintenance gate. Before and after admission, dot checks the recipe, pin, installed version, runtime readiness, the running updater's native architecture, and the current Homebrew opt binary's native architecture. After `brew upgrade`, it verifies both the installed version and native architecture. The canonical recipe has no dependencies; the formula has no post-install hook, and the cask's only hook removes the macOS quarantine attribute from its own `dot`. Any unverified recipe or stale metadata uses the full maintenance gate. A standalone binary can target an existing Homebrew install with `dot update --homebrew`; Homebrew performs the managed update and dot does not write the Cellar directly. This exception does not cover generic refreshes, installs, or other tool updates.
 
 ```bash
 dot admit -- make test                                 # one heavy slot per repo

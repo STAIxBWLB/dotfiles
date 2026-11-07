@@ -81,6 +81,22 @@ echo '{"name":"@staix/vault-mem","version":"0.3.0","configVersion":1,"mcp":{"ser
 	}
 }
 
+// ares (@staix/agent-research 0.1.0, src/manifest.ts) names itself by its command, not its package.
+func TestReadAcceptsAManifestNamedAfterTheCommand(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "ares")
+	if err := os.WriteFile(bin, []byte(`#!/bin/sh
+[ "$1 $2" = "manifest --json" ] || exit 2
+echo '{"v":1,"name":"ares","version":"0.1.0","commands":[],"mcp":{"server":"ares","tools":[{"name":"ares_status","readOnly":true},{"name":"ares_lit_search","readOnly":false}]}}'
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got := Read(context.Background(), bin, "@staix/agent-research")
+	want := Manifest{Version: "0.1.0", Tools: []Tool{{Name: "ares_status", ReadOnly: true}, {Name: "ares_lit_search"}}, Source: "manifest"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+}
+
 // A release without `manifest` (every amem up to 0.17.0) falls back to its package.json version.
 func TestReadFallsBackToThePackageJSONVersion(t *testing.T) {
 	pkg := filepath.Join(t.TempDir(), "node_modules", "@staix", "agent-mem")

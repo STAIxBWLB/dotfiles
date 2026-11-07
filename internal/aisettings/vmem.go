@@ -172,46 +172,51 @@ func (m *VmemManager) install(agents *AgentsManager, dryRun bool) (VmemInstallRe
 		return VmemInstallResult{}, errors.New("explicit --home requires an explicit agent selection")
 	}
 	result := VmemInstallResult{Manual: m.manualLines()}
-	for _, target := range m.ownedTargets() {
-		if !m.selected(target.agent) {
+	var err error
+	result.ConfigPaths, result.Instructions, result.Backup, err = registerMCPAndBlock(m.ownedTargets(), m.selected, VmemServerName, m.VmemPath, agents, vaultBlockStart, vaultBlockEnd, vaultInstructions, dryRun)
+	return result, err
+}
+
+// registerMCPAndBlock adds `<command> mcp` as server to each selected config dot owns and sets one
+// marker-delimited block in the agents SSOT (after the SSOT backup every SSOT edit takes). It returns
+// the configs that changed (or would change), whether the block changed, and the backup taken.
+func registerMCPAndBlock(targets []mcpTarget, selected func(string) bool, server, command string, agents *AgentsManager, start, end, block string, dryRun bool) ([]string, bool, string, error) {
+	var paths []string
+	for _, target := range targets {
+		if !selected(target.agent) {
 			continue
 		}
-		changed, err := ensureMCPServer(target.path, VmemServerName, mcpServerEntry(m.VmemPath, target.variant), dryRun)
+		changed, err := ensureMCPServer(target.path, server, mcpServerEntry(command, target.variant), dryRun)
 		if err != nil {
-			return result, err
+			return paths, false, "", err
 		}
 		if changed {
-			result.ConfigPaths = append(result.ConfigPaths, target.path)
+			paths = append(paths, target.path)
 		}
 	}
-	if agents != nil {
-		ssotPath := agents.SSOTPath()
-		raw, err := os.ReadFile(ssotPath)
-		switch {
-		case os.IsNotExist(err):
-		case err != nil:
-			return result, fmt.Errorf("read agents SSOT: %w", err)
-		default:
-			next, perr := patchBlock(string(raw), vaultBlockStart, vaultBlockEnd, vaultInstructions)
-			if perr != nil {
-				return result, perr
-			}
-			if next != string(raw) {
-				result.Instructions = true
-				if !dryRun {
-					backup, err := agents.backupSSOT()
-					if err != nil {
-						return result, fmt.Errorf("back up the agents SSOT before the vault block: %w", err)
-					}
-					result.Backup = backup
-					if err := atomicWriteFile(ssotPath, []byte(next), fileModeOrDefault(ssotPath, 0o644)); err != nil {
-						return result, err
-					}
-				}
-			}
-		}
+	if agents == nil {
+		return paths, false, "", nil
 	}
-	return result, nil
+	ssotPath := agents.SSOTPath()
+	raw, err := os.ReadFile(ssotPath)
+	switch {
+	case os.IsNotExist(err):
+		return paths, false, "", nil
+	case err != nil:
+		return paths, false, "", fmt.Errorf("read agents SSOT: %w", err)
+	}
+	next, err := patchBlock(string(raw), start, end, block)
+	if err != nil || next == string(raw) {
+		return paths, false, "", err
+	}
+	if dryRun {
+		return paths, true, "", nil
+	}
+	backup, err := agents.backupSSOT()
+	if err != nil {
+		return paths, true, "", fmt.Errorf("back up the agents SSOT before writing %s: %w", start, err)
+	}
+	return paths, true, backup, atomicWriteFile(ssotPath, []byte(next), fileModeOrDefault(ssotPath, 0o644))
 }
 
 // mcpServerEntry is `<command> mcp` in the agent's shape (kiro enabled, copilot local with all tools).
@@ -362,7 +367,7 @@ func (m *VmemManager) Status(ctx context.Context, ssotPath string) VmemStatus {
 	if m.VmemPath != "" {
 		read := m.Version
 		if read == nil {
-			read = vmemVersion
+			read = commandVersion
 		}
 		if version, err := read(ctx, m.VmemPath); err == nil {
 			status.Version = version
@@ -451,10 +456,11 @@ func (m *VmemManager) RetireMcpvault(apply bool) (RetireMcpvaultResult, error) {
 	return result, nil
 }
 
-func vmemVersion(ctx context.Context, vmemPath string) (string, error) {
+// commandVersion is the trimmed output of `<bin> --version` (vmem, ares).
+func commandVersion(ctx context.Context, bin string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, vmemPath, "--version").Output()
+	out, err := exec.CommandContext(ctx, bin, "--version").Output()
 	if err != nil {
 		return "", err
 	}

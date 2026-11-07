@@ -33,21 +33,22 @@ keep versioned binaries and activate them through current; dot rollback restores
 the previous binary without downloading. Homebrew owns its versions, so
 --version and dot rollback are unavailable for Homebrew installs.
 
-A Homebrew install is upgraded through the brew that owns it instead: when the
-installed tap recipe matches the verified native release, dot uses its bounded
-prebuilt update policy. Stale or changed tap metadata uses the full maintenance
-gate before brew update. A pinned formula is left alone. Use --homebrew to
-target an existing Homebrew install from a standalone dot binary. --check only
-reports the latest version and which path an update would take, and why the
-verified-prebuilt path is skipped when it is. --wait 30m waits for a busy
-maintenance slot instead of deferring at once.`,
+A Homebrew install, cask or formula, is upgraded through the brew that owns it
+instead: when the installed tap recipe matches the verified native release, dot
+uses its bounded prebuilt update policy. Stale or changed tap metadata uses the
+full maintenance gate before brew update; a formula install that brew update
+moves to the cask is then updated as the cask. A pinned formula is left alone.
+Use --homebrew to target an existing Homebrew install from a standalone dot
+binary. --check only reports the latest version and which path an update would
+take, and why the verified-prebuilt path is skipped when it is. --wait 30m
+waits for a busy maintenance slot instead of deferring at once.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runUpgrade(cmd, currentVersion)
 		},
 	}
 	cmd.Flags().String("version", "", "Install this exact stable release (X.Y.Z or vX.Y.Z), including downgrades")
 	cmd.Flags().Bool("check", false, "Only check for updates without installing")
-	cmd.Flags().Bool("homebrew", false, "Target the installed Homebrew dot formula")
+	cmd.Flags().Bool("homebrew", false, "Target the installed Homebrew dot cask or formula")
 	cmd.Flags().Duration("wait", 0, "wait up to this long for the maintenance slot instead of deferring (e.g. 30m)")
 	return cmd
 }

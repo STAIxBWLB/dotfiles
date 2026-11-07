@@ -48,6 +48,7 @@ they are machine state pi rebuilds itself.
 * [dot ai memory](dot_ai_memory.md)	 - Register amem for the agents and retire claude-mem
 * [dot ai policy](dot_ai_policy.md)	 - Inspect, resolve and reconcile adaptive AI operating policies
 * [dot ai prune](dot_ai_prune.md)	 - Delete older AI config snapshots, keeping the newest N
+* [dot ai research](dot_ai_research.md)	 - Register ares, the research engine, for the agents dot owns
 * [dot ai restore](dot_ai_restore.md)	 - Restore AI settings from a versioned snapshot
 * [dot ai rollback](dot_ai_rollback.md)	 - Make a family tool's previous version current again
 * [dot ai run](dot_ai_run.md)	 - Run one repository heavyweight command under the admission controller

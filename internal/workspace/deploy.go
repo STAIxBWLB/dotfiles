@@ -18,6 +18,7 @@ var scriptFiles = []string{
 	"tools.sh",
 	"layouts.sh",
 	"themes.sh",
+	"ahub-pane.sh",
 }
 
 // Deploy copies workspace shell scripts to ~/.local/share/dot/workspace/.

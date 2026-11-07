@@ -160,6 +160,12 @@ func readOnlyKnowledgeTool(server, tool string) bool {
 		case "amem_search", "amem_show", "amem_timeline", "amem_graph", "amem_work_state_read", "amem_vault_candidates", "amem_capacity":
 			return true
 		}
+	case "ares":
+		// ares's local read tools (its readOnly ones). Networked, executor and write tools stay ambiguous on failure.
+		switch tool {
+		case "ares_ablate_show", "ares_attempt_list", "ares_attempt_show", "ares_cite_check", "ares_console_list", "ares_investigate_show", "ares_lit_list", "ares_manifest", "ares_paper_check", "ares_plan_show", "ares_playbook", "ares_posthoc_show", "ares_review_show", "ares_skill_list", "ares_status", "ares_watch_show":
+			return true
+		}
 	}
 	return false
 }

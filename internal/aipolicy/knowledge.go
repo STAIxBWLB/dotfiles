@@ -50,7 +50,19 @@ var memoryKnowledgeTools = []string{"amem_search", "amem_evidence", "amem_show",
 // registers for Claude Code and Codex, and the mcpServers key dot writes for Kiro and Copilot).
 const memoryServer = "amem"
 
-// knowledgeManifest returns the MCP tools the installed amem or vmem publishes in its manifest, nil
+// researchKnowledgeTools is ares's read surface as dot last verified it (@staix/agent-research 0.1.0
+// src/mcp-tools.ts ARES_TOOLS: readOnlyHint true and openWorldHint false, so `readOnly: true` in its
+// manifest): the fallback when the installed ares publishes no manifest. Nothing that writes a study,
+// decides a gate, reaches the network or starts or reads a container is here (ares_lit_search,
+// ares_lit_verify, ares_attempt_run, ares_attempt_logs, ares_executor_check, ares_lessons, ...): each
+// of those keeps its native approval prompt. The names reach Claude Code as mcp__ares__<tool>.
+var researchKnowledgeTools = []string{"ares_ablate_show", "ares_attempt_list", "ares_attempt_show", "ares_cite_check", "ares_console_list", "ares_investigate_show", "ares_lit_list", "ares_manifest", "ares_paper_check", "ares_plan_show", "ares_playbook", "ares_posthoc_show", "ares_review_show", "ares_skill_list", "ares_status", "ares_watch_show"}
+
+// researchServer is the MCP server name ares is registered under (`ares setup` and the mcpServers key
+// dot writes for Kiro and Copilot).
+const researchServer = "ares"
+
+// knowledgeManifest returns the MCP tools the installed amem, vmem or ares publishes in its manifest, nil
 // when it publishes none. Tests replace it so they never read a real install.
 var knowledgeManifest = cachedManifestTools()
 
@@ -64,7 +76,7 @@ func cachedManifestTools() func(server string) []toolversion.Tool {
 			return tools
 		}
 		var tools []toolversion.Tool
-		pkg := map[string]string{memoryServer: "@staix/agent-mem", vaultServer: "@staix/vault-mem"}[server]
+		pkg := map[string]string{memoryServer: "@staix/agent-mem", vaultServer: "@staix/vault-mem", researchServer: "@staix/agent-research"}[server]
 		if bin, err := exec.LookPath(server); err == nil && pkg != "" {
 			tools = toolversion.Read(context.Background(), bin, pkg).Tools
 		}
@@ -84,13 +96,19 @@ var destructiveVerbs = []string{"delete", "forget", "move", "purge", "remove"}
 // marked `readOnly: true` by the manifest without a destructive verb in its name. The compiled list is
 // the ceiling for anything that writes: a new plain-string name (vmem_overwrite, vmem_reset) stays
 // unapproved, and so does a readOnly claim on a name that can delete, forget, move, purge or remove.
+// ares grants read tools only: a published ares tool needs `readOnly: true` even when the compiled list
+// names it, so a tool a release turns networked or container-bound (readOnly false) loses its grant.
 func knowledgeToolList(server string) []string {
-	fallback := map[string][]string{memoryServer: memoryKnowledgeTools, vaultServer: vaultKnowledgeTools}[server]
+	fallback := map[string][]string{memoryServer: memoryKnowledgeTools, vaultServer: vaultKnowledgeTools, researchServer: researchKnowledgeTools}[server]
 	published := []string{}
 	seen := map[string]bool{}
-	for _, tool := range knowledgeManifest(server) {
+	manifest := knowledgeManifest(server)
+	for _, tool := range manifest {
 		name := tool.Name
 		if seen[name] || !strings.HasPrefix(name, server+"_") || !grantableTool.MatchString(name) {
+			continue
+		}
+		if server == researchServer && !tool.ReadOnly {
 			continue
 		}
 		if !slices.Contains(fallback, name) && (!tool.ReadOnly || destructive(name)) {
@@ -99,7 +117,8 @@ func knowledgeToolList(server string) []string {
 		seen[name] = true
 		published = append(published, name)
 	}
-	if len(published) == 0 {
+	// An ares manifest that rejects every tool grants none; only a missing one falls back.
+	if len(published) == 0 && (server != researchServer || len(manifest) == 0) {
 		return fallback
 	}
 	return published
@@ -129,6 +148,7 @@ func KnowledgeApprovals(runtime Runtime) ([]KnowledgeApproval, error) {
 	case "claude":
 		add(vaultServer, "", knowledgeToolList(vaultServer))
 		add(memoryServer, "", knowledgeToolList(memoryServer))
+		add(researchServer, "", knowledgeToolList(researchServer))
 	case "codex":
 		if runtime.Home == "" {
 			return out, nil
@@ -183,7 +203,7 @@ func KnowledgeApprovals(runtime Runtime) ([]KnowledgeApproval, error) {
 			}
 			key = strings.TrimSpace(key)
 			value = strings.TrimSpace(strings.SplitN(value, "#", 2)[0])
-			for _, server := range []string{vaultServer, memoryServer} {
+			for _, server := range []string{vaultServer, memoryServer, researchServer} {
 				if section != "mcp_servers."+server {
 					continue
 				}
@@ -206,6 +226,9 @@ func KnowledgeApprovals(runtime Runtime) ([]KnowledgeApproval, error) {
 		if bound[memoryServer] && !disabled[memoryServer] {
 			add(memoryServer, "", knowledgeToolList(memoryServer))
 		}
+		if bound[researchServer] && !disabled[researchServer] {
+			add(researchServer, "", knowledgeToolList(researchServer))
+		}
 	}
 	sort.Slice(out, func(i, j int) bool {
 		a, b := out[i], out[j]
@@ -226,6 +249,9 @@ func knowledgeTools(agent string, grant KnowledgeApproval) []string {
 	// tools, so KnowledgeArgs refuses it instead of mapping it onto amem.
 	if (agent == "claude" || agent == "codex") && grant.Server == memoryServer && grant.Plugin == "" {
 		return knowledgeToolList(memoryServer)
+	}
+	if (agent == "claude" || agent == "codex") && grant.Server == researchServer && grant.Plugin == "" {
+		return knowledgeToolList(researchServer)
 	}
 	return nil
 }

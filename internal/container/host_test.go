@@ -206,6 +206,7 @@ func TestOptLinkFor(t *testing.T) {
 	for in, want := range map[string]string{
 		"/opt/homebrew/Cellar/dotfiles/2.70.33/bin/dot":              "/opt/homebrew/opt/dotfiles/bin/dot",
 		"/home/linuxbrew/.linuxbrew/Cellar/dotfiles/2.70.33/bin/dot": "/home/linuxbrew/.linuxbrew/opt/dotfiles/bin/dot",
+		"/opt/homebrew/Caskroom/dotfiles/2.76.0/dot":                 "/opt/homebrew/bin/dot",
 		"/Users/u/.local/bin/dot":                                    "/Users/u/.local/bin/dot",
 	} {
 		if got := optLinkFor(in); got != want {

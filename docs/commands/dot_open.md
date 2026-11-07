@@ -16,7 +16,7 @@ dot open <project> [flags]
 ```
   -h, --help               help for open
       --install-optional   Also install optional tools (lazygit, btop, yazi, eza)
-      --layout string      Layout to use (dev, claude, monitor)
+      --layout string      Layout to use (dev, claude, monitor, ahub, ahub-compact); a running session keeps its layout
       --theme string       Theme to use (default, dracula, nord, catppuccin, tokyo-night)
 ```
 
