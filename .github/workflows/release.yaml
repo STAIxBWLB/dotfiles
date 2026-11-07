@@ -56,11 +56,11 @@ jobs:
             sleep 30
           done
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: "go.mod"
 
@@ -82,7 +82,7 @@ jobs:
           HOMEBREW_TAP_SSH_KEY: ${{ secrets.HOMEBREW_TAP_SSH_KEY }}
         run: test -n "$HOMEBREW_TAP_SSH_KEY" || { echo "::error::secret HOMEBREW_TAP_SSH_KEY is missing; the cask push to STAIxBWLB/homebrew-cask would fail after the release is published"; exit 1; }
 
-      - uses: goreleaser/goreleaser-action@v6
+      - uses: goreleaser/goreleaser-action@v7
         with:
           # Pinned: the rendered cask must match canonicalGoReleaserCask (#344).
           version: "v2.20.0"
