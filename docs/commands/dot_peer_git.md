@@ -14,8 +14,11 @@ realign --apply restores, and no git command it starts runs a hook of the
 repo it works in.
 
 Repos with a lock, an operation in progress, unmerged entries or staged
-changes are skipped and reported. Nothing is fetched unless realign runs with
---apply --fetch; run git fetch first when fresh upstream state is wanted.
+changes are skipped and reported. The Mac that did not push also has stale
+remote-tracking refs, so a repo whose files match a pushed commit can look
+at-tip: 'dot peer git fetch' fetches every repo's upstream first, and
+'realign --apply --fetch' does the same before it moves anything. Nothing
+else fetches.
 
 ```
 dot peer git [flags]
@@ -41,6 +44,7 @@ dot peer git [flags]
 ### SEE ALSO
 
 * [dot peer](dot_peer.md)	 - Sync the workspace directly to another machine over SSH
+* [dot peer git fetch](dot_peer_git_fetch.md)	 - Fetch every workspace repo's upstream, then show where each repo stands
 * [dot peer git realign](dot_peer_git_realign.md)	 - Move HEAD and index to the descendant commit the files already match
 * [dot peer git status](dot_peer_git_status.md)	 - Classify every workspace repo against its recorded commit
 

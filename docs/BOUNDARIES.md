@@ -399,6 +399,14 @@ tool):
   one of its parent's tied candidates records (and that the run does not
   leave alone) gets the same fetch from its current origin, once per run,
   before those candidates are compared.
+- `<workspace repo>/.git` remote-tracking refs, `FETCH_HEAD` and objects:
+  `dot peer git fetch` and `realign --apply --fetch` run `git fetch
+  --no-recurse-submodules <remote>` in every repo they visit (linked
+  worktrees and locked, staged, conflicting or in-progress repos excluded)
+  before judging any, where `<remote>` is HEAD's
+  branch's remote, else origin; a submodule fetches under git submodule's
+  protocol rules (`GIT_PROTOCOL_FROM_USER=0`). HEAD, the index, branches
+  and the worktree are not written by this fetch, and `--dry-run` skips it.
   Every git command these runs start runs no hook of the repo it works
   in: `core.hooksPath=/dev/null`, `core.fsmonitor=false`,
   `hook.<event>.enabled=false` for the events they fire (git 2.55), and
