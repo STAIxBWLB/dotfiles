@@ -156,7 +156,7 @@ func unownedHeavyJobs(rows []processRow, parents map[int]int, self int, leased [
 		}
 		shaped := heavyweight(r.name, r.args)
 		if shaped || r.cpu >= 100 {
-			found = append(found, HeavyJob{PID: r.pid, ParentPID: r.ppid, Name: r.name, CPUOnly: !shaped, Maintenance: containsWord(r.args, "install", "update", "upgrade", "sync", "ci")})
+			found = append(found, HeavyJob{PID: r.pid, ParentPID: r.ppid, Name: r.name, CPUOnly: !shaped, Maintenance: containsWord(ownArgs(r.name, r.args), "install", "update", "upgrade", "sync", "ci")})
 			if len(found) > 20 {
 				return nil, fmt.Errorf("heavy process inventory exceeds 20 jobs; ownership cannot be established safely")
 			}
@@ -225,9 +225,32 @@ func heavyweight(name, args string) bool {
 	case "cp", "rsync":
 		return strings.Contains(args, "target") || strings.Contains(args, "node_modules") || strings.Contains(args, " -r") || strings.Contains(args, " -R") || strings.Contains(args, " -a") || strings.Contains(args, " -cR")
 	case "node", "python", "python3":
+		args = ownArgs(name, args)
 		return containsWord(args, "vitest", "jest", "playwright", "pytest", "install", "upgrade", "embedding") || strings.Contains(args, "embedding")
 	}
 	return strings.HasPrefix(name, "maru_lib-") || strings.HasPrefix(name, "rustdoc")
+}
+
+// ownArgs drops what a node or python wrapper hands on after a standalone
+// "--", such as the command remote_dev.py runs on another host: that is not
+// work this process does. Its local children are scanned on their own (#341).
+// A "--" before the script or module only ends the interpreter's options
+// (`node -- x/playwright test`) and is kept.
+func ownArgs(name, args string) string {
+	switch name {
+	case "node", "python", "python3":
+		f := strings.Fields(args)
+		script := false
+		for i := 1; i < len(f); i++ {
+			if f[i] == "--" && script {
+				return strings.Join(f[:i], " ")
+			}
+			if !strings.HasPrefix(f[i], "-") {
+				script = true
+			}
+		}
+	}
+	return args
 }
 
 func containsWord(s string, words ...string) bool {
