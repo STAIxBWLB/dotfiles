@@ -92,6 +92,10 @@ type GitRepoReport struct {
 	Gitmodules string   `json:"gitmodules,omitempty"`
 	URLMoves   []string `json:"urlMoves,omitempty"`
 	URLUndo    string   `json:"urlUndo,omitempty"`
+	// Fetch is the outcome of the upstream fetch run before any repo is
+	// judged (FetchUpstream, #360): "fetched <remote>", "fetch failed: ..."
+	// or "not fetched: ...".
+	Fetch string `json:"fetch,omitempty"`
 
 	branch       string // HEAD's branch, empty when detached
 	rescueBranch string // branch-mismatch: the default branch HEAD moves onto
@@ -175,6 +179,10 @@ type RealignOptions struct {
 	// such as the unpushed branches of a Mac that stopped, fetched into a
 	// namespace like refs/peer/<mac>/heads/ (#217).
 	CandidateRefs []string
+	// FetchUpstream fetches every repo's upstream remote (its branch's
+	// remote, else origin) before any repo is judged, so candidates come from
+	// what the other Mac pushed rather than from the last fetch (#360).
+	FetchUpstream bool
 	// Now dates rescue branch names; nil means time.Now.
 	Now func() time.Time
 }
@@ -225,6 +233,8 @@ type gitStateRun struct {
 	candidateRefs map[string]string
 	// noHooks' flags for each repo's configured hooks, by repo.
 	hookNames map[string][]string
+	// Outcome of the FetchUpstream pass, by workspace-relative path.
+	upstreamFetch map[string]string
 }
 
 // gitCleanEnv drops the variables that pin git to one repository (GIT_DIR,
@@ -276,7 +286,7 @@ func runGitState(ctx context.Context, root string, repos []string, opts RealignO
 
 	// Validate the restriction against a read-only discovery walk before any
 	// mutation, so a mistyped repo argument cannot realign half the tree.
-	if run.restrict != nil {
+	if run.restrict != nil || opts.FetchUpstream {
 		known, err := run.discoverPaths(ctx, root)
 		if err != nil {
 			return nil, err
@@ -285,6 +295,9 @@ func runGitState(ctx context.Context, root string, repos []string, opts RealignO
 			if !known[arg] {
 				return nil, fmt.Errorf("no repo at %q under %s", arg, root)
 			}
+		}
+		if opts.FetchUpstream {
+			run.fetchUpstreams(ctx, root, slices.Sorted(maps.Keys(known)))
 		}
 	}
 
@@ -342,6 +355,50 @@ func (r *gitStateRun) discoverPaths(ctx context.Context, root string) (map[strin
 	return known, nil
 }
 
+// fetchUpstreams fetches each repo's upstream remote, one repo at a time and
+// before any repo is judged (#360). It writes remote-tracking refs,
+// FETCH_HEAD and objects only, runs no hook, and a failure is recorded on
+// that repo without stopping the others. Linked worktrees share their main
+// checkout's objects and refs, so they are not fetched.
+// ponytail: sequential; fetch in parallel if a large workspace makes it slow.
+func (r *gitStateRun) fetchUpstreams(ctx context.Context, root string, paths []string) {
+	r.upstreamFetch = map[string]string{}
+	for _, rel := range paths {
+		if !r.included(rel) {
+			continue
+		}
+		abs := filepath.Join(root, filepath.FromSlash(rel))
+		gitdir, err := r.gitDir(ctx, abs)
+		if err != nil {
+			continue // no checkout; the repo's own turn reports it
+		}
+		if _, err := os.Stat(filepath.Join(gitdir, "commondir")); err == nil {
+			continue
+		}
+		remote := r.upstreamRemote(ctx, abs)
+		if remote == "" {
+			r.upstreamFetch[rel] = "not fetched: no upstream or origin remote"
+		} else if err := r.fetchRemote(ctx, abs, remote, rel != "."); err != nil {
+			r.upstreamFetch[rel] = "fetch failed: " + shortErr(err)
+		} else {
+			r.upstreamFetch[rel] = "fetched " + remote
+		}
+	}
+}
+
+// upstreamRemote is the remote HEAD's branch tracks, else origin, else "".
+func (r *gitStateRun) upstreamRemote(ctx context.Context, abs string) string {
+	if branch, err := r.read(ctx, abs, "symbolic-ref", "-q", "--short", "HEAD"); err == nil && branch != "" {
+		if remote, _ := r.read(ctx, abs, "config", "--get", "branch."+branch+".remote"); remote != "" && remote != "." && !strings.HasPrefix(remote, "-") {
+			return remote
+		}
+	}
+	if _, err := r.read(ctx, abs, "config", "--get", "remote.origin.url"); err == nil {
+		return "origin"
+	}
+	return ""
+}
+
 // process classifies (and optionally realigns) one repo, then recurses into
 // its submodule gitlinks. Children are enumerated AFTER the parent has been
 // processed, so a child's candidate gitlink is read from the parent's
@@ -351,6 +408,7 @@ func (r *gitStateRun) process(ctx context.Context, abs, rel, gitlink, wantURL st
 	included := r.included(rel)
 	defer func() {
 		if included {
+			rep.Fetch = r.upstreamFetch[rel]
 			result.Repos = append(result.Repos, rep)
 		}
 	}()

@@ -1718,3 +1718,56 @@ func TestPeerGitRealign_RetriesAFailedFetchToJudge(t *testing.T) {
 		t.Fatalf("child = %+v, want the fetch failure, not push advice", child)
 	}
 }
+
+// #360: the Mac that did not push has a stale origin/main, so a repo whose
+// files match the pushed commit looks at-tip until its upstream is fetched.
+// FetchUpstream fetches first and moves nothing by itself; a repo with no
+// remote is reported and left alone.
+func TestPeerGit_FetchUpstreamFindsThePushedCommit(t *testing.T) {
+	tmp := t.TempDir()
+	origin := filepath.Join(tmp, "origin")
+	gitStateInitRepo(t, origin)
+	c1 := gitStateCommitFile(t, origin, "file.txt", "v1\n", "c1")
+	ws := filepath.Join(tmp, "ws")
+	gitStateRun_(t, tmp, "clone", "-q", origin, ws)
+	c2 := gitStateCommitFile(t, origin, "file.txt", "v2\n", "c2") // pushed after this clone last fetched
+	gitStateRewriteTracked(t, filepath.Join(ws, "file.txt"), "v2\n")
+	ctx := context.Background()
+
+	res, err := PeerGitStatus(ctx, ws, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep := gitStateReport(t, res, "."); rep.Status != GitRepoNoMatch || rep.Class != GitClassAtTip || rep.Fetch != "" {
+		t.Fatalf("before the fetch: %+v", rep)
+	}
+	res, err = PeerGitRealign(ctx, ws, nil, RealignOptions{FetchUpstream: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := gitStateReport(t, res, ".")
+	if rep.Status != GitRepoRealignable || rep.Target != c2 || rep.Fetch != "fetched origin" {
+		t.Fatalf("after the fetch: %+v", rep)
+	}
+	if head := gitStateHead(t, ws); head != c1 {
+		t.Fatalf("a fetch moved HEAD to %s", head)
+	}
+	res, err = PeerGitRealign(ctx, ws, nil, RealignOptions{Apply: true, Fetch: true, FetchUpstream: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep := gitStateReport(t, res, "."); rep.Status != GitRepoRealigned || gitStateHead(t, ws) != c2 {
+		t.Fatalf("realign --apply --fetch: %+v", rep)
+	}
+
+	lone := filepath.Join(tmp, "lone")
+	gitStateInitRepo(t, lone)
+	gitStateCommitFile(t, lone, "a.txt", "a\n", "a")
+	res, err = PeerGitRealign(ctx, lone, nil, RealignOptions{FetchUpstream: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep := gitStateReport(t, res, "."); !strings.HasPrefix(rep.Fetch, "not fetched") {
+		t.Fatalf("repo without a remote: %+v", rep)
+	}
+}

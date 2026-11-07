@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -76,11 +77,15 @@ realign --apply restores, and no git command it starts runs a hook of the
 repo it works in.
 
 Repos with a lock, an operation in progress, unmerged entries or staged
-changes are skipped and reported. Nothing is fetched unless realign runs with
---apply --fetch; run git fetch first when fresh upstream state is wanted.`,
+changes are skipped and reported. The Mac that did not push also has stale
+remote-tracking refs, so a repo whose files match a pushed commit can look
+at-tip: 'dot peer git fetch' fetches every repo's upstream first, and
+'realign --apply --fetch' does the same before it moves anything. Nothing
+else fetches.`,
 		RunE: func(c *cobra.Command, _ []string) error { return c.Help() },
 	}
 	cmd.AddCommand(newPeerGitStatusCmd())
+	cmd.AddCommand(newPeerGitFetchCmd())
 	cmd.AddCommand(newPeerGitRealignCmd())
 	return cmd
 }
@@ -125,6 +130,49 @@ func newPeerGitStatusCmd() *cobra.Command {
 	}
 	cmd.Flags().Bool("json", false, "print a stable machine-readable status document")
 	return cmd
+}
+
+func newPeerGitFetchCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "fetch [<repo>...]",
+		Short: "Fetch every workspace repo's upstream, then show where each repo stands",
+		Long: `Fetch every workspace repo (submodules included, linked worktrees left out)
+from its upstream remote: the remote HEAD's branch tracks, else origin.
+Peer sync carries the files the other Mac committed but not its refs, so
+until this runs realign looks for those commits in stale remote-tracking
+refs. Then print the status read after the fetch, with each move realign
+would make.
+
+Only remote-tracking refs, FETCH_HEAD and objects are written; HEAD, the
+index, branches and the worktree stay as they are, and no hook of the repo
+runs. Repos are fetched one at a time; a failed fetch is reported on its
+repo and does not stop the others. Under --dry-run nothing is fetched.`,
+		Args:         cobra.ArbitraryArgs,
+		SilenceUsage: true,
+		RunE: func(c *cobra.Command, args []string) error {
+			root, err := peerGitWorkspace(c)
+			if err != nil {
+				return err
+			}
+			dryRun, _ := c.Flags().GetBool("dry-run")
+			res, err := syncer.PeerGitRealign(c.Context(), root, args, syncer.RealignOptions{FetchUpstream: !dryRun})
+			if err != nil {
+				return err
+			}
+			p := printerFrom(c)
+			p.Header("Peer Git Fetch")
+			p.KV("Workspace", res.Root)
+			if dryRun {
+				p.Line("--dry-run: nothing fetched; the status reads the refs as they are.")
+			}
+			printPeerGitRepos(p, res, true)
+			if peerGitSummary(res).Realignable > 0 {
+				p.Blank()
+				p.Line("Run 'dot peer git realign' to preview the moves, then add --apply.")
+			}
+			return nil
+		},
+	}
 }
 
 func newPeerGitRealignCmd() *cobra.Command {
@@ -202,7 +250,9 @@ printing an undo for each origin it rewrites. A URL counts as moved when git
 resolves the two spellings (insteadOf applied) differently. A submodule
 whose gitlink commit is missing is reported with the
 fetch (and set-url, for a moved URL) commands; --apply --fetch runs them and
-retries it. With --apply --fetch a child that lacks a commit one of its
+retries it. --apply --fetch first fetches every repo's upstream, as
+'dot peer git fetch' does, so the commits the other Mac pushed are
+candidates. With --apply --fetch a child that lacks a commit one of its
 parent's tied candidates records is also fetched from its origin, once,
 before those candidates are compared, so it is judged with the commit there
 (a lone candidate the parent's own files require is taken without asking).`,
@@ -229,6 +279,7 @@ before those candidates are compared, so it is judged with the commit there
 				Rescue:        rescue,
 				NoPush:        noPush,
 				Fetch:         fetch,
+				FetchUpstream: fetch && apply,
 				CandidateRefs: candidateRefs,
 			})
 			if err != nil {
@@ -254,7 +305,7 @@ before those candidates are compared, so it is judged with the commit there
 	cmd.Flags().BoolVar(&rescue, "rescue", false, "also move diverged and branch-mismatch repos, keeping HEAD on a pushed rescue/<date>-<branch> branch")
 	cmd.Flags().BoolVar(&noPush, "no-push", false, "with --rescue, keep rescue branches local")
 	cmd.Flags().StringArrayVar(&candidateRefs, "candidate-refs", nil, "also take commits of refs matching this for-each-ref pattern as candidates (repeatable), e.g. refs/peer/<mac>/ after fetching that Mac's branches there")
-	cmd.Flags().BoolVar(&fetch, "fetch", false, "with --apply, fetch a submodule whose gitlink commit is missing (following a moved URL) and retry it, and fetch a child before judging a candidate that records a commit it lacks")
+	cmd.Flags().BoolVar(&fetch, "fetch", false, "with --apply, fetch every repo's upstream before judging it, fetch a submodule whose gitlink commit is missing (following a moved URL) and retry it, and fetch a child before judging a candidate that records a commit it lacks")
 	return cmd
 }
 
@@ -330,6 +381,9 @@ func printPeerGitRepos(p *Printer, res *syncer.GitStateResult, withMoves bool) {
 		if rep.URLUndo != "" {
 			p.Line("      undo url: %s", rep.URLUndo)
 		}
+		if rep.Fetch != "" && !strings.HasPrefix(rep.Fetch, "fetched ") {
+			p.Line("      %s", rep.Fetch)
+		}
 	}
 	summary := peerGitSummary(res)
 	p.Section("summary")
@@ -343,6 +397,18 @@ func printPeerGitRepos(p *Printer, res *syncer.GitStateResult, withMoves bool) {
 	p.KV(string(syncer.GitRepoUnresolvable), strconv.Itoa(summary.Unresolvable))
 	if summary.LinkedWorktrees > 0 {
 		p.KV("linked worktrees", strconv.Itoa(summary.LinkedWorktrees))
+	}
+	fetched, notFetched := 0, 0
+	for _, rep := range res.Repos {
+		if strings.HasPrefix(rep.Fetch, "fetched ") {
+			fetched++
+		} else if rep.Fetch != "" {
+			notFetched++
+		}
+	}
+	if fetched+notFetched > 0 {
+		p.KV("fetched", strconv.Itoa(fetched))
+		p.KV("not fetched", strconv.Itoa(notFetched))
 	}
 }
 

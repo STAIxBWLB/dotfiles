@@ -206,9 +206,20 @@ func (r *gitStateRun) gitmodulesURLs(ctx context.Context, abs, flag, source stri
 // push, no prompt anyone can answer, and a time bound. Only this child:
 // its nested submodules get their own pass.
 func (r *gitStateRun) fetchOrigin(ctx context.Context, abs string) error {
+	return r.fetchRemote(ctx, abs, "origin", true)
+}
+
+// fetchRemote fetches remote into abs. A submodule fetches under git
+// submodule's protocol rules (GIT_PROTOCOL_FROM_USER=0), since its URL came
+// from a .gitmodules; the workspace root's remote is the user's own config.
+func (r *gitStateRun) fetchRemote(ctx context.Context, abs, remote string, submodule bool) error {
 	fctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	_, err := r.runOutput(fctx, abs, []string{"GIT_PROTOCOL_FROM_USER=0", "GIT_TERMINAL_PROMPT=0"}, false, "fetch", "-q", "--no-recurse-submodules", "origin")
+	env := []string{"GIT_TERMINAL_PROMPT=0"}
+	if submodule {
+		env = append(env, "GIT_PROTOCOL_FROM_USER=0")
+	}
+	_, err := r.runOutput(fctx, abs, env, false, "fetch", "-q", "--no-recurse-submodules", remote)
 	r.forgetFetched(abs)
 	return err
 }
