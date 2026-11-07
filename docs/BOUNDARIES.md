@@ -402,7 +402,8 @@ tool):
 - `<workspace repo>/.git` remote-tracking refs, `FETCH_HEAD` and objects:
   `dot peer git fetch` and `realign --apply --fetch` run `git fetch
   --no-recurse-submodules <remote>` in every repo they visit (linked
-  worktrees excluded) before judging any, where `<remote>` is HEAD's
+  worktrees and locked, staged, conflicting or in-progress repos excluded)
+  before judging any, where `<remote>` is HEAD's
   branch's remote, else origin; a submodule fetches under git submodule's
   protocol rules (`GIT_PROTOCOL_FROM_USER=0`). HEAD, the index, branches
   and the worktree are not written by this fetch, and `--dry-run` skips it.

@@ -359,7 +359,8 @@ func (r *gitStateRun) discoverPaths(ctx context.Context, root string) (map[strin
 // before any repo is judged (#360). It writes remote-tracking refs,
 // FETCH_HEAD and objects only, runs no hook, and a failure is recorded on
 // that repo without stopping the others. Linked worktrees share their main
-// checkout's objects and refs, so they are not fetched.
+// checkout's objects and refs, so they are not fetched, and neither is a repo
+// the run leaves alone.
 // ponytail: sequential; fetch in parallel if a large workspace makes it slow.
 func (r *gitStateRun) fetchUpstreams(ctx context.Context, root string, paths []string) {
 	r.upstreamFetch = map[string]string{}
@@ -372,7 +373,12 @@ func (r *gitStateRun) fetchUpstreams(ctx context.Context, root string, paths []s
 		if err != nil {
 			continue // no checkout; the repo's own turn reports it
 		}
-		if _, err := os.Stat(filepath.Join(gitdir, "commondir")); err == nil {
+		// Locked, staged, conflicting or mid-operation repos are left alone,
+		// as fetchToJudge leaves them.
+		if reason := r.leftAlone(ctx, abs, gitdir); reason == "linked worktree" {
+			continue
+		} else if reason != "" {
+			r.upstreamFetch[rel] = "not fetched: " + reason
 			continue
 		}
 		remote := r.upstreamRemote(ctx, abs)

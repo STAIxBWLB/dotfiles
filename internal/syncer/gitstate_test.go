@@ -1760,6 +1760,23 @@ func TestPeerGit_FetchUpstreamFindsThePushedCommit(t *testing.T) {
 		t.Fatalf("realign --apply --fetch: %+v", rep)
 	}
 
+	// A repo the run leaves alone (here: staged changes) is not fetched.
+	busy := filepath.Join(tmp, "busy")
+	gitStateRun_(t, tmp, "clone", "-q", origin, busy)
+	gitStateCommitFile(t, origin, "file.txt", "v3\n", "c3")
+	if err := os.WriteFile(filepath.Join(busy, "new.txt"), []byte("n\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitStateRun_(t, busy, "add", "new.txt")
+	tracking := gitStateRun_(t, busy, "rev-parse", "origin/main")
+	res, err = PeerGitRealign(ctx, busy, nil, RealignOptions{FetchUpstream: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep := gitStateReport(t, res, "."); rep.Fetch != "not fetched: staged changes" || gitStateRun_(t, busy, "rev-parse", "origin/main") != tracking {
+		t.Fatalf("staged repo was fetched: %+v", rep)
+	}
+
 	lone := filepath.Join(tmp, "lone")
 	gitStateInitRepo(t, lone)
 	gitStateCommitFile(t, lone, "a.txt", "a\n", "a")
