@@ -361,6 +361,7 @@ type WorkConfig struct {
 	GdriveSymlink string       `yaml:"gdrive_symlink,omitempty"` // symlink name for the cloud root (e.g. ~/gdrive-workspace, ~/Dropbox)
 	Symlink       string       `yaml:"symlink,omitempty"`        // explicit symlink target for Path (if set, Path → Symlink)
 	Repos         []RepoConfig `yaml:"repos,omitempty"`          // git repos to clone into workspace
+	AhubKeys      bool         `yaml:"ahub_keys,omitempty"`      // tmux prefix+A opens the ahub menu (dot hub console, git, files, status)
 }
 
 // FontsConfig configures the fonts module.
@@ -584,6 +585,7 @@ func (c *Config) TemplateData(home string) map[string]any {
 		"IsDarwin":        isDarwin,
 		"Editor":          EditorCommand(c.Modules.Shell.Editor, isDarwin),
 		"EnableWorkspace": c.Modules.Workspace.Enabled,
+		"AhubKeys":        c.Modules.Workspace.Enabled && c.Modules.Workspace.AhubKeys,
 		"EnableAI":        c.Modules.AI.Enabled,
 		"EnableContainer": c.Modules.Container.Enabled,
 		"WorkspacePath":   c.Modules.Workspace.Path,

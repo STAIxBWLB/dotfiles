@@ -1,6 +1,6 @@
 # Ahub Workspace Layouts
 
-Status: T0 decisions frozen and T1/T2 slices implemented on `feat/331-ahub-layouts`; T3 client and journey receipts pending.
+Status: T0-T3 done. Layouts and `dot hub` shipped in #350 (v2.76.0); Git/Files windows, the opt-in menu and the T3 receipts in the #331 follow-up.
 Date: 2026-11-07
 Issue: https://github.com/STAIxBWLB/dotfiles/issues/331
 
@@ -60,7 +60,7 @@ Slots and startup
 - Resume never rebuilds: `dot open` on a live session attaches it, and a
   `--layout` given for it is reported as not applied.
 
-Workspace action: `dot hub <project> [console|status|ui]`
+Workspace action: `dot hub <project> [console|status|ui|git|files]`
 
 - Resolves the registered project and its root; an unregistered name is an error,
   never an auto-registration.
@@ -71,20 +71,73 @@ Workspace action: `dot hub <project> [console|status|ui]`
   tagged `@dot_slot=hub`, or adds one `hub` window running `ahub-pane.sh hub` to a
   session without one. A `tmux wait-for` lock per session serializes concurrent
   calls. Any other session gets the switch command and the plain ahub command.
+- `git` and `files`, inside that session only, work like `console`: they focus
+  the pane tagged `@dot_slot=git|files`, or add one `git`/`files` window that runs
+  the existing `tools.sh` launcher (`run_lazygit`: lazygit, else `git status`;
+  `run_filetree`: yazi, eza, tree, else `ls`). Outside tmux they print guidance.
+- The caller's session is read from `$TMUX_PANE` when set. Under `run-shell`
+  (a key binding) there is no client, and an untargeted `display-message`
+  names the most recent session, not the caller's.
 - It never starts the hub or a peer, never relayouts, and never enters the
   launcher's kill, retry or socket-cleanup paths.
+
+Opt-in menu: `modules.workspace.ahub_keys: true`
+
+- Renders `prefix+A` (unbound in the template and in tmux's defaults) as a
+  `display-menu`: Hub console, Git, Files, and Status (a popup). Each entry runs
+  `TMUX_PANE=#{pane_id} dot hub #{q:session_name} ...`; `#{q:}` quotes the
+  session name for the shell. Off by default; turning it on adds lines and
+  changes none (`TestTmuxConfAhubKeysOptIn`).
 
 Ownership marks: session option `@dot_root` and pane option `@dot_slot`
 (`hub`, `peer-a`, `peer-b`, `verify`). They live in the tmux server only.
 
+## T3 receipts (2026-11-07)
+
+Real PTY clients on isolated tmux 3.8 servers (own socket, fake HOME, a fake
+ahub whose hub is running, `bash --norc`). The session is built by the
+launcher's `load_layout` at the client's size; the launcher itself was not run,
+since it cleans the person's `/tmp/tmux-<uid>` sockets.
+
+R1, attached-client resize (local, `ahub` created at 220x60): pane ids and
+processes unchanged at every size.
+
+| Client | AHUB | PEER A | PEER B |
+|---|---|---|---|
+| 220x60 | 88x59 | 131x35 | 131x23 |
+| 160x45 | 58x44 | 101x27 | 101x16 |
+| 100x30 | 28x29 | 71x19 | 71x9 |
+| 80x24 | 18x23 | 61x16 | 61x6 |
+| 230x62 | 93x61 | 136x35 | 136x25 |
+
+A small client on a wide session shrinks AHUB below 80x24; native zoom
+(`C-a z`) gives it the whole client: 100x29 at 100x30, 80x23 at 80x24. The
+console keeps the mode it opened with until reopened (Ceilings).
+
+R2, `prefix+A` menu (local): `g` added a `git` window and focused it, `f` a
+`files` window; `g` again focused the same window (one `git` window); `a`
+focused AHUB in `work`. The original four panes stayed.
+
+R3, SSH reattach (macbook-pro--2023, tmux 3.8): a client attached over SSH at
+220x60, the ssh process was killed (a dropped connection), the server listed no
+client, and a new SSH client attached at 120x40. Pane ids and processes were
+unchanged; AHUB 38x39, PEER A 81x25, PEER B 81x13.
+
+Journeys (AC10), counted from the slot behaviour above, to reach the hub console
+plus two peers running under ahub, for a registered project:
+
+| | `ahub` layout | `dev` layout |
+|---|---|---|
+| Warm (hub running) | `dot open`; console opens by itself; per peer: focus its slot, Enter. 1 entry + 2 actions, 0 for the console | `dot open` starts standalone Claude; quit it, then type `ahub console`, `ahub codex` and `ahub claude` in new panes or windows. 1 entry + 4 actions |
+| Cold (hub down) | as warm, plus Enter in AHUB for `ahub up --no-agents`: 1 entry + 3 | as warm, plus `ahub up --no-agents`: 1 entry + 5 |
+
+Native sign-in, trust and approval prompts come on top of either and were not
+bypassed. These are counts of explicit actions, not timed sessions.
+
 ## Deferred
 
-- Opt-in key bindings for the hub menu or focus (prefix+H is taken); `dot hub`
-  covers the action meanwhile.
-- On-demand Git and Files windows from the ahub layouts.
-- A status projection inside dotfiles; `dot hub <project> status` runs ahub's own.
-- T3 receipts: attached-client resize, SSH reattach, and the warm/cold journey
-  counts against the dev layout (#331 AC10).
+- A status projection inside dotfiles; `dot hub <project> status` runs ahub's
+  own, and dot only reports a missing `ahub` (AC7 as decided).
 
 ## Ceilings
 
