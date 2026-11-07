@@ -116,7 +116,9 @@ console keeps the mode it opened with until reopened (Ceilings).
 
 R2, `prefix+A` menu (local): `g` added a `git` window and focused it, `f` a
 `files` window; `g` again focused the same window (one `git` window); `a`
-focused AHUB in `work`. The original four panes stayed.
+focused AHUB in `work`. The original four panes stayed, and no pane was left
+in view mode: `dot hub` prints its "Added a window" line only to a terminal,
+since `run-shell` output would put the calling pane in view mode.
 
 R3, SSH reattach (macbook-pro--2023, tmux 3.8): a client attached over SSH at
 220x60, the ssh process was killed (a dropped connection), the server listed no

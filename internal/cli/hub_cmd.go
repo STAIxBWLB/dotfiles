@@ -91,7 +91,9 @@ func runHub(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	msg, err := focusSlot(name, proj.Path, dataDir, slot)
-	if msg != "" {
+	// Under a key binding's run-shell, any output leaves the calling pane in
+	// view mode; the new window is feedback enough, so only guidance is shown.
+	if msg != "" && (!strings.HasPrefix(msg, "Added a ") || stdoutIsTerminal()) {
 		printerFrom(cmd).Line("%s", msg)
 	}
 	return err
@@ -179,6 +181,11 @@ func focusSlot(name, root, dataDir string, slot hubSlot) (string, error) {
 		}
 	}
 	return "Added a '" + slot.window + "' window to " + name + ".", nil
+}
+
+func stdoutIsTerminal() bool {
+	info, err := os.Stdout.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
 func samePath(a, b string) bool {
