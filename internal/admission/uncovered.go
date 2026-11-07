@@ -234,13 +234,19 @@ func heavyweight(name, args string) bool {
 // ownArgs drops what a node or python wrapper hands on after a standalone
 // "--", such as the command remote_dev.py runs on another host: that is not
 // work this process does. Its local children are scanned on their own (#341).
+// A "--" before the script or module only ends the interpreter's options
+// (`node -- x/playwright test`) and is kept.
 func ownArgs(name, args string) string {
 	switch name {
 	case "node", "python", "python3":
 		f := strings.Fields(args)
-		for i, x := range f {
-			if x == "--" {
+		script := false
+		for i := 1; i < len(f); i++ {
+			if f[i] == "--" && script {
 				return strings.Join(f[:i], " ")
+			}
+			if !strings.HasPrefix(f[i], "-") {
+				script = true
 			}
 		}
 	}

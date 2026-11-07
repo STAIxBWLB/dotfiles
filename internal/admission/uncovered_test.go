@@ -29,7 +29,7 @@ func TestHeavyweightInventoryClassification(t *testing.T) {
 		// #341: a wrapper's command after "--" runs elsewhere.
 		{"python", "python remote_dev.py verify /repo -- bun install --frozen-lockfile", false},
 		{"python3", "python3 -m pip install x", true}, {"python", "python -m pytest", true}, {"node", "node node_modules/.bin/vitest", true},
-		{"python", "python -m pytest -- tests/", true}} {
+		{"python", "python -m pytest -- tests/", true}, {"node", "node -- /repo/node_modules/.bin/playwright test", true}} {
 		if got := heavyweight(tc.name, tc.args); got != tc.want {
 			t.Errorf("%s %s: got %t", tc.name, tc.args, got)
 		}
