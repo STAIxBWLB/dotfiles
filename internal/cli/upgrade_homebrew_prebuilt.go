@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,7 +30,8 @@ var portableRubyVersionName = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(_[0-9]
 
 // upgradeHomebrewPrebuilt uses the warning-tolerant profile only when the
 // current Homebrew tap contains the exact GoReleaser-generated native-only
-// formula for this verified release. Any drift returns to the full-gate path.
+// formula or cask for this verified release. Any drift returns to the
+// full-gate path.
 func upgradeHomebrewPrebuilt(ctx context.Context, p *Printer, h homebrewDot, current, version string, checksums []byte, dryRun bool, wait time.Duration) error {
 	if os.Geteuid() == 0 {
 		return fmt.Errorf("this dot binary belongs to Homebrew, which does not run as root; run dot update as the user who owns %s", h.prefix)
@@ -52,7 +54,7 @@ func upgradeHomebrewPrebuilt(ctx context.Context, p *Printer, h homebrewDot, cur
 		return errHomebrewNeedsFullGate
 	}
 	before, _ := filepath.EvalSymlinks(h.optDot())
-	args := append(append([]string{}, prebuiltHomebrewEnvironment...), h.brew(), "upgrade", "--formula", "staixbwlb/cask/dotfiles")
+	args := append(append([]string{}, prebuiltHomebrewEnvironment...), h.brew(), "upgrade", h.kind(), "staixbwlb/cask/dotfiles")
 	p.Line("\nRunning verified Homebrew update for dotfiles...")
 	_, upgradeErr := upgradeRun(context.WithoutCancel(ctx), true, "/usr/bin/env", args...)
 	if upgradeErr != nil {
@@ -81,12 +83,19 @@ func upgradeHomebrewPrebuilt(ctx context.Context, p *Printer, h homebrewDot, cur
 }
 
 func prebuiltFormulaSourceEligible(h homebrewDot, version string, checksums []byte) bool {
-	source, err := readTapFormulaSource(h)
-	return err == nil && canonicalFormulaMatches(string(source), version, checksums)
+	source, err := readTapRecipeSource(h)
+	if err != nil {
+		return false
+	}
+	canonical := canonicalGoReleaserFormula
+	if h.cask {
+		canonical = canonicalGoReleaserCask
+	}
+	return canonicalRecipeMatches(canonical, string(source), version, checksums)
 }
 
-func canonicalFormulaMatches(source, version string, checksums []byte) bool {
-	want, err := canonicalGoReleaserFormula(version, checksums)
+func canonicalRecipeMatches(canonical func(string, []byte) (string, error), source, version string, checksums []byte) bool {
+	want, err := canonical(version, checksums)
 	return err == nil && strings.TrimSpace(source) == strings.TrimSpace(want)
 }
 
@@ -99,7 +108,7 @@ func prebuiltFormulaEligible(ctx context.Context, h homebrewDot, current, versio
 // (#266). The fallback line and `dot update --check` print it.
 func prebuiltIneligibility(ctx context.Context, h homebrewDot, current, version string, checksums []byte) string {
 	if !prebuiltFormulaSourceEligible(h, version, checksums) {
-		return "the tap formula is not the canonical release formula for " + version + " (run brew update, or the tap was edited)"
+		return "the tap " + h.noun() + " is not the canonical release " + h.noun() + " for " + version + " (run brew update, or the tap was edited)"
 	}
 	if homebrewRubyOverridesPresent(h) {
 		return "HOMEBREW_* environment variables or a brew.env file override Homebrew's defaults"
@@ -107,12 +116,14 @@ func prebuiltIneligibility(ctx context.Context, h homebrewDot, current, version 
 	if !homebrewRuntimeReady(h) {
 		return "Homebrew's portable Ruby is not installed as expected (run brew update once)"
 	}
-	pinned, err := homebrewFormulaPinned(h)
-	if err != nil {
-		return "cannot read the formula's pin state: " + err.Error()
-	}
-	if pinned {
-		return "the " + h.formula + " formula is pinned"
+	if !h.cask { // casks cannot be pinned
+		pinned, err := homebrewFormulaPinned(h)
+		if err != nil {
+			return "cannot read the formula's pin state: " + err.Error()
+		}
+		if pinned {
+			return "the " + h.formula + " formula is pinned"
+		}
 	}
 	goos, goarch, err := supportedNativeReleaseTarget()
 	if err != nil {
@@ -133,7 +144,7 @@ func prebuiltIneligibility(ctx context.Context, h homebrewDot, current, version 
 		return "cannot read the installed Homebrew dot version: " + err.Error()
 	}
 	if kegVersion != current || installed != current {
-		return fmt.Sprintf("the Homebrew keg holds %s (binary reports %s), not the running %s", kegVersion, installed, current)
+		return fmt.Sprintf("the Homebrew %s holds %s (binary reports %s), not the running %s", h.noun(), kegVersion, installed, current)
 	}
 	return ""
 }
@@ -295,26 +306,32 @@ func readManagedHomebrewVersion(ctx context.Context, h homebrewDot) (string, err
 	return version, nil
 }
 
+// managedHomebrewOptBinary resolves optDot to Cellar/<formula>/<version>/bin/dot
+// or Caskroom/<cask>/<version>/dot and returns that path and version.
 func managedHomebrewOptBinary(h homebrewDot) (string, string, error) {
 	resolved, err := filepath.EvalSymlinks(h.optDot())
 	if err != nil {
 		return "", "", err
 	}
 	managed, ok := homebrewDotFor(resolved)
-	if !ok || managed.formula != h.formula || !sameCanonicalHomebrewPath(managed.prefix, h.prefix) {
-		return "", "", fmt.Errorf("homebrew opt binary does not resolve into the managed %s formula", h.formula)
+	if !ok || managed.formula != h.formula || managed.cask != h.cask || !sameCanonicalHomebrewPath(managed.prefix, h.prefix) {
+		return "", "", fmt.Errorf("homebrew %s does not resolve into the managed %s %s", h.optDot(), h.formula, h.noun())
 	}
-	cellarRoot, err := filepath.EvalSymlinks(filepath.Join(h.prefix, "Cellar", h.formula))
+	versionsRoot, err := filepath.EvalSymlinks(h.root())
 	if err != nil {
 		return "", "", err
 	}
-	rel, err := filepath.Rel(cellarRoot, resolved)
+	rel, err := filepath.Rel(versionsRoot, resolved)
 	if err != nil {
 		return "", "", err
+	}
+	want := []string{"", "bin", "dot"}
+	if h.cask {
+		want = []string{"", "dot"}
 	}
 	parts := strings.Split(filepath.ToSlash(rel), "/")
-	if len(parts) != 3 || parts[0] == ".." || filepath.IsAbs(rel) || parts[1] != "bin" || parts[2] != "dot" {
-		return "", "", fmt.Errorf("unexpected Homebrew opt binary path %s", resolved)
+	if len(parts) != len(want) || parts[0] == ".." || parts[0] == "" || filepath.IsAbs(rel) || !slices.Equal(parts[1:], want[1:]) {
+		return "", "", fmt.Errorf("unexpected Homebrew binary path %s", resolved)
 	}
 	return resolved, parts[0], nil
 }
@@ -331,17 +348,81 @@ func sameCanonicalHomebrewPath(left, right string) bool {
 	return filepath.Clean(leftResolved) == filepath.Clean(rightResolved)
 }
 
-func canonicalGoReleaserFormula(version string, checksums []byte) (string, error) {
-	type target struct{ os, arch string }
-	targets := []target{{"darwin", "amd64"}, {"darwin", "arm64"}, {"linux", "amd64"}, {"linux", "arm64"}}
+// releaseArchiveSums returns the darwin_amd64, darwin_arm64, linux_amd64 and
+// linux_arm64 archive checksums, in that order.
+func releaseArchiveSums(version string, checksums []byte) ([]string, error) {
 	var sums []string
-	for _, target := range targets {
-		name := fmt.Sprintf("dot_%s_%s_%s.tar.gz", version, target.os, target.arch)
-		sum, err := parseUniqueChecksum(checksums, name)
+	for _, target := range []string{"darwin_amd64", "darwin_arm64", "linux_amd64", "linux_arm64"} {
+		sum, err := parseUniqueChecksum(checksums, fmt.Sprintf("dot_%s_%s.tar.gz", version, target))
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		sums = append(sums, sum)
+	}
+	return sums, nil
+}
+
+// canonicalGoReleaserCask is the cask GoReleaser v2.20 renders from the
+// homebrew_casks entry in .goreleaser.yaml (#344): arm before intel, the
+// binary linked as dot and dotfiles, and the quarantine removal for the
+// unsigned binary on macOS. Any other text, a newer GoReleaser template
+// included, sends the update through the full maintenance gate.
+func canonicalGoReleaserCask(version string, checksums []byte) (string, error) {
+	sums, err := releaseArchiveSums(version, checksums)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(`# This file was generated by GoReleaser. DO NOT EDIT.
+cask "dotfiles" do
+  version "%s"
+
+  on_macos do
+    on_arm do
+      sha256 "%s"
+      url "https://github.com/STAIxBWLB/dotfiles/releases/download/v#{version}/dot_#{version}_darwin_arm64.tar.gz"
+    end
+    on_intel do
+      sha256 "%s"
+      url "https://github.com/STAIxBWLB/dotfiles/releases/download/v#{version}/dot_#{version}_darwin_amd64.tar.gz"
+    end
+  end
+  on_linux do
+    on_arm do
+      sha256 "%s"
+      url "https://github.com/STAIxBWLB/dotfiles/releases/download/v#{version}/dot_#{version}_linux_arm64.tar.gz"
+    end
+    on_intel do
+      sha256 "%s"
+      url "https://github.com/STAIxBWLB/dotfiles/releases/download/v#{version}/dot_#{version}_linux_amd64.tar.gz"
+    end
+  end
+
+  name "dotfiles"
+  desc "Declarative dotfiles manager and AI tmux workspace orchestrator"
+  homepage "https://github.com/STAIxBWLB/dotfiles"
+
+  livecheck do
+    skip "Auto-generated on release."
+  end
+
+  binary "dot"
+  binary "dot", target: "dotfiles"
+
+  postflight_steps do
+    on_macos do
+      run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{staged_path}}/dot"]
+    end
+  end
+
+  zap :not_required
+end
+`, version, sums[1], sums[0], sums[3], sums[2]), nil
+}
+
+func canonicalGoReleaserFormula(version string, checksums []byte) (string, error) {
+	sums, err := releaseArchiveSums(version, checksums)
+	if err != nil {
+		return "", err
 	}
 	return fmt.Sprintf(`# typed: false
 # frozen_string_literal: true
@@ -433,14 +514,14 @@ func discoverHomebrewDot(ctx context.Context) (homebrewDot, string, error) {
 	if !filepath.IsAbs(prefix) {
 		return homebrewDot{}, "", fmt.Errorf("homebrew returned an invalid prefix %q", prefix)
 	}
-	h := homebrewDot{prefix: prefix, formula: "dotfiles"}
-	dot, err := filepath.EvalSymlinks(h.optDot())
-	if err != nil {
-		return homebrewDot{}, "", fmt.Errorf("resolving installed Homebrew dotfiles binary: %w", err)
-	}
-	managed, ok := homebrewDotFor(dot)
-	if !ok || managed.formula != h.formula || !sameCanonicalHomebrewPath(managed.prefix, h.prefix) {
-		return homebrewDot{}, "", fmt.Errorf("homebrew opt link does not resolve into the expected dotfiles formula")
+	// The cask comes first: after the formula-to-cask migration the old
+	// formula keg keeps its opt link until it is uninstalled (#344).
+	h := homebrewDot{prefix: prefix, formula: "dotfiles", cask: true}
+	if _, _, err := managedHomebrewOptBinary(h); err != nil {
+		h.cask = false
+		if _, _, err := managedHomebrewOptBinary(h); err != nil {
+			return homebrewDot{}, "", fmt.Errorf("no dotfiles cask or formula is installed under %s: %w", prefix, err)
+		}
 	}
 	version, err := readManagedHomebrewVersion(ctx, h)
 	if err != nil {
@@ -449,13 +530,19 @@ func discoverHomebrewDot(ctx context.Context) (homebrewDot, string, error) {
 	return h, version, nil
 }
 
-func readTapFormulaSource(h homebrewDot) ([]byte, error) {
+// readTapRecipeSource reads the tap's Formula/dotfiles.rb, or Casks/dotfiles.rb
+// for a cask, without loading it as Ruby.
+func readTapRecipeSource(h homebrewDot) ([]byte, error) {
 	repository, err := resolvedHomebrewRepository(h)
 	if err != nil {
 		return nil, err
 	}
 	tapRoot := filepath.Join(repository, "Library", "Taps", "staixbwlb", "homebrew-cask")
-	formulaPath := filepath.Join(tapRoot, "Formula", "dotfiles.rb")
+	dir := "Formula"
+	if h.cask {
+		dir = "Casks"
+	}
+	formulaPath := filepath.Join(tapRoot, dir, "dotfiles.rb")
 	rootInfo, err := os.Lstat(tapRoot)
 	if err != nil || !rootInfo.IsDir() {
 		return nil, fmt.Errorf("trusted Homebrew tap directory is unavailable")

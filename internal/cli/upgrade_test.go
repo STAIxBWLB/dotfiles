@@ -263,25 +263,36 @@ func TestDownloadVerifiedArchive_MetadataTimeout(t *testing.T) {
 	}
 }
 
-// A Homebrew install resolves through the Cellar on every prefix layout, and
-// only there (#233); dot update hands it to that prefix's brew (#235).
+// A Homebrew install resolves through the Cellar or the Caskroom on every
+// prefix layout, and only there (#233, #344); dot update hands it to that
+// prefix's brew (#235).
 func TestHomebrewDotFor(t *testing.T) {
 	for _, tc := range []struct {
 		path   string
 		ok     bool
 		prefix string
+		cask   bool
 	}{
-		{"/opt/homebrew/Cellar/dotfiles/2.70.30/bin/dot", true, "/opt/homebrew"},
-		{"/usr/local/Cellar/dotfiles/2.70.30/bin/dot", true, "/usr/local"},
-		{"/home/linuxbrew/.linuxbrew/Cellar/dotfiles/2.70.30/bin/dot", true, "/home/linuxbrew/.linuxbrew"},
-		{"/home/user/.local/bin/dot", false, ""},
-		{"/usr/local/bin/dot", false, ""},
-		{"/opt/homebrew/bin/dot", false, ""}, // an unresolved copy is dot's to replace; installs symlink into the Cellar
+		{"/opt/homebrew/Cellar/dotfiles/2.70.30/bin/dot", true, "/opt/homebrew", false},
+		{"/usr/local/Cellar/dotfiles/2.70.30/bin/dot", true, "/usr/local", false},
+		{"/home/linuxbrew/.linuxbrew/Cellar/dotfiles/2.70.30/bin/dot", true, "/home/linuxbrew/.linuxbrew", false},
+		{"/opt/homebrew/Caskroom/dotfiles/2.76.0/dot", true, "/opt/homebrew", true},
+		{"/home/linuxbrew/.linuxbrew/Caskroom/dotfiles/2.76.0/dot", true, "/home/linuxbrew/.linuxbrew", true},
+		{"/home/user/.local/bin/dot", false, "", false},
+		{"/usr/local/bin/dot", false, "", false},
+		{"/opt/homebrew/bin/dot", false, "", false}, // an unresolved copy is dot's to replace; installs symlink into the Cellar
 	} {
 		h, ok := homebrewDotFor(tc.path)
-		if ok != tc.ok || h.prefix != tc.prefix || (ok && h.formula != "dotfiles") {
-			t.Errorf("homebrewDotFor(%q) = %+v, %v; want prefix %q, %v", tc.path, h, ok, tc.prefix, tc.ok)
+		if ok != tc.ok || h.prefix != tc.prefix || h.cask != tc.cask || (ok && h.formula != "dotfiles") {
+			t.Errorf("homebrewDotFor(%q) = %+v, %v; want prefix %q, cask %v, %v", tc.path, h, ok, tc.prefix, tc.cask, tc.ok)
 		}
+	}
+	cask := homebrewDot{prefix: "/opt/homebrew", formula: "dotfiles", cask: true}
+	if cask.optDot() != "/opt/homebrew/bin/dot" || cask.root() != "/opt/homebrew/Caskroom/dotfiles" {
+		t.Errorf("cask links %s, root %s", cask.optDot(), cask.root())
+	}
+	if err := homebrewVersionControlError(cask); !strings.Contains(err.Error(), "upgrade --cask dotfiles") {
+		t.Errorf("cask version error %q", err)
 	}
 }
 

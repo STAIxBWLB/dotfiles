@@ -16,30 +16,62 @@ import (
 	"github.com/STAIxBWLB/dotfiles/internal/resourceguard"
 )
 
-// homebrewDot is a dot binary that Homebrew installed at
-// <prefix>/Cellar/<formula>/<version>/bin/dot.
-type homebrewDot struct{ prefix, formula string }
+// homebrewDot is a dot binary that Homebrew installed, from the formula at
+// <prefix>/Cellar/<formula>/<version>/bin/dot or, with cask set, from the cask
+// at <prefix>/Caskroom/<formula>/<version>/dot (#344). formula names either.
+type homebrewDot struct {
+	prefix, formula string
+	cask            bool
+}
 
 // homebrewDotFor reports whether the resolved executable sits in a Homebrew
-// Cellar. Homebrew always links prefix/bin/dot into the Cellar, so the
-// resolved path carries /Cellar/ on every prefix layout (/opt/homebrew,
-// /usr/local, linuxbrew) (#233).
+// Cellar or Caskroom. Homebrew links prefix/bin/dot into either, so the
+// resolved path carries /Cellar/ or /Caskroom/ on every prefix layout
+// (/opt/homebrew, /usr/local, linuxbrew) (#233).
 func homebrewDotFor(execPath string) (homebrewDot, bool) {
 	p := filepath.ToSlash(execPath)
-	i := strings.Index(p, "/Cellar/")
-	if i < 0 {
-		return homebrewDot{}, false
+	for _, dir := range []string{"/Cellar/", "/Caskroom/"} {
+		i := strings.Index(p, dir)
+		if i < 0 {
+			continue
+		}
+		name, _, _ := strings.Cut(p[i+len(dir):], "/")
+		return homebrewDot{prefix: filepath.FromSlash(p[:i]), formula: name, cask: dir == "/Caskroom/"}, name != ""
 	}
-	formula, _, _ := strings.Cut(p[i+len("/Cellar/"):], "/")
-	return homebrewDot{prefix: filepath.FromSlash(p[:i]), formula: formula}, formula != ""
+	return homebrewDot{}, false
 }
 
 func (h homebrewDot) brew() string { return filepath.Join(h.prefix, "bin", "brew") }
 
-// optDot is the formula's own link to its current keg. Unlike prefix/bin/dot,
-// which another formula (graphviz) can own, brew always points it at the
-// keg it installed.
-func (h homebrewDot) optDot() string { return filepath.Join(h.prefix, "opt", h.formula, "bin", "dot") }
+// optDot is the stable link to the installed version. For a formula it is the
+// formula's own opt link: unlike prefix/bin/dot, which another formula
+// (graphviz) can own, brew always points it at the keg it installed. A cask
+// has no opt link; its binary stanza owns prefix/bin/dot, and brew does not
+// install the cask while another package holds that path.
+func (h homebrewDot) optDot() string {
+	if h.cask {
+		return filepath.Join(h.prefix, "bin", "dot")
+	}
+	return filepath.Join(h.prefix, "opt", h.formula, "bin", "dot")
+}
+
+// root holds every installed version.
+func (h homebrewDot) root() string {
+	if h.cask {
+		return filepath.Join(h.prefix, "Caskroom", h.formula)
+	}
+	return filepath.Join(h.prefix, "Cellar", h.formula)
+}
+
+// kind is the brew flag that selects the install's type; noun names it.
+func (h homebrewDot) kind() string {
+	if h.cask {
+		return "--cask"
+	}
+	return "--formula"
+}
+
+func (h homebrewDot) noun() string { return strings.TrimPrefix(h.kind(), "--") }
 
 // upgradeRun runs a command for the Homebrew update path and returns its
 // stdout; show also streams the output to the terminal. Tests replace it and
@@ -100,7 +132,8 @@ func upgradeHomebrew(ctx context.Context, p *Printer, h homebrewDot, current, la
 		return nil
 	}
 
-	info, err := brewFormulaInfo(ctx, h)
+	before, _ := filepath.EvalSymlinks(h.optDot())
+	info, err := brewInfo(ctx, h)
 	if err != nil {
 		return err
 	}
@@ -114,16 +147,25 @@ func upgradeHomebrew(ctx context.Context, p *Printer, h homebrewDot, current, la
 			return err
 		}
 		if !dryRun {
-			if info, err = brewFormulaInfo(ctx, h); err != nil {
+			// Once the tap retires the formula, brew update moves a formula
+			// install to the cask itself (tap_migrations.json, #344).
+			if cask := (homebrewDot{prefix: h.prefix, formula: h.formula, cask: true}); !h.cask && caskInstalled(cask) {
+				p.Line("Homebrew moved %s from the formula to the cask. Guard hooks, the noindex agent and the container shim can still run the formula's opt link: re-run `dot guard enable`, `dot noindex setup` and `dot apply` where you use them, then remove the old keg with `brew uninstall --formula --force %s`.", h.formula, h.formula)
+				h = cask
+			}
+			if info, err = brewInfo(ctx, h); err != nil {
 				return err
 			}
 			if compareSemver(info.Versions.Stable, latest) < 0 {
+				// No Caskroom, or the tap still has both: brew left the formula.
+				if _, err := readTapRecipeSource(homebrewDot{prefix: h.prefix, formula: h.formula, cask: true}); err == nil && !h.cask {
+					return fmt.Errorf("dot %s ships as the Homebrew cask %s, and this install is the formula, which brew update did not move to the cask; run `brew uninstall --formula --force %s && brew install --cask %s`, then dot update again", latest, info.FullName, h.formula, info.FullName)
+				}
 				return fmt.Errorf("dot %s is released, but the Homebrew tap still offers %s %s: a release reaches the tap a few minutes later, once the tap's audit passes; run dot update again shortly", latest, info.FullName, info.Versions.Stable)
 			}
 		}
 	}
-	before, _ := filepath.EvalSymlinks(h.optDot())
-	upgradeErr := brew("upgrade", info.FullName)
+	upgradeErr := brew("upgrade", h.kind(), info.FullName)
 	if upgradeErr == nil && !dryRun {
 		var installed string
 		if installed, upgradeErr = upgradedVersion(work, h, latest); upgradeErr == nil {
@@ -139,7 +181,7 @@ func upgradeHomebrew(ctx context.Context, p *Printer, h homebrewDot, current, la
 	return errors.Join(upgradeErr, upgradeReloadLaunchAgents(work, p, h, dryRun))
 }
 
-// upgradedVersion reads `<prefix>/opt/<formula>/bin/dot --version` ("dot version X (commit)")
+// upgradedVersion reads `<optDot> --version` ("dot version X (commit)")
 // and accepts X at or above latest: a newer release can reach the tap between
 // the GitHub check and brew update.
 func upgradedVersion(ctx context.Context, h homebrewDot, latest string) (string, error) {
@@ -154,16 +196,30 @@ func upgradedVersion(ctx context.Context, h homebrewDot, latest string) (string,
 	return version, nil
 }
 
-func brewFormulaInfo(ctx context.Context, h homebrewDot) (brewFormula, error) {
-	out, err := upgradeRun(ctx, false, h.brew(), "info", "--json=v2", "--formula", h.formula)
+// brewInfo reads the formula's or the cask's metadata; a cask's full_token
+// and version fill FullName and Versions.Stable.
+func brewInfo(ctx context.Context, h homebrewDot) (brewFormula, error) {
+	out, err := upgradeRun(ctx, false, h.brew(), "info", "--json=v2", h.kind(), h.formula)
 	if err != nil {
 		return brewFormula{}, fmt.Errorf("reading Homebrew metadata for %s: %w", h.formula, err)
 	}
 	var info struct {
 		Formulae []brewFormula `json:"formulae"`
+		Casks    []struct {
+			FullToken string `json:"full_token"`
+			Version   string `json:"version"`
+		} `json:"casks"`
 	}
 	if err := json.Unmarshal([]byte(out), &info); err != nil {
 		return brewFormula{}, fmt.Errorf("parsing Homebrew metadata for %s: %w", h.formula, err)
+	}
+	if h.cask {
+		if len(info.Casks) != 1 || info.Casks[0].FullToken == "" {
+			return brewFormula{}, fmt.Errorf("brew info --cask %s returned %d casks, want 1", h.formula, len(info.Casks))
+		}
+		var cask brewFormula
+		cask.FullName, cask.Versions.Stable = info.Casks[0].FullToken, info.Casks[0].Version
+		return cask, nil
 	}
 	if len(info.Formulae) != 1 || info.Formulae[0].FullName == "" {
 		return brewFormula{}, fmt.Errorf("brew info --formula %s returned %d formulae, want 1", h.formula, len(info.Formulae))
@@ -171,14 +227,22 @@ func brewFormulaInfo(ctx context.Context, h homebrewDot) (brewFormula, error) {
 	return info.Formulae[0], nil
 }
 
+// caskInstalled reports whether the cask's binary link resolves into its
+// Caskroom.
+func caskInstalled(h homebrewDot) bool {
+	_, _, err := managedHomebrewOptBinary(h)
+	return err == nil
+}
+
 // reloadDotLaunchAgents boots out and bootstraps every loaded dot LaunchAgent
-// whose program resolves into this formula's Cellar. After brew replaces the
-// binary, launchd fails the job's next spawn (`spawn failed`, `needs LWCR
-// update`) until it is loaded again (#233, #235). A job that is not loaded,
-// such as a paused sync, stays unloaded, and the sync pause gate is not
-// touched. bootout stops a run in progress with SIGTERM, which dot handles as
-// an interrupt; RunAtLoad jobs then run once at once. A signal does not cut a
-// reload short: a job booted out is always bootstrapped again.
+// whose program resolves into this install's Cellar or Caskroom directory.
+// After brew replaces the binary, launchd fails the job's next spawn
+// (`spawn failed`, `needs LWCR update`) until it is loaded again (#233,
+// #235). A job that is not loaded, such as a paused sync, stays unloaded, and
+// the sync pause gate is not touched. bootout stops a run in progress with
+// SIGTERM, which dot handles as an interrupt; RunAtLoad jobs then run once at
+// once. A signal does not cut a reload short: a job booted out is always
+// bootstrapped again.
 func reloadDotLaunchAgents(ctx context.Context, p *Printer, h homebrewDot, dryRun bool) error {
 	if runtime.GOOS != "darwin" {
 		return nil
@@ -192,7 +256,7 @@ func reloadDotLaunchAgents(ctx context.Context, p *Printer, h homebrewDot, dryRu
 	if err != nil {
 		return err
 	}
-	cellar := filepath.Join(h.prefix, "Cellar", h.formula) + string(filepath.Separator)
+	cellar := h.root() + string(filepath.Separator)
 	domain := guiTarget()
 	var failed []string
 	for _, plist := range plists {
