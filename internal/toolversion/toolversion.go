@@ -1,5 +1,5 @@
 // Package toolversion matches stable X.Y.Z versions against ranges and reads the
-// manifest a family tool (amem, vmem) publishes about itself, so pins and tool
+// manifest a family tool (amem, vmem, ares) publishes about itself, so pins and tool
 // lists are data rather than constants compiled into dot.
 package toolversion
 
@@ -169,8 +169,9 @@ type manifestJSON struct {
 
 const manifestLimit = 1 << 20
 
-// Read asks bin for `manifest --json`. When that fails, is not JSON, names
-// another package or carries no stable version, it reads the version from the
+// Read asks bin for `manifest --json`. The manifest names the package (amem,
+// vmem) or the command itself (ares names itself "ares"). When that fails, is
+// not JSON, names another tool or carries no stable version, it reads the version from the
 // installed package.json named pkg, found by resolving bin's link and walking
 // up. A missing manifest is never an error: the result is then partial or zero.
 func Read(ctx context.Context, bin, pkg string) Manifest {
@@ -199,7 +200,7 @@ func fromCommand(ctx context.Context, bin, pkg string) (Manifest, bool) {
 	if json.Unmarshal(out.Bytes(), &raw) != nil {
 		return Manifest{}, false
 	}
-	if (raw.Name != "" && raw.Name != pkg) || Find(raw.Version) != raw.Version || raw.Version == "" {
+	if (raw.Name != "" && raw.Name != pkg && raw.Name != filepath.Base(bin)) || Find(raw.Version) != raw.Version || raw.Version == "" {
 		return Manifest{}, false
 	}
 	m := Manifest{Version: raw.Version, Source: "manifest"}

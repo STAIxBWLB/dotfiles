@@ -240,7 +240,7 @@ separately from installation status. Missing authentication or trust remains a
 user action; setup does not copy credentials or approve hooks. A saved selection
 that still lists the retired `claude-mem` add-on is read without it.
 
-The agent-hub family tools ahub, amem and vmem (acon and ares once they publish an
+The agent-hub family tools ahub, amem, vmem and ares (acon once it publishes an
 npm package) install side by side with `dot ai family install <id> [--version X.Y.Z]`.
 For ahub this covers the global CLI only: `ahub upgrade` still runs each
 project's daemon from `~/.agenthub/releases`, and dot never touches that.
@@ -251,12 +251,12 @@ sessions start the new version, running processes keep their files and are
 listed, and nothing is stopped. Versions other than current and previous are
 removed once no running process uses them. An existing `~/.local/bin/<bin>`
 from another install is left alone unless `--adopt` repoints it (a regular file
-is never replaced). After amem or vmem activates, dot prints the
-`amem setup <target> --root ...` or `vmem setup <target> --root ...` line that
-registers that release with an agent; it does not run it. After ahub
-activates, dot prints the `ahub setup` line that moves the shared Claude plugin
-to the same version (and notes when `bun`, ahub's runtime, is not on PATH); it
-does not run it either.
+is never replaced). After amem, vmem or ares activates, dot prints the
+`<tool> setup <target> --root ...` line that registers that release with an
+agent; it does not run it. After ahub activates, dot prints the `ahub setup`
+line that moves the shared Claude plugin to the same version; it does not run
+it either. For ahub and ares it also notes when `bun`, their runtime, is not on
+PATH.
 
 ```bash
 dot ai family install amem --version 0.17.0
@@ -343,6 +343,30 @@ agents SSOT vault block (after a backup). Bindings to `obsidian` earn no grant.
 configs only; for Claude Code and Codex it prints `claude mcp remove obsidian
 --scope user` and the `[mcp_servers.obsidian*]` tables to delete, and it refuses
 while vmem is not on PATH.
+
+Research studies run through [ares](https://github.com/STAIxBWLB/agent-research)
+(`@staix/agent-research`), which dot registers and installs only through
+`dot ai family install ares`. Install a release inside the range
+`dot ai research status` names (`>=0.1.0 <1.0.0` unless the installed ares
+publishes its own), then:
+
+```bash
+ares setup all --apply             # Claude Code, Codex, Kimi, Qwen, pi, jcode
+ares setup agy --apply             # inside each workspace that uses Antigravity
+dot ai research install --dry-run  # every file it would change; nothing is written
+dot ai research install            # add `ares mcp` to Kiro and Copilot, write the research block
+dot ai research status             # version against the supported range, registrations, block
+```
+
+`ares setup` registers the server as `ares` and keeps undo receipts, so dot
+writes only the Kiro and Copilot entries and the agents SSOT research block
+(after a backup). The policy grants `mcp__ares__*` for ares's read tools only:
+a tool is granted when dot's compiled list names it or `ares manifest --json`
+marks it `"readOnly": true`, and a `"readOnly": false` entry is never granted,
+whatever the compiled list says. ares marks every tool that writes a study,
+decides a gate, reaches the network or starts or reads a container
+`readOnly: false`, so `ares_lit_search`, `ares_lit_verify`, `ares_attempt_run`,
+`ares_executor_check` and the rest keep their approval prompt.
 
 Portable desired state lives under `modules.ai.tooling`: `agents`, `tools`,
 `skills`, optional version `pins`, and `updates.enabled`. Machine-specific

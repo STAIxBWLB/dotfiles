@@ -14,7 +14,7 @@ import (
 	"github.com/STAIxBWLB/dotfiles/internal/resourceguard"
 )
 
-// Family tools (#319, #335): ahub, amem and vmem (and acon and ares once published) install side by side, one npm prefix per
+// Family tools (#319, #335, #318): ahub, amem, vmem and ares (and acon once published) install side by side, one npm prefix per
 // version under ~/.local/share/dotfiles/tools/<id>/<version>/. The `current` link names the active
 // version and `previous` the one before it; ~/.local/bin/<bin> points through `current`. Switching
 // `current` is one rename: new sessions start the new version and running ones keep their files.
@@ -30,7 +30,7 @@ func FamilyTools() []FamilyTool {
 		{"amem", "@staix/agent-mem", "amem"},
 		{"vmem", "@staix/vault-mem", "vmem"},
 		{"acon", "", "acon"},
-		{"ares", "", "ares"},
+		{"ares", "@staix/agent-research", "ares"},
 	}
 }
 
@@ -226,7 +226,7 @@ func (e *Engine) familyActivate(ctx context.Context, t FamilyTool, version strin
 	r.Notes = append(r.Notes, e.familyPathEntry(t, adopt)...)
 	r.Notes = append(r.Notes, e.familyPrune(t, toolDir, r.Current, r.Previous, lines)...)
 	r.Versions = familyVersions(toolDir)
-	if t.ID == "amem" || t.ID == "vmem" {
+	if t.ID == "amem" || t.ID == "vmem" || t.ID == "ares" {
 		root := filepath.Join(toolDir, "current", "lib", "node_modules", t.Package)
 		if resolved, err := filepath.EvalSymlinks(root); err == nil {
 			root = resolved
@@ -242,9 +242,9 @@ func (e *Engine) familyActivate(ctx context.Context, t FamilyTool, version strin
 		// The version's own bin, not the PATH link, which may still name another install.
 		bin := filepath.Join(toolDir, version, "bin", t.Binary)
 		r.Notes = append(r.Notes, fmt.Sprintf("to move the shared Claude plugin to %s, run: %s setup, then restart Claude sessions. dot did not run it", version, bin))
-		if e.find("bun") == "" {
-			r.Notes = append(r.Notes, "ahub runs on bun, which is not on PATH; install bun before starting it")
-		}
+	}
+	if (t.ID == "ahub" || t.ID == "ares") && e.find("bun") == "" {
+		r.Notes = append(r.Notes, t.ID+" runs on bun, which is not on PATH; install bun before starting it")
 	}
 	return r, nil
 }

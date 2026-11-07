@@ -61,6 +61,8 @@ var pathBoundaryTable = []pathBoundaryEntry{
 	{"AmemManager.KiroMCPPath", classHomeWrite},
 	{"AmemManager.PiAgentsPath", classHomeWrite},
 	{"AmemManager.QwenMCPPath", classHomeWrite},
+	{"AresManager.CopilotMCPPath", classHomeWrite},
+	{"AresManager.KiroMCPPath", classHomeWrite},
 	{"CoauthorGuardManager.SSOTPath", classHomeWrite},
 	{"CoauthorGuardManager.dotManagedHooksPath", classTransform},
 	{"CoauthorGuardManager.gitConfigPath", classHomeWrite},
@@ -320,6 +322,10 @@ func resolveHomeWrite(t *testing.T, name, home string) string {
 		return (&AmemManager{HomeDir: home}).PiAgentsPath()
 	case "AmemManager.KiroMCPPath":
 		return (&AmemManager{HomeDir: home}).KiroMCPPath()
+	case "AresManager.KiroMCPPath":
+		return (&AresManager{HomeDir: home}).KiroMCPPath()
+	case "AresManager.CopilotMCPPath":
+		return (&AresManager{HomeDir: home}).CopilotMCPPath()
 	case "VmemManager.KiroMCPPath":
 		return (&VmemManager{HomeDir: home}).KiroMCPPath()
 	case "VmemManager.CopilotMCPPath":

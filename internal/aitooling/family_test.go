@@ -295,3 +295,18 @@ func TestFamilyInstallAhub(t *testing.T) {
 		t.Fatalf("status = %+v", st[0])
 	}
 }
+
+// #318: ares installs from @staix/agent-research; dot prints the `ares setup --root` line and the
+// bun note (ares runs on bun) and runs neither.
+func TestFamilyInstallAres(t *testing.T) {
+	e := testEngine(t)
+	calls := 0
+	fakeFamilyNPM(t, e, &calls)
+	r, err := e.FamilyInstall(context.Background(), "ares", "0.1.0", false)
+	if err != nil || r.Status != "activated" || calls != 1 || !hasNote(r, "ares setup <target> --root '") || !hasNote(r, "dot did not run it") || !hasNote(r, "ares runs on bun, which is not on PATH") {
+		t.Fatalf("install = %+v, %v", r, err)
+	}
+	if _, err := os.Stat(filepath.Join(e.FamilyRoot(), "ares", "0.1.0", "lib", "node_modules", "@staix", "agent-research", "package.json")); err != nil {
+		t.Fatal(err)
+	}
+}

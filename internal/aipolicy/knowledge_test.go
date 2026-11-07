@@ -3,6 +3,7 @@ package aipolicy
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -19,12 +20,12 @@ func TestKnowledgeCodexRequiresExistingBindings(t *testing.T) {
 	if err != nil || len(grants) != 0 {
 		t.Fatalf("%+v %v", grants, err)
 	}
-	native := []byte("[mcp_servers.vmem]\ncommand = \"/opt/bin/vmem\"\nargs = [\"mcp\"]\n[mcp_servers.amem]\ncommand = \"/opt/bin/amem\"\nargs = [\"mcp\"]\n")
+	native := []byte("[mcp_servers.vmem]\ncommand = \"/opt/bin/vmem\"\nargs = [\"mcp\"]\n[mcp_servers.amem]\ncommand = \"/opt/bin/amem\"\nargs = [\"mcp\"]\n[mcp_servers.ares]\ncommand = \"/opt/bin/ares\"\nargs = [\"mcp\"]\n")
 	if err = os.WriteFile(filepath.Join(home, "config.toml"), native, 0600); err != nil {
 		t.Fatal(err)
 	}
 	grants, err = KnowledgeApprovals(runtime)
-	if err != nil || len(grants) != len(vaultKnowledgeTools)+len(memoryKnowledgeTools) {
+	if err != nil || len(grants) != len(vaultKnowledgeTools)+len(memoryKnowledgeTools)+len(researchKnowledgeTools) {
 		t.Fatalf("%+v %v", grants, err)
 	}
 	args, err := KnowledgeArgs(runtime, grants)
@@ -32,12 +33,12 @@ func TestKnowledgeCodexRequiresExistingBindings(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(args, " ")
-	for _, expected := range []string{"mcp_servers.vmem.tools.vmem_create.approval_mode", "mcp_servers.vmem.tools.vmem_move.approval_mode", "mcp_servers.amem.tools.amem_search.approval_mode", "mcp_servers.amem.tools.amem_work_state_write.approval_mode", "mcp_servers.amem.tools.amem_remember.approval_mode", "approval_mode=\"approve\""} {
+	for _, expected := range []string{"mcp_servers.ares.tools.ares_status.approval_mode", "mcp_servers.vmem.tools.vmem_create.approval_mode", "mcp_servers.vmem.tools.vmem_move.approval_mode", "mcp_servers.amem.tools.amem_search.approval_mode", "mcp_servers.amem.tools.amem_work_state_write.approval_mode", "mcp_servers.amem.tools.amem_remember.approval_mode", "approval_mode=\"approve\""} {
 		if !strings.Contains(joined, expected) {
 			t.Fatalf("missing %s in %s", expected, joined)
 		}
 	}
-	for _, excluded := range []string{"obsidian", "write_note", "delete_note", "move_file", "build_corpus", "prime_corpus", "command=", "url=", "claude-mem", "mcp-search", "plugins."} {
+	for _, excluded := range []string{"obsidian", "write_note", "delete_note", "move_file", "build_corpus", "prime_corpus", "command=", "url=", "claude-mem", "mcp-search", "plugins.", "ares_lit_search", "ares_attempt_run", "ares_gate"} {
 		if strings.Contains(joined, excluded) {
 			t.Fatalf("unexpected %s", excluded)
 		}
@@ -161,6 +162,91 @@ func TestKnowledgeMemoryToolsMatchThePublishedPackage(t *testing.T) {
 	for _, name := range memoryKnowledgeTools {
 		if !have[name] {
 			t.Errorf("allowlisted %s is not in the published package (%v)", name, published)
+		}
+	}
+}
+
+// aresNotReadOnly are the @staix/agent-research 0.1.0 tools its manifest marks `readOnly: false`: every
+// tool that writes a study, decides a gate, reaches the network, or starts, stops or reads a container.
+var aresNotReadOnly = []string{"ares_watch_set", "ares_watch_run", "ares_console_add", "ares_console_remove", "ares_setup", "ares_archive", "ares_lessons", "ares_skill_propose", "ares_skill_decide", "ares_plan_set", "ares_plan_control", "ares_scope_set", "ares_gate", "ares_idea_add", "ares_idea_decide", "ares_investigate_close", "ares_ablate_add", "ares_ablate_close", "ares_final_close", "ares_final_seeds", "ares_selection_set", "ares_protocol_set", "ares_executor_set", "ares_executor_check", "ares_attempt_run", "ares_attempt_cancel", "ares_attempt_reconcile", "ares_attempt_logs", "ares_lit_search", "ares_lit_screen", "ares_lit_card", "ares_lit_verify", "ares_lit_bib", "ares_review_add", "ares_review_resolve", "ares_paper_build"}
+
+// #318 AC3: networked and container tools are in no auto-approve list. ares grants read tools only, from
+// the compiled list or from a manifest entry marked readOnly, and a readOnly: false entry loses its grant
+// even when the compiled list names it.
+func TestKnowledgeResearchGrantsReadToolsOnly(t *testing.T) {
+	approved := func(agent, tool string) bool {
+		_, err := KnowledgeArgs(Runtime{Agent: agent}, []KnowledgeApproval{{Server: researchServer, Tool: tool, ApprovalMode: "approve"}})
+		return err == nil
+	}
+	for _, agent := range []string{"claude", "codex"} {
+		for _, tool := range aresNotReadOnly {
+			if slices.Contains(researchKnowledgeTools, tool) || approved(agent, tool) {
+				t.Errorf("%s auto-approves %s", agent, tool)
+			}
+		}
+		if !approved(agent, "ares_status") || !approved(agent, "ares_playbook") {
+			t.Errorf("%s refused an ares read tool", agent)
+		}
+	}
+	grants, err := KnowledgeApprovals(Runtime{Agent: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	research := 0
+	for _, grant := range grants {
+		if grant.Server == researchServer {
+			research++
+			if slices.Contains(aresNotReadOnly, grant.Tool) {
+				t.Errorf("claude grant on %s", grant.Tool)
+			}
+		}
+	}
+	if research != len(researchKnowledgeTools) {
+		t.Fatalf("claude ares grants = %d, want %d", research, len(researchKnowledgeTools))
+	}
+
+	published := map[string][]toolversion.Tool{}
+	knowledgeManifest = func(server string) []toolversion.Tool { return published[server] }
+	t.Cleanup(func() { knowledgeManifest = func(string) []toolversion.Tool { return nil } })
+	published[researchServer] = append(plain("ares_status", "ares_lit_search", "ares_new_write"), readOnly("ares_plan_show", "ares_new_read", "ares_purge_cache", "vmem_read")...)
+	if got := strings.Join(knowledgeToolList(researchServer), ","); got != "ares_plan_show,ares_new_read" {
+		t.Fatalf("ares grants from a manifest = %s", got)
+	}
+	// A manifest that rejects every tool grants none, instead of falling back to the compiled list.
+	published[researchServer] = plain("ares_status")
+	if got := knowledgeToolList(researchServer); len(got) != 0 {
+		t.Fatalf("ares grants from an all-readOnly:false manifest = %v, want none", got)
+	}
+}
+
+// ARES_PACKAGE_DIR names an unpacked @staix/agent-research tarball (`npm pack @staix/agent-research@0.1.0`,
+// then extract). When set, every allowlisted ares tool must be in that package's src/mcp-tools.ts with the
+// plain `read` annotation (readOnlyHint true, openWorldHint false). Unset (CI), the list above is the contract.
+func TestKnowledgeResearchToolsMatchThePublishedPackage(t *testing.T) {
+	dir := os.Getenv("ARES_PACKAGE_DIR")
+	if dir == "" {
+		t.Skip("ARES_PACKAGE_DIR not set; run with an unpacked @staix/agent-research tarball to compare")
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "src", "mcp-tools.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := map[string]bool{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		name, rest, ok := strings.Cut(strings.TrimSpace(line), `", description:`)
+		if !ok || !strings.HasPrefix(name, `{ name: "ares_`) {
+			continue
+		}
+		read[strings.TrimPrefix(name, `{ name: "`)] = strings.HasSuffix(strings.TrimSpace(rest), "annotations: read },")
+	}
+	for _, name := range researchKnowledgeTools {
+		if !read[name] {
+			t.Errorf("allowlisted %s is not a read tool in the published package", name)
+		}
+	}
+	for _, name := range aresNotReadOnly {
+		if read[name] {
+			t.Errorf("%s is read-only in the published package; review whether to grant it", name)
 		}
 	}
 }
