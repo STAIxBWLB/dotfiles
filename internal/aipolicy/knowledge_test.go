@@ -212,6 +212,11 @@ func TestKnowledgeResearchGrantsReadToolsOnly(t *testing.T) {
 	if got := strings.Join(knowledgeToolList(researchServer), ","); got != "ares_plan_show,ares_new_read" {
 		t.Fatalf("ares grants from a manifest = %s", got)
 	}
+	// A manifest that rejects every tool grants none, instead of falling back to the compiled list.
+	published[researchServer] = plain("ares_status")
+	if got := knowledgeToolList(researchServer); len(got) != 0 {
+		t.Fatalf("ares grants from an all-readOnly:false manifest = %v, want none", got)
+	}
 }
 
 // ARES_PACKAGE_DIR names an unpacked @staix/agent-research tarball (`npm pack @staix/agent-research@0.1.0`,

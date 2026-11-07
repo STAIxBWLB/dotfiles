@@ -102,7 +102,8 @@ func knowledgeToolList(server string) []string {
 	fallback := map[string][]string{memoryServer: memoryKnowledgeTools, vaultServer: vaultKnowledgeTools, researchServer: researchKnowledgeTools}[server]
 	published := []string{}
 	seen := map[string]bool{}
-	for _, tool := range knowledgeManifest(server) {
+	manifest := knowledgeManifest(server)
+	for _, tool := range manifest {
 		name := tool.Name
 		if seen[name] || !strings.HasPrefix(name, server+"_") || !grantableTool.MatchString(name) {
 			continue
@@ -116,7 +117,8 @@ func knowledgeToolList(server string) []string {
 		seen[name] = true
 		published = append(published, name)
 	}
-	if len(published) == 0 {
+	// An ares manifest that rejects every tool grants none; only a missing one falls back.
+	if len(published) == 0 && (server != researchServer || len(manifest) == 0) {
 		return fallback
 	}
 	return published
