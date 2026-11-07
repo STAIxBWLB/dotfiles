@@ -209,6 +209,11 @@ func newLayoutsCmd() *cobra.Command {
 			p.Bullet(ui.StyleHint.Render(ui.MarkPartial), ui.StyleValue.Render("monitor"))
 			p.Line("      %s", ui.StyleHint.Render("4-pane server monitoring layout"))
 			p.Line("      %s", ui.StyleHint.Render("monitor + shell | lazygit + logs"))
+			p.Bullet(ui.StyleHint.Render(ui.MarkPartial), ui.StyleValue.Render("ahub"))
+			p.Line("      %s", ui.StyleHint.Render("agent-hub first: AHUB console | peer A over peer B, plus a verify window"))
+			p.Line("      %s", ui.StyleHint.Render("below 200x56 it becomes ahub-compact; see 'dot hub'"))
+			p.Bullet(ui.StyleHint.Render(ui.MarkPartial), ui.StyleValue.Render("ahub-compact"))
+			p.Line("      %s", ui.StyleHint.Render("one full-size window each: hub, peer-a, peer-b, verify"))
 		},
 	}
 }

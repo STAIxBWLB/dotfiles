@@ -210,7 +210,7 @@ func ValidateSessionName(name string) error {
 
 // ValidLayouts returns the list of supported layout names.
 func ValidLayouts() []string {
-	return []string{"dev", "claude", "monitor"}
+	return []string{"dev", "claude", "monitor", "ahub", "ahub-compact"}
 }
 
 // ValidThemes returns the list of supported theme names.

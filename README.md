@@ -130,6 +130,8 @@ dot apply
 ```bash
 dot open myproject   # launch or resume a multi-panel tmux workspace
 dot open myproject   # SSH dropped? just run it again — resumes exactly
+dot open myproject --layout ahub   # agent-hub console beside two peer slots
+dot hub myproject    # jump to the project's ahub console
 ```
 
 When the workspace module is enabled, the rendered shell environment also
@@ -664,6 +666,19 @@ status [--probe]` reports the backend, service, shim, DNS and WARP state.
 │   LAZYGIT    │  LOGS    │
 └──────────────┴──────────┘
 ```
+
+**ahub** (agent-hub first, opt-in with `dot open <project> --layout ahub` or `dot register --layout ahub`):
+```
+┌──────────┬──────────────────┐
+│          │  PEER A          │
+│  AHUB    ├──────────────────┤
+│  ≥80 col │  PEER B          │
+└──────────┴──────────────────┘   + window "verify" (project shell)
+```
+
+The session takes the terminal's size. Below 200x56 it becomes **ahub-compact**: one full-size window each for `hub`, `peer-a`, `peer-b` and `verify`. AHUB opens `ahub console` when the project's hub runs (`--panels` at 80x24 or more, the plain console below), otherwise it shows why and starts `ahub up --no-agents` only when you press Enter. The peer slots take the first two of `start.agents` in the project's `.agenthub/config.local.json` (then codex, claude) and start a peer only on Enter. A running session is never rebuilt: `--layout` applies to a new session only.
+
+`dot hub <project> [console|status|ui]` opens the project's hub: in this terminal outside tmux, or inside its workspace by focusing AHUB, adding one `hub` window to an older session. It starts nothing and never relayouts. Design: `docs/specs/2026-11-07-ahub-workspace-layouts.md`.
 
 ### Themes
 
