@@ -104,7 +104,7 @@ func TestAhubLayoutGeometry(t *testing.T) {
 			}
 			var screen string
 			for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
-				if screen = tmux(t, "capture-pane", "-p", "-t", hubPane); strings.Contains(screen, want) {
+				if screen = tmux(t, "capture-pane", "-p", "-J", "-t", hubPane); strings.Contains(screen, want) {
 					return
 				}
 			}
