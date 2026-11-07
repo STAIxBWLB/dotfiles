@@ -251,11 +251,15 @@ func parseAdditiveItem(line, direction string) (PeerPlanItem, bool, error) {
 	if err != nil {
 		return PeerPlanItem{}, false, fmt.Errorf("peer host plan: malformed mtime in %q", line)
 	}
+	name := decodeRsyncHighBytes(parts[3])
+	if rsyncEscapeRe.MatchString(name) {
+		return PeerPlanItem{}, false, fmt.Errorf("peer host plan: rsync printed the name %q with \\#ooo octal escapes: it holds a control character or a literal \\# before digits; rename or exclude that file", name)
+	}
 	action := "update"
 	if strings.Trim(change[2:], "+") == "" {
 		action = "create"
 	}
-	it := PeerPlanItem{Path: strings.TrimPrefix(parts[3], "./"), Scope: PlanScopeHost, Action: action, Direction: direction}
+	it := PeerPlanItem{Path: strings.TrimPrefix(name, "./"), Scope: PlanScopeHost, Action: action, Direction: direction}
 	sender := &PlanSide{Size: size, Mtime: mtime}
 	if direction == "pull" {
 		it.Peer = sender

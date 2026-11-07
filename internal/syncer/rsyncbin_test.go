@@ -243,12 +243,38 @@ func TestPeerDiff_NonASCIINameThroughResolvedLocalRsync(t *testing.T) {
 }
 
 func TestParsePeerRemoteInventory_EscapedNameIsNotAnNFDError(t *testing.T) {
-	out := "@@4\t2026/09/28-01:02:03\tdocs/\\#341\\#204\\#222-x.md\n"
+	out := "@@4\t2026/09/28-01:02:03\tdocs/Icon\\#015\n"
 	_, err := parsePeerRemoteInventory(out, nil, nil, true)
 	if err == nil {
-		t.Fatal("escaped name accepted")
+		t.Fatal("escaped control character accepted")
 	}
 	if !strings.Contains(err.Error(), "octal escapes") || strings.Contains(err.Error(), "NFD-normalized") {
 		t.Fatalf("want an rsync escaping error, got %v", err)
+	}
+}
+
+// rsync 3.5 with -8 escapes bytes 0x80-0x9f, so a Korean NFD name arrives half
+// escaped (#358); openrsync escapes every non-ASCII byte. Both read back
+// byte-exact, while a literal backslash before '#' and digits still fails.
+func TestRsyncHighByteEscapesDecode(t *testing.T) {
+	want := norm.NFD.String("docs/회의-r.md")
+	for _, printed := range []string{
+		"docs/\xe1\\#204\\#222\xe1\\#205\xac\xe1\\#204\\#213\xe1\\#205\xb4-r.md",
+		"docs/\\#341\\#204\\#222\\#341\\#205\\#254\\#341\\#204\\#213\\#341\\#205\\#264-r.md",
+	} {
+		snap, err := parsePeerRemoteInventory("@@4\t2026/09/28-01:02:03\t"+printed+"\n", nil, nil, true)
+		if err != nil {
+			t.Fatalf("%q: %v", printed, err)
+		}
+		if _, ok := snap[want]; !ok {
+			t.Fatalf("%q read as %v, want %q", printed, snap, want)
+		}
+		it, ok, err := parseAdditiveItem("@@>f+++++++++\t4\t2026/09/28-01:02:03\t"+printed, "pull")
+		if err != nil || !ok || it.Path != want {
+			t.Fatalf("host plan %q = %+v, %v, %v", printed, it, ok, err)
+		}
+	}
+	if _, _, err := parseAdditiveItem("@@>f+++++++++\t4\t2026/09/28-01:02:03\tlit\\#134#123.md", "pull"); err == nil || !strings.Contains(err.Error(), "octal escapes") {
+		t.Fatalf("literal \\# accepted by the host plan: %v", err)
 	}
 }

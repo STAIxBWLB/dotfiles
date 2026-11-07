@@ -507,14 +507,14 @@ func parsePeerRemoteInventory(stdout string, remoteLoc *time.Location, baseline 
 		if len(parts) != 3 {
 			return nil, fmt.Errorf("peer inventory: malformed rsync record %q", raw)
 		}
-		rawRel := parts[2]
+		rawRel := decodeRsyncHighBytes(parts[2])
 		isDir := strings.HasSuffix(rawRel, "/")
 		rel, err := cleanPeerInventoryRel(rawRel, isDir)
 		if err != nil {
 			return nil, err
 		}
 		if rsyncEscapeRe.MatchString(rel) {
-			return nil, fmt.Errorf("peer inventory: rsync printed the name %q with \\#ooo octal escapes, not an NFD problem: the name holds a control character (Finder's Icon\\r, say) or a literal \\# before digits, which rsync always escapes, or the client is openrsync; rename or exclude that file", rel)
+			return nil, fmt.Errorf("peer inventory: rsync printed the name %q with \\#ooo octal escapes, not an NFD problem: the name holds a control character (Finder's Icon\\r, say) or a literal \\# before digits, which rsync always escapes; rename or exclude that file", rel)
 		}
 		if requireNFD && rel != "" && !NFDPathNormalized(rel) {
 			return nil, fmt.Errorf("peer inventory: path %q is %w", rel, errPeerNameNotNFD)
@@ -550,10 +550,27 @@ func parsePeerRemoteInventory(stdout string, remoteLoc *time.Location, baseline 
 
 // rsyncEscapeRe matches rsync's \#ooo octal escape in an --out-format name.
 // openrsync, and rsync 3.x without -8, print it for every non-ASCII byte;
-// rsync 3.x with -8 still prints it for control characters and for a literal
-// backslash before '#' and digits. Either way the inventory would read the
-// escape as the file's real name, so it fails closed.
+// rsync 3.5 with -8 still prints it for bytes 0x80-0x9f (#358), and every
+// rsync prints it for control characters and for a literal backslash before
+// '#' and digits.
 var rsyncEscapeRe = regexp.MustCompile(`\\#[0-7]{3}`)
+
+// decodeRsyncHighBytes turns escapes of bytes 0x80-0xff back into those bytes,
+// so a UTF-8 name reads the same whichever rsync printed it. rsync escapes a
+// literal backslash too, so this is unambiguous. Escapes of control characters
+// and of a backslash are kept, and callers still refuse a name that has one.
+func decodeRsyncHighBytes(name string) string {
+	if !strings.Contains(name, `\#`) {
+		return name
+	}
+	return rsyncEscapeRe.ReplaceAllStringFunc(name, func(m string) string {
+		v, err := strconv.ParseUint(m[2:], 8, 8)
+		if err != nil || v < 0x80 {
+			return m
+		}
+		return string([]byte{byte(v)})
+	})
+}
 
 func cleanPeerInventoryRel(raw string, isDir bool) (string, error) {
 	if strings.ContainsAny(raw, "\x00\r\n\t") {
