@@ -16,17 +16,19 @@ A single Go binary. macOS + Linux + GPU servers. Modular, profile-based, AI-read
 brew install staixbwlb/cask/dotfiles
 ```
 
-Provides the `dot` binary and the `dotfiles` back-compat symlink.
+Installs the `dotfiles` cask: the `dot` binary and the `dotfiles` back-compat
+link, on macOS and on Linuxbrew. An install from the earlier `dotfiles`
+formula moves to the cask on the next `brew update` or `dot update` (#344).
 
 Moved from `entelecheia/tap` in October 2026. On an existing install,
 `brew update` follows the old tap's migration entry; if `brew info dotfiles`
 still names `entelecheia/tap`, run `brew trust staixbwlb/cask` and then
 `brew reinstall staixbwlb/cask/dotfiles`.
 
-The full name taps `staixbwlb/cask` and trusts the formula as it installs.
+The full name taps `staixbwlb/cask` and trusts the cask as it installs.
 Homebrew 6 and later refuse a short name from an untrusted tap, so
 `brew tap staixbwlb/cask && brew install dotfiles` stops with `Refusing to load
-formula staixbwlb/cask/dotfiles from untrusted tap`; run
+cask staixbwlb/cask/dotfiles from untrusted tap`; run
 `brew trust staixbwlb/cask` first if you prefer the short name.
 
 A new release reaches the tap a few minutes after GitHub, once the tap's audit
@@ -905,7 +907,7 @@ Test runs on pull requests and main pushes, not on tags. A Homebrew or download 
 
 **Vulnerability scan** (`vuln.yaml`): govulncheck through `scripts/govulncheck-gate.sh`, daily and on changes to `go.mod`, `go.sum` or the allowlist, so a new upstream advisory does not block unrelated PRs. Dependabot raises Go modules and actions weekly.
 
-**Release**: Triggered by a `v*` tag push. It waits for the tagged commit's main-push Test run and publishes only when that run succeeded, so the tag is not tested again. It runs the govulncheck gate before publishing. Uses GoReleaser for cross-platform builds (darwin/linux × amd64/arm64), pushes the formula to the tap's `publish/dotfiles-<version>` branch (the tap audits and merges it), and attests build provenance for every archive in `checksums.txt` (`gh attestation verify <archive> -R STAIxBWLB/dotfiles`).
+**Release**: Triggered by a `v*` tag push. It waits for the tagged commit's main-push Test run and publishes only when that run succeeded, so the tag is not tested again. It runs the govulncheck gate before publishing. Uses GoReleaser for cross-platform builds (darwin/linux × amd64/arm64), pushes the cask to the tap's `publish/dotfiles-<version>` branch (the tap audits and merges it), and attests build provenance for every archive in `checksums.txt` (`gh attestation verify <archive> -R STAIxBWLB/dotfiles`).
 
 ### Creating a Release
 

@@ -80,11 +80,12 @@ jobs:
       - name: Require the tap deploy key
         env:
           HOMEBREW_TAP_SSH_KEY: ${{ secrets.HOMEBREW_TAP_SSH_KEY }}
-        run: test -n "$HOMEBREW_TAP_SSH_KEY" || { echo "::error::secret HOMEBREW_TAP_SSH_KEY is missing; the formula push to STAIxBWLB/homebrew-cask would fail after the release is published"; exit 1; }
+        run: test -n "$HOMEBREW_TAP_SSH_KEY" || { echo "::error::secret HOMEBREW_TAP_SSH_KEY is missing; the cask push to STAIxBWLB/homebrew-cask would fail after the release is published"; exit 1; }
 
       - uses: goreleaser/goreleaser-action@v6
         with:
-          version: "~> v2"
+          # Pinned: the rendered cask must match canonicalGoReleaserCask (#344).
+          version: "v2.20.0"
           args: release --clean --release-notes docs/releases/${{ env.tag }}.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

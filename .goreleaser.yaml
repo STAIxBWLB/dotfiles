@@ -49,7 +49,12 @@ release:
   extra_files:
     - glob: scripts/install.sh
 
-brews:
+# A cask, not a formula: brews is deprecated, and the formula template's
+# redundant `version` fails the tap's brew audit (#344). dot update compares
+# the rendered cask byte for byte with canonicalGoReleaserCask in
+# internal/cli/upgrade_homebrew_prebuilt.go; change both together, and keep
+# goreleaser pinned in release.yaml so the template does not drift.
+homebrew_casks:
   - name: dotfiles
     repository:
       owner: STAIxBWLB
@@ -61,15 +66,22 @@ brews:
       git:
         url: "git@github.com:STAIxBWLB/homebrew-cask.git"
         private_key: "{{ .Env.HOMEBREW_TAP_SSH_KEY }}"
-    directory: Formula
+    directory: Casks
     homepage: "https://github.com/STAIxBWLB/dotfiles"
     description: "Declarative dotfiles manager and AI tmux workspace orchestrator"
-    license: MIT
-    install: |
-      bin.install "dot"
-      bin.install_symlink "dot" => "dotfiles"
-    test: |
-      system "#{bin}/dot", "version"
+    # Each entry renders as `binary "<entry>"`; the second keeps the
+    # formula's `dotfiles` name as `binary "dot", target: "dotfiles"`.
+    binaries:
+      - dot
+      - 'dot", target: "dotfiles'
+    hooks:
+      post:
+        # The release binary is not notarized; Gatekeeper refuses it while
+        # the download's quarantine attribute is set.
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/dot"]
+          end
     commit_author:
       name: goreleaserbot
       email: bot@goreleaser.com
