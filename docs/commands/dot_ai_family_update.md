@@ -6,7 +6,7 @@ Move installed family tools to the registry's latest version
 
 Move each named family tool, or with no ids every installed one, to the
 registry's latest version. A tool that is not installed is reported and
-skipped. With --dry-run nothing is written: each tool is shown as already
+skipped, and one already newer than the registry's latest is left as is. With --dry-run nothing is written: each tool is shown as already
 current or with the version it would move to.
 
 ```

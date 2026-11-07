@@ -58,30 +58,23 @@ others, and the command exits non-zero naming each tool that failed.`, RunE: fun
 	install.Flags().Bool("adopt", false, "Repoint an existing ~/.local/bin/<bin> symlink from another install; that install is left in place")
 	update := &cobra.Command{Use: "update [id...]", Short: "Move installed family tools to the registry's latest version", Long: `Move each named family tool, or with no ids every installed one, to the
 registry's latest version. A tool that is not installed is reported and
-skipped. With --dry-run nothing is written: each tool is shown as already
+skipped, and one already newer than the registry's latest is left as is. With --dry-run nothing is written: each tool is shown as already
 current or with the version it would move to.`, RunE: func(cmd *cobra.Command, args []string) error {
 		adopt, _ := cmd.Flags().GetBool("adopt")
 		e := familyEngine(cmd)
-		installed := map[string]bool{}
-		var current []string
-		for _, r := range e.FamilyStatus() {
-			if r.Current != "" {
-				installed[r.ID] = true
-				current = append(current, r.ID)
-			}
-		}
 		if len(args) == 0 {
-			args = current
+			for _, r := range e.FamilyStatus() {
+				if r.Current != "" {
+					args = append(args, r.ID)
+				}
+			}
 		}
 		if len(args) == 0 {
 			fmt.Fprintln(cmd.OutOrStdout(), "no family tool is installed; run 'dot ai family install --all' or name one")
 			return nil
 		}
 		return familyBatch(cmd, "ai.family.update", args, func(id string) (aitooling.FamilyResult, error) {
-			if !installed[id] && familyKnown(id) {
-				return aitooling.FamilyResult{ID: id, Status: "not-installed", Notes: []string{"skipped; install it with: dot ai family install " + id}}, nil
-			}
-			return e.FamilyInstall(cmd.Context(), id, "", adopt)
+			return e.FamilyUpdate(cmd.Context(), id, adopt)
 		})
 	}}
 	update.Flags().Bool("adopt", false, "Repoint an existing ~/.local/bin/<bin> symlink from another install; that install is left in place")
@@ -121,15 +114,6 @@ func familyBatch(cmd *cobra.Command, event string, ids []string, do func(string)
 		}
 	}
 	return errors.Join(errs...)
-}
-
-func familyKnown(id string) bool {
-	for _, t := range aitooling.FamilyTools() {
-		if t.ID == id {
-			return true
-		}
-	}
-	return false
 }
 
 func finishFamily(cmd *cobra.Command, event, id string, r aitooling.FamilyResult, err error) error {

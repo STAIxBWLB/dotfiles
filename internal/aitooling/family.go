@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/STAIxBWLB/dotfiles/internal/resourceguard"
+	"github.com/STAIxBWLB/dotfiles/internal/toolversion"
 )
 
 // Family tools (#319, #335, #318, #356): ahub, amem, vmem, acon and ares install side by side, one npm prefix per
@@ -109,6 +110,31 @@ func (e *Engine) FamilyInstall(ctx context.Context, id, version string, adopt bo
 		return r, err
 	}
 	return e.familyActivate(ctx, t, version, adopt, r)
+}
+
+// FamilyUpdate moves an installed tool to the registry's latest version. A tool that is not installed
+// is reported and skipped, and a current version newer than the registry's latest is left as is.
+func (e *Engine) FamilyUpdate(ctx context.Context, id string, adopt bool) (FamilyResult, error) {
+	t, err := familyTool(id)
+	if err != nil {
+		return FamilyResult{}, err
+	}
+	r := FamilyResult{ID: id, Current: readVersionLink(filepath.Join(e.FamilyRoot(), id, "current"))}
+	if r.Current == "" {
+		r.Status = "not-installed"
+		r.Notes = []string{"skipped; install it with: dot ai family install " + id}
+		return r, nil
+	}
+	latest, err := e.latest(ctx, "https://registry.npmjs.org/"+t.Package+"/latest")
+	if err != nil {
+		return r, fmt.Errorf("%s latest version: %w", t.Package, err)
+	}
+	if toolversion.Satisfies(">"+strings.TrimPrefix(latest, "v"), r.Current) {
+		r.Status = "active"
+		r.Notes = []string{fmt.Sprintf("current %s is newer than the registry's latest %s; left as is", r.Current, latest)}
+		return r, nil
+	}
+	return e.FamilyInstall(ctx, id, latest, adopt)
 }
 
 // familySlot takes the maintenance slot `dot ai update` uses, so installs, rollbacks and their

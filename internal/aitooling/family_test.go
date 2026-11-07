@@ -162,6 +162,19 @@ func TestFamilyInstallLatestAndDryRun(t *testing.T) {
 	if _, err := e.FamilyRollback(ctx, "vmem"); err == nil {
 		t.Fatal("rollback without a previous version succeeded")
 	}
+	// update never moves current below the registry's latest (2.0.0 here) and skips what is not installed.
+	if _, err := e.FamilyInstall(ctx, "vmem", "3.0.0", false); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := e.FamilyUpdate(ctx, "vmem", false); err != nil || r.Current != "3.0.0" || !hasNote(r, "newer than the registry's latest") {
+		t.Fatalf("update past latest = %+v, %v", r, err)
+	}
+	if r, err := e.FamilyUpdate(ctx, "ares", false); err != nil || r.Status != "not-installed" {
+		t.Fatalf("update of a tool not installed = %+v, %v", r, err)
+	}
+	if _, err := e.FamilyRollback(ctx, "vmem"); err != nil {
+		t.Fatal(err)
+	}
 	// Rollback takes the same slot as install, so the two never interleave.
 	if _, err := e.FamilyInstall(ctx, "vmem", "1.0.0", false); err != nil {
 		t.Fatal(err)
