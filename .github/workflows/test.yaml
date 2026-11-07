@@ -28,7 +28,7 @@ jobs:
     outputs:
       run_full: ${{ steps.decide.outputs.run_full }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: decide
         env:
           GH_TOKEN: ${{ github.token }}
@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Release notes format
         run: |
           bash scripts/check-release-notes.sh --self-test
@@ -59,8 +59,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: "go.mod"
       - uses: golangci/golangci-lint-action@v9
@@ -120,7 +120,7 @@ jobs:
           fi
       - name: Upload generated command docs on drift
         if: failure() && steps.generate_command_docs.outcome == 'success' && steps.check_command_docs.outcome == 'failure'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: command-docs-${{ github.sha }}
           path: docs/commands/
@@ -154,8 +154,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: "go.mod"
       - name: Require systemd scheduler parser evidence
@@ -314,7 +314,7 @@ jobs:
           done
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: coverage.out
@@ -360,12 +360,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: "go.mod"
       - run: go build -o dot ./cmd/dot/
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build image + run profile
         env:
           TAG: dotfiles-test:${{ matrix.dockerfile }}
@@ -395,7 +395,7 @@ jobs:
       ALL_MODULES: "packages shell node git ssh terminal tmux ai conda"
       ALL_SCENARIOS: "dry-run-all-profiles init-and-apply idempotency server-profile upgrade-check home-override workspace profile-snapshot sync install-script install-security guard dry-run-empty-home differential secrets noindex ssh-loopback"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Shards are carved out of the full lists, so a module or scenario added
       # to ALL_* lands in `rest` without touching this step.
       - name: Select shard
@@ -418,7 +418,7 @@ jobs:
           echo "SCENARIOS=${picks_s# }" >> "$GITHUB_ENV"
           echo "MODULES=${picks_m# }" >> "$GITHUB_ENV"
           echo "shard $SHARD: modules [${picks_m# }] scenarios [${picks_s# }]"
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: "go.mod"
       # Both binaries are built through the same Makefile variables with
@@ -444,7 +444,7 @@ jobs:
       # scoped to the comparison rather than to a cold go build.
       - name: Cache the baseline binary
         id: baseline-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: dot-baseline
           key: baseline-${{ runner.os }}-db057e7ebbd21e0a7256dcd7c1b26ff3870a5478-go1.26.10
@@ -460,7 +460,7 @@ jobs:
       # otherwise surface as an opaque COPY failure inside the image build.
       - name: Both binaries are at the build-context root
         run: ls -l ./dot ./dot-baseline
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build image
         env:
           SCOPE: linux-ubuntu-22.04
@@ -533,8 +533,8 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: "go.mod"
       - run: go build -o bin/dot ./cmd/dot/
