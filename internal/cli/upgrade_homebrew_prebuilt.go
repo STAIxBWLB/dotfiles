@@ -365,7 +365,7 @@ func releaseArchiveSums(version string, checksums []byte) ([]string, error) {
 // canonicalGoReleaserCask is the cask GoReleaser v2.20 renders from the
 // homebrew_casks entry in .goreleaser.yaml (#344): arm before intel, the
 // binary linked as dot and dotfiles, and the quarantine removal for the
-// unsigned binary on macOS. Any other text, a newer GoReleaser template
+// unsigned binary on macOS, run before the binary is linked. Any other text, a newer GoReleaser template
 // included, sends the update through the full maintenance gate.
 func canonicalGoReleaserCask(version string, checksums []byte) (string, error) {
 	sums, err := releaseArchiveSums(version, checksums)
@@ -408,7 +408,7 @@ cask "dotfiles" do
   binary "dot"
   binary "dot", target: "dotfiles"
 
-  postflight_steps do
+  preflight_steps do
     on_macos do
       run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{staged_path}}/dot"]
     end

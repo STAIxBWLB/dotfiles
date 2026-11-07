@@ -75,9 +75,11 @@ homebrew_casks:
       - dot
       - 'dot", target: "dotfiles'
     hooks:
-      post:
-        # The release binary is not notarized; Gatekeeper refuses it while
-        # the download's quarantine attribute is set.
+      # Before the binary is linked, not after: the release binary is not
+      # notarized, and a dot started (by a LaunchAgent, say) while the staged
+      # file still carries the download's quarantine attribute stays blocked
+      # by Gatekeeper at that path, even once the attribute is gone (#344).
+      pre:
         install_steps: |
           on_macos do
             run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/dot"]
