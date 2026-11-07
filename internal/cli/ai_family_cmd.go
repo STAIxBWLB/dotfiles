@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -31,21 +32,59 @@ makes previous current again.
 For ahub this is the global CLI only: 'ahub upgrade' still runs each project's
 daemon from ~/.agenthub/releases. After ahub activates, run the printed
 'ahub setup' to move the shared Claude plugin to the same version.`}
-	install := &cobra.Command{Use: "install <id>", Short: "Install a version of a family tool and make it current", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	install := &cobra.Command{Use: "install <id>... | --all", Short: "Install family tools and make each one current", Long: `Install each named family tool, or every one with --all, and make it current.
+
+Tools are installed one after another; a failure on one does not stop the
+others, and the command exits non-zero naming each tool that failed.`, RunE: func(cmd *cobra.Command, args []string) error {
 		version, _ := cmd.Flags().GetString("version")
 		adopt, _ := cmd.Flags().GetBool("adopt")
-		r, err := familyEngine(cmd).FamilyInstall(cmd.Context(), args[0], version, adopt)
-		return finishFamily(cmd, "ai.family.install", r, err)
+		if all, _ := cmd.Flags().GetBool("all"); all == (len(args) > 0) {
+			return fmt.Errorf("name one or more of %s, or pass --all", familyIDs())
+		} else if all {
+			for _, t := range aitooling.FamilyTools() {
+				args = append(args, t.ID)
+			}
+		}
+		if version != "" && len(args) != 1 {
+			return errors.New("--version needs exactly one id")
+		}
+		e := familyEngine(cmd)
+		return familyBatch(cmd, "ai.family.install", args, func(id string) (aitooling.FamilyResult, error) {
+			return e.FamilyInstall(cmd.Context(), id, version, adopt)
+		})
 	}}
-	install.Flags().String("version", "", "Exact X.Y.Z version to install (default: the registry's latest)")
+	install.Flags().String("version", "", "Exact X.Y.Z version to install, with one id (default: the registry's latest)")
+	install.Flags().Bool("all", false, "Install every family tool")
 	install.Flags().Bool("adopt", false, "Repoint an existing ~/.local/bin/<bin> symlink from another install; that install is left in place")
+	update := &cobra.Command{Use: "update [id...]", Short: "Move installed family tools to the registry's latest version", Long: `Move each named family tool, or with no ids every installed one, to the
+registry's latest version. A tool that is not installed is reported and
+skipped, and one already newer than the registry's latest is left as is. With --dry-run nothing is written: each tool is shown as already
+current or with the version it would move to.`, RunE: func(cmd *cobra.Command, args []string) error {
+		adopt, _ := cmd.Flags().GetBool("adopt")
+		e := familyEngine(cmd)
+		if len(args) == 0 {
+			for _, r := range e.FamilyStatus() {
+				if r.Current != "" {
+					args = append(args, r.ID)
+				}
+			}
+		}
+		if len(args) == 0 {
+			fmt.Fprintln(cmd.OutOrStdout(), "no family tool is installed; run 'dot ai family install --all' or name one")
+			return nil
+		}
+		return familyBatch(cmd, "ai.family.update", args, func(id string) (aitooling.FamilyResult, error) {
+			return e.FamilyUpdate(cmd.Context(), id, adopt)
+		})
+	}}
+	update.Flags().Bool("adopt", false, "Repoint an existing ~/.local/bin/<bin> symlink from another install; that install is left in place")
 	status := &cobra.Command{Use: "status", Short: "Show each family tool's current and previous versions", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		for _, r := range familyEngine(cmd).FamilyStatus() {
 			printFamily(cmd, r)
 		}
 		return nil
 	}}
-	c.AddCommand(install, status)
+	c.AddCommand(install, update, status)
 	return c
 }
 
@@ -55,7 +94,7 @@ func newAIRollbackCmd() *cobra.Command {
 Running processes are listed and keep their files; new sessions start the
 restored version. The version it leaves becomes 'previous'.`, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		r, err := familyEngine(cmd).FamilyRollback(cmd.Context(), args[0])
-		return finishFamily(cmd, "ai.family.rollback", r, err)
+		return finishFamily(cmd, "ai.family.rollback", args[0], r, err)
 	}}
 }
 
@@ -65,16 +104,28 @@ func familyEngine(cmd *cobra.Command) *aitooling.Engine {
 	return aitooling.New(aitooling.Options{HomeDir: homeFromCmd(cmd), ExplicitHome: over != "", DryRun: dry, Out: cmd.ErrOrStderr()})
 }
 
-func finishFamily(cmd *cobra.Command, event string, r aitooling.FamilyResult, err error) error {
+// familyBatch runs do for each id in turn and joins the failures, so one tool never stops the rest.
+func familyBatch(cmd *cobra.Command, event string, ids []string, do func(string) (aitooling.FamilyResult, error)) error {
+	var errs []error
+	for _, id := range ids {
+		r, err := do(id)
+		if err := finishFamily(cmd, event, id, r, err); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func finishFamily(cmd *cobra.Command, event, id string, r aitooling.FamilyResult, err error) error {
 	if err != nil {
-		return err
+		return fmt.Errorf("%s: %w", id, err)
 	}
 	printFamily(cmd, r)
 	if r.Status == "activated" || r.Status == "active" {
 		auditAIEventBestEffort(cmd, event, map[string]any{"id": r.ID, "current": r.Current, "previous": r.Previous})
 	}
 	if strings.HasPrefix(r.Status, "deferred") {
-		return fmt.Errorf("%s: %s", r.ID, r.Status)
+		return fmt.Errorf("%s: %s", id, r.Status)
 	}
 	return nil
 }
