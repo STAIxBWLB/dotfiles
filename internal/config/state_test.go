@@ -535,3 +535,27 @@ func TestLoad_CorruptYAMLReturnsError(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
+
+// modules.workspace.ahub_keys in the user config survives a save and reaches
+// the template data that renders the tmux menu (#331).
+func TestUserState_AhubKeysReachesTemplate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("modules:\n  workspace:\n    path: ~/workspace\n    ahub_keys: true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := loadStateAt(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := saveStateAt(path, loaded); err != nil {
+		t.Fatal(err)
+	}
+	if loaded, err = loadStateAt(path); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &Config{}
+	ApplyStateToConfig(cfg, loaded)
+	if got := cfg.TemplateData(t.TempDir())["AhubKeys"]; got != true {
+		t.Fatalf("AhubKeys = %v, want true after a save and reload", got)
+	}
+}
