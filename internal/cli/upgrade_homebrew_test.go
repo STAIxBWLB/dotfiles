@@ -247,7 +247,7 @@ func TestUpgradeHomebrewBranches(t *testing.T) {
 		{
 			name:    "tap still behind after brew update",
 			f:       fakeUpgrade{infos: []string{formulaJSON("1.0.0", false)}, version: done},
-			wantErr: "not 2.0.0 yet",
+			wantErr: "dot 2.0.0 is released, but the Homebrew tap still offers staixbwlb/cask/dotfiles 1.0.0",
 			want:    []string{"brew info --json=v2 --formula dotfiles", "brew update", "brew info --json=v2 --formula dotfiles"},
 		},
 		{

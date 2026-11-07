@@ -54,7 +54,9 @@ brews:
     repository:
       owner: STAIxBWLB
       name: homebrew-cask
-      branch: main
+      # The tap audits publish/* and merges it into main itself (#340,
+      # STAIxBWLB/homebrew-cask#2); goreleaser creates the branch from main.
+      branch: "publish/dotfiles-{{ .Version }}"
       # Write deploy key scoped to the tap repository only.
       git:
         url: "git@github.com:STAIxBWLB/homebrew-cask.git"

@@ -1,0 +1,18 @@
+# Raises Go module versions and the go directive when an advisory lands, so
+# the scheduled govulncheck scan has a fix to merge (#339).
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      go-modules:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
