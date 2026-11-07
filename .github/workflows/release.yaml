@@ -7,6 +7,9 @@ on:
 permissions:
   contents: write
   actions: read
+  # Build provenance for the release checksums (#339).
+  id-token: write
+  attestations: write
 
 concurrency:
   # Never cancel a release mid-flight; prevents duplicate goreleaser runs for the same tag.
@@ -68,6 +71,12 @@ jobs:
           test -s "$NOTES" || { echo "::error::$NOTES is missing or empty; add it in the release PR (AGENTS.md, Release notes)"; exit 1; }
           bash scripts/check-release-notes.sh "$NOTES"
 
+      # Advisories block a release, not unrelated PRs (#339).
+      - name: Dependency vulnerability gate
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+          bash scripts/govulncheck-gate.sh
+
       - name: Require the tap deploy key
         env:
           HOMEBREW_TAP_SSH_KEY: ${{ secrets.HOMEBREW_TAP_SSH_KEY }}
@@ -80,3 +89,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_SSH_KEY: ${{ secrets.HOMEBREW_TAP_SSH_KEY }}
+
+      # One attestation per archive listed in checksums.txt; verify with
+      # `gh attestation verify <archive> -R STAIxBWLB/dotfiles`.
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-checksums: dist/checksums.txt

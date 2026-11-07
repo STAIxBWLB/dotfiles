@@ -74,14 +74,11 @@ jobs:
         run: bash scripts/ci-decision.sh --self-test
       - name: Seam lint rules are not a no-op
         run: bash tests/scenarios/lint-seams-gate.sh
-      - name: Dependency vulnerability gate
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
-          bash scripts/govulncheck-gate.sh
-      # Runs here, not in the linux container: this exercises a REPO script and
-      # its fixtures, and /tests/scenarios in the image has no repo above it.
-      # Placed after the real gate so a bug in the scenario cannot mask a real
-      # vulnerability finding.
+      # The live govulncheck scan runs in vuln.yaml (schedule, go.mod/go.sum
+      # changes) and in Release, so a new upstream advisory does not block an
+      # unrelated PR (#339). The gate script's own fixtures still run here.
+      - name: Network retry wrapper self-test
+        run: bash scripts/ci-net-retry.sh --self-test
       - name: Dependency vulnerability gate is not a no-op
         run: bash tests/scenarios/govulncheck-gate.sh
       - name: Coverage floor policy gate is not a no-op
@@ -378,7 +375,9 @@ jobs:
             --cache-from "type=gha,scope=$SCOPE" \
             --cache-to "type=gha,mode=max,scope=$SCOPE" \
             -t "$TAG" -f "tests/Dockerfile.${{ matrix.dockerfile }}" .
-          docker run --rm "$TAG" /tests/run-profile.sh "${{ matrix.profile }}"
+          # The profile installs Homebrew and packages live; a download
+          # failure is marked as infrastructure and retried once.
+          bash scripts/ci-net-retry.sh docker run --rm "$TAG" /tests/run-profile.sh "${{ matrix.profile }}"
 
   linux:
     # Combined module + scenario suite: one image build, N fresh-container runs,
@@ -476,7 +475,7 @@ jobs:
           failed=()
           for m in $MODULES; do
             echo "::group::module $m"
-            if ! docker run --rm "$TAG" /tests/run-module.sh "$m"; then
+            if ! bash scripts/ci-net-retry.sh docker run --rm "$TAG" /tests/run-module.sh "$m"; then
               failed+=("$m")
               echo "::error::module $m failed"
             fi
@@ -545,3 +544,29 @@ jobs:
         run: bash tests/scenarios/apps-install-macos.sh
       - name: macapps module and command scenario
         run: bash tests/scenarios/macapps.sh
+
+  # The one check branch protection requires (#339): it fails on any gating
+  # job that did not succeed. The heavy jobs may be skipped only when the
+  # decision job chose not to run them.
+  ci-ok:
+    if: always()
+    needs: [decision, release-notes, lint, unit, integration, linux, apps-install-macos]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          RUN_FULL: ${{ needs.decision.outputs.run_full }}
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          bad=$(jq -r --arg full "$RUN_FULL" '
+            to_entries[]
+            | select(.value.result != "success")
+            | select((.value.result == "skipped" and $full != "true"
+                      and (.key | IN("decision", "release-notes") | not)) | not)
+            | "\(.key): \(.value.result)"' <<<"$NEEDS")
+          if [ -n "$bad" ]; then
+            echo "::error title=ci-ok::gating jobs did not succeed (run_full=$RUN_FULL):"
+            printf '%s\n' "$bad"
+            exit 1
+          fi
+          echo "all gating jobs passed (run_full=$RUN_FULL)"

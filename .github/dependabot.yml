@@ -1,0 +1,19 @@
+# Weekly module and action bumps, so a module advisory the scheduled
+# govulncheck scan reports usually has a fix PR waiting (#339). A stdlib
+# advisory is still closed by raising the go directive in go.mod by hand.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      go-modules:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

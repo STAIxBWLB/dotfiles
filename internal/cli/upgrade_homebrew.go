@@ -118,7 +118,7 @@ func upgradeHomebrew(ctx context.Context, p *Printer, h homebrewDot, current, la
 				return err
 			}
 			if compareSemver(info.Versions.Stable, latest) < 0 {
-				return fmt.Errorf("the tap offers %s %s, not %s yet; retry once the release reaches it", info.FullName, info.Versions.Stable, latest)
+				return fmt.Errorf("dot %s is released, but the Homebrew tap still offers %s %s: a release reaches the tap a few minutes later, once the tap's audit passes; run dot update again shortly", latest, info.FullName, info.Versions.Stable)
 			}
 		}
 	}

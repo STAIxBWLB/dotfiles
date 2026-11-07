@@ -1,0 +1,38 @@
+name: Vulnerability scan
+# The live govulncheck scan, off the PR path (#339): a new upstream advisory
+# should not block unrelated PRs. Release runs the same gate before publishing.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: &scan_inputs
+      - go.mod
+      - go.sum
+      - .govulncheck-allow.json
+      - scripts/govulncheck-gate.sh
+      - .github/workflows/vuln.yaml
+  pull_request:
+    paths: *scan_inputs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vuln-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+      - name: Dependency vulnerability gate
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+          bash scripts/govulncheck-gate.sh
