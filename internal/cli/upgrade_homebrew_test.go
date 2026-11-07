@@ -37,6 +37,11 @@ func formulaJSON(stable string, pinned bool) string {
 	return fmt.Sprintf(`{"formulae":[{"full_name":"staixbwlb/cask/dotfiles","pinned":%v,"versions":{"stable":%q}}]}`, pinned, stable)
 }
 
+// caskJSON is the shape of `brew info --json=v2 --cask dotfiles` (#344).
+func caskJSON(version string) string {
+	return fmt.Sprintf(`{"formulae":[],"casks":[{"token":"dotfiles","full_token":"staixbwlb/cask/dotfiles","version":%q,"installed":null}]}`, version)
+}
+
 // fakeUpgrade scripts upgradeRun and upgradeAcquire and records each call as
 // "<base name> <args>".
 type fakeUpgrade struct {
@@ -48,6 +53,8 @@ type fakeUpgrade struct {
 	launchd    func(args []string) (string, error)
 	upgradeErr error  // returned by brew upgrade
 	onUpgrade  func() // runs when brew upgrade is called, e.g. to relink
+	onUpdate   func() // runs when brew update is called, e.g. to migrate
+	dotPath    string // the binary the version check must read; default the formula's opt link
 	// canceled lists calls made with a canceled context: brew and the
 	// reload must not be killed by a signal (#235 review).
 	canceled []string
@@ -88,10 +95,15 @@ func (f *fakeUpgrade) install(t *testing.T) {
 			}
 			return out, nil
 		case len(args) > 0 && args[0] == "--version":
-			if !strings.HasSuffix(filepath.ToSlash(name), "/opt/dotfiles/bin/dot") {
+			if f.dotPath != "" && name != f.dotPath || f.dotPath == "" && !strings.HasSuffix(filepath.ToSlash(name), "/opt/dotfiles/bin/dot") {
 				return "dot - graphviz version 12.2.1\n", nil // the version check must read the opt link
 			}
 			return f.version, nil
+		case len(args) > 0 && args[0] == "update":
+			if f.onUpdate != nil {
+				f.onUpdate()
+			}
+			return "", nil
 		case len(args) > 0 && args[0] == "upgrade":
 			if f.onUpgrade != nil {
 				f.onUpgrade()
@@ -141,7 +153,7 @@ func TestRunUpgradeHomebrew(t *testing.T) {
 		}
 		var want []string
 		if mode == "update" {
-			want = []string{"brew info --json=v2 --formula dotfiles", "brew upgrade staixbwlb/cask/dotfiles", "dot --version"}
+			want = []string{"brew info --json=v2 --formula dotfiles", "brew upgrade --formula staixbwlb/cask/dotfiles", "dot --version"}
 			if !strings.Contains(out.String(), "Upgraded: 1.0.0 → 99.0.0 (Homebrew)") {
 				t.Fatalf("output %q", out.String())
 			}
@@ -237,12 +249,12 @@ func TestUpgradeHomebrewBranches(t *testing.T) {
 		{
 			name: "tap current",
 			f:    fakeUpgrade{infos: []string{formulaJSON("2.0.0", false)}, version: done},
-			want: []string{"brew info --json=v2 --formula dotfiles", "brew upgrade staixbwlb/cask/dotfiles", "dot --version"},
+			want: []string{"brew info --json=v2 --formula dotfiles", "brew upgrade --formula staixbwlb/cask/dotfiles", "dot --version"},
 		},
 		{
 			name: "tap behind, brew update catches up",
 			f:    fakeUpgrade{infos: []string{formulaJSON("1.0.0", false), formulaJSON("2.0.0", false)}, version: done},
-			want: []string{"brew info --json=v2 --formula dotfiles", "brew update", "brew info --json=v2 --formula dotfiles", "brew upgrade staixbwlb/cask/dotfiles", "dot --version"},
+			want: []string{"brew info --json=v2 --formula dotfiles", "brew update", "brew info --json=v2 --formula dotfiles", "brew upgrade --formula staixbwlb/cask/dotfiles", "dot --version"},
 		},
 		{
 			name:    "tap still behind after brew update",
@@ -265,7 +277,7 @@ func TestUpgradeHomebrewBranches(t *testing.T) {
 			name:    "version not reached",
 			f:       fakeUpgrade{infos: []string{formulaJSON("2.0.0", false)}, version: "dot version 1.0.0 (abc)\n"},
 			wantErr: "not 2.0.0 or newer",
-			want:    []string{"brew info --json=v2 --formula dotfiles", "brew upgrade staixbwlb/cask/dotfiles", "dot --version"},
+			want:    []string{"brew info --json=v2 --formula dotfiles", "brew upgrade --formula staixbwlb/cask/dotfiles", "dot --version"},
 		},
 		{
 			name:    "brew info lists no formula",
@@ -276,7 +288,7 @@ func TestUpgradeHomebrewBranches(t *testing.T) {
 		{
 			name:     "a newer release reached the tap",
 			f:        fakeUpgrade{infos: []string{formulaJSON("2.1.0", false)}, version: "dot version 2.1.0 (abc)\n"},
-			want:     []string{"brew info --json=v2 --formula dotfiles", "brew upgrade staixbwlb/cask/dotfiles", "dot --version"},
+			want:     []string{"brew info --json=v2 --formula dotfiles", "brew upgrade --formula staixbwlb/cask/dotfiles", "dot --version"},
 			wantLine: "Upgraded: 1.0.0 → 2.1.0 (Homebrew)",
 		},
 		{
@@ -284,7 +296,7 @@ func TestUpgradeHomebrewBranches(t *testing.T) {
 			f:        fakeUpgrade{infos: []string{formulaJSON("1.0.0", false)}},
 			dryRun:   true,
 			want:     []string{"brew info --json=v2 --formula dotfiles"},
-			wantLine: "[dry-run] would run: brew update\n[dry-run] would run: brew upgrade staixbwlb/cask/dotfiles\n",
+			wantLine: "[dry-run] would run: brew update\n[dry-run] would run: brew upgrade --formula staixbwlb/cask/dotfiles\n",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -305,6 +317,168 @@ func TestUpgradeHomebrewBranches(t *testing.T) {
 				t.Fatalf("output %q, want %q", out.String(), tc.wantLine)
 			}
 		})
+	}
+}
+
+// A cask install is read and upgraded with --cask and checked through the
+// prefix/bin/dot link its binary stanza owns (#344).
+func TestUpgradeHomebrewCaskBranches(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("the Homebrew path refuses root")
+	}
+	t.Setenv("HOME", t.TempDir())
+	h := homebrewDot{prefix: t.TempDir(), formula: "dotfiles", cask: true}
+	const done = "dot version 2.0.0 (abc)\n"
+	for _, tc := range []struct {
+		name    string
+		f       fakeUpgrade
+		wantErr string
+		want    []string
+	}{
+		{
+			name: "tap current",
+			f:    fakeUpgrade{infos: []string{caskJSON("2.0.0")}, version: done},
+			want: []string{"brew info --json=v2 --cask dotfiles", "brew upgrade --cask staixbwlb/cask/dotfiles", "dot --version"},
+		},
+		{
+			name: "tap behind, brew update catches up",
+			f:    fakeUpgrade{infos: []string{caskJSON("1.0.0"), caskJSON("2.0.0")}, version: done},
+			want: []string{"brew info --json=v2 --cask dotfiles", "brew update", "brew info --json=v2 --cask dotfiles", "brew upgrade --cask staixbwlb/cask/dotfiles", "dot --version"},
+		},
+		{
+			name:    "brew info lists no cask",
+			f:       fakeUpgrade{infos: []string{`{"formulae":[],"casks":[]}`}},
+			wantErr: "returned 0 casks",
+			want:    []string{"brew info --json=v2 --cask dotfiles"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := tc.f
+			f.dotPath = h.optDot()
+			f.install(t)
+			var out bytes.Buffer
+			err := upgradeHomebrew(context.Background(), &Printer{Out: &out, Err: &out}, h, "1.0.0", "2.0.0", false, 0)
+			if tc.wantErr == "" && err != nil || tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)) {
+				t.Fatalf("err = %v, want %q", err, tc.wantErr)
+			}
+			if got := f.brewCalls(); !slices.Equal(got, tc.want) {
+				t.Fatalf("calls %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// brewFormulaToCaskPrefix lays out a formula install of 1.0.0: the keg, its
+// opt link and prefix/bin/dot.
+func brewFormulaToCaskPrefix(t *testing.T) string {
+	t.Helper()
+	prefix, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	keg := filepath.Join(prefix, "Cellar", "dotfiles", "1.0.0")
+	for _, dir := range []string{filepath.Join(keg, "bin"), filepath.Join(prefix, "opt"), filepath.Join(prefix, "bin"), filepath.Join(prefix, "Library", "Homebrew")} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, file := range []string{filepath.Join(keg, "bin", "dot"), filepath.Join(prefix, "bin", "brew")} {
+		if err := os.WriteFile(file, nil, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(keg, filepath.Join(prefix, "opt", "dotfiles")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(keg, "bin", "dot"), filepath.Join(prefix, "bin", "dot")); err != nil {
+		t.Fatal(err)
+	}
+	return prefix
+}
+
+// When brew update moves a formula install to the cask (tap_migrations.json),
+// dot carries on as the cask: it reads the cask, checks the cask's binary and
+// reloads the jobs that now run it (#344).
+func TestUpgradeHomebrewFollowsFormulaToCaskMigration(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("the Homebrew path refuses root")
+	}
+	t.Setenv("HOME", t.TempDir())
+	prefix := brewFormulaToCaskPrefix(t)
+	h := homebrewDot{prefix: prefix, formula: "dotfiles"}
+	migrate := func() {
+		staged := filepath.Join(prefix, "Caskroom", "dotfiles", "2.0.0")
+		if err := os.MkdirAll(staged, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(staged, "dot"), nil, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		// brew unlinks the formula (its opt link stays) and links the cask.
+		link := filepath.Join(prefix, "bin", "dot")
+		if err := os.Remove(link); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join(staged, "dot"), link); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f := &fakeUpgrade{
+		infos:    []string{formulaJSON("1.0.0", false), caskJSON("2.0.0")},
+		version:  "dot version 2.0.0 (abc)\n",
+		onUpdate: migrate,
+		dotPath:  filepath.Join(prefix, "bin", "dot"),
+	}
+	f.install(t)
+	reload := upgradeReloadLaunchAgents
+	t.Cleanup(func() { upgradeReloadLaunchAgents = reload })
+	var reloaded []homebrewDot
+	upgradeReloadLaunchAgents = func(_ context.Context, _ *Printer, h homebrewDot, _ bool) error {
+		reloaded = append(reloaded, h)
+		return nil
+	}
+	var out bytes.Buffer
+	if err := upgradeHomebrew(context.Background(), &Printer{Out: &out, Err: &out}, h, "1.0.0", "2.0.0", false, 0); err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	want := []string{"brew info --json=v2 --formula dotfiles", "brew update", "brew info --json=v2 --cask dotfiles", "brew upgrade --cask staixbwlb/cask/dotfiles", "dot --version"}
+	if got := f.brewCalls(); !slices.Equal(got, want) {
+		t.Fatalf("calls %q, want %q", got, want)
+	}
+	if !strings.Contains(out.String(), "Homebrew moved dotfiles from the formula to the cask") || !strings.Contains(out.String(), "brew uninstall --formula --force dotfiles") {
+		t.Fatalf("output %q", out.String())
+	}
+	if len(reloaded) != 1 || !reloaded[0].cask {
+		t.Fatalf("reloaded %+v, want one reload for the cask", reloaded)
+	}
+}
+
+// A formula install that brew update did not move, while the tap ships the
+// cask (no Caskroom, or the tap has not retired the formula yet), names the
+// commands that move it (#344).
+func TestUpgradeHomebrewNamesTheCaskForAnUnmigratedFormula(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("the Homebrew path refuses root")
+	}
+	t.Setenv("HOME", t.TempDir())
+	prefix := brewFormulaToCaskPrefix(t)
+	casks := filepath.Join(prefix, "Library", "Taps", "staixbwlb", "homebrew-cask", "Casks")
+	if err := os.MkdirAll(casks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(casks, "dotfiles.rb"), []byte("cask \"dotfiles\" do\nend\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeUpgrade{infos: []string{formulaJSON("1.0.0", false)}}
+	f.install(t)
+	var out bytes.Buffer
+	err := upgradeHomebrew(context.Background(), &Printer{Out: &out, Err: &out}, homebrewDot{prefix: prefix, formula: "dotfiles"}, "1.0.0", "2.0.0", false, 0)
+	if err == nil || !strings.Contains(err.Error(), "brew uninstall --formula --force dotfiles && brew install --cask staixbwlb/cask/dotfiles") {
+		t.Fatalf("err = %v", err)
+	}
+	want := []string{"brew info --json=v2 --formula dotfiles", "brew update", "brew info --json=v2 --formula dotfiles"}
+	if got := f.brewCalls(); !slices.Equal(got, want) {
+		t.Fatalf("calls %q, want %q", got, want)
 	}
 }
 
@@ -479,7 +653,7 @@ func TestReloadDotLaunchAgents(t *testing.T) {
 			relink:      true,
 			upgradeFail: true,
 			attempts:    1,
-			wantErr:     "brew upgrade staixbwlb/cask/dotfiles: exit status 1",
+			wantErr:     "brew upgrade --formula staixbwlb/cask/dotfiles: exit status 1",
 			wantLine:    "Reloaded com.dotfiles.sync",
 		},
 		{
@@ -502,7 +676,7 @@ func TestReloadDotLaunchAgents(t *testing.T) {
 				return upgradeHomebrew(ctx, p, h, "1.0.0", "2.0.0", false, 0)
 			},
 			upgradeFail: true,
-			wantErr:     "brew upgrade staixbwlb/cask/dotfiles: exit status 1",
+			wantErr:     "brew upgrade --formula staixbwlb/cask/dotfiles: exit status 1",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -586,6 +760,64 @@ func TestReloadDotLaunchAgents(t *testing.T) {
 				t.Fatalf("ran with a canceled context: %q", f.canceled)
 			}
 		})
+	}
+}
+
+// For a cask install the reload matches jobs whose program resolves into the
+// Caskroom, and leaves a job running the old formula keg alone (#344).
+func TestReloadDotLaunchAgentsForCask(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("launchd only")
+	}
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := homebrewDot{prefix: filepath.Join(root, "brew"), formula: "dotfiles", cask: true}
+	staged := filepath.Join(h.root(), "2.0.0", "dot")
+	keg := filepath.Join(h.prefix, "Cellar", "dotfiles", "1.0.0", "bin", "dot")
+	for _, f := range []string{staged, keg} {
+		if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(f, nil, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(h.optDot()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(staged, h.optDot()); err != nil {
+		t.Fatal(err)
+	}
+	home := filepath.Join(root, "home")
+	agents := filepath.Join(home, "Library", "LaunchAgents")
+	if err := os.MkdirAll(agents, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, label := range []string{"com.dotfiles.sync", "com.dotfiles.keg"} {
+		if err := os.WriteFile(filepath.Join(agents, label+".plist"), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("HOME", home)
+	domain := guiTarget()
+	programs := map[string]string{"com.dotfiles.sync": h.optDot(), "com.dotfiles.keg": keg}
+	f := &fakeUpgrade{launchd: func(args []string) (string, error) {
+		if args[0] == "print" {
+			if program, ok := programs[strings.TrimPrefix(args[len(args)-1], domain+"/")]; ok {
+				return strings.ReplaceAll(recordedSyncPrint, "<PROGRAM>", program), nil
+			}
+		}
+		return "", nil
+	}}
+	f.install(t)
+	var out bytes.Buffer
+	if err := reloadDotLaunchAgents(context.Background(), &Printer{Out: &out, Err: &out}, h, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); got != "[dry-run] would reload com.dotfiles.sync\n" {
+		t.Fatalf("output %q", got)
 	}
 }
 

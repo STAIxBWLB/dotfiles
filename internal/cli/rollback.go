@@ -37,6 +37,9 @@ func standaloneDotBinary(home, version string) string {
 }
 
 func homebrewVersionControlError(brew homebrewDot) error {
+	if brew.cask {
+		return fmt.Errorf("this dot version is owned by the Homebrew cask; --version and rollback cannot change it; use `%s upgrade --cask %s` for the cask version", brew.brew(), brew.formula)
+	}
 	return fmt.Errorf("this dot version is owned by Homebrew; --version and rollback cannot change it; use `%s upgrade %s` for the formula version or `brew extract --version=<version> %s <your-tap>` to manage an older release with Homebrew", brew.brew(), brew.formula, brew.formula)
 }
 

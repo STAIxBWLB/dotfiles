@@ -318,7 +318,7 @@ func TestCanonicalHomebrewRecipeIsNativeOnlyAndExact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !canonicalFormulaMatches(source, "2.70.34", []byte(checksums.String())) {
+	if !canonicalRecipeMatches(canonicalGoReleaserFormula, source, "2.70.34", []byte(checksums.String())) {
 		t.Fatal("accepted canonical generated formula")
 	}
 	for _, mutation := range []string{
@@ -327,9 +327,122 @@ func TestCanonicalHomebrewRecipeIsNativeOnlyAndExact(t *testing.T) {
 		strings.Replace(source, "  test do", "  post_install do\n    system \"sh\", \"-c\", \"touch /tmp/pwned\"\n  end\n\n  test do", 1),
 		strings.Replace(source, "dot_2.70.34_darwin_arm64.tar.gz", "attacker.tar.gz", 1),
 	} {
-		if canonicalFormulaMatches(mutation, "2.70.34", []byte(checksums.String())) {
+		if canonicalRecipeMatches(canonicalGoReleaserFormula, mutation, "2.70.34", []byte(checksums.String())) {
 			t.Errorf("accepted changed Homebrew formula source:\n%s", mutation)
 		}
+	}
+}
+
+// The canonical cask pairs each archive's checksum with its own URL and
+// accepts nothing else (#344).
+func TestCanonicalHomebrewCaskIsExact(t *testing.T) {
+	checksums := formulaChecksums("2.76.0")
+	source, err := canonicalGoReleaserCask("2.76.0", checksums)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !canonicalRecipeMatches(canonicalGoReleaserCask, source, "2.76.0", checksums) {
+		t.Fatal("rejected the canonical cask")
+	}
+	for i, asset := range []string{"darwin_amd64", "darwin_arm64", "linux_amd64", "linux_arm64"} {
+		pair := fmt.Sprintf("sha256 \"%064x\"\n      url \"https://github.com/STAIxBWLB/dotfiles/releases/download/v#{version}/dot_#{version}_%s.tar.gz\"", i+1, asset)
+		if !strings.Contains(source, pair) {
+			t.Errorf("%s checksum is not paired with its URL", asset)
+		}
+	}
+	for _, mutation := range []string{
+		strings.Replace(source, `"/usr/bin/xattr"`, `"/bin/sh"`, 1),
+		strings.Replace(source, "  binary \"dot\"\n", "  depends_on formula: \"openssl\"\n  binary \"dot\"\n", 1),
+		strings.Replace(source, "dot_#{version}_darwin_arm64.tar.gz", "attacker.tar.gz", 1),
+		strings.Replace(source, `version "2.76.0"`, `version "2.76.1"`, 1),
+	} {
+		if canonicalRecipeMatches(canonicalGoReleaserCask, mutation, "2.76.0", checksums) {
+			t.Errorf("accepted changed Homebrew cask source:\n%s", mutation)
+		}
+	}
+}
+
+// A cask install takes the verified-prebuilt path on the exact tap cask and
+// the installed Caskroom version; a formula pin record does not apply to it
+// (#344).
+func TestPrebuiltHomebrewCaskEligibility(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("the Homebrew update path refuses root")
+	}
+	_, goarch, err := supportedNativeReleaseTarget()
+	if err != nil || runtime.GOARCH != goarch {
+		t.Skip("the current process cannot run the native Homebrew prebuilt path")
+	}
+	for _, name := range []string{"HOMEBREW_DEVELOPER", "HOMEBREW_TESTS", "HOMEBREW_FORCE_VENDOR_RUBY", "HOMEBREW_USE_RUBY_FROM_PATH", "HOMEBREW_XDG_CONFIG_HOME"} {
+		t.Setenv(name, "")
+	}
+	for _, name := range []string{"HOMEBREW_NO_AUTO_UPDATE", "HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK", "HOMEBREW_NO_INSTALL_CLEANUP"} {
+		t.Setenv(name, "1")
+	}
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	run := upgradeRun
+	t.Cleanup(func() { upgradeRun = run })
+	upgradeRun = func(ctx context.Context, show bool, name string, args ...string) (string, error) {
+		if len(args) == 1 && args[0] == "--version" && filepath.Base(name) == "dot" {
+			return "dot version 2.70.34 (abc)\n", nil
+		}
+		return run(ctx, show, name, args...)
+	}
+	prefix := t.TempDir()
+	h := homebrewDot{prefix: prefix, formula: "dotfiles", cask: true}
+	staged := filepath.Join(prefix, "Caskroom", "dotfiles", "2.70.34")
+	casks := filepath.Join(prefix, "Library", "Taps", "staixbwlb", "homebrew-cask", "Casks")
+	for _, dir := range []string{filepath.Join(prefix, "bin"), filepath.Join(prefix, "Library", "Homebrew"), casks, staged} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeReadyHomebrewRuby(t, prefix)
+	if err := os.WriteFile(h.brew(), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(self)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(staged, "dot"), data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(staged, "dot"), h.optDot()); err != nil {
+		t.Fatal(err)
+	}
+	checksums := formulaChecksums("2.70.35")
+	cask, err := canonicalGoReleaserCask("2.70.35", checksums)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caskPath := filepath.Join(casks, "dotfiles.rb")
+	if err := os.WriteFile(caskPath, []byte(cask), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pinDir := filepath.Join(prefix, "var", "homebrew", "pinned")
+	if err := os.MkdirAll(pinDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(staged, filepath.Join(pinDir, "dotfiles")); err != nil {
+		t.Fatal(err)
+	}
+	if why := prebuiltIneligibility(context.Background(), h, "2.70.34", "2.70.35", checksums); why != "" {
+		t.Fatalf("rejected the canonical cask with the exact installed version: %s", why)
+	}
+	if why := prebuiltIneligibility(context.Background(), h, "2.70.33", "2.70.35", checksums); !strings.Contains(why, "the Homebrew cask holds 2.70.34") {
+		t.Fatalf("a cask that is not the running version must be refused with its own reason, got %q", why)
+	}
+	if err := os.WriteFile(caskPath, []byte(strings.Replace(cask, `"/usr/bin/xattr"`, `"/bin/sh"`, 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if why := prebuiltIneligibility(context.Background(), h, "2.70.34", "2.70.35", checksums); !strings.Contains(why, "not the canonical release cask") {
+		t.Fatalf("a modified cask must be refused with its own reason, got %q", why)
 	}
 }
 
