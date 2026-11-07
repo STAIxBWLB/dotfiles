@@ -40,6 +40,7 @@ dot [flags]
 * [dot diff](dot_diff.md)	 - Show pending changes without applying
 * [dot doctor](dot_doctor.md)	 - Check workspace tool installation status
 * [dot guard](dot_guard.md)	 - Claude Code safety hooks (careful warnings + freeze boundary)
+* [dot hub](dot_hub.md)	 - Open a registered project's agent-hub console, status or dashboard
 * [dot init](dot_init.md)	 - Interactive setup for dot
 * [dot layouts](dot_layouts.md)	 - List available workspace layouts
 * [dot list](dot_list.md)	 - List registered projects and active tmux sessions

@@ -76,7 +76,17 @@ _tmux_has_session() {
 
 if _tmux_has_session "$SESSION"; then
   echo "Resuming session: $SESSION"
+  # A live session is never rebuilt: a requested layout applies only to a new one.
+  if [ -n "${DOT_LAYOUT_REQUESTED:-}" ]; then
+    echo "The existing layout is kept unchanged; --layout $LAYOUT applies only to a new session (dot stop $SESSION first)."
+  fi
   exec tmux attach-session -t "$SESSION"
+fi
+
+# The ahub layouts size the new session to this terminal.
+if size=$(stty size </dev/tty 2>/dev/null); then
+  read -r DOT_ROWS DOT_COLS <<<"$size"
+  export DOT_ROWS DOT_COLS
 fi
 
 # Session doesn't exist — create it

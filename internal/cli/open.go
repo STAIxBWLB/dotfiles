@@ -24,7 +24,7 @@ If the project is not registered, you'll be prompted to register it.`,
 		Args: cobra.ExactArgs(1),
 		RunE: runOpen,
 	}
-	cmd.Flags().String("layout", "", "Layout to use (dev, claude, monitor)")
+	cmd.Flags().String("layout", "", "Layout to use (dev, claude, monitor, ahub, ahub-compact); a running session keeps its layout")
 	cmd.Flags().String("theme", "", "Theme to use (default, dracula, nord, catppuccin, tokyo-night)")
 	cmd.Flags().Bool("install-optional", false, "Also install optional tools (lazygit, btop, yazi, eza)")
 	return cmd
@@ -91,11 +91,16 @@ func runOpen(cmd *cobra.Command, args []string) error {
 	layout := cfg.EffectiveLayout(proj)
 	theme := cfg.EffectiveTheme(proj)
 
+	env := os.Environ()
 	if flagLayout, _ := cmd.Flags().GetString("layout"); flagLayout != "" {
 		if !workspace.IsValidLayout(flagLayout) {
 			return fmt.Errorf("unknown layout %q; valid: %v", flagLayout, workspace.ValidLayouts())
 		}
 		layout = flagLayout
+		env = append(env, "DOT_LAYOUT_REQUESTED=1")
+	}
+	if workspace.IsAhubLayout(layout) {
+		env = append(env, workspace.AhubPeerEnv(workspace.AhubPeers(proj.Path))...)
 	}
 	if flagTheme, _ := cmd.Flags().GetString("theme"); flagTheme != "" {
 		if !workspace.IsValidTheme(flagTheme) {
@@ -141,7 +146,7 @@ func runOpen(cmd *cobra.Command, args []string) error {
 	p.Line("  Opening workspace: %s (layout=%s, theme=%s)", name, layout, theme)
 	if err := syscall.Exec(bashPath, []string{
 		"bash", launcher, name, proj.Path, layout, theme,
-	}, os.Environ()); err != nil {
+	}, env); err != nil {
 		return fmt.Errorf("exec %s %s: %w", bashPath, launcher, err)
 	}
 	return nil
