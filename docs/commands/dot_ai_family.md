@@ -38,6 +38,7 @@ daemon from ~/.agenthub/releases. After ahub activates, run the printed
 ### SEE ALSO
 
 * [dot ai](dot_ai.md)	 - AI CLI/config helpers and settings backup/restore
-* [dot ai family install](dot_ai_family_install.md)	 - Install a version of a family tool and make it current
+* [dot ai family install](dot_ai_family_install.md)	 - Install family tools and make each one current
 * [dot ai family status](dot_ai_family_status.md)	 - Show each family tool's current and previous versions
+* [dot ai family update](dot_ai_family_update.md)	 - Move installed family tools to the registry's latest version
 

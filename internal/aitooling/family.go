@@ -14,12 +14,12 @@ import (
 	"github.com/STAIxBWLB/dotfiles/internal/resourceguard"
 )
 
-// Family tools (#319, #335, #318): ahub, amem, vmem and ares (and acon once published) install side by side, one npm prefix per
+// Family tools (#319, #335, #318, #356): ahub, amem, vmem, acon and ares install side by side, one npm prefix per
 // version under ~/.local/share/dotfiles/tools/<id>/<version>/. The `current` link names the active
 // version and `previous` the one before it; ~/.local/bin/<bin> points through `current`. Switching
 // `current` is one rename: new sessions start the new version and running ones keep their files.
 
-// FamilyTool is one family tool; an empty Package means it has no published npm package yet.
+// FamilyTool is one family tool and the npm package that ships it.
 type FamilyTool struct{ ID, Package, Binary string }
 
 func FamilyTools() []FamilyTool {
@@ -29,7 +29,7 @@ func FamilyTools() []FamilyTool {
 		{"ahub", "@staix/agent-hub", "ahub"},
 		{"amem", "@staix/agent-mem", "amem"},
 		{"vmem", "@staix/vault-mem", "vmem"},
-		{"acon", "", "acon"},
+		{"acon", "@staix/agent-console", "acon"},
 		{"ares", "@staix/agent-research", "ares"},
 	}
 }
@@ -74,11 +74,6 @@ func (e *Engine) FamilyInstall(ctx context.Context, id, version string, adopt bo
 		return FamilyResult{}, err
 	}
 	r := FamilyResult{ID: id}
-	if t.Package == "" {
-		r.Status = "skipped"
-		r.Notes = []string{id + " has no published npm package yet; nothing was installed"}
-		return r, nil
-	}
 	if version == "" {
 		if version, err = e.latest(ctx, "https://registry.npmjs.org/"+t.Package+"/latest"); err != nil {
 			return r, fmt.Errorf("%s latest version: %w", t.Package, err)
@@ -90,6 +85,12 @@ func (e *Engine) FamilyInstall(ctx context.Context, id, version string, adopt bo
 	}
 	dir := filepath.Join(e.FamilyRoot(), id, version)
 	if e.opts.DryRun {
+		r.Current = readVersionLink(filepath.Join(e.FamilyRoot(), id, "current"))
+		if r.Current == version {
+			r.Status = "active"
+			r.Notes = []string{version + " is already current"}
+			return r, nil
+		}
 		r.Status = "planned"
 		r.Notes = []string{fmt.Sprintf("would install %s@%s into %s and make it current", t.Package, version, dir)}
 		return r, nil
@@ -243,7 +244,7 @@ func (e *Engine) familyActivate(ctx context.Context, t FamilyTool, version strin
 		bin := filepath.Join(toolDir, version, "bin", t.Binary)
 		r.Notes = append(r.Notes, fmt.Sprintf("to move the shared Claude plugin to %s, run: %s setup, then restart Claude sessions. dot did not run it", version, bin))
 	}
-	if (t.ID == "ahub" || t.ID == "ares") && e.find("bun") == "" {
+	if (t.ID == "ahub" || t.ID == "ares" || t.ID == "acon") && e.find("bun") == "" {
 		r.Notes = append(r.Notes, t.ID+" runs on bun, which is not on PATH; install bun before starting it")
 	}
 	return r, nil
@@ -366,12 +367,8 @@ func (e *Engine) FamilyStatus() []FamilyResult {
 	for _, t := range FamilyTools() {
 		toolDir := filepath.Join(e.FamilyRoot(), t.ID)
 		r := FamilyResult{ID: t.ID, Current: readVersionLink(filepath.Join(toolDir, "current")), Previous: readVersionLink(filepath.Join(toolDir, "previous")), Versions: familyVersions(toolDir)}
-		switch {
-		case t.Package == "":
-			r.Status = "unpublished"
-		case r.Current == "":
-			r.Status = "not-installed"
-		default:
+		r.Status = "not-installed"
+		if r.Current != "" {
 			r.Status = "active"
 			if got := readLinkAbs(e.familyLink(t)); got != filepath.Join(toolDir, "current", "bin", t.Binary) {
 				r.Notes = []string{e.familyLink(t) + " does not point at current"}

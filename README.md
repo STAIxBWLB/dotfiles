@@ -244,8 +244,12 @@ separately from installation status. Missing authentication or trust remains a
 user action; setup does not copy credentials or approve hooks. A saved selection
 that still lists the retired `claude-mem` add-on is read without it.
 
-The agent-hub family tools ahub, amem, vmem and ares (acon once it publishes an
-npm package) install side by side with `dot ai family install <id> [--version X.Y.Z]`.
+The agent-hub family tools ahub, amem, vmem, acon and ares install side by side
+with `dot ai family install <id>... [--version X.Y.Z]` (`--all` for every one),
+and `dot ai family update [id...]` moves each installed tool to the registry's
+latest version; `--dry-run` on either shows which tools are already current and
+which would move, and writes nothing. Tools run one after another, and a failure
+on one does not stop the others.
 For ahub this covers the global CLI only: `ahub upgrade` still runs each
 project's daemon from `~/.agenthub/releases`, and dot never touches that.
 Each version gets its own npm prefix in `~/.local/share/dotfiles/tools/<id>/<version>/`,
@@ -259,10 +263,13 @@ is never replaced). After amem, vmem or ares activates, dot prints the
 `<tool> setup <target> --root ...` line that registers that release with an
 agent; it does not run it. After ahub activates, dot prints the `ahub setup`
 line that moves the shared Claude plugin to the same version; it does not run
-it either. For ahub and ares it also notes when `bun`, their runtime, is not on
-PATH.
+it either. For ahub, acon and ares it also notes when `bun`, their runtime, is
+not on PATH.
 
 ```bash
+dot ai family install --all       # every family tool, latest release
+dot ai family update --dry-run    # which installed tools have a newer release
+dot ai family update              # move every installed tool to its latest
 dot ai family install amem --version 0.17.0
 dot ai family status
 dot ai rollback amem              # previous becomes current again

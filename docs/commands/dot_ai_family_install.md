@@ -1,17 +1,25 @@
 ## dot ai family install
 
-Install a version of a family tool and make it current
+Install family tools and make each one current
+
+### Synopsis
+
+Install each named family tool, or every one with --all, and make it current.
+
+Tools are installed one after another; a failure on one does not stop the
+others, and the command exits non-zero naming each tool that failed.
 
 ```
-dot ai family install <id> [flags]
+dot ai family install <id>... | --all [flags]
 ```
 
 ### Options
 
 ```
       --adopt            Repoint an existing ~/.local/bin/<bin> symlink from another install; that install is left in place
+      --all              Install every family tool
   -h, --help             help for install
-      --version string   Exact X.Y.Z version to install (default: the registry's latest)
+      --version string   Exact X.Y.Z version to install, with one id (default: the registry's latest)
 ```
 
 ### Options inherited from parent commands

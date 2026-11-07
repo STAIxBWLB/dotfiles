@@ -123,21 +123,17 @@ func TestFamilyInstallActivateAndRollback(t *testing.T) {
 		t.Fatalf("current = %q", got)
 	}
 	st := e.FamilyStatus()
-	if st[1].ID != "amem" || st[1].Current != "2.0.0" || st[1].Status != "active" || len(st[1].Notes) != 0 || st[3].Status != "unpublished" || st[0].Status != "not-installed" || st[2].Status != "not-installed" {
+	if st[1].ID != "amem" || st[1].Current != "2.0.0" || st[1].Status != "active" || len(st[1].Notes) != 0 || st[3].Status != "not-installed" || st[0].Status != "not-installed" || st[2].Status != "not-installed" {
 		t.Fatalf("status = %+v", st)
 	}
 }
 
-func TestFamilyInstallLatestDryRunAndUnpublished(t *testing.T) {
+func TestFamilyInstallLatestAndDryRun(t *testing.T) {
 	e := testEngine(t)
 	calls := 0
 	fakeFamilyNPM(t, e, &calls)
 	ctx := context.Background()
 
-	r, err := e.FamilyInstall(ctx, "acon", "", false)
-	if err != nil || r.Status != "skipped" || !hasNote(r, "no published npm package") {
-		t.Fatalf("acon = %+v, %v", r, err)
-	}
 	if _, err := e.FamilyInstall(ctx, "nope", "", false); err == nil {
 		t.Fatal("unknown tool accepted")
 	}
@@ -145,7 +141,7 @@ func TestFamilyInstallLatestDryRunAndUnpublished(t *testing.T) {
 		t.Fatal("non-semver version accepted")
 	}
 	e.opts.DryRun = true
-	r, err = e.FamilyInstall(ctx, "vmem", "", false)
+	r, err := e.FamilyInstall(ctx, "vmem", "", false)
 	if err != nil || r.Status != "planned" || !hasNote(r, "@staix/vault-mem@2.0.0") || calls != 0 {
 		t.Fatalf("dry run = %+v, %v", r, err)
 	}
@@ -157,6 +153,12 @@ func TestFamilyInstallLatestDryRunAndUnpublished(t *testing.T) {
 	if err != nil || r.Current != "2.0.0" || !hasNote(r, "vmem setup <target>") {
 		t.Fatalf("latest install = %+v, %v", r, err)
 	}
+	// A dry run against the version already current says so instead of planning a reinstall.
+	e.opts.DryRun = true
+	if r, err = e.FamilyInstall(ctx, "vmem", "", false); err != nil || r.Status != "active" || !hasNote(r, "already current") {
+		t.Fatalf("dry run at latest = %+v, %v", r, err)
+	}
+	e.opts.DryRun = false
 	if _, err := e.FamilyRollback(ctx, "vmem"); err == nil {
 		t.Fatal("rollback without a previous version succeeded")
 	}
