@@ -25,10 +25,25 @@ func TestHeavyweightInventoryClassification(t *testing.T) {
 	for _, tc := range []struct {
 		name, args string
 		want       bool
-	}{{"cargo", "cargo test --lib", true}, {"go", "go test ./...", true}, {"cp", "cp -cR /x/target /y/target", true}, {"node", "node /x/playwright test", true}, {"go", "go version", false}, {"ps", "ps -axo pid", false}, {"git", "git status", false}, {"node", "node server.js", false}} {
+	}{{"cargo", "cargo test --lib", true}, {"go", "go test ./...", true}, {"cp", "cp -cR /x/target /y/target", true}, {"node", "node /x/playwright test", true}, {"go", "go version", false}, {"ps", "ps -axo pid", false}, {"git", "git status", false}, {"node", "node server.js", false},
+		// #341: a wrapper's command after "--" runs elsewhere.
+		{"python", "python remote_dev.py verify /repo -- bun install --frozen-lockfile", false},
+		{"python3", "python3 -m pip install x", true}, {"python", "python -m pytest", true}, {"node", "node node_modules/.bin/vitest", true},
+		{"python", "python -m pytest -- tests/", true}} {
 		if got := heavyweight(tc.name, tc.args); got != tc.want {
 			t.Errorf("%s %s: got %t", tc.name, tc.args, got)
 		}
+	}
+}
+
+func TestWrapperForwardedCommandIsNotMaintenance(t *testing.T) {
+	rows := []processRow{{pid: 10, ppid: 1, name: "python", args: "python remote_dev.py verify /repo -- bun install --frozen-lockfile"}, {pid: 11, ppid: 1, name: "python", args: "python -m pip install x"}}
+	jobs, err := unownedHeavyJobs(rows, map[int]int{10: 1, 11: 1}, 99, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(jobs) != 1 || jobs[0].PID != 11 || !jobs[0].Maintenance {
+		t.Fatalf("want only the local pip install as maintenance work, got %+v", jobs)
 	}
 }
 
