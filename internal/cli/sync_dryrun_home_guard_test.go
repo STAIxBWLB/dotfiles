@@ -126,7 +126,7 @@ func (f *syncCLIFixture) setupPeerPreview(t *testing.T) {
 	// remote command locally. Everything after the host token is rejoined
 	// with spaces the way sshd delivers it.
 	status := fmt.Sprintf(
-		`{"schemaVersion":%d,"kind":"peer","profile":{"configured":true,"owner":%q,"workspacePath":%q,"target":{"path":%q}}}`,
+		`{"schemaVersion":%d,"kind":"peer","dotVersion":"9.9.9 (fake)","profile":{"configured":true,"owner":%q,"workspacePath":%q,"target":{"path":%q}}}`,
 		syncer.PeerStatusSchemaVersion, owner, peer, f.local)
 	script := "#!/bin/sh\n" +
 		"while [ $# -gt 0 ]; do\n" +

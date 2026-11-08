@@ -217,30 +217,28 @@ func TestPeerFence(t *testing.T) {
 		return s
 	}
 
-	// AC8: a previous-release peer (no version, no epoch) with the same owner
-	// proceeds exactly as today, flagged legacy for the skip message.
-	demote, legacy, err := peerFence(cfg, remote("mac-a", 0, ""))
-	if err != nil || demote || !legacy {
-		t.Fatalf("same-owner old remote: demote=%v legacy=%v err=%v", demote, legacy, err)
+	// A peer whose dot predates epochs (it reports no version) is refused
+	// with the update that fixes it, whatever its owner (#374).
+	for _, owner := range []string{"mac-a", "mac-b", ""} {
+		demote, err := peerFence(cfg, remote(owner, 0, ""))
+		if demote || err == nil || !strings.Contains(err.Error(), "dot update") {
+			t.Fatalf("pre-epoch peer owned by %q: demote=%v err=%v", owner, demote, err)
+		}
 	}
-	// AC8 + AC6: a remote without epoch support refuses through the existing
-	// owner-mismatch check.
-	if _, _, err := peerFence(cfg, remote("mac-b", 0, "")); err == nil {
-		t.Fatal("old remote with a different owner did not refuse")
+	// A current-release peer that simply predates any owner change proceeds.
+	if _, err := peerFence(cfg, remote("mac-a", 0, "1.2.3")); err != nil {
+		t.Fatalf("epoch-0 current remote: err=%v", err)
 	}
-	// A current-release peer that simply predates any owner change is not
-	// flagged legacy.
-	if _, legacy, err := peerFence(cfg, remote("mac-a", 0, "1.2.3")); err != nil || legacy {
-		t.Fatalf("epoch-0 current remote: legacy=%v err=%v", legacy, err)
-	}
+	var demote bool
+	var err error
 	// Higher remote epoch wins: demote.
-	demote, _, err = peerFence(cfg, remote("mac-b", 3, "1.2.3"))
+	demote, err = peerFence(cfg, remote("mac-b", 3, "1.2.3"))
 	if err != nil || !demote {
 		t.Fatalf("higher remote epoch: demote=%v err=%v", demote, err)
 	}
 	// A higher remote epoch with no owner refuses instead of demoting to no
 	// owner (#202).
-	demote, _, err = peerFence(cfg, remote("", 3, "1.2.3"))
+	demote, err = peerFence(cfg, remote("", 3, "1.2.3"))
 	if demote || err == nil || !strings.Contains(err.Error(), "no owner") || !strings.Contains(err.Error(), "dot peer adopt --owner 'mac-a' --epoch 2") {
 		t.Fatalf("higher remote epoch, no owner: demote=%v err=%v", demote, err)
 	}
@@ -248,46 +246,37 @@ func TestPeerFence(t *testing.T) {
 	// where the cleared peer also passes its own guard.
 	cleared := remote("", 2, "1.2.3")
 	cleared.Profile.CanPush = true
-	if demote, _, err := peerFence(cfg, cleared); demote || err == nil || !strings.Contains(err.Error(), "dot peer adopt --owner 'mac-a' --epoch 2") {
+	if demote, err := peerFence(cfg, cleared); demote || err == nil || !strings.Contains(err.Error(), "dot peer adopt --owner 'mac-a' --epoch 2") {
 		t.Fatalf("equal epoch, no owner: demote=%v err=%v", demote, err)
-	}
-	// A peer whose dot predates epochs has no adopt: its fix is --set there.
-	legacyCleared := remote("", 0, "")
-	legacyCleared.Profile.CanPush = true
-	if _, _, err := peerFence(cfg, legacyCleared); err == nil || !strings.Contains(err.Error(), "dot sync owner --profile=peer --set 'mac-a'") || strings.Contains(err.Error(), "dot peer adopt --owner") {
-		t.Fatalf("legacy peer, no owner: %v", err)
 	}
 	// A peer with no owner below this Mac's epoch is not a coordinator.
 	lower := remote("", 1, "1.2.3")
 	lower.Profile.CanPush = true
-	if demote, _, err := peerFence(cfg, lower); demote || err != nil {
+	if demote, err := peerFence(cfg, lower); demote || err != nil {
 		t.Fatalf("lower epoch, no owner: demote=%v err=%v", demote, err)
 	}
 	// This Mac recording no owner is told to record the peer's, not --set
 	// itself past the coordinator.
 	clearedHere := *cfg
 	clearedHere.Owner = ""
-	if _, _, err := peerFence(&clearedHere, remote("mac-b", 3, "1.2.3")); err == nil || !strings.Contains(err.Error(), "dot peer adopt --owner 'mac-b' --epoch 3") {
+	if _, err := peerFence(&clearedHere, remote("mac-b", 3, "1.2.3")); err == nil || !strings.Contains(err.Error(), "dot peer adopt --owner 'mac-b' --epoch 3") {
 		t.Fatalf("no owner here: %v", err)
-	}
-	if _, _, err := peerFence(&clearedHere, remote("mac-b", 0, "")); err == nil || !strings.Contains(err.Error(), "dot sync owner --profile=peer --set 'mac-b'") {
-		t.Fatalf("no owner here, legacy peer: %v", err)
 	}
 	// And dot peer setup's owner check, which advised --set on both Macs.
 	if err := ownerMatchError(fenceSide{Owner: "mac-a", Epoch: 2}, fenceSide{CanPush: true}); err == nil || !strings.Contains(err.Error(), "dot peer adopt --owner 'mac-a' --epoch 2") || strings.Contains(err.Error(), "--set") {
 		t.Fatalf("setup check, no owner: %v", err)
 	}
 	// Higher local epoch wins: proceed.
-	demote, _, err = peerFence(cfg, remote("mac-b", 1, "1.2.3"))
+	demote, err = peerFence(cfg, remote("mac-b", 1, "1.2.3"))
 	if err != nil || demote {
 		t.Fatalf("lower remote epoch: demote=%v err=%v", demote, err)
 	}
 	// Equal epochs with different owners refuse on both sides.
-	if _, _, err := peerFence(cfg, remote("mac-b", 2, "1.2.3")); err == nil || !strings.Contains(err.Error(), "equal owner epochs") {
+	if _, err := peerFence(cfg, remote("mac-b", 2, "1.2.3")); err == nil || !strings.Contains(err.Error(), "equal owner epochs") {
 		t.Fatalf("equal epochs different owners: err=%v", err)
 	}
 	// Equal epochs, same owner: normal run.
-	if _, _, err := peerFence(cfg, remote("mac-a", 2, "1.2.3")); err != nil {
+	if _, err := peerFence(cfg, remote("mac-a", 2, "1.2.3")); err != nil {
 		t.Fatalf("equal epochs same owner: err=%v", err)
 	}
 }
@@ -714,44 +703,23 @@ func TestPeerSyncEqualEpochDifferentOwnersRefuses(t *testing.T) {
 	}
 }
 
-// AC8: a pair with one side on the previous release keeps syncing files
-// exactly as today; the new features are skipped with a message.
-func TestPeerSyncWithLegacyPeerStillSyncs(t *testing.T) {
+// A peer whose dot predates owner epochs (it reports no version) is refused
+// before any transfer, with the update that fixes it (#374).
+func TestPeerSyncRefusesPeerWithoutEpochs(t *testing.T) {
 	sb := newPeerHandoverSandbox(t, peerStatusFields{epoch: 0, dotVersion: ""}, 0)
-	var events []PeerEvent
-	res, err := PeerSync(context.Background(), PeerSyncOptions{
+	_, err := PeerSync(context.Background(), PeerSyncOptions{
 		Config:   sb.cfg,
 		Runner:   peerScheduleRunner(false),
 		Probe:    peerScheduleRunner(false),
 		SkipHome: true,
-		Progress: func(e PeerEvent) { events = append(events, e) },
 	})
-	if err != nil {
-		t.Fatalf("PeerSync: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "dot update") {
+		t.Fatalf("err = %v, want a refusal naming dot update", err)
 	}
-	if !res.Complete {
-		t.Fatalf("result = %+v, want complete", res)
-	}
-	if _, err := os.Stat(filepath.Join(sb.local, "peer-only.txt")); err != nil {
-		t.Error("files did not sync with a legacy peer")
-	}
-	var legacyNotice bool
-	for _, e := range events {
-		if e.Kind == PeerEventPeerLacksHandover {
-			legacyNotice = true
-			// #176: the notice names the binary the run talked to.
-			if !strings.Contains(e.Path, "/dot (dot version 9.9.9 (fake))") {
-				t.Errorf("legacy notice %q lacks the peer binary path and version", e.Path)
-			}
-		}
-	}
-	if !legacyNotice {
-		t.Error("no legacy-peer notice emitted")
+	if _, err := os.Stat(filepath.Join(sb.local, "peer-only.txt")); !os.IsNotExist(err) {
+		t.Error("a refused run transferred files")
 	}
 }
-
-// ── owner re-check before the first remote mutation ───────────────────────
-
 func TestRecheckPeerOwnerBeforeMutation(t *testing.T) {
 	okSandbox := newPeerHandoverSandbox(t, peerStatusFields{epoch: 1, dotVersion: "dev"}, 1)
 	if err := recheckPeerOwnerBeforeMutation(context.Background(), peerScheduleRunner(false), okSandbox.cfg); err != nil {
@@ -931,7 +899,7 @@ func TestPeerHandoverRefusesLegacyPeer(t *testing.T) {
 		Runner: peerScheduleRunner(false),
 		Probe:  peerScheduleRunner(false),
 	})
-	if err == nil || !strings.Contains(err.Error(), "upgrade dot") {
+	if err == nil || !strings.Contains(err.Error(), "dot update") {
 		t.Fatalf("err = %v, want upgrade-required refusal", err)
 	}
 }

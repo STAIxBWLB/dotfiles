@@ -95,8 +95,8 @@ func TestRemoteStatusAndFenceUseTheNewestRelease(t *testing.T) {
 	if status.DotVersion != "2.70.22 (388a398)" || status.OwnerEpoch != 1 {
 		t.Fatalf("status came from the stale build: %+v", status)
 	}
-	if _, legacy, err := peerFence(cfg, status); err != nil || legacy {
-		t.Fatalf("fence fell back to legacy: legacy=%v err=%v", legacy, err)
+	if _, err := peerFence(cfg, status); err != nil {
+		t.Fatalf("fence refused the release build: %v", err)
 	}
 	if cfg.remoteDot.Path != release || len(cfg.remoteDot.Passed) != 1 || !strings.Contains(cfg.remoteDot.Passed[0], stale) {
 		t.Fatalf("resolved %s passed %v", cfg.remoteDot, cfg.remoteDot.Passed)

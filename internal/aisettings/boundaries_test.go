@@ -54,7 +54,6 @@ var pathBoundaryTable = []pathBoundaryEntry{
 	{"AgentsManager.StatePath", classHomeWrite},
 	{"AgentsManager.TargetPath", classHomeWrite},
 	{"AgentsManager.backupTargetPath", classHomeWrite},
-	{"AgentsManager.legacyStatePath", classCallerRooted},
 	{"AmemManager.AntigravityMCPPath", classHomeWrite},
 	{"AmemManager.CopilotMCPPath", classHomeWrite},
 	{"AmemManager.KimiMCPPath", classHomeWrite},
@@ -358,8 +357,6 @@ func resolveCallerRooted(t *testing.T, name, home, root string) string {
 		return (&AgentsManager{HomeDir: home, SSOTDir: root}).SSOTDirPath()
 	case "AgentsManager.SSOTPath":
 		return (&AgentsManager{HomeDir: home, SSOTDir: root}).SSOTPath()
-	case "AgentsManager.legacyStatePath":
-		return (&AgentsManager{HomeDir: home, SSOTDir: root}).legacyStatePath()
 	case "AgentsManager.ssotDir":
 		return (&AgentsManager{HomeDir: home, SSOTDir: root}).ssotDir()
 	case "Engine.AIConfigRoot":

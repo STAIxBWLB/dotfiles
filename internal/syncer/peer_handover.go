@@ -185,18 +185,16 @@ func PushPeerReplica(ctx context.Context, runner *exec.Runner, cfg *Config) erro
 //     because from inside the scheduled job bootout ends the job itself).
 //   - local epoch higher: proceed; the remote demotes itself on its own run.
 //   - equal epochs, different owners: both sides refuse.
-//   - remote without epoch support (a previous release): the pre-epoch
-//     owner-mismatch check decides, and legacy=true asks the caller to say
-//     which features the peer's version lacks.
-func peerFence(cfg *Config, remote *remotePeerStatus) (demote, legacy bool, err error) {
+//   - remote dot older than 2.70.23 (it reports no version): refused; peer
+//     sync needs owner epochs on both sides (#374).
+func peerFence(cfg *Config, remote *remotePeerStatus) (demote bool, err error) {
 	if err := checkRemotePeerTopology(cfg, remote); err != nil {
-		return false, false, err
+		return false, err
 	}
-	demote, err = fenceDecision(localFenceSide(cfg), remoteFenceSide(remote))
-	if remote.OwnerEpoch == 0 && strings.TrimSpace(cfg.Owner) != "" {
-		legacy = remote.DotVersion == ""
+	if strings.TrimSpace(remote.DotVersion) == "" {
+		return false, fmt.Errorf("the other Mac runs a dot older than 2.70.23, which peer sync no longer supports; run `dot update` there (or pin a newer binary with remote_dot in the peer config) and re-run")
 	}
-	return demote, legacy, err
+	return fenceDecision(localFenceSide(cfg), remoteFenceSide(remote))
 }
 
 // fenceSide is one machine's owner record as the fence compares it.
@@ -206,9 +204,6 @@ type fenceSide struct {
 	Aliases []string
 	Epoch   int
 	CanPush bool
-	// Legacy is a peer whose dot predates epochs (no dot version in its
-	// status): it has no `dot peer adopt`.
-	Legacy bool
 }
 
 func localFenceSide(cfg *Config) fenceSide {
@@ -216,17 +211,13 @@ func localFenceSide(cfg *Config) fenceSide {
 }
 
 func remoteFenceSide(r *remotePeerStatus) fenceSide {
-	return fenceSide{Owner: r.Profile.Owner, Aliases: r.Profile.OwnerAliases, Epoch: r.OwnerEpoch, CanPush: r.Profile.CanPush, Legacy: r.DotVersion == ""}
+	return fenceSide{Owner: r.Profile.Owner, Aliases: r.Profile.OwnerAliases, Epoch: r.OwnerEpoch, CanPush: r.Profile.CanPush}
 }
 
 // noPeerOwnerFix is what restores a pair whose other Mac records no owner:
 // it records this Mac's owner at this Mac's epoch (adopt writes the epoch
-// as given), and the next fence proceeds (#202). A peer whose dot predates
-// epochs has no adopt; `--set` there records the owner with no epoch.
+// as given), and the next fence proceeds (#202).
 func noPeerOwnerFix(local, remote fenceSide) string {
-	if remote.Legacy {
-		return fmt.Sprintf("on the other Mac, whose dot predates `dot peer adopt`: dot sync owner --profile=peer --set %s", shellQuote(local.Owner))
-	}
 	return fmt.Sprintf("on the other Mac: dot peer adopt --owner %s --epoch %d", shellQuote(local.Owner), local.Epoch)
 }
 
@@ -238,8 +229,6 @@ func noLocalOwnerFix(remote fenceSide) string {
 	switch {
 	case strings.TrimSpace(remote.Owner) == "":
 		return "set one with `dot sync owner --profile=peer --set <coordinator>`"
-	case remote.Legacy:
-		return fmt.Sprintf("to keep %s coordinating, record it here: dot sync owner --profile=peer --set %s", shellQuote(remote.Owner), shellQuote(remote.Owner))
 	}
 	return fmt.Sprintf("to keep %s coordinating, record it here: dot peer adopt --owner %s --epoch %d", shellQuote(remote.Owner), shellQuote(remote.Owner), remote.Epoch)
 }
@@ -296,7 +285,7 @@ func recheckPeerOwnerBeforeMutation(ctx context.Context, probe *exec.Runner, cfg
 	if err != nil {
 		return fmt.Errorf("peer owner re-check before remote mutation: %w", err)
 	}
-	demote, _, err := peerFence(cfg, remote)
+	demote, err := peerFence(cfg, remote)
 	if err != nil {
 		return fmt.Errorf("peer owner re-check before remote mutation: %w", err)
 	}

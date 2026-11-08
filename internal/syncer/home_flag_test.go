@@ -355,7 +355,7 @@ func TestPeerSchedule_PlistPathFieldsRoundTrip(t *testing.T) {
 		LogFile:   filepath.Join(localPath, "logs", "peer.log"),
 	}
 	binDir := t.TempDir()
-	status := fmt.Sprintf(`{"schemaVersion":%d,"kind":"peer","profile":{"configured":true,"owner":%q,"workspacePath":%q,"target":{"path":%q}}}`,
+	status := fmt.Sprintf(`{"schemaVersion":%d,"kind":"peer","dotVersion":"9.9.9 (fake)","profile":{"configured":true,"owner":%q,"workspacePath":%q,"target":{"path":%q}}}`,
 		PeerStatusSchemaVersion, cfg.Owner, cfg.Target.Path, localPath)
 	writeStub(t, filepath.Join(binDir, "ssh"), "#!/bin/sh\ncase \"$*\" in\n  *\"list dot candidates\"*) printf '/fake/dot\\tdot version 9.9.9 (fake)\\n' ;;\n  *) echo '"+status+"' ;;\nesac\n")
 	writeStub(t, filepath.Join(binDir, "launchctl"), "#!/bin/sh\nexit 0\n")

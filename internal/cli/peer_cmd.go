@@ -164,9 +164,6 @@ func renderPeerEvent(p *Printer) func(syncer.PeerEvent) {
 			p.Warn("no host-path list at %s; skipping", e.Path)
 		case syncer.PeerEventPartialTransfer:
 			reportPartial(p, e.Err)
-		case syncer.PeerEventPeerLacksHandover:
-			p.Warn("peer dot %s predates owner epochs; fence, handover and takeover are skipped on that side", e.Path)
-			p.Line("  Upgrade dot on the peer, or pin a newer binary with remote_dot in the peer config.")
 		case syncer.PeerEventPeerDotUnreleased:
 			p.Warn("peer dot %s is not a release build; install a release there, or pin it with remote_dot in the peer config", e.Path)
 		case syncer.PeerEventDotVersionMismatch:

@@ -25,7 +25,6 @@ const (
 	AgentsSSOTRelPath = ".config/dotfiles/agents"
 	AgentsSSOTName    = "AGENTS.md"
 
-	legacyStateName      = ".state.json"
 	agentsManagedHeader  = "<!-- managed by dot ai agents - edit ~/.config/dotfiles/agents/AGENTS.md -->"
 	agentsOverlayPattern = "<!-- overlay:%s -->"
 )
@@ -229,12 +228,6 @@ func (m *AgentsManager) SSOTDirPath() string {
 // between machines.
 func (m *AgentsManager) StatePath() string {
 	return filepath.Join(m.homeDir(), ".local", "share", "dotfiles", "agents", "state.json")
-}
-
-// legacyStatePath is where the apply state lived before it moved out of the
-// synced SSOT dir. readState migrates it and removeLegacyState deletes it.
-func (m *AgentsManager) legacyStatePath() string {
-	return filepath.Join(m.ssotDir(), legacyStateName)
 }
 
 // DefaultApplyTools returns non-optional tools plus optional tools whose target
@@ -542,9 +535,6 @@ func (m *AgentsManager) Apply(opts ApplyOptions) (*ApplyResult, error) {
 	if !result.DryRun {
 		if err := m.writeState(state); err != nil {
 			return nil, err
-		}
-		if err := m.removeLegacyState(); err != nil {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("legacy agents state not removed (ignored while %s exists): %v", m.StatePath(), err))
 		}
 	}
 	if !m.profilePass && containsAgentID(ids, "codex") {
@@ -913,7 +903,7 @@ func (m *AgentsManager) readState() (*agentsState, error) {
 	data, err := os.ReadFile(m.StatePath())
 	if err != nil {
 		if os.IsNotExist(err) {
-			return m.readLegacyState()
+			return st, nil
 		}
 		return nil, err
 	}
@@ -922,39 +912,6 @@ func (m *AgentsManager) readState() (*agentsState, error) {
 	}
 	if st.LastApplied == nil {
 		st.LastApplied = map[string]string{}
-	}
-	return st, nil
-}
-
-// readLegacyState imports the pre-move state file from the SSOT dir. That dir
-// is synced between machines, so its entries may record another machine's
-// render: only an entry whose hash equals this machine's live target, hashed
-// header-stripped as Apply compares, is kept. The rest, and an unparsable
-// file, are dropped, which Apply reads as "no record". Dropping never adds a
-// conflict: Apply consults the record only for a target that differs from the
-// current render, where a mismatched record conflicts exactly as a missing
-// one does, and a target equal to the current render never conflicts.
-func (m *AgentsManager) readLegacyState() (*agentsState, error) {
-	st := &agentsState{LastApplied: map[string]string{}}
-	data, err := os.ReadFile(m.legacyStatePath())
-	if err != nil {
-		if os.IsNotExist(err) {
-			return st, nil
-		}
-		return nil, err
-	}
-	var legacy agentsState
-	if json.Unmarshal(data, &legacy) != nil {
-		return st, nil
-	}
-	for id, hash := range legacy.LastApplied {
-		target, err := m.TargetPath(id)
-		if err != nil {
-			continue
-		}
-		if body, err := os.ReadFile(target); err == nil && normalizedHash(body) == hash {
-			st.LastApplied[id] = hash
-		}
 	}
 	return st, nil
 }
@@ -970,26 +927,6 @@ func (m *AgentsManager) writeState(st *agentsState) error {
 		return err
 	}
 	return m.runner().WriteFileAtomic(path, data, 0o644)
-}
-
-// removeLegacyState deletes the legacy state file once the machine-local one
-// is written, so a stale copy stops syncing to other machines. A copy that
-// reappears later (synced back from a machine still on an older dot) is
-// ignored by readState and removed again here. The removal is best-effort:
-// the new state already holds the truth, so a failure such as an unwritable
-// SSOT dir is only reported, never allowed to fail the apply.
-func (m *AgentsManager) removeLegacyState() error {
-	legacy := m.legacyStatePath()
-	if _, err := os.Lstat(legacy); err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	if err := m.runner().Remove(legacy); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	return nil
 }
 
 func (m *AgentsManager) backupTarget(toolID, path string) (string, error) {

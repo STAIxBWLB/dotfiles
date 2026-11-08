@@ -97,9 +97,7 @@ Dot-owned state trees:
   `<!-- dotfiles:ares:* -->`, after the
   same SSOT backup), and the selected setup continuity
   policy block (backed up before upgrading an existing SSOT). This dir is synced between
-  machines, so it holds no machine state: every agents apply removes the
-  legacy apply-state file (`.state.json`) from it, best-effort, after
-  migrating the entries that match this machine's targets
+  machines, so it holds no machine state
 - `~/.local/share/dotfiles`: dot's machine-local data tree, holding the
   append-only AI audit log (`ai/events.jsonl`, one record per `dot ai`
   mutation), the agents apply state (`agents/state.json`, the
