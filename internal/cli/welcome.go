@@ -124,9 +124,9 @@ var useSections = []useSection{
 		{"dot apply", "Apply to system (installs packages, shell, git, etc.)"},
 	}},
 	{"Safe apply: preserve existing environment", "Avoid overwriting your current config.", []usecase{
-		{"dot preflight --check-only", "Scan environment, report conflicts"},
-		{"dot preflight", "Generate config file from detected environment"},
-		{"dot check", "Show which modules are satisfied and which need changes"},
+		{"dot init --check-only", "Scan environment, report conflicts"},
+		{"dot init --detect", "Generate config file from detected environment"},
+		{"dot diff --summary", "Show which modules are satisfied and which need changes"},
 		{"dot diff --module shell", "Preview changes for a specific module"},
 		{"dot apply --module shell --module git", "Apply only selected modules"},
 	}},
@@ -138,7 +138,7 @@ var useSections = []useSection{
 		{"dot layouts", "Show available pane layouts"},
 		{"dot hub myproject", "Focus the AHUB console of an ahub workspace"},
 		{"dot hub myproject git", "Focus or add the workspace's git window"},
-		{"dot doctor", "Check which workspace tools are installed"},
+		{"dot layouts doctor", "Check which workspace tools are installed"},
 		{"dot stop myproject", "Stop a running tmux session"},
 	}},
 	{"Workspace cleanup", "Remove junk that wastes disk and slows sync. _sys/ is always protected.", []usecase{
@@ -246,7 +246,7 @@ var useSections = []useSection{
 		{"dot apply --yes", "Apply server profile (no workspace, fonts, gpg, secrets)"},
 	}},
 	{"Troubleshooting", "Diagnose and recover from issues.", []usecase{
-		{"dot doctor", "Check workspace tool installation"},
+		{"dot layouts doctor", "Check workspace tool installation"},
 		{"dot status", "Full environment dashboard at a glance"},
 		{"dot config", "Show loaded configuration and system info"},
 		{"dot sync log 100", "View recent workspace sync log entries"},

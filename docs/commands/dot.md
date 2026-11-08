@@ -33,12 +33,10 @@ dot [flags]
 * [dot apply](dot_apply.md)	 - Apply dot configuration
 * [dot apps](dot_apps.md)	 - macOS app install and settings backup/restore
 * [dot backup](dot_backup.md)	 - One-stop interactive backup (profile, apps, AI, secrets)
-* [dot check](dot_check.md)	 - Check current state against profile
 * [dot clean](dot_clean.md)	 - Remove junk directories (node_modules, caches, venvs) from workspace
 * [dot config](dot_config.md)	 - Show current configuration
 * [dot container](dot_container.md)	 - Shared container command (apple/container on macOS, docker or podman on Linux)
 * [dot diff](dot_diff.md)	 - Show pending changes without applying
-* [dot doctor](dot_doctor.md)	 - Check workspace tool installation status
 * [dot guard](dot_guard.md)	 - Claude Code safety hooks (careful warnings + freeze boundary)
 * [dot hub](dot_hub.md)	 - Open a registered project's agent-hub console, status or dashboard, or its Git or Files window
 * [dot init](dot_init.md)	 - Interactive setup for dot
@@ -47,7 +45,6 @@ dot [flags]
 * [dot noindex](dot_noindex.md)	 - Keep Spotlight out of build and cache directories
 * [dot open](dot_open.md)	 - Launch or resume a tmux workspace
 * [dot peer](dot_peer.md)	 - Sync the workspace directly to another machine over SSH
-* [dot preflight](dot_preflight.md)	 - Check environment and generate config
 * [dot profile](dot_profile.md)	 - Snapshot and restore dot profile state (config, app lists, secrets)
 * [dot reconfigure](dot_reconfigure.md)	 - Re-run init prompts with current values as defaults
 * [dot register](dot_register.md)	 - Register a project for workspace management
