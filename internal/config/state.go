@@ -118,6 +118,64 @@ func applyLegacyKeys(state *UserState, raw []byte) {
 	}
 }
 
+// retiredSkillsTools are skills tool ids that were inventory-only and are no
+// longer managed targets (anchor -> maru rename, July 2026).
+var retiredSkillsTools = map[string]bool{"agents": true, "gemini": true, "antigravity": true}
+
+// retiredCaskTokens maps cask tokens renamed upstream to their current name.
+var retiredCaskTokens = map[string]string{"anchor": "maru-workspace"}
+
+// rewriteRetiredValues replaces values renamed during the anchor -> maru
+// rename with their current form, in memory, the way applyLegacyKeys does for
+// retired keys. The next save writes the current form and prints the
+// migration note. Like applyLegacyKeys it never persists anything itself.
+func rewriteRetiredValues(state *UserState) {
+	skills := &state.Modules.AI.Skills
+	if strings.EqualFold(strings.TrimSpace(skills.Provider), "anchor") {
+		skills.Provider = "maru"
+		state.carriedLegacy = append(state.carriedLegacy, "modules.ai.skills.provider=anchor")
+	}
+	if len(skills.Tools) > 0 {
+		kept := skills.Tools[:0:0]
+		for _, tool := range skills.Tools {
+			if retiredSkillsTools[strings.ToLower(strings.TrimSpace(tool))] {
+				state.carriedLegacy = append(state.carriedLegacy, "modules.ai.skills.tools="+tool)
+				continue
+			}
+			kept = append(kept, tool)
+		}
+		skills.Tools = kept
+	}
+	for _, list := range []*[]string{&state.Modules.MacApps.Casks, &state.Modules.MacApps.CasksExtra, &state.Modules.MacApps.BackupApps} {
+		if !sliceHasRetiredCask(*list) {
+			continue
+		}
+		seen := make(map[string]bool, len(*list))
+		out := make([]string, 0, len(*list))
+		for _, token := range *list {
+			if current, ok := retiredCaskTokens[token]; ok {
+				state.carriedLegacy = append(state.carriedLegacy, "modules.macapps "+token)
+				token = current
+			}
+			if seen[token] {
+				continue
+			}
+			seen[token] = true
+			out = append(out, token)
+		}
+		*list = out
+	}
+}
+
+func sliceHasRetiredCask(tokens []string) bool {
+	for _, t := range tokens {
+		if _, ok := retiredCaskTokens[t]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 // warnForwardSchema reports that a state file was written by a newer dot. It
 // does not fail the load: an additively-forward file still decodes, and an
 // incompatibly-forward one gets this warning before its decode error so the
@@ -551,7 +609,13 @@ func readStateFile(path, noun string) (*UserState, int, error) {
 	if err := yaml.Unmarshal(data, &state); err != nil {
 		return nil, version, fmt.Errorf("parsing %s: %w", noun, err)
 	}
-	applyLegacyKeys(&state, data)
+	// Every save since v2.70.0 stamps schema_version, so a stamped file was
+	// already written in canonical form: a stray legacy key in it is noise,
+	// not data to carry over (#373).
+	if version == 0 {
+		applyLegacyKeys(&state, data)
+	}
+	rewriteRetiredValues(&state)
 	return &state, version, nil
 }
 
