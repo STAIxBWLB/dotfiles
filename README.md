@@ -916,7 +916,7 @@ On defer `dot admit` exits 75 (`EX_TEMPFAIL`) and `--json` prints the machine-re
 
 Same modular Go architecture as [rootfiles](https://github.com/STAIxBWLB/rootfiles).
 
-Interactive blueprint: [docs/architecture/dotfiles-v2-rendered.html](docs/architecture/dotfiles-v2-rendered.html) (spec: [dotfiles-v2.architecture.json](docs/architecture/dotfiles-v2.architecture.json)).
+Package map and data flow: [docs/guides/architecture.md](docs/guides/architecture.md).
 
 ```
 rootfiles (root, server)        dotfiles (user, workstation)
