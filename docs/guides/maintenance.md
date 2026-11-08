@@ -1,32 +1,134 @@
-# Command guide
+# Maintenance, backup and migration
 
-The generated [command reference](commands/) is canonical for command syntax and flags. This companion preserves cross-command operating guidance that cannot be generated from a single Cobra help string.
+## Migrate from another machine
+
+**Option A — one-stop wizard (recommended):**
+
+```bash
+# On the existing machine — one interactive run backs up everything:
+# profile state, macOS app settings, AI/Maru settings, encrypted secrets
+dot backup
+
+# On the new machine (Drive already mounted)
+dot restore                           # pick the source host, restore in safe order
+```
+
+`dot backup` confirms the backup root, lets you pick domains
+(profile/apps/ai/secrets), asks about age keys and AI auth tokens, and
+stamps profile + AI snapshots with one shared tag. `dot restore` supports
+cross-host restore (any machine that backed up into the same root),
+optionally runs `dot apply` after the profile restore, and preserves every
+overwritten local file in per-step pre-restore backups. Unattended:
+`dot backup --yes --scope profile,ai,secrets` / `dot restore --yes --host <src>`.
+
+**Option B — individual commands (advanced; `dot backup` / `dot restore` above are the front door):**
+
+```bash
+# On the existing machine
+dot profile backup --tag "pre-migration" --include-age-key
+dot apps backup                       # also snapshot per-app settings
+dot ai backup                         # portable Claude/Codex/Copilot/Qwen/pi/Antigravity/Maru/MCP settings
+
+# On the new machine (Drive already mounted)
+dot profile restore --include-age-key # restores ~/.config/dotfiles + ~/.ssh/age_key*
+dot apply                             # brew formulas + casks from install list
+dot apps restore                      # plists, Application Support, containers
+dot ai restore                        # Claude/Codex/Copilot/Antigravity/MCP settings
+```
+
+The shared backup root lives in a single cloud folder
+(`<cloud>/secrets/dotfiles-backup` by default) and holds every snapshot the
+user has taken across machines. Auto-detection prefers **Dropbox**
+(`~/Library/CloudStorage/Dropbox` or `~/Dropbox`) and falls back to Google
+Drive — both gated on a `secrets/` marker folder; override anytime with
+`dot profile root <path>`. `dot secrets backup` (no argument) and the
+workspace sync target default follow the same detected cloud root. `profile list` shows
+every version, and
+`profile restore --version <id>` rolls back to any specific one.
+
+**Option C — plain YAML export:**
+
+```bash
+# On the existing machine — export config
+dot config export ~/workspace/secrets/dotfiles-config.yaml
+
+# On the new machine — import and apply
+dot init --from ~/workspace/secrets/dotfiles-config.yaml
+dot apply
+# → gh auth login (if private repos configured)
+# → git clone work/vault repos
+# → symlink federation, shell config, packages...
+```
+
+## Resource-Safe Maintenance
+
+Builds, full test runs and tool updates go through the resource admission
+controller described in [Resource admission](maintenance.md#resource-admission-dot-admit).
+The selected-tooling updates and the scheduled update below hold the same
+slots as `dot admit`.
+
+```bash
+dot ai update schedule status --json
+dot ai update schedule enable
+dot ai update schedule disable
+```
+
+The macOS user LaunchAgent schedules stable updates on Sunday at 04:00 local
+time, with bounded hourly and load/login overdue checks and a one-hour
+minimum attempt interval. Each Sunday 04:00 due window permits at most three
+scheduled attempts, including failed, partial and deferred runs. The persisted
+budget survives restart/re-enable; after exhaustion, hourly checks skip heavy
+probing until the next window. Status exposes remaining attempts and the next
+eligible time. Manual updates do not consume this scheduled budget.
+Scheduling requires explicit opt-in; setup does not
+install or enable a service implicitly. Schedule enablement requires selected agents and healthy
+admission, with `--wait 6m` by default (maximum 10m). Schedule changes reject
+`--home` because launchd controls the current user domain. Enable only after
+the installed binary and admission mechanism have been verified. Busy or pressured hosts defer work; a deferred pass is not an
+up-to-date result. Do not copy `target` or `node_modules` into worktrees and do
+not replay all interrupted jobs after reboot. Keep internal build/test workers
+at two and browser/native E2E workers at one. Peer rollout remains a separate
+per-machine verification step when the peer is reachable.
+
+## Resource admission (`dot admit`)
+
+One controller admits heavy work (builds, full test runs, indexing, bulk copies, dependency and tool updates): at most one heavy job per project repo at a time, shared across all its worktrees, branches, agent sessions and runtime profiles, while different repos run in parallel. Global tool installs and updates share one host-wide maintenance slot instead. `dot admit` and selected-tooling updates use the same slots, pressure history and state:
+
+- `dot admit [--project <checkout>] -- COMMAND` exits 75 at once on host pressure and waits up to `--wait` (default 30 minutes; `--wait 0` fails fast) for a busy slot; `--class maintenance` takes the maintenance slot. The child receives `CARGO_BUILD_JOBS=2`, `RUST_TEST_THREADS=2` and `GOMAXPROCS=2`, replacing inherited values. `--no-limit-threads` keeps the caller's worker settings. `--project` selects both the slot and the child's working directory; `--dry-run` previews without probes or writes.
+- The selected-tooling updates (`dot ai update`, `dot ai tools apply` and the AI module of `dot apply`) take the maintenance slot and defer at once when it is busy; the scheduled update pass waits up to 6 minutes for it, and `dot ai update schedule enable` up to its `--wait` (default 6 minutes, at most 10).
+
+A host-pressure gate defers new work on memory pressure warning/critical, a serious or critical macOS thermal state, CPU idle below 15% or load1 at the CPU count sustained 60s, or a recent WindowServer watchdog termination; after such an episode, recovery requires five continuous minutes of normal telemetry. Both the 60-second CPU excursion and 5-minute recovery require completed samples no more than 45 seconds apart. Missing/stale samples, timestamp rollback, or a larger gap reset the streak, and an active defer stays active until a fresh sequence completes. Missing or failed telemetry always defers: the gate never reports a machine it cannot measure as healthy. Once a slot is held, the admission wrappers also scan the process table for heavy work that holds no slot (builds, tests, installs, bulk copies, or anything at 100% CPU) and defer when it runs in the same repository or its repository is unknown (for the maintenance slot: install, update, upgrade, sync or CI work in any repository). Work inside a live slot holder's process tree is not counted; `dot peer sync` and `dot sync push` hold a background lease while they run (listed by `dot admit status`), so their rsync never defers other work. The scan is a bounded heuristic, not proof that every process on the machine is controlled; the controller never kills other sessions or restarts system services.
+
+`dot update` has a narrowly scoped exception for a verified native release prebuilt. It still takes the host-wide maintenance slot. Memory warning is tolerated only after 30 seconds of fresh healthy samples with no swap-in or swap-out; samples more than 45 seconds apart, missing telemetry, critical memory, serious/critical thermal state, recent WindowServer watchdog, idle below 30%, load1 at or above 70% of CPU count, or any swap activity defer the update. This policy has its own history and does not modify heavy-work admission history. The release must be the exact stable GitHub asset for the native platform, match `checksums.txt`, contain one root `dot` executable and at most the bounded root `LICENSE` and `README.md`, and report the requested version. Limits are 32 MiB compressed archive, 64 MiB binary, 1 MiB per release document, 67 MiB for the entire expanded gzip stream including tar metadata and padding, and 1 MiB for `checksums.txt`. For Homebrew, the installed binary and keg (or Caskroom) version, exact raw recipe under the trusted tap, native URL, checksum, target version, and unpinned state (formula only) must match. The warning-tolerant path also requires Homebrew's existing portable Ruby and Bundler to be ready: the version marker must match the `portable-ruby/current` link and both binaries must be executable. Both default and XDG Homebrew `brew.env` locations are scanned; any active `HOMEBREW_` assignment, Ruby-mode or XDG process override, or relative Homebrew config path sends the operation through the full maintenance gate. Before and after admission, dot checks the recipe, pin, installed version, runtime readiness, the running updater's native architecture, and the current Homebrew opt binary's native architecture. After `brew upgrade`, it verifies both the installed version and native architecture. The canonical recipe has no dependencies; the formula has no post-install hook, and the cask's only hook removes the macOS quarantine attribute from its own `dot`. Any unverified recipe or stale metadata uses the full maintenance gate. A standalone binary can target an existing Homebrew install with `dot update --homebrew`; Homebrew performs the managed update and dot does not write the Cellar directly. This exception does not cover generic refreshes, installs, or other tool updates.
+
+```bash
+dot admit -- make test                                 # one heavy slot per repo
+dot admit --class maintenance -- brew upgrade          # the single host-wide maintenance slot
+dot admit --project . --wait 6m -- cargo test -- --test-threads=2
+dot admit status                                       # owners, pressure evidence, hysteresis countdown
+```
+
+`dot ai run` is a deprecated compatibility command for one release; use `dot admit` for new invocations. The compatibility command retains its 6-minute default wait (maximum 10 minutes), `--project`, dry run and supervised process cleanup.
+
+On defer `dot admit` exits 75 (`EX_TEMPFAIL`) and `--json` prints the machine-readable outcome (`scope`, `owner`, `reason`, `retry_after`). Leases carry pid + start time and a heartbeat, so a crashed owner's slot is reclaimed safely, and a job launched inside an admitted job runs in its parent's slot when it asks for the same scope and class. Thresholds mirror the workspace resource policy. State lives in the real user's `~/.local/state/dot/admission/`; `--home` does not partition it.
+
+---
 
 ## Setup and safe application
 
 `dot init --from <file>` pre-populates identity from another machine, while workspace path and terminal are confirmed locally. Setup covers identity, timezone, profile, GPU detection, module opt-ins, SSH key, workspace repositories, vault location, and GitHub authentication.
 
-For a cautious apply, run `dot init --check-only`, `dot init --detect`, `dot diff --summary`, and `dot apply --dry-run` before a selected module. Files are backed up under `~/.local/share/dotfiles/backup/` before overwrite; an identical SHA256 is not overwritten. `dot config export <file>` creates the portable YAML consumed by `dot init --from <file>`. `dot update` verifies the release checksum and binary; use `dot ai update` for AI CLIs and plugins. From v2.70.29 or earlier, run the curl installer once instead: those updaters refuse a binary over 16 MiB (#231). A Homebrew install updates through its owning brew and reloads dot LaunchAgents that run the new binary (#235): exact verified native tap recipes use the bounded prebuilt admission path, while changed or stale metadata uses the full maintenance gate and `brew update` only when the tap lags. `dot update --homebrew` lets a standalone dot binary target that managed install.
+For a cautious apply, run `dot init --check-only`, `dot init --detect`, `dot diff --summary`, and `dot apply --dry-run` before a selected module. Files are backed up under `~/.local/share/dotfiles/backup/` before overwrite; an identical SHA256 is not overwritten. `dot config export <file>` creates the portable YAML consumed by `dot init --from <file>`. `dot update` verifies the release checksum and binary; use `dot ai update` for AI CLIs and plugins. A Homebrew install updates through its owning brew and reloads dot LaunchAgents that run the new binary: exact verified native tap recipes use the bounded prebuilt admission path, while changed or stale metadata uses the full maintenance gate and `brew update` only when the tap lags. `dot update --homebrew` lets a standalone dot binary target that managed install.
 
 ## Secrets and migration
 
 `dot secrets restore` decrypts to a 0600 temporary file and atomically renames it into place. A differing target is retained as `<dest>.bak-<timestamp>`; identical files remain unchanged. `dot backup` and `dot restore` are the front door: they coordinate profile, apps, AI, and secrets, can run `dot apply` after profile state, and retain pre-restore copies. The per-domain `profile`, `apps`, `ai` and `secrets` backup/restore commands are the advanced path for one domain. `--include-age-key` (formerly `--include-secrets`) adds the plain `~/.ssh/age_key*` identity to a profile snapshot; the `secrets` domain is the encrypted `.age` files. `dot profile prune` and `dot ai prune` each prune only their own snapshot tree.
-
-## Workspace commands
-
-`dot open` requires an explicit subcommand, so `dot aply` cannot accidentally create a project. `dot layouts` offers `dev`, `claude`, and `monitor`; `dot layouts doctor` reports tool paths and optional-tool availability.
-
-For dev builds (no ldflags), `dot version` falls back to Go's embedded VCS info with a `-dirty` suffix if the working tree has uncommitted changes.
 
 ## Cleanup and indexing
 
 `dot clean` always protects `_sys/`. Its safe set includes node modules, Python caches/environments, `.next`, `.cache`, and `.DS_Store`; `--all` adds `dist`, `build`, `out`, and `target` because those can hold deliverables.
 
 `dot noindex` walks project roots but marks cache roots at the top. `~/.claude` is excluded so plans and skills stay searchable. `build` and `out` are not marked because finished deliverables need to be findable. A marker affects only future Spotlight indexing; use `sudo mdutil -E /` to remove existing entries.
-
-## Tunnel operations
-
-`dot tunnel setup` renders explicit `--config /etc/cloudflared/config.yml tunnel run` arguments, avoiding the macOS service-install form that omits the run command. Cloudflare Access policy creation stays in the dashboard; then run `dot tunnel client add <hostname>` on clients.
 
 ## Watchdog operation
 
@@ -46,38 +148,6 @@ With `watchdog.notify.telegram.enabled: true`, the watchdog notifier gains a thi
 
 The only update allowed a warning-memory exception is `dot update` for an exact, checksum-verified native release. It still reserves the maintenance slot and requires 30 seconds of fresh healthy telemetry with no swap activity; samples may be no more than 45 seconds apart. It remains blocked on critical/unknown memory, serious/critical thermal state, recent WindowServer watchdog, CPU idle below 30%, load1 at or above 70% of CPU count, missing telemetry, or any swap change. This decision uses separate history and does not modify heavy-work admission history. The archive is bounded to 32 MiB compressed; it contains one root `dot` executable up to 64 MiB and may contain root `LICENSE` and `README.md` documents up to 1 MiB each. The entire expanded gzip stream, including tar metadata and padding, is capped at 67 MiB; `checksums.txt` is capped at 1 MiB. For Homebrew, the installed binary and keg version, raw trusted-tap recipe, native URL, SHA-256, target version, and unpinned state must match; the canonical recipe has no dependencies or post-install hook. Dot rechecks the raw recipe, pin, and installed binary before and after admission, then checks the version Homebrew installed. Any unverified recipe or stale metadata uses the full maintenance gate. `dot update --homebrew` lets a standalone binary target the existing managed formula through Homebrew, without writing the Cellar directly. Other refreshes, installs, and tool updates remain under the regular gate.
 
-## Guard operation and limits
-
-`dot guard` edits only entries marked `# dot-guard`; a semantic rewrite may sort JSON keys but does not alter other values. `enable` and `disable` apply to new Claude Code sessions, while `freeze` and `unfreeze` update live state.
-
-The hook fails open if the dot binary is missing or moved. `dot guard status` reports that condition, and `dot guard enable` must be re-run after moving the binary. It is a guardrail, not a sandbox: it only inspects the Bash tool and shell writes are outside the freeze boundary.
-
-## Sync and peer operating model
-
-`dot sync` sends a Git-aware union: root-repository tracked files plus approved untracked binary extensions, minus submodules, junk, and deny-by-default secrets. `allow.txt` records an explicit secret exception. A baseline-unknown mirror file stages under `inbox/gdrive/` for manual routing. The baseline also records every file a mirror push sent, even when rsync then stops with an error (a `--max-delete` stop comes after every transfer), so a file a live process removes while the push runs is a workspace deletion on the next push rather than a baseline-unknown mirror file. A push that leaves a planned deletion in the mirror fails. Local mirror pushes with delete propagation select rsync 3.x from PATH or the Homebrew fallback paths. Delete propagation refuses before any transfer when no modern client is available (`brew install rsync`); pushes without deletes can still use an older client. Status shows the selected binary path and version. A deletion can still remain after an I/O error or because a filter protects the name. `dot sync status` shows `Push stalled` when the last push run refused (a preflight block such as a missing mirror included, a pause excepted) or failed, or when the scheduler is on and no push completed within three intervals; a run that skipped files after an error (rsync exit 23) does not count as completed.
-
-Run `dot sync names normalize --store=peer --dry-run` and then `--yes` for selected NFC-to-NFD names. It refuses invalid UTF-8, symlinks, and canonical collisions, moves deepest paths first, and rolls back completed moves on error. Names Dropbox and Windows cannot store (a segment ending in a space or period) are excluded from push plans and uploads; a mirror-only copy of such a name that the baseline proves the workspace put there (left by a rename) is a leftover, which a push with delete propagation moves into the workspace's `.sync-conflicts/<ts>/from-mirror/` when there are no more than `max_delete` of them (a budget apart from the push's own deletions). Any other mirror-only path with such a name may be a cloud file and is only listed. A push never sends symlinks, so a workspace file replaced by a symlink is treated like a deletion. With delete propagation on, the push moves the mirror copy into the same `from-mirror/` folder while the baseline proves it; an unproven copy is a conflict that only `--mode=force` moves. `dot sync names trim --dry-run` and then `--yes` renames the trailing-whitespace ones under the same preflight and rollback rules. Profiles use stores below `<workspace>/.dotfiles/<profile>/`; the peer profile shares the cloud workspace lock while other custom profiles do not.
-
-`dot peer` is two-way peer sync, not the cloud mirror. Its deletion propagation quarantines baseline-recorded removals. Host paths split by list: entries in `home-paths-tracked.txt` get the same baseline-aware semantics (deletes propagate, simultaneous edits quarantine the losing payload under `~/.dot-peer-conflicts`), while entries left in `home-paths.txt` alone stay additive with newest-mtime wins — `.claude.json` included. `dot peer init` and `dot peer setup` seed the tracked list, with the Claude auto-memory entry included only when both machines share the workspace path. Keep the same dot version on both machines before scheduling because older peers do not understand tombstones. The coordinator records simultaneous conflicts in `peer-conflicts.log`; an offline peer exits zero for safe scheduled laptop runs.
-
-With Telegram alerting on (above), `dot peer sync` reports its outcome through the watchdog notifier's transition/rate-limit alerter: a real transfer or safety-refusal error alerts critical, a two-way run that holds destructive transitions (baseline unchanged) warns, a complete run quarantining more deletions than `quarantine_threshold` warns, and the first complete run after an episode sends one recovery message. One message fires at the ok→fail transition, then at most one reminder per `reminder_interval` while the condition persists; the episode state lives in `<workspace>/.dotfiles/peer/alert-state.json`. The designed-clean shapes — an unreachable peer, a fence demotion, a lost scheduled lock race — never alert. `--dry-run` sends nothing and writes nothing. An alert delivery failure is a stderr warning and never changes the run's exit code, error, or baseline semantics.
-
-Peer host paths exclude `known_hosts`, `~/.maru/env`, plugin caches, `~/.codex/auth.json`, and `~/.codex/config.toml`: they are trust, absolute-runtime, or keychain-coupled state rather than portable workspace settings.
-
-## AI helpers and portability
-
-`dot ai` manages helper files and portable AI configuration, not GUI app installation; use `dot apps install` for casks. The `*-yolo` helpers forward full-access flags and belong only in trusted workspaces. HUD apply owns only the `# dot-hud` Claude statusLine. A foreign owner is a conflict unless `--force` is supplied; `--persist` records the desired HUD.
-
-Portable AI snapshots exclude skill roots, auth by default, caches, histories, databases, and machine-local plugin state; archives reject symlinks, hardlinks, devices, and link-pivot paths. `~/.codex/config.toml` is normally kept live on restore because Codex rewrites it and hashes MCP credentials into the Keychain. `dot ai skills` is diagnose-only: Maru owns runtime skill symlinks and tool federation.
-
-## amem and the claude-mem retirement
-
-`dot ai mcp install|status amem` register amem's MCP server for Kiro and Copilot and report its health (`dot` never installs amem; `amem setup` registers Claude Code, Codex, Kimi, Qwen, pi and Antigravity). `dot ai memory retire-claude-mem` is a dry run unless `--apply` is given; see the README. The former `dot ai memory sync|update|bridge` commands and the hourly peer sync LaunchAgent are gone: amem syncs through its own git refs and has no resident process.
-
-`dot ai mcp install|status vmem` register vmem's MCP server for Kiro and Copilot and report its health, warning while the retired `obsidian` server is still registered (`dot` never installs vmem; `vmem setup` registers Claude Code, Codex, Kimi, Qwen, pi, jcode and Antigravity). `dot ai vault retire-mcpvault` is a dry run unless `--apply` is given and only edits the Kiro and Copilot configs.
-
-`dot ai mcp install|status ares` register ares's MCP server for Kiro and Copilot, write the research block into the agents SSOT and report its health (`ares setup` registers Claude Code, Codex, Kimi, Qwen, pi, jcode and Antigravity). The policy auto-approves ares's read tools only.
-
 ## Apps and profile snapshots
 
 `dot apps` manages cask installation and per-host settings. A profile snapshot contains config, install and backup lists, metadata, and optional age keys at `<backup-root>/profiles/<hostname>/<version>/`.
@@ -85,7 +155,3 @@ Portable AI snapshots exclude skill roots, auth by default, caches, histories, d
 ## Backup-root resolution
 
 `dot apps`, `dot profile`, and `dot ai` share this precedence: an explicit command flag, saved `BackupRoot`, a cloud root detected from a `secrets/` marker, then the local default. It spans commands and has no generated page.
-
-## Global flags
-
-All commands inherit `--config`, `--dry-run`, `--home`, `--module`, `--profile`, and `--yes`. Generated pages carry the inherited option block.

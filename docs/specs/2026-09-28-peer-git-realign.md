@@ -1,6 +1,6 @@
 # Peer Git Status and Realign
 
-Status: Phase A implementation on `feat/peer-git-realign`; handover/takeover (Phase C) and content-based worktree exclusion (Phase B) pending.
+Status: all three phases shipped in v2.70.22: Phase A (#170), Phase B, content-based worktree exclusion (#171), and Phase C, handover and takeover (#172). `dot peer git fetch` and `realign --fetch`, which fetch every repo from its upstream before realigning, followed in v2.78.0 (#361).
 Date: 2026-09-28
 Issue: https://github.com/STAIxBWLB/dotfiles/issues/147
 

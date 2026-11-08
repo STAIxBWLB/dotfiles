@@ -1,6 +1,6 @@
 # Adaptive AI Work Policies
 
-Status: Implementation on `feat/adaptive-ai-policy`; native rollout and evaluation pending.
+Status: shipped in v2.70.19 (#155); Maru consumes the policies since maru#404 (closed). The native-runtime evaluation named below is tracked in #393.
 Date: 2026-09-27
 Issue: https://github.com/STAIxBWLB/dotfiles/issues/153
 Maru integration: https://github.com/STAIxBWLB/maru/issues/404
