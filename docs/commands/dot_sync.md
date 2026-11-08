@@ -76,7 +76,7 @@ dot sync [flags]
 * [dot sync pull](dot_sync_pull.md)	 - Restore/update baseline-tracked mirror payloads into the workspace
 * [dot sync push](dot_sync_push.md)	 - Preview and send workspace changes to mirror under a propagation policy
 * [dot sync resume](dot_sync_resume.md)	 - Clear the Paused gate so pull/push/sync can run
-* [dot sync setup](dot_sync_setup.md)	 - Install rsync (if missing) and manage opt-in gsync schedulers
+* [dot sync setup](dot_sync_setup.md)	 - Install rsync (if missing) and manage the opt-in sync schedulers
 * [dot sync shared](dot_sync_shared.md)	 - Manage manual shared-folder exclusions
 * [dot sync status](dot_sync_status.md)	 - Show local↔mirror sync status
 * [dot sync sync](dot_sync_sync.md)	 - Alias for `push` (kept for back-compat; prefer `dot sync push`)

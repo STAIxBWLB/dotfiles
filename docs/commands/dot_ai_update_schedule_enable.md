@@ -1,6 +1,6 @@
 ## dot ai update schedule enable
 
-enable the weekly AI update LaunchAgent
+Install the weekly AI update LaunchAgent
 
 ```
 dot ai update schedule enable [flags]

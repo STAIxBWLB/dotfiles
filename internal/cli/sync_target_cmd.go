@@ -160,7 +160,7 @@ func runSyncInit(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	p.Header("gsync workspace initialized")
+	p.Header("sync workspace initialized")
 	p.KV("Store", res.StoreDir)
 	p.KV("Workspace", res.Workspace)
 	p.KV("Mirror", res.Mirror)

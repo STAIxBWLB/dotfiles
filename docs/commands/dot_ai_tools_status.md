@@ -1,6 +1,6 @@
 ## dot ai tools status
 
-Inspect or apply saved tooling selections
+Show the saved tooling selection and where installs drifted
 
 ```
 dot ai tools status [flags]

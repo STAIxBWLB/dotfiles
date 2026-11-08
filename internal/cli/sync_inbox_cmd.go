@@ -60,7 +60,7 @@ func runSyncInboxList(cmd *cobra.Command, _ []string) error {
 	}
 	p := printerFrom(cmd)
 
-	p.Header("gsync inbox")
+	p.Header("sync inbox")
 	p.KV("Staging root", report.StagingRoot)
 	p.KV("Pending run-dirs", fmt.Sprintf("%d (%d files)", report.RunDirs, report.Files))
 	p.KV("Imports manifest", fmt.Sprintf("%d entries", report.Imports))

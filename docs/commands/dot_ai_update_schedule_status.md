@@ -1,6 +1,6 @@
 ## dot ai update schedule status
 
-status the weekly AI update LaunchAgent
+Show the weekly AI update LaunchAgent state
 
 ```
 dot ai update schedule status [flags]

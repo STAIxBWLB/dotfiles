@@ -1,6 +1,6 @@
 ## dot sync setup
 
-Install rsync (if missing) and manage opt-in gsync schedulers
+Install rsync (if missing) and manage the opt-in sync schedulers
 
 ### Synopsis
 

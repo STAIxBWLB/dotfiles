@@ -18,7 +18,7 @@ var preferredMachineName = syncer.PreferredMachineName
 func newSyncSetupCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "setup",
-		Short: "Install rsync (if missing) and manage opt-in gsync schedulers",
+		Short: "Install rsync (if missing) and manage the opt-in sync schedulers",
 		Long: `One-time setup. Verifies rsync is available (offers to install via brew/apt
 if not), then configures the platform's user-scheduler (launchd LaunchAgent on
 macOS, systemd user-timer on Linux). Automatic sync is off by default; pass an
@@ -134,7 +134,7 @@ func runSyncSetup(cmd *cobra.Command, _ []string) error {
 		}
 		p.Line("  log:  %s", cfg.LogFile)
 		p.Blank()
-		p.Line("✓ gsync setup dry-run complete.")
+		p.Line("✓ sync setup dry-run complete.")
 		return nil
 	}
 	if err := sched.Install(ctx); err != nil {
@@ -154,7 +154,7 @@ func runSyncSetup(cmd *cobra.Command, _ []string) error {
 	p.Line("  log:  %s", cfg.LogFile)
 
 	p.Blank()
-	p.Line("✓ gsync setup complete.")
+	p.Line("✓ sync setup complete.")
 	if cfg.Paused {
 		p.Line("  Paused gate is set — run `dot sync resume` to start syncing.")
 	} else {
@@ -250,9 +250,9 @@ func runSyncResume(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if res.WasPaused {
-		p.Line("✓ gsync resumed.")
+		p.Line("✓ sync resumed.")
 	} else {
-		p.Line("gsync was not paused.")
+		p.Line("sync was not paused.")
 	}
 	if res.SchedulerOff {
 		p.Line("scheduler remains off — run `dot sync setup --push-interval=DUR` or `--pull-interval=DUR` to enable.")
@@ -295,9 +295,9 @@ func runSyncPause(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if !res.WasPaused {
-		p.Line("✓ gsync paused.")
+		p.Line("✓ sync paused.")
 	} else {
-		p.Line("gsync was already paused.")
+		p.Line("sync was already paused.")
 	}
 	if res.SchedulerErr != nil {
 		var targetUserErr *syncer.SchedulerTargetUserActionRequiredError

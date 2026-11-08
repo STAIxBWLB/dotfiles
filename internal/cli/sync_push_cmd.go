@@ -35,7 +35,7 @@ func newSyncPushCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "push",
 		Short: "Preview and send workspace changes to mirror under a propagation policy",
-		Long: `Push the workspace tree to the gdrive mirror under a propagation
+		Long: `Push the workspace tree to the sync target (local: or ssh:) under a propagation
 policy. The default policy '{create:true, update:true, delete:false}'
 copies new and modified files but never deletes mirror-side content. By default
 push prints the upload plan and asks before applying.
