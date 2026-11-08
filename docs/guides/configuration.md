@@ -66,7 +66,7 @@ User settings are stored in `~/.config/dotfiles/config.yaml`:
 ```yaml
 name: "Young Joon Lee"
 email: "hello@jeju.ai"
-github_user: "entelecheia"
+github_user: "your-github-user"
 timezone: "Asia/Seoul"
 profile: "full"
 modules:
@@ -110,9 +110,9 @@ modules:
     remote_path: "~/workspace/work/"
     interval: 300
 ssh:
-  key_name: "id_ed25519_entelecheia"
+  key_name: "id_ed25519"
 secrets:
-  age_identity: "~/.ssh/age_key_entelecheia"
+  age_identity: "~/.ssh/age_key"
   age_recipients:
     - "age1..."
 ```
@@ -134,4 +134,4 @@ secrets:
 
 ## Global flags
 
-All commands inherit `--config`, `--dry-run`, `--home`, `--module`, `--profile`, and `--yes`. Generated pages carry the inherited option block.
+All commands inherit `--config`, `--dry-run`, `--home` and `--yes`. `--profile` (minimal, full, server) is taken by the commands that load a profile: `apply`, `diff`, `config`, `status`, `init` (which preselects it), `watchdog setup` and `notify`, and `container setup`. `--module` is taken by `apply` and `diff`. `dot sync` names its store with `--store`. Generated pages list each command's own options.

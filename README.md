@@ -18,11 +18,11 @@ brew install staixbwlb/cask/dotfiles
 
 Installs the `dotfiles` cask: the `dot` binary and the `dotfiles` back-compat
 link, on macOS and on Linuxbrew. An install from the earlier `dotfiles`
-formula moves to the cask on the next `brew update` or `dot update` (#344).
+formula moves to the cask on the next `brew update` or `dot update`.
 
-Moved from `entelecheia/tap` in October 2026. On an existing install,
+The cask moved to `staixbwlb/cask` in October 2026. On an existing install,
 `brew update` follows the old tap's migration entry; if `brew info dotfiles`
-still names `entelecheia/tap`, run `brew trust staixbwlb/cask` and then
+names any other tap, run `brew trust staixbwlb/cask` and then
 `brew reinstall staixbwlb/cask/dotfiles`.
 
 The full name taps `staixbwlb/cask` and trusts the cask as it installs.
@@ -50,13 +50,11 @@ Use this when Homebrew isn't available or you want the bootstrap to install it f
 - **Linux**: Installs Linuxbrew for consistent package management
 - Downloads the `dot` binary and configures PATH
 
-Updating from v2.70.29 or earlier: `dot update` in those versions refuses a release binary over 16 MiB, which every current release is (#231). Run the curl installer above once; from then on `dot update` works again. A Homebrew install is unaffected.
-
 Standalone installs support `dot update --version 2.71.5` (or `v2.71.5`) to select an exact stable release, including a downgrade. The archive checksum, native architecture and exact runtime version are verified before activation. Binaries live in `~/.local/share/dotfiles/tools/dot/<version>/bin/dot`; `current` and `previous` are relative links, and `~/.local/bin/dot` points through `current`. The first update preserves the existing standalone binary (development builds use a content-hashed `snapshot-*` directory) and keeps its old path working through `current`. `dot rollback` activates the previous binary without downloading; another rollback switches back when that release also supports `rollback` (for an older release, run the saved newer binary at `<version>/bin/dot rollback`). Activation keeps current, previous and any version a running process uses; older idle versions are pruned with the family-tool retention rule. If a process uses an unresolved PATH/current entry or process inspection fails, versions are kept conservatively until a later activation. `--home X` writes the version tree and PATH entry only under X and leaves the invoking user's standalone executable in place. Guard hooks use a stable `current` or Homebrew `opt` path, so they follow explicit activation and rollback without rewriting settings. Homebrew owns its versions: `dot update --version` and `dot rollback` refuse there and name the brew commands to use instead.
 
-On a Homebrew install (the resolved executable sits in the Cellar for the formula, or in the Caskroom for the cask), `dot update` upgrades through the brew that owns it and never writes the Cellar or Caskroom itself (#235, #344). For a verified native release with the exact trusted tap recipe (`Formula/dotfiles.rb` or `Casks/dotfiles.rb`), it uses the bounded prebuilt path described under [Resource admission](docs/guides/maintenance.md#resource-admission-dot-admit). A stale or changed recipe falls back to the full maintenance gate, runs `brew update` only when the tap lags the GitHub release, then runs `brew upgrade --formula <tap>/dotfiles` (`--cask` for the cask) and checks the new version. When that `brew update` moves a formula install to the cask (the tap's `tap_migrations.json`), `dot update` carries on as the cask and lists what still runs the formula's opt link (guard hooks, the noindex agent, the container shim) before you remove the old keg; when brew could not move it, for example on a Linuxbrew prefix without a `Caskroom`, it names `brew uninstall --formula --force dotfiles && brew install --cask staixbwlb/cask/dotfiles`. A pinned formula is left alone with a `brew unpin` hint; `--dry-run` prints the full-gate brew commands; `--check` reports the latest version and which path an update would take, naming the check that keeps it off the verified-prebuilt path; `--wait 30m` waits for a busy maintenance slot instead of deferring at once. A standalone `dot` can target an existing managed Homebrew install with `dot update --homebrew`.
+On a Homebrew install (the resolved executable sits in the Cellar for the formula, or in the Caskroom for the cask), `dot update` upgrades through the brew that owns it and never writes the Cellar or Caskroom itself. For a verified native release with the exact trusted tap recipe (`Formula/dotfiles.rb` or `Casks/dotfiles.rb`), it uses the bounded prebuilt path described under [Resource admission](docs/guides/maintenance.md#resource-admission-dot-admit). A stale or changed recipe falls back to the full maintenance gate, runs `brew update` only when the tap lags the GitHub release, then runs `brew upgrade --formula <tap>/dotfiles` (`--cask` for the cask) and checks the new version. When that `brew update` moves a formula install to the cask (the tap's `tap_migrations.json`), `dot update` carries on as the cask and lists what still runs the formula's opt link (guard hooks, the noindex agent, the container shim) before you remove the old keg; when brew could not move it, for example on a Linuxbrew prefix without a `Caskroom`, it names `brew uninstall --formula --force dotfiles && brew install --cask staixbwlb/cask/dotfiles`. A pinned formula is left alone with a `brew unpin` hint; `--dry-run` prints the full-gate brew commands; `--check` reports the latest version and which path an update would take, naming the check that keeps it off the verified-prebuilt path; `--wait 30m` waits for a busy maintenance slot instead of deferring at once. A standalone `dot` can target an existing managed Homebrew install with `dot update --homebrew`.
 
-After a Homebrew upgrade, launchd fails the next spawn of a dot LaunchAgent (`spawn failed`, `needs LWCR update`): its managed launch constraint did not follow the replaced binary. `dot update` therefore reloads (bootout, then bootstrap) every loaded `com.dotfiles.*` agent that runs the upgraded binary; an unloaded one, such as a paused sync, stays unloaded. After a manual `brew upgrade`, `dot sync status` and `dot peer status` name that state with the reload command: `dot sync pause && dot sync resume` for `com.dotfiles.sync*`, `dot peer setup` for `com.dotfiles.peer` (#233).
+After a Homebrew upgrade, launchd fails the next spawn of a dot LaunchAgent (`spawn failed`, `needs LWCR update`): its managed launch constraint did not follow the replaced binary. `dot update` therefore reloads (bootout, then bootstrap) every loaded `com.dotfiles.*` agent that runs the upgraded binary; an unloaded one, such as a paused sync, stays unloaded. After a manual `brew upgrade`, `dot sync status` and `dot peer status` name that state with the reload command: `dot sync pause && dot sync resume` for `com.dotfiles.sync*`, `dot peer setup` for `com.dotfiles.peer`.
 
 ### Setup
 
@@ -144,23 +142,6 @@ workspace → ai → fonts → macapps → conda → gpg → secrets
 | **gpg** | full | GPG agent + git commit signing |
 | **secrets** | full | Age-encrypted SSH keys and shell secrets |
 
-
-The `ai` command groups related operations under one path:
-
-| Previous command | Canonical command |
-| --- | --- |
-| `dot ai rollback <id>` | `dot ai family rollback <id>` |
-| `dot ai status` | `dot ai backup status` |
-| `dot ai list` | `dot ai tools list --details` |
-| `dot ai memory install` / `status` | `dot ai mcp install amem` / `status amem` |
-| `dot ai vault install` / `status` | `dot ai mcp install vmem` / `status vmem` |
-| `dot ai research install` / `status` | `dot ai mcp install ares` / `status ares` |
-
-Previous paths remain hidden compatibility commands for one release and print
-the replacement on stderr. `ai memory audit`, `archive` and retirement commands
-keep their paths. `ai tools list --json` keeps its existing catalog schema;
-`--details` is the human inventory and `--include-auth` adds credential file
-names to that inventory without reading credentials.
 
 ## Profiles
 
