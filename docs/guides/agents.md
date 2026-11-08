@@ -88,7 +88,7 @@ dot ai agents apply               # writes the amem + vault block into the agent
 undo receipts for every file it writes. dot therefore writes no Kimi, Qwen or
 Antigravity config, and `install` prints the `amem setup` lines instead. For
 Claude Code, use either `amem setup claude` or the agent-mem plugin, not both:
-since 0.11.0 the plugin declares the MCP server too. The memory block in the
+the plugin declares the MCP server too. The memory block in the
 agents SSOT is written only on a machine that uses amem, after a backup of the
 SSOT. amem has no resident worker, so dot writes no LaunchAgent for it; clients
 without the setup hooks reach it through `amem ingest <agent>`.
