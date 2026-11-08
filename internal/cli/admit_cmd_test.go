@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -625,5 +626,87 @@ func TestNotifyDeferSkipsEpisodeLessDefer(t *testing.T) {
 	})
 	if _, err := os.Stat(filepath.Join(admission.DefaultStateRoot(home), "notify")); !os.IsNotExist(err) {
 		t.Errorf("episode-less defer left a notify claim: %v", err)
+	}
+}
+
+// Worker defaults apply on both normal and nested admission, while opting out
+// preserves the caller's settings. JSON completion stays off the child payload.
+func TestAdmitWorkerLimits(t *testing.T) {
+	for _, nested := range []bool{false, true} {
+		for _, unlimited := range []bool{false, true} {
+			t.Run(fmt.Sprintf("nested=%t/unlimited=%t", nested, unlimited), func(t *testing.T) {
+				_, workdir := admitSandbox(t)
+				stubAdmitMonitor(t, healthyAdmitSnapshot())
+				t.Setenv("CARGO_BUILD_JOBS", "1")
+				t.Setenv("RUST_TEST_THREADS", "7")
+				t.Setenv("GOMAXPROCS", "9")
+				if nested {
+					t.Setenv(admission.NestedEnv, admission.NestedEnvValue(fallbackScopeFor(t, workdir), admission.ClassHeavy))
+				}
+				args := []string{"admit", "--wait", "0", "--json"}
+				if unlimited {
+					args = append(args, "--no-limit-threads")
+				}
+				args = append(args, "--", "/bin/sh", "-c", `printf '%s/%s/%s' "$CARGO_BUILD_JOBS" "$RUST_TEST_THREADS" "$GOMAXPROCS"`)
+				out, errOut, err := runDotForTest(args...)
+				want := "2/2/2"
+				if unlimited {
+					want = "1/7/9"
+				}
+				if err != nil || out != want || !strings.Contains(errOut, `"outcome": "completed"`) {
+					t.Fatalf("out=%q want=%q err=%v stderr=%s", out, want, err, errOut)
+				}
+				if os.Getenv("GOMAXPROCS") != "9" {
+					t.Fatal("worker limits changed the wrapper environment")
+				}
+			})
+		}
+	}
+}
+
+func TestAdmitProjectBindsSlotAndChild(t *testing.T) {
+	_, workdir := admitSandbox(t)
+	project := t.TempDir()
+	scope := fallbackScopeFor(t, project)
+	t.Setenv(admission.NestedEnv, admission.NestedEnvValue(scope, admission.ClassHeavy))
+	out, _, err := runDotForTest("admit", "--project", project, "--", "/bin/pwd")
+	actual, _ := filepath.EvalSymlinks(strings.TrimSpace(out))
+	expected, _ := filepath.EvalSymlinks(project)
+	if err != nil || actual != expected {
+		t.Fatalf("project cwd=%q want=%q err=%v", out, project, err)
+	}
+	cwd, _ := os.Getwd()
+	actualCWD, _ := filepath.EvalSymlinks(cwd)
+	expectedCWD, _ := filepath.EvalSymlinks(workdir)
+	if actualCWD != expectedCWD {
+		t.Fatal("--project changed the wrapper working directory")
+	}
+}
+
+func TestAdmitDryRunHasNoProbesOrWrites(t *testing.T) {
+	home, _ := admitSandbox(t)
+	old := admitGate
+	admitGate = func(context.Context, *admission.Store, *admission.Monitor, admission.Thresholds) (admission.Decision, error) {
+		t.Fatal("dry-run probed host")
+		return admission.Decision{}, nil
+	}
+	t.Cleanup(func() { admitGate = old })
+	out, _, err := runDotForTest("admit", "--dry-run", "--", "not-a-command")
+	if err != nil || !strings.Contains(out, "no probes or writes") {
+		t.Fatalf("out=%q err=%v", out, err)
+	}
+	entries, err := os.ReadDir(home)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("dry-run wrote home entries=%v err=%v", entries, err)
+	}
+}
+
+func TestAdmitPreservesChildExitCode(t *testing.T) {
+	_, workdir := admitSandbox(t)
+	t.Setenv(admission.NestedEnv, admission.NestedEnvValue(fallbackScopeFor(t, workdir), admission.ClassHeavy))
+	out, errOut, err := runDotForTest("admit", "--json", "--", "/bin/sh", "-c", "exit 7")
+	var exitErr *ExitCodeError
+	if !errors.As(err, &exitErr) || exitErr.Code != 7 || out != "" || !strings.Contains(errOut, `"exit_code": 7`) {
+		t.Fatalf("exit result=%v stdout=%q stderr=%s", err, out, errOut)
 	}
 }

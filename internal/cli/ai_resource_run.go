@@ -21,11 +21,14 @@ func newAIRunCmd() *cobra.Command {
 }
 
 func newAIRunCmdWithAdmission(admit func(context.Context, resourceguard.Options, time.Duration) (func(), error)) *cobra.Command {
-	c := &cobra.Command{Use: "run [--wait 6m] -- COMMAND [ARGS...]", Short: "Run one repository heavyweight command under the admission controller", Long: `Run a command under the repository resource admission slot. Health is sampled
+	c := &cobra.Command{Use: "run [--wait 6m] -- COMMAND [ARGS...]", Short: "Deprecated: use dot admit for heavyweight commands", Hidden: true, Long: `Run a command under the repository resource admission slot. Health is sampled
 without launching work; unknown telemetry or uncovered heavy jobs defer it.
 The child receives CARGO_BUILD_JOBS=2, RUST_TEST_THREADS=2, and GOMAXPROCS=2.
 Pass tool-specific flags (Go -p 2 -parallel 2; browser E2E workers=1) yourself.
 Unwrapped commands are detected conservatively, not automatically controlled.`, Args: cobra.MinimumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		// Cobra's Deprecated field writes its warning to stdout, corrupting the
+		// wrapped command's payload. Hide the compatibility entry and warn on stderr.
+		fmt.Fprintln(cmd.ErrOrStderr(), "Warning: dot ai run is deprecated; use 'dot admit' instead. This compatibility command will be removed after one release.")
 		dryRun, _ := cmd.Flags().GetBool("dry-run")
 		if dryRun {
 			_, err := fmt.Fprintf(cmd.OutOrStdout(), "Would acquire repository resource slot and run %q (no probes or writes)\n", args)

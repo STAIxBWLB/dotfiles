@@ -15,6 +15,7 @@ import (
 
 	"github.com/STAIxBWLB/dotfiles/internal/admission"
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/resourceguard"
 	"github.com/STAIxBWLB/dotfiles/internal/watchdog"
 	"github.com/spf13/cobra"
 )
@@ -36,12 +37,19 @@ import (
 // payload, and mixing the JSON object into it would corrupt the stream for
 // downstream consumers (the process exit code is the machine-readable
 // result). Defer outcomes never run a child, so they stay on stdout.
-func runAdmittedChild(ctx context.Context, p *Printer, runner *exec.Runner, args []string, scope, class string, slot *admission.Slot, asJSON bool) error {
+func runAdmittedChild(cmd *cobra.Command, runner *exec.Runner, args []string, scope, class string, slot *admission.Slot, asJSON bool) error {
+	ctx := cmd.Context()
+	p := printerFrom(cmd)
 	child := osexec.Command(args[0], args[1:]...) // #nosec G204 -- the command is the user's own invocation
-	child.Stdin = os.Stdin
-	child.Stdout = os.Stdout
-	child.Stderr = os.Stderr
-	child.Env = append(os.Environ(), admission.NestedEnv+"="+admission.NestedEnvValue(scope, class))
+	child.Stdin = cmd.InOrStdin()
+	child.Stdout = cmd.OutOrStdout()
+	child.Stderr = cmd.ErrOrStderr()
+	child.Dir, _ = cmd.Flags().GetString("project")
+	child.Env = os.Environ()
+	if unlimited, _ := cmd.Flags().GetBool("no-limit-threads"); !unlimited {
+		child.Env = resourceguard.LimitedEnvironment(child.Env)
+	}
+	child.Env = append(child.Env, admission.NestedEnv+"="+admission.NestedEnvValue(scope, class))
 	child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := child.Start(); err != nil {
 		return fmt.Errorf("starting %q: %w", strings.Join(args, " "), err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -92,13 +93,19 @@ run in parallel. --class maintenance takes the single host-wide maintenance
 slot instead. On defer the exit code is 75 (EX_TEMPFAIL) with a
 machine-readable outcome on stdout when --json is set. When a command runs,
 its own stdout is the payload and the --json completion record goes to
-stderr, so the exit code is the machine-readable result. 'dot ai run' and
-the tooling updates share these slots. 'dot peer sync' and 'dot sync push'
+stderr, so the exit code is the machine-readable result. Selected-tooling
+updates share these slots. 'dot peer sync' and 'dot sync push'
 hold a background lease while they run, so their rsync never defers other
 work. Heavy work launched outside all of these holds no lease; a bounded
 process-table scan defers when such work runs in this repo or its repo is
 unknown. Use '--' before commands that collide with
-subcommand names.`,
+subcommand names.
+
+The child receives CARGO_BUILD_JOBS=2, RUST_TEST_THREADS=2 and GOMAXPROCS=2,
+replacing inherited values unless --no-limit-threads is set. Tool-specific
+flags (Go -p 2 -parallel 2; browser workers=1) remain the caller's choice.
+--project selects both the repository slot and the child's working directory.
+--dry-run previews the command without probes or state writes.`,
 		Args:         cobra.MinimumNArgs(1),
 		RunE:         runAdmit,
 		SilenceUsage: true,
@@ -106,6 +113,8 @@ subcommand names.`,
 	cmd.Flags().String("class", admission.ClassHeavy, "slot class: heavy (per-repo) or maintenance (host-wide)")
 	cmd.Flags().Duration("wait", 30*time.Minute, "maximum time to wait for the slot before deferring")
 	cmd.Flags().Bool("json", false, "print the outcome as JSON")
+	cmd.Flags().Bool("no-limit-threads", false, "Keep inherited worker settings instead of limiting Cargo, Rust tests and Go to 2")
+	cmd.Flags().String("project", "", "Checkout whose slot and working directory to use (defaults to current directory)")
 	cmd.AddCommand(newAdmitStatusCmd())
 	return cmd
 }
@@ -122,11 +131,28 @@ func runAdmit(cmd *cobra.Command, args []string) error {
 	if wait < 0 {
 		return fmt.Errorf("--wait must not be negative")
 	}
+	if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
+		p.Line("Would acquire repository resource slot and run %q (no probes or writes)", args)
+		return nil
+	}
 	home := homeFor(cmd)
 	runner := watchdogRunner(false)
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
+	}
+	if project, _ := cmd.Flags().GetString("project"); project != "" {
+		cwd, err = filepath.Abs(project)
+		if err != nil {
+			return fmt.Errorf("resolve --project %q: %w; pass an existing checkout directory", project, err)
+		}
+		info, statErr := os.Stat(cwd)
+		if statErr != nil {
+			return fmt.Errorf("--project %q cannot be read: %w; pass an existing checkout directory", project, statErr)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("--project %q is not a directory; pass the checkout directory", project)
+		}
 	}
 	root, err := admission.UserStateRoot()
 	if err != nil {
@@ -145,7 +171,7 @@ func runAdmit(cmd *cobra.Command, args []string) error {
 	// A child of an admitted job for the same scope and class runs without
 	// re-acquiring the slot its parent already holds.
 	if admission.NestedScope(os.Getenv(admission.NestedEnv), effective, class) {
-		return runAdmittedChild(ctx, p, runner, args, effective, class, nil, asJSON)
+		return runAdmittedChild(cmd, runner, args, effective, class, nil, asJSON)
 	}
 
 	monitor := admitNewMonitor(runner, home)
@@ -216,5 +242,5 @@ func runAdmit(cmd *cobra.Command, args []string) error {
 		return deferExit(p, effective, class, "", d, asJSON)
 	}
 
-	return runAdmittedChild(ctx, p, runner, args, effective, class, slot, asJSON)
+	return runAdmittedChild(cmd, runner, args, effective, class, slot, asJSON)
 }
