@@ -96,6 +96,18 @@ Run without a subcommand to print this help.`,
 			return cmd.Help()
 		},
 		SilenceUsage: true,
+		// --store and the deprecated --profile name the same thing; two
+		// different values must not silently pick one (#380).
+		PersistentPreRunE: func(c *cobra.Command, _ []string) error {
+			if c.Flags().Changed("store") && c.Flags().Changed("profile") {
+				store, _ := c.Flags().GetString("store")
+				profile, _ := c.Flags().GetString("profile")
+				if store != profile {
+					return fmt.Errorf("--store %q and --profile %q name different stores; drop --profile, which is the deprecated name of --store", store, profile)
+				}
+			}
+			return nil
+		},
 	}
 	cmd.PersistentFlags().String("store", syncer.DefaultProfile,
 		"sync store under <workspace>/.dotfiles/<store>/; \"sync\" is the cloud mirror, \"peer\" the other Mac")

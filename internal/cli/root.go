@@ -220,22 +220,25 @@ func executeWithSignals(cmd *cobra.Command) error {
 
 // scopeProfileFlags registers --profile and --module only on the commands that
 // read them; as root persistent flags they appeared on every command, where
-// they meant nothing (#380).
+// they meant nothing (#380). init takes --profile as the profile to preselect.
 func scopeProfileFlags(root *cobra.Command) {
-	for _, c := range root.Commands() {
-		flagSet := c.Flags
-		switch c.Name() {
-		case "apply", "check", "diff", "config", "status":
-		case "watchdog", "container":
-			flagSet = c.PersistentFlags
-		default:
-			continue
-		}
-		flags := flagSet()
-		flags.String("profile", "", "Profile name (minimal, full, server)")
-		switch c.Name() {
-		case "apply", "check", "diff":
-			flags.StringSlice("module", nil, "Run specific modules only")
+	readers := map[string]bool{
+		"apply": true, "check": true, "diff": true, "config": true, "status": true, "init": true,
+		"watchdog setup": true, "watchdog notify": true, "container setup": true,
+	}
+	var walk func(c *cobra.Command, path string)
+	walk = func(c *cobra.Command, path string) {
+		for _, sub := range c.Commands() {
+			name := strings.TrimSpace(path + " " + sub.Name())
+			if readers[name] {
+				sub.Flags().String("profile", "", "Profile name (minimal, full, server)")
+				switch name {
+				case "apply", "check", "diff":
+					sub.Flags().StringSlice("module", nil, "Run specific modules only")
+				}
+			}
+			walk(sub, name)
 		}
 	}
+	walk(root, "")
 }

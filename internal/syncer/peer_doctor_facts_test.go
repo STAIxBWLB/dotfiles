@@ -53,8 +53,8 @@ func TestEvaluatePeerSides(t *testing.T) {
 	checks = evaluatePeerSides(local, peer, "m5x26", "m3x23")
 	for _, want := range []struct{ name, level, fix string }{
 		{"roles", DoctorFail, "dot peer adopt --owner <a name only the chosen Mac answers to> --epoch 3"},
-		{"nfd", DoctorFail, "on m3x23: dot sync names normalize --store=peer"},
-		{"nfd", DoctorWarn, "on m3x23: dot sync names normalize --store=peer"},
+		{"nfd", DoctorFail, "on m3x23: dot sync names normalize --profile=peer"},
+		{"nfd", DoctorWarn, "on m3x23: dot sync names normalize --profile=peer"},
 		{"rsync", DoctorFail, "on m3x23: brew install rsync"},
 		{"config", DoctorWarn, ""},
 	} {
@@ -72,7 +72,7 @@ func TestEvaluatePeerSides(t *testing.T) {
 	local, peer = doctorFacts()
 	peer.NFDMarked, peer.NonNFD = true, 3
 	checks = evaluatePeerSides(local, peer, "m5x26", "m3x23")
-	if c := checkFor(checks, "nfd", DoctorFail); c == nil || c.Fix != "on m3x23: dot sync names normalize --store=peer --yes" {
+	if c := checkFor(checks, "nfd", DoctorFail); c == nil || c.Fix != "on m3x23: dot sync names normalize --profile=peer --yes" {
 		t.Errorf("the other Mac's names under an unmarked coordinator: %+v", c)
 	}
 
@@ -111,7 +111,7 @@ func TestEvaluatePeerSides(t *testing.T) {
 		mutate func(local, peer *PeerSideFacts)
 		fix    string
 	}{
-		{"unmarked coordinator with names", func(l, _ *PeerSideFacts) { l.NonNFD = 16 }, "on m5x26: dot sync names normalize --store=peer --yes"},
+		{"unmarked coordinator with names", func(l, _ *PeerSideFacts) { l.NonNFD = 16 }, "on m5x26: dot sync names normalize --profile=peer --yes"},
 		{"coordinator cannot plan", func(l, _ *PeerSideFacts) { l.NonNFDError = "permission denied" }, ""},
 		{"marked coordinator, peer cannot plan", func(l, p *PeerSideFacts) { l.NFDMarked, p.NFDMarked, p.NonNFDError = true, true, "collision" }, ""},
 	} {
@@ -130,7 +130,7 @@ func TestEvaluatePeerSides(t *testing.T) {
 	peer.WorkspacePath, peer.TargetPath, peer.TargetHost = "/Users/b/work", "/Users/a/elsewhere", "m5x26.ts.net"
 	// The fix names the Mac that is wrong and the target, and leaves the
 	// owner and epoch alone (dot peer init would claim the owner).
-	if c := checkFor(evaluatePeerSides(local, peer, "m5x26", "m3x23"), "topology", DoctorFail); c == nil || !strings.Contains(c.Detail, "does not point back") || c.Fix != "on m3x23: dot sync target --store=peer ssh:m5x26.ts.net:/Users/a/work" {
+	if c := checkFor(evaluatePeerSides(local, peer, "m5x26", "m3x23"), "topology", DoctorFail); c == nil || !strings.Contains(c.Detail, "does not point back") || c.Fix != "on m3x23: dot sync target --profile=peer ssh:m5x26.ts.net:/Users/a/work" {
 		t.Errorf("topology mismatch: %+v", c)
 	}
 	// Also with both Macs coordinating after a takeover: the fence refuses
@@ -459,7 +459,7 @@ func TestPeerInventoryNFDErrorNamesHostAndCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := PeerDiff(context.Background(), PeerDiffOptions{Config: cfg, Probe: peerScheduleRunner(false)})
-	if err == nil || !strings.Contains(err.Error(), "on fake-peer; run there: dot sync names normalize --store=peer") {
+	if err == nil || !strings.Contains(err.Error(), "on fake-peer; run there: dot sync names normalize --profile=peer") {
 		t.Fatalf("err = %v", err)
 	}
 }

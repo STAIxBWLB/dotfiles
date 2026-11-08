@@ -3,10 +3,12 @@ package cli
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/sliceutil"
 	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
@@ -106,6 +108,14 @@ func runInitFlow(cmd *cobra.Command, skipExistingGate bool) error {
 	sysInfo, err := config.DetectSystem()
 	if err != nil {
 		return fmt.Errorf("detecting system: %w", err)
+	}
+	// --profile preselects the profile, so `dot init --profile server --yes`
+	// sets it without a prompt.
+	if p, _ := cmd.Flags().GetString("profile"); p != "" {
+		if !sliceutil.Contains(config.AvailableProfiles(), p) {
+			return fmt.Errorf("unknown profile %q; use one of %s", p, strings.Join(config.AvailableProfiles(), ", "))
+		}
+		state.Profile = p
 	}
 	if err := ui.ConfigureProfile(state, sysInfo.SuggestProfile(), yes); err != nil {
 		return err

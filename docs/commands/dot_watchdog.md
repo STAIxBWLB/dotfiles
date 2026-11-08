@@ -17,8 +17,7 @@ dot watchdog [flags]
 ### Options
 
 ```
-  -h, --help             help for watchdog
-      --profile string   Profile name (minimal, full, server)
+  -h, --help   help for watchdog
 ```
 
 ### Options inherited from parent commands

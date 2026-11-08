@@ -254,7 +254,7 @@ func TestPeerFence(t *testing.T) {
 	// A peer whose dot predates epochs has no adopt: its fix is --set there.
 	legacyCleared := remote("", 0, "")
 	legacyCleared.Profile.CanPush = true
-	if _, _, err := peerFence(cfg, legacyCleared); err == nil || !strings.Contains(err.Error(), "dot sync owner --store=peer --set 'mac-a'") || strings.Contains(err.Error(), "dot peer adopt --owner") {
+	if _, _, err := peerFence(cfg, legacyCleared); err == nil || !strings.Contains(err.Error(), "dot sync owner --profile=peer --set 'mac-a'") || strings.Contains(err.Error(), "dot peer adopt --owner") {
 		t.Fatalf("legacy peer, no owner: %v", err)
 	}
 	// A peer with no owner below this Mac's epoch is not a coordinator.
@@ -270,7 +270,7 @@ func TestPeerFence(t *testing.T) {
 	if _, _, err := peerFence(&clearedHere, remote("mac-b", 3, "1.2.3")); err == nil || !strings.Contains(err.Error(), "dot peer adopt --owner 'mac-b' --epoch 3") {
 		t.Fatalf("no owner here: %v", err)
 	}
-	if _, _, err := peerFence(&clearedHere, remote("mac-b", 0, "")); err == nil || !strings.Contains(err.Error(), "dot sync owner --store=peer --set 'mac-b'") {
+	if _, _, err := peerFence(&clearedHere, remote("mac-b", 0, "")); err == nil || !strings.Contains(err.Error(), "dot sync owner --profile=peer --set 'mac-b'") {
 		t.Fatalf("no owner here, legacy peer: %v", err)
 	}
 	// And dot peer setup's owner check, which advised --set on both Macs.

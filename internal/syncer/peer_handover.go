@@ -225,7 +225,7 @@ func remoteFenceSide(r *remotePeerStatus) fenceSide {
 // epochs has no adopt; `--set` there records the owner with no epoch.
 func noPeerOwnerFix(local, remote fenceSide) string {
 	if remote.Legacy {
-		return fmt.Sprintf("on the other Mac, whose dot predates `dot peer adopt`: dot sync owner --store=peer --set %s", shellQuote(local.Owner))
+		return fmt.Sprintf("on the other Mac, whose dot predates `dot peer adopt`: dot sync owner --profile=peer --set %s", shellQuote(local.Owner))
 	}
 	return fmt.Sprintf("on the other Mac: dot peer adopt --owner %s --epoch %d", shellQuote(local.Owner), local.Epoch)
 }
@@ -237,9 +237,9 @@ func noPeerOwnerFix(local, remote fenceSide) string {
 func noLocalOwnerFix(remote fenceSide) string {
 	switch {
 	case strings.TrimSpace(remote.Owner) == "":
-		return "set one with `dot sync owner --store=peer --set <coordinator>`"
+		return "set one with `dot sync owner --profile=peer --set <coordinator>`"
 	case remote.Legacy:
-		return fmt.Sprintf("to keep %s coordinating, record it here: dot sync owner --store=peer --set %s", shellQuote(remote.Owner), shellQuote(remote.Owner))
+		return fmt.Sprintf("to keep %s coordinating, record it here: dot sync owner --profile=peer --set %s", shellQuote(remote.Owner), shellQuote(remote.Owner))
 	}
 	return fmt.Sprintf("to keep %s coordinating, record it here: dot peer adopt --owner %s --epoch %d", shellQuote(remote.Owner), shellQuote(remote.Owner), remote.Epoch)
 }
@@ -275,12 +275,12 @@ func fenceDecision(local, remote fenceSide) (demote bool, err error) {
 	// cannot admit a second coordinator.
 	if remote.CanPush {
 		return false, fmt.Errorf(
-			"peer fence: equal owner epochs (%d) and the peer also passes its own owner guard (its owner %q, local %q); both sides refuse — set one coordinator with `dot sync owner --store=peer --set <machine>` on both machines",
+			"peer fence: equal owner epochs (%d) and the peer also passes its own owner guard (its owner %q, local %q); both sides refuse — set one coordinator with `dot sync owner --profile=peer --set <machine>` on both machines",
 			local.Epoch, remote.Owner, local.Owner)
 	}
 	if !sameOwner(local.Owner, local.Aliases, remote.Owner, remote.Aliases) {
 		return false, fmt.Errorf(
-			"peer fence: equal owner epochs (%d) with different owners (local %q, remote %q); both sides refuse — pick one coordinator and set it with `dot sync owner --store=peer --set <machine>`",
+			"peer fence: equal owner epochs (%d) with different owners (local %q, remote %q); both sides refuse — pick one coordinator and set it with `dot sync owner --profile=peer --set <machine>`",
 			local.Epoch, local.Owner, remote.Owner)
 	}
 	return false, nil
@@ -721,7 +721,7 @@ func PeerHandover(ctx context.Context, opts PeerHandoverOptions) (*PeerHandoverR
 	result.NewOwner = remoteOwner
 	if _, err := PeerAdopt(cfg, PeerAdoptOptions{Owner: remoteOwner, Epoch: epoch}); err != nil {
 		return nil, fmt.Errorf(
-			"peer handover: the peer adopted %q (epoch %d) but the local write failed: %w. The peer is now coordinator; set this machine's owner with `dot sync owner --store=peer --set %s`, run `dot peer setup --off` here, then `dot peer sync` and `dot peer setup` on %s",
+			"peer handover: the peer adopted %q (epoch %d) but the local write failed: %w. The peer is now coordinator; set this machine's owner with `dot sync owner --profile=peer --set %s`, run `dot peer setup --off` here, then `dot peer sync` and `dot peer setup` on %s",
 			remoteOwner, epoch, err, remoteOwner, cfg.Target.Host)
 	}
 	step("owner is %q (epoch %d) on both machines", remoteOwner, epoch)

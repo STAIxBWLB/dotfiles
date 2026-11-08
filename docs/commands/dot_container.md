@@ -22,8 +22,7 @@ Config (~/.config/dotfiles/config.yaml):
 ### Options
 
 ```
-  -h, --help             help for container
-      --profile string   Profile name (minimal, full, server)
+  -h, --help   help for container
 ```
 
 ### Options inherited from parent commands
