@@ -26,7 +26,7 @@ A 'current' link names the active version and 'previous' the one before it;
 ~/.local/bin/<bin> points through 'current'. Activation is one rename: new
 sessions start the new version, running processes keep the files they started
 with and are listed, and nothing is stopped. Versions other than current and
-previous are removed once no running process uses them. 'dot ai rollback <id>'
+previous are removed once no running process uses them. 'dot ai family rollback <id>'
 makes previous current again.
 
 For ahub this is the global CLI only: 'ahub upgrade' still runs each project's
@@ -84,7 +84,7 @@ current or with the version it would move to.`, RunE: func(cmd *cobra.Command, a
 		}
 		return nil
 	}}
-	c.AddCommand(install, update, status)
+	c.AddCommand(install, update, status, newAIRollbackCmd())
 	return c
 }
 

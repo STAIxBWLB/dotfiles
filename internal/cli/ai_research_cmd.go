@@ -13,22 +13,23 @@ import (
 
 func newAIResearchCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "research",
-		Short: "Register ares, the research engine, for the agents dot owns",
+		Use:    "research",
+		Hidden: true,
+		Short:  "Register ares, the research engine, for the agents dot owns",
 		Long: `Register ares (@staix/agent-research) as the agents' research MCP server for
 Kiro and GitHub Copilot, and print the 'ares setup' lines for Claude Code,
 Codex, Kimi, Qwen, pi, jcode and Antigravity, which ares registers itself.
 
 dot runs no research process and installs ares only on request: install it
 with 'dot ai family install ares' (or 'bun add -g @staix/agent-research'),
-then run 'dot ai research install'.
+then run 'dot ai mcp install ares'.
 
 The AI policy auto-approves ares's read tools only. Tools that write a study,
 decide a gate, reach the network or start or read a container keep their
 approval prompt.`,
 	}
-	cmd.AddCommand(newAIResearchInstallCmd())
-	cmd.AddCommand(newAIResearchStatusCmd())
+	cmd.AddCommand(deprecatedAICommand(newAIResearchInstallCmd(), "dot ai mcp install ares"))
+	cmd.AddCommand(deprecatedAICommand(newAIResearchStatusCmd(), "dot ai mcp status ares"))
 	return cmd
 }
 
@@ -65,7 +66,7 @@ those agents are selected, write the research block into the agents SSOT
 other server and key is preserved. Re-running changes nothing.
 
 ares must already be installed (an @staix/agent-research release inside the
-range 'dot ai research status' names) and on PATH. With --dry-run nothing is
+range 'dot ai mcp status ares' names) and on PATH. With --dry-run nothing is
 written and every file it would change is listed.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -143,7 +144,7 @@ func newAIResearchStatusCmd() *cobra.Command {
 				}
 				printMemoryState(p, row.label, row.ok, "MCP")
 			}
-			p.Line("Claude Code, Codex, Kimi, Qwen, pi, jcode and Antigravity are registered by `ares setup`; see `dot ai research install` for the lines.")
+			p.Line("Claude Code, Codex, Kimi, Qwen, pi, jcode and Antigravity are registered by `ares setup`; see `dot ai mcp install ares` for the lines.")
 			p.Section("Shared")
 			printMemoryState(p, "instructions", status.InstructionsEnabled, "agents SSOT research block")
 			return nil

@@ -209,6 +209,24 @@ workspace → ai → fonts → macapps → conda → gpg → secrets
 | **gpg** | full | GPG agent + git commit signing |
 | **secrets** | full | Age-encrypted SSH keys and shell secrets |
 
+
+The `ai` command groups related operations under one path:
+
+| Previous command | Canonical command |
+| --- | --- |
+| `dot ai rollback <id>` | `dot ai family rollback <id>` |
+| `dot ai status` | `dot ai backup status` |
+| `dot ai list` | `dot ai tools list --details` |
+| `dot ai memory install` / `status` | `dot ai mcp install amem` / `status amem` |
+| `dot ai vault install` / `status` | `dot ai mcp install vmem` / `status vmem` |
+| `dot ai research install` / `status` | `dot ai mcp install ares` / `status ares` |
+
+Previous paths remain hidden compatibility commands for one release and print
+the replacement on stderr. `ai memory audit`, `archive` and retirement commands
+keep their paths. `ai tools list --json` keeps its existing catalog schema;
+`--details` is the human inventory and `--include-auth` adds credential file
+names to that inventory without reading credentials.
+
 ### Selected Agent Environments
 
 `dot ai setup` selects Claude, Codex, Kimi, Qwen, Grok, OpenCode, Genspark
@@ -233,6 +251,7 @@ run `amem setup agy --apply` inside each repository that uses it.
 dot ai setup
 dot ai setup --agents claude,codex --tools ripwire,ocr --skills meeting-notes --non-interactive --yes --dry-run
 dot ai tools list --json
+dot ai tools list --details         # detected CLIs, settings paths and app casks
 dot ai tools status --json
 dot ai tools apply
 dot ai update --check --json
@@ -272,22 +291,22 @@ dot ai family update --dry-run    # which installed tools have a newer release
 dot ai family update              # move every installed tool to its latest
 dot ai family install amem --version 0.17.0
 dot ai family status
-dot ai rollback amem              # previous becomes current again
+dot ai family rollback amem              # previous becomes current again
 ```
 
 Project memory is [amem](https://github.com/STAIxBWLB/agent-mem)
 (`@staix/agent-mem`), which dot registers but installs only through
 `dot ai family install amem`. Install a release
-inside the range `dot ai memory status` names (`>=0.14.0 <1.0.0` unless the
+inside the range `dot ai mcp status amem` names (`>=0.14.0 <1.0.0` unless the
 installed amem publishes its own; every amem that shares a memory home must run
 0.14.0 or later), then:
 
 ```bash
 amem setup all --apply            # in your terminal: Claude Code, Codex, Kimi, Qwen, pi
 amem setup agy --apply            # inside each repository that uses Antigravity
-dot ai memory install --dry-run   # what would change; nothing is written
-dot ai memory install             # add `amem mcp` to Kiro and Copilot
-dot ai memory status
+dot ai mcp install amem --dry-run   # what would change; nothing is written
+dot ai mcp install amem             # add `amem mcp` to Kiro and Copilot
+dot ai mcp status amem
 dot ai agents apply               # writes the amem + vault block into the agents SSOT
 ```
 
@@ -353,16 +372,16 @@ dot ai memory archive codex ~/.codex/memories/extensions/ad_hoc/notes/old.md --a
 The vault is written only through [vmem](https://github.com/STAIxBWLB/vault-mem)
 (`@staix/vault-mem`), which replaces the generic Obsidian MCP server
 (`obsidian`, `@bitbonsai/mcpvault`). dot registers it but never installs it.
-Install a release inside the range `dot ai vault status` names
+Install a release inside the range `dot ai mcp status vmem` names
 (`@staix/vault-mem` `>=0.2.1 <1.0.0` unless the installed vmem publishes its
 own), then:
 
 ```bash
 vmem setup all --apply             # Claude Code, Codex, Kimi, Qwen, pi, jcode
 vmem setup agy --apply             # inside each workspace that uses Antigravity
-dot ai vault install --dry-run     # what would change; nothing is written
-dot ai vault install               # add `vmem mcp` to Kiro and Copilot, write the vault block
-dot ai vault status                # warns while `obsidian` is still registered
+dot ai mcp install vmem --dry-run     # what would change; nothing is written
+dot ai mcp install vmem               # add `vmem mcp` to Kiro and Copilot, write the vault block
+dot ai mcp status vmem                # warns while `obsidian` is still registered
 dot ai vault retire-mcpvault       # dry run: every file it would change
 dot ai vault retire-mcpvault --apply
 ```
@@ -378,15 +397,15 @@ while vmem is not on PATH.
 Research studies run through [ares](https://github.com/STAIxBWLB/agent-research)
 (`@staix/agent-research`), which dot registers and installs only through
 `dot ai family install ares`. Install a release inside the range
-`dot ai research status` names (`>=0.1.0 <1.0.0` unless the installed ares
+`dot ai mcp status ares` names (`>=0.1.0 <1.0.0` unless the installed ares
 publishes its own), then:
 
 ```bash
 ares setup all --apply             # Claude Code, Codex, Kimi, Qwen, pi, jcode
 ares setup agy --apply             # inside each workspace that uses Antigravity
-dot ai research install --dry-run  # every file it would change; nothing is written
-dot ai research install            # add `ares mcp` to Kiro and Copilot, write the research block
-dot ai research status             # version against the supported range, registrations, block
+dot ai mcp install ares --dry-run  # every file it would change; nothing is written
+dot ai mcp install ares            # add `ares mcp` to Kiro and Copilot, write the research block
+dot ai mcp status ares             # version against the supported range, registrations, block
 ```
 
 `ares setup` registers the server as `ares` and keeps undo receipts, so dot

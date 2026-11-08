@@ -32,8 +32,8 @@ they are machine state pi rebuilds itself.`,
 	cmd.AddCommand(newAIRunCmd())
 	cmd.AddCommand(newAIPolicyCmd())
 	cmd.AddCommand(newAISessionCmd())
-	cmd.AddCommand(newAIListCmd())
-	cmd.AddCommand(newAIStatusCmd())
+	cmd.AddCommand(deprecatedAICommand(newAIListCmd(), "dot ai tools list --details"))
+	cmd.AddCommand(deprecatedAICommand(newAIStatusCmd(), "dot ai backup status"))
 	cmd.AddCommand(newAIBackupCmd())
 	cmd.AddCommand(newAIRestoreCmd())
 	cmd.AddCommand(newAIExportCmd())
@@ -48,7 +48,8 @@ they are machine state pi rebuilds itself.`,
 	cmd.AddCommand(newAIResearchCmd())
 	cmd.AddCommand(newAIUpdateCmd())
 	cmd.AddCommand(newAIFamilyCmd())
-	cmd.AddCommand(newAIRollbackCmd())
+	cmd.AddCommand(newAIMCPCmd())
+	cmd.AddCommand(deprecatedAICommand(newAIRollbackCmd(), "dot ai family rollback"))
 	cmd.AddCommand(newAIAuthCmd())
 	cmd.AddCommand(newAIAuditCmd())
 	return cmd
@@ -65,7 +66,7 @@ func newAIListCmd() *cobra.Command {
 	return c
 }
 
-// extraDetectedCLIs are probed by `dot ai list` but are not `dot ai update`
+// extraDetectedCLIs are probed by `dot ai tools list --details` but are not `dot ai update`
 // phases: agy has no self-update path dot drives, and gh/fabric are helpers
 // the 30-ai.sh aliases depend on.
 var extraDetectedCLIs = []string{"gh", "fabric"}

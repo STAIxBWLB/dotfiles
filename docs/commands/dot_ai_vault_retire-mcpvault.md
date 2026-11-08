@@ -38,5 +38,5 @@ dot ai vault retire-mcpvault [flags]
 
 ### SEE ALSO
 
-* [dot ai vault](dot_ai_vault.md)	 - Register vmem as the vault writer and retire the Obsidian MCP server
+* [dot ai vault](dot_ai_vault.md)	 - Retire the legacy Obsidian MCP integration
 

@@ -47,5 +47,5 @@ dot ai memory archive <agent> <path>... [flags]
 
 ### SEE ALSO
 
-* [dot ai memory](dot_ai_memory.md)	 - Register amem, audit the agents' native memory, retire claude-mem
+* [dot ai memory](dot_ai_memory.md)	 - Audit and archive native agent memory, or retire claude-mem
 

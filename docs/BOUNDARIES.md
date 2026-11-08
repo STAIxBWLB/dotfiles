@@ -92,8 +92,9 @@ Dot-owned state trees:
   `amem` on PATH, an amem server in a managed MCP config, or the block already
   present; the SSOT is copied to `backup/agents-ssot/<timestamp>/` first, and a
   malformed marker is reported as a warning and never fails the apply), the
-  vault and research blocks of `dot ai vault install` and `dot ai research
-  install` (`<!-- dotfiles:vmem:* -->`, `<!-- dotfiles:ares:* -->`, after the
+  vault and research blocks of `dot ai mcp install vmem` and
+  `dot ai mcp install ares` (`<!-- dotfiles:vmem:* -->`,
+  `<!-- dotfiles:ares:* -->`, after the
   same SSOT backup), and the selected setup continuity
   policy block (backed up before upgrading an existing SSOT). This dir is synced between
   machines, so it holds no machine state: every agents apply removes the
@@ -127,7 +128,7 @@ Dot-owned state trees:
 - `~/.local/share/dotfiles/tools/<id>/` — versioned family-tool installs
   (ahub's global CLI, amem, vmem, acon, ares; never `~/.agenthub/releases`,
   where `ahub upgrade` keeps project daemons), written only by `dot ai family install` and
-  `dot ai rollback`: one npm prefix per `<version>/` (staged in
+  `dot ai family rollback`: one npm prefix per `<version>/` (staged in
   `.staging-<version>-*` and renamed into place), and the `current` and
   `previous` links, each moved by an atomic rename. A version directory other
   than current and previous is removed only when no running process uses it.
@@ -355,16 +356,17 @@ tool):
   `~/.qwen/usage_record.jsonl` are machine state dot neither backs up
   nor restores
 - `~/.kiro/settings/mcp.json` — the `amem` entry under
-  `mcpServers` plus `"disabled": false`, written by `dot ai memory
-  install`, and the same shape of `vmem` and `ares` entries (`<bin> mcp`),
-  written by `dot ai vault install` and `dot ai research install`;
+  `mcpServers` plus `"disabled": false`, written by
+  `dot ai mcp install amem`, and the same shape of `vmem` and `ares` entries
+  (`<bin> mcp`),
+  written by `dot ai mcp install vmem` and `dot ai mcp install ares`;
   retirement removes the `claude-mem` entry and `dot ai vault
   retire-mcpvault --apply` the `obsidian` entry; every other server entry
   is preserved
 - `~/.copilot/mcp-config.json` — the `amem` entry under
   `mcpServers` plus `"type": "local"` and `"tools": ["*"]`, written by
-  `dot ai memory install`, and the same shape of `vmem` and `ares` entries,
-  written by `dot ai vault install` and `dot ai research install`;
+  `dot ai mcp install amem`, and the same shape of `vmem` and `ares` entries,
+  written by `dot ai mcp install vmem` and `dot ai mcp install ares`;
   retirement removes the `claude-mem` entry and `dot ai vault
   retire-mcpvault --apply` the `obsidian` entry; every other server entry
   is preserved. The `ares` entry in Claude Code, Codex, Kimi, Qwen, pi,

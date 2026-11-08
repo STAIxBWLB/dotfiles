@@ -1,15 +1,15 @@
-## dot ai research status
+## dot ai mcp install
 
-Show ares integration health
+Register one installed family tool's MCP integration
 
 ```
-dot ai research status [flags]
+dot ai mcp install <amem|vmem|ares> [flags]
 ```
 
 ### Options
 
 ```
-  -h, --help   help for status
+  -h, --help   help for install
 ```
 
 ### Options inherited from parent commands
@@ -25,5 +25,5 @@ dot ai research status [flags]
 
 ### SEE ALSO
 
-* [dot ai research](dot_ai_research.md)	 - Register ares, the research engine, for the agents dot owns
+* [dot ai mcp](dot_ai_mcp.md)	 - Register and inspect amem, vmem and ares MCP integrations
 

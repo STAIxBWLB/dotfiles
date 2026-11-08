@@ -23,6 +23,7 @@ func newAIBackupCmd() *cobra.Command {
 	c.Flags().String("to", "", "Backup root (overrides configured BackupRoot)")
 	c.Flags().String("tag", "", "Human-friendly label stored in meta.yaml")
 	c.Flags().Bool("include-auth", false, "Include auth/local-secret files")
+	c.AddCommand(newAIStatusCmd())
 	return c
 }
 
