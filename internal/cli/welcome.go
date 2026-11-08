@@ -160,7 +160,7 @@ var useSections = []useSection{
 		{"dot sync conflicts list", "List conflict backups"},
 	}},
 	{"Peer sync between two machines", "Mirror the workspace and selected home files between two Macs over SSH.", []usecase{
-		{"dot peer init", "One-time: write <workspace>/.dotfiles/peer/ with the other machine as target"},
+		{"dot peer init --host user@other-mac", "One-time: write <workspace>/.dotfiles/peer/ with the other machine as target"},
 		{"dot peer diff", "Show what a sync would transfer, without changing anything"},
 		{"dot peer sync", "Run one sync now"},
 		{"dot peer setup", "Schedule peer sync"},
