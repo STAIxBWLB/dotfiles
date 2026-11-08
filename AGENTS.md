@@ -6,7 +6,12 @@ CLAUDE.md.
 
 ## Sources of truth
 
-- `README.md`: modules, profiles, configuration, build commands, CI and release flow.
+- `README.md`: install, modules, profiles, build commands, CI and release flow.
+- `docs/guides/`: one guide per topic (agents, sync, workspace, configuration,
+  maintenance, servers, architecture); a fact lives in the guide for its topic.
+  `docs/guides/architecture.md` lists every package; `tools/gendocs` tests it.
+- `docs/specs/`: design specs too long for an issue body; `docs/specs/README.md`
+  indexes them with their status.
 - `docs/BOUNDARIES.md`: which live files `dot` may write. Stay inside it.
 - `docs/CEILINGS.md`: accepted design limits and when to revisit each.
   `internal/syncer/ceilings_doc_test.go` checks its code markers.

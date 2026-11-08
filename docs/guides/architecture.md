@@ -52,3 +52,14 @@ The files `dot` may write are listed in [BOUNDARIES.md](../BOUNDARIES.md), and a
 | `internal/workspace` | Project registry and tmux layouts behind `dot open` and `dot hub` |
 | `internal/ws` | Directory operations on the workspace and its mirror (`dot ws`) |
 | `tools/gendocs` | Regenerates `docs/commands` from the cobra tree |
+
+# Key design
+
+- **Module interface**: `Check()` → `Apply()` — idempotent, dry-run aware
+- **Profile inheritance**: YAML `extends` chain with field-level merging
+- **go:embed**: Profiles, templates, and scripts compiled into the binary
+- **SHA256 hash**: Skip writes when content unchanged, backup before overwrite
+- **Non-fatal errors**: Module failures logged, remaining modules continue
+- **Platform build tags**: Platform-specific code (xattr, launchd, systemd) via `//go:build`
+
+---
