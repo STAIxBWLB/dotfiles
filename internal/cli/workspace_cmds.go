@@ -193,9 +193,10 @@ func newUnregisterCmd() *cobra.Command {
 // ── layouts ─────────────────────────────────────────────────────────────────
 
 func newLayoutsCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "layouts",
 		Short: "List available workspace layouts",
+		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			p := printerFrom(cmd)
 			p.Header("Available Layouts")
@@ -216,58 +217,77 @@ func newLayoutsCmd() *cobra.Command {
 			p.Line("      %s", ui.StyleHint.Render("one full-size window each: hub, peer-a, peer-b, verify"))
 		},
 	}
+	cmd.AddCommand(newLayoutsDoctorCmd())
+	return cmd
 }
 
 // ── doctor ──────────────────────────────────────────────────────────────────
 
-func newDoctorCmd() *cobra.Command {
+// newLayoutsDoctorCmd checks the tools the workspace layouts run (tmux,
+// lazygit, the monitors). It was the top-level `dot doctor` (#378).
+func newLayoutsDoctorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
-		Short: "Check workspace tool installation status",
+		Short: "Check the tools workspace layouts need",
+		RunE:  runLayoutsDoctor,
+	}
+}
+
+// newDoctorCmd keeps the old top-level name working for one release.
+func newDoctorCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:    "doctor",
+		Short:  "Deprecated: use dot layouts doctor",
+		Hidden: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			runner := exec.NewRunner(false, slog.Default())
-			p := printerFrom(cmd)
-
-			p.Header("Workspace Doctor")
-
-			status := workspace.CheckDeps(runner)
-
-			p.Section("Tools")
-			for _, name := range status.Installed {
-				path, _ := osexec.LookPath(name)
-				p.Bullet(ui.StyleSuccess.Render(ui.MarkPresent),
-					fmt.Sprintf("%-12s %s", name, ui.StyleHint.Render(path)))
-			}
-			for _, name := range status.Required {
-				p.Bullet(ui.StyleError.Render(ui.MarkFail),
-					fmt.Sprintf("%-12s %s", name, ui.StyleHint.Render("(required — run 'dot apply' to install)")))
-			}
-			for _, name := range status.Missing {
-				p.Bullet(ui.StyleHint.Render(ui.MarkPartial),
-					fmt.Sprintf("%-12s %s", name, ui.StyleHint.Render("(optional — fallback available)")))
-			}
-
-			// Terminal environment
-			p.Section("Environment")
-			if res, err := runner.RunQuery(cmd.Context(), "tmux", "-V"); err != nil {
-				p.KV("tmux", "not available")
-			} else {
-				p.KV("tmux", strings.TrimSpace(res.Stdout))
-			}
-			p.KV("TERM", os.Getenv("TERM"))
-			if tp := os.Getenv("TERM_PROGRAM"); tp != "" {
-				p.KV("TERM_PROGRAM", tp)
-			}
-			p.KV("SHELL", os.Getenv("SHELL"))
-
-			// Workspace config
-			configPath, _ := workspace.ConfigPath()
-			dataDir, _ := workspace.DataDir()
-			p.Section("Paths")
-			p.KV("Config", configPath)
-			p.KV("Scripts", dataDir)
-
-			return nil
+			warnRenamed(cmd, "dot doctor", "dot layouts doctor")
+			return runLayoutsDoctor(cmd, args)
 		},
 	}
+}
+
+func runLayoutsDoctor(cmd *cobra.Command, args []string) error {
+	runner := exec.NewRunner(false, slog.Default())
+	p := printerFrom(cmd)
+
+	p.Header("Workspace Doctor")
+
+	status := workspace.CheckDeps(runner)
+
+	p.Section("Tools")
+	for _, name := range status.Installed {
+		path, _ := osexec.LookPath(name)
+		p.Bullet(ui.StyleSuccess.Render(ui.MarkPresent),
+			fmt.Sprintf("%-12s %s", name, ui.StyleHint.Render(path)))
+	}
+	for _, name := range status.Required {
+		p.Bullet(ui.StyleError.Render(ui.MarkFail),
+			fmt.Sprintf("%-12s %s", name, ui.StyleHint.Render("(required — run 'dot apply' to install)")))
+	}
+	for _, name := range status.Missing {
+		p.Bullet(ui.StyleHint.Render(ui.MarkPartial),
+			fmt.Sprintf("%-12s %s", name, ui.StyleHint.Render("(optional — fallback available)")))
+	}
+
+	// Terminal environment
+	p.Section("Environment")
+	if res, err := runner.RunQuery(cmd.Context(), "tmux", "-V"); err != nil {
+		p.KV("tmux", "not available")
+	} else {
+		p.KV("tmux", strings.TrimSpace(res.Stdout))
+	}
+	p.KV("TERM", os.Getenv("TERM"))
+	if tp := os.Getenv("TERM_PROGRAM"); tp != "" {
+		p.KV("TERM_PROGRAM", tp)
+	}
+	p.KV("SHELL", os.Getenv("SHELL"))
+
+	// Workspace config
+	configPath, _ := workspace.ConfigPath()
+	dataDir, _ := workspace.DataDir()
+	p.Section("Paths")
+	p.KV("Config", configPath)
+	p.KV("Scripts", dataDir)
+
+	return nil
 }

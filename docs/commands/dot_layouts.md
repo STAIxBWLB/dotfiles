@@ -26,4 +26,5 @@ dot layouts [flags]
 ### SEE ALSO
 
 * [dot](dot.md)	 - User environment & workspace management tool
+* [dot layouts doctor](dot_layouts_doctor.md)	 - Check the tools workspace layouts need
 

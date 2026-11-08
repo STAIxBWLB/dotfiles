@@ -17,14 +17,30 @@ func newInitCmd() *cobra.Command {
 		Long: `Collect user preferences and save them to the dot state file.
 
 Use --from to import settings from another machine's exported config:
-  dot init --from ~/workspace/secrets/dotfiles-config.yaml`,
+  dot init --from ~/workspace/secrets/dotfiles-config.yaml
+
+Use --check-only to scan the environment without writing anything, or
+--detect to write a config generated from the detected system without
+prompts (--force overwrites an existing one).`,
 		RunE: runInit,
 	}
 	cmd.Flags().String("from", "", "Import settings from an exported config file (identity & preferences as defaults)")
+	addInitDetectFlags(cmd)
 	return cmd
 }
 
+func addInitDetectFlags(cmd *cobra.Command) {
+	cmd.Flags().Bool("check-only", false, "Only run environment checks, don't write config")
+	cmd.Flags().Bool("detect", false, "Write a config generated from the detected system, without prompts")
+	cmd.Flags().Bool("force", false, "With --detect, overwrite an existing config file")
+}
+
 func runInit(cmd *cobra.Command, _ []string) error {
+	checkOnly, _ := cmd.Flags().GetBool("check-only")
+	detect, _ := cmd.Flags().GetBool("detect")
+	if checkOnly || detect {
+		return runInitDetect(cmd, checkOnly)
+	}
 	return runInitFlow(cmd, false)
 }
 
@@ -131,6 +147,16 @@ func runInitFlow(cmd *cobra.Command, skipExistingGate bool) error {
 	}
 
 	// --- Persist ---
+	if err := saveStateAndSummarize(cmd, homeOverride, state, "Configuration saved."); err != nil {
+		return err
+	}
+	return nil
+}
+
+// saveStateAndSummarize is the one save-and-print-summary tail shared by the
+// interactive wizard and --detect (#378).
+func saveStateAndSummarize(cmd *cobra.Command, homeOverride string, state *config.UserState, heading string) error {
+	p := printerFrom(cmd)
 	if homeOverride != "" {
 		if err := config.SaveStateForHome(homeOverride, state); err != nil {
 			return fmt.Errorf("saving state: %w", err)
@@ -142,14 +168,17 @@ func runInitFlow(cmd *cobra.Command, skipExistingGate bool) error {
 	}
 
 	p.Line("")
-	p.Line("Configuration saved.")
-	statePath := config.StatePath()
-	if homeOverride != "" {
-		statePath = config.StatePathForHome(homeOverride)
-	}
-	p.Line("  State file: %s", statePath)
+	p.Line("%s", heading)
+	p.Line("  State file: %s", statePathFor(homeOverride))
 	ui.PrintStateSummary(state)
 	p.Line("")
 	p.Line("Run 'dot apply' to apply the configuration.")
 	return nil
+}
+
+func statePathFor(homeOverride string) string {
+	if homeOverride != "" {
+		return config.StatePathForHome(homeOverride)
+	}
+	return config.StatePath()
 }

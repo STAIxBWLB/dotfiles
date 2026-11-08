@@ -35,14 +35,14 @@ func TestReadOnlyCommandDoesNotRewriteLegacyState(t *testing.T) {
 	}
 	before := digest()
 
-	out, errOut, err := runDotForTest("--home", home, "check")
+	out, errOut, err := runDotForTest("--home", home, "diff", "--summary")
 	if err != nil {
-		t.Fatalf("check: %v\nstdout=%s\nstderr=%s", err, out, errOut)
+		t.Fatalf("diff --summary: %v\nstdout=%s\nstderr=%s", err, out, errOut)
 	}
 	// Non-vacuity: the profile shown comes from the state file, so the command
 	// demonstrably reached the load path this test is about.
 	if !strings.Contains(out, "full") {
-		t.Fatalf("check did not read the seeded state file:\n%s", out)
+		t.Fatalf("diff --summary did not read the seeded state file:\n%s", out)
 	}
 
 	if after := digest(); after != before {

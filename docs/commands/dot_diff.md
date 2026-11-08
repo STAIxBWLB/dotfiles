@@ -6,6 +6,9 @@ Show pending changes without applying
 
 Show what would change if 'dot apply' were run (dry-run with verbose change details).
 
+--summary lists each module's pending change descriptions without the
+commands, the report 'dot check' printed before it was folded into diff.
+
 ```
 dot diff [flags]
 ```
@@ -13,7 +16,8 @@ dot diff [flags]
 ### Options
 
 ```
-  -h, --help   help for diff
+  -h, --help      help for diff
+      --summary   List pending changes per module without the commands
 ```
 
 ### Options inherited from parent commands

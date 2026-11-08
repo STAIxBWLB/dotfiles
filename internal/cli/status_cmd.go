@@ -181,7 +181,7 @@ func statusPrintModules(p *Printer, cmd *cobra.Command, state *config.UserState,
 	if pending := total - satisfied; pending > 0 {
 		p.Blank()
 		p.Line("  %s", ui.StyleHint.Render(
-			fmt.Sprintf("%d module(s) need attention — run 'dot check' for details.", pending)))
+			fmt.Sprintf("%d module(s) need attention — run 'dot diff --summary' for details.", pending)))
 	}
 }
 

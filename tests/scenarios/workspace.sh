@@ -74,7 +74,7 @@ check "layouts lists monitor" bash -c "$BIN layouts 2>&1 | grep -q 'monitor'"
 
 # ── 3. Doctor ─────────────────────────────────────────────────────────────────
 echo "--- doctor ---"
-DOCTOR_OUT=$($BIN doctor 2>&1) || true
+DOCTOR_OUT=$($BIN layouts doctor 2>&1) || true
 echo "$DOCTOR_OUT" | grep -q "Workspace Doctor" && pass "doctor shows header" || fail "doctor shows header"
 echo "$DOCTOR_OUT" | grep -q "SHELL:" && pass "doctor shows SHELL" || fail "doctor shows SHELL"
 echo "$DOCTOR_OUT" | grep -q "Config:" && pass "doctor shows config path" || fail "doctor shows config path"
@@ -145,7 +145,9 @@ check "version not routed to open" $BIN version
 # ── 10. Existing commands still work ─────────────────────────────────
 echo "--- backward compatibility ---"
 check "apply --dry-run flag accepted" bash -c "$BIN apply --dry-run 2>&1; true"
-check "check command exists" bash -c "$BIN check --help 2>&1 | grep -q 'Check'"
+check "diff --summary exists" bash -c "$BIN diff --help 2>&1 | grep -q -- '--summary'"
+check "check alias still runs" bash -c "$BIN check --help >/dev/null 2>&1"
+check "doctor alias names layouts doctor" bash -c "$BIN doctor 2>&1 >/dev/null | grep -q 'dot layouts doctor'"
 check "diff command exists" bash -c "$BIN diff --help 2>&1 | grep -q 'Show'"
 
 # ── Cleanup ───────────────────────────────────────────────────────────────────

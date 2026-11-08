@@ -1,9 +1,9 @@
-## dot doctor
+## dot layouts doctor
 
-Check workspace tool installation status
+Check the tools workspace layouts need
 
 ```
-dot doctor [flags]
+dot layouts doctor [flags]
 ```
 
 ### Options
@@ -25,5 +25,5 @@ dot doctor [flags]
 
 ### SEE ALSO
 
-* [dot](dot.md)	 - User environment & workspace management tool
+* [dot layouts](dot_layouts.md)	 - List available workspace layouts
 

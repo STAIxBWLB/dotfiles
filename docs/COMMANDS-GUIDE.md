@@ -6,7 +6,7 @@ The generated [command reference](commands/) is canonical for command syntax and
 
 `dot init --from <file>` pre-populates identity from another machine, while workspace path and terminal are confirmed locally. Setup covers identity, timezone, profile, GPU detection, module opt-ins, SSH key, workspace repositories, vault location, and GitHub authentication.
 
-For a cautious apply, run `dot preflight --check-only`, `dot preflight`, `dot check`, and `dot apply --dry-run` before a selected module. Files are backed up under `~/.local/share/dotfiles/backup/` before overwrite; an identical SHA256 is not overwritten. `dot config export <file>` creates the portable YAML consumed by `dot init --from <file>`. `dot update` verifies the release checksum and binary; use `dot ai update` for AI CLIs and plugins. From v2.70.29 or earlier, run the curl installer once instead: those updaters refuse a binary over 16 MiB (#231). A Homebrew install updates through its owning brew and reloads dot LaunchAgents that run the new binary (#235): exact verified native tap recipes use the bounded prebuilt admission path, while changed or stale metadata uses the full maintenance gate and `brew update` only when the tap lags. `dot update --homebrew` lets a standalone dot binary target that managed install.
+For a cautious apply, run `dot init --check-only`, `dot init --detect`, `dot diff --summary`, and `dot apply --dry-run` before a selected module. Files are backed up under `~/.local/share/dotfiles/backup/` before overwrite; an identical SHA256 is not overwritten. `dot config export <file>` creates the portable YAML consumed by `dot init --from <file>`. `dot update` verifies the release checksum and binary; use `dot ai update` for AI CLIs and plugins. From v2.70.29 or earlier, run the curl installer once instead: those updaters refuse a binary over 16 MiB (#231). A Homebrew install updates through its owning brew and reloads dot LaunchAgents that run the new binary (#235): exact verified native tap recipes use the bounded prebuilt admission path, while changed or stale metadata uses the full maintenance gate and `brew update` only when the tap lags. `dot update --homebrew` lets a standalone dot binary target that managed install.
 
 ## Secrets and migration
 
@@ -14,7 +14,7 @@ For a cautious apply, run `dot preflight --check-only`, `dot preflight`, `dot ch
 
 ## Workspace commands
 
-`dot open` requires an explicit subcommand, so `dot aply` cannot accidentally create a project. `dot layouts` offers `dev`, `claude`, and `monitor`; `dot doctor` reports tool paths and optional-tool availability.
+`dot open` requires an explicit subcommand, so `dot aply` cannot accidentally create a project. `dot layouts` offers `dev`, `claude`, and `monitor`; `dot layouts doctor` reports tool paths and optional-tool availability.
 
 For dev builds (no ldflags), `dot version` falls back to Go's embedded VCS info with a `-dirty` suffix if the working tree has uncommitted changes.
 

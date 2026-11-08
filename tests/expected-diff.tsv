@@ -80,3 +80,5 @@ diff	stdout	SEC-05/SEC-06: dry-run plans now show the compiled Git commit or Ner
 sync status --json	stdout	SEC-10: schemaVersion 2 adds the always-present sensitiveOverrides policy array after allowCount.
 peer status --json	stdout	SEC-10: the nested sync profile now carries schemaVersion 2 and its always-present sensitiveOverrides policy array.
 ai skills status --json	stdout	Issue #150 / PR #151: skills diagnostics intentionally include kimi, qwen, grok and opencode alongside claude and codex; the six-host shape is pinned by the ai-skills-status JSON golden and does not grant or synchronize skills.
+check	stderr	Issue #378: dot check is a hidden one-release alias for dot diff --summary and prints one stderr line naming the new command; stdout and exit code are unchanged.
+status	stdout	Issue #378: the pending-modules hint names dot diff --summary instead of the hidden dot check alias.

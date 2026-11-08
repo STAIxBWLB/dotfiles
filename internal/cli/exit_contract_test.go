@@ -114,7 +114,7 @@ func TestExitContract(t *testing.T) {
 		bin := buildDotForTest(t)
 		home := t.TempDir()
 
-		runs := [][]string{{"check"}}
+		runs := [][]string{{"diff", "--summary"}, {"check"}}
 		for _, profile := range []string{"minimal", "full", "server"} {
 			runs = append(runs, []string{"apply", "--profile", profile, "--yes", "--dry-run"})
 		}
