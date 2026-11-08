@@ -21,3 +21,6 @@ source "$ZSH/oh-my-zsh.sh"
 
 # ── Tool initialization (oh-my-zsh 이후) ──
 source ~/.config/shell/50-tools-init.sh
+
+# ── User lines (dot never writes this file) ──
+if [ -r ~/.zshrc.local ]; then source ~/.zshrc.local; fi

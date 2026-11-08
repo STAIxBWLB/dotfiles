@@ -322,3 +322,42 @@ func TestRender_ExportsPutContainerShimAheadOfBrew(t *testing.T) {
 		}
 	}
 }
+
+// An Include inside a Host block applies only to that host, so config.d
+// must come before the first Host line (#396).
+func TestRender_SSHConfigIncludesConfigDForEveryHost(t *testing.T) {
+	out, err := NewEngine().Render("ssh/config.tmpl", map[string]any{"SSHKeyName": "id_ed25519", "IsDarwin": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for line := range strings.Lines(string(out)) {
+		f := strings.Fields(line)
+		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
+			continue
+		}
+		if strings.EqualFold(f[0], "Host") || strings.EqualFold(f[0], "Match") {
+			t.Fatalf("a %s block comes before Include ~/.ssh/config.d/*:\n%s", f[0], out)
+		}
+		if strings.EqualFold(f[0], "Include") && len(f) > 1 && f[1] == "~/.ssh/config.d/*" {
+			return
+		}
+	}
+	t.Fatalf("no Include ~/.ssh/config.d/*:\n%s", out)
+}
+
+// Installer lines belong in the user-owned .local files, sourced last (#396).
+func TestRender_ShellRcSourcesLocalFileLast(t *testing.T) {
+	for tmpl, want := range map[string]string{
+		"shell/zshrc.tmpl":  "if [ -r ~/.zshrc.local ]; then source ~/.zshrc.local; fi",
+		"shell/bashrc.tmpl": "if [ -r ~/.bashrc.local ]; then . ~/.bashrc.local; fi",
+	} {
+		out, err := NewEngine().Render(tmpl, map[string]any{"Timezone": "UTC"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		if last := lines[len(lines)-1]; last != want {
+			t.Errorf("%s last line = %q, want %q", tmpl, last, want)
+		}
+	}
+}

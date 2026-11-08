@@ -131,6 +131,14 @@ func (m *ContainerModule) probe(ctx context.Context, rc *RunContext) (*container
 		}
 		h.notRunning = !status.Running()
 		h.noKernel = !rc.Runner.FileExists(container.KernelPath(rc.HomeDir, status.Paths.AppRoot))
+		if !m.Chosen {
+			// A plain apply leaves an installed backend's service as the user
+			// left it; dot container setup (or a first install) starts it.
+			h.notRegistered = false
+			if h.notRunning {
+				h.notRunning, h.noKernel = false, false
+			}
+		}
 	case "linux":
 		if backend == container.BackendApple {
 			return nil, fmt.Errorf("modules.container.backend apple runs on macOS only; use auto, docker or podman")

@@ -500,3 +500,44 @@ func TestContainerSetupOverridesDecline(t *testing.T) {
 		t.Fatalf("setup after a decline did not install: %q", calls)
 	}
 }
+
+func TestContainerApplyLeavesStoppedSystemOfSetUpHost(t *testing.T) {
+	h := newFakeHost(t)
+	h.mac("27.0")
+	rc := containerTestContext(t, &config.SystemInfo{OS: "darwin", Arch: "arm64"}, true)
+	// Set up earlier, then the user stopped the system and removed the login job.
+	if err := runContainer(t, &ContainerModule{Chosen: true}, rc); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"running", "registered"} {
+		if err := os.Remove(filepath.Join(os.Getenv("FAKE_STATE"), f)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Remove(h.log); err != nil {
+		t.Fatal(err)
+	}
+
+	check, err := (&ContainerModule{}).Check(context.Background(), rc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range check.Changes {
+		if strings.Contains(c.Command, "start") {
+			t.Fatalf("plain apply plans %q on a set-up host", c.Command)
+		}
+	}
+	if err := runContainer(t, &ContainerModule{}, rc); err != nil {
+		t.Fatal(err)
+	}
+	assertCalls(t, h.calls(macProbes...))
+
+	// dot container setup still starts it.
+	if err := runContainer(t, &ContainerModule{Chosen: true}, rc); err != nil {
+		t.Fatal(err)
+	}
+	assertCalls(t, h.calls(macProbes...),
+		"brew services start container",
+		"container system start --disable-kernel-install",
+	)
+}
