@@ -579,10 +579,10 @@ func PeerSync(ctx context.Context, opts PeerSyncOptions) (*PeerSyncResult, error
 	if err := resolvePeerRsync(ctx, probe, cfg); err != nil {
 		return nil, err
 	}
-	// The fence runs on first contact, before any transfer. A previous-
-	// release peer (no dotVersion, no epoch) gets exactly the pre-epoch
-	// owner-mismatch behavior; an epoch pair resolves coordinator divergence
-	// here and the loser demotes itself instead of syncing.
+	// The fence runs on first contact, before any transfer. A peer whose dot
+	// reports no version (before 2.70.23) is refused with `dot update` as the
+	// fix (#374); an epoch pair resolves coordinator divergence here and the
+	// loser demotes itself instead of syncing.
 	remoteStatus, err := fetchRemotePeerStatus(ctx, probe, cfg)
 	if err != nil {
 		return nil, err
