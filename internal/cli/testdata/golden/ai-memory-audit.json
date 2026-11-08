@@ -22,13 +22,13 @@
       "agent": "claude",
       "path": "@HOME@/.claude/projects/-proj-a/memory",
       "status": "ok",
-      "files": 3,
-      "bytes": 1900,
+      "files": 4,
+      "bytes": 1946,
       "modified": "2026-11-01T00:00:00Z",
       "index": {
         "path": "@HOME@/.claude/projects/-proj-a/memory/MEMORY.md",
         "lines": 201,
-        "bytes": 1843,
+        "bytes": 1859,
         "maxLines": 200,
         "maxBytes": 25000,
         "over": true

@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -366,6 +367,9 @@ func linkedStore(agent, root string, limits *Index, markers []Marker, show bool)
 			}
 			if target == "" || strings.Contains(target, "://") || strings.HasPrefix(target, "mailto:") || filepath.IsAbs(target) {
 				continue
+			}
+			if unescaped, err := url.PathUnescape(target); err == nil {
+				target = unescaped
 			}
 			rel := filepath.ToSlash(filepath.Clean(target))
 			if linked[rel] {

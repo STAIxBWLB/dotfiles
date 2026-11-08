@@ -48,10 +48,11 @@ func goldenMemoryFixture(t *testing.T) (home, root string) {
 `)
 
 	claude := ".claude/projects/-proj-a/memory/"
-	index := "- [A](a.md) - kept\n- [Gone](gone.md) - deleted file\n" + strings.Repeat("- filler\n", 199)
+	index := "- [A](a.md) - kept\n- [Gone](gone.md) - deleted file\n- [Spaced](my%20note.md)\n" + strings.Repeat("- filler\n", 198)
 	w(claude+"MEMORY.md", index)
 	w(claude+"a.md", "Use old-plugin for capture. "+privateWord+"\n")
 	w(claude+"orphan.md", "Nothing links this.\n")
+	w(claude+"my note.md", "Linked with an escaped space.\n")
 	w(claude+"_archive/old.md", "old-plugin, archived already\n")
 
 	codex := ".codex/memories/"
