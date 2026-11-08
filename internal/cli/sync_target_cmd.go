@@ -39,17 +39,6 @@ workspaces inherit them.`,
 	}
 }
 
-func newSyncMirrorCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:          "mirror [path]",
-		Short:        "Show or set the local mirror path",
-		Deprecated:   "use 'dot sync target' instead.",
-		Args:         cobra.MaximumNArgs(1),
-		RunE:         runSyncTarget,
-		SilenceUsage: true,
-	}
-}
-
 func runSyncTarget(cmd *cobra.Command, args []string) error {
 	p := printerFrom(cmd)
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
@@ -148,9 +137,6 @@ func runSyncInit(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if res.DryRun {
-		if res.LegacyStoreDir != "" {
-			p.Line("dry-run: would rename %s to %s", res.LegacyStoreDir, res.StoreDir)
-		}
 		p.Line("dry-run: would create %s", res.StoreDir)
 		for _, f := range []string{res.ConfigFile, res.IncludeFile, res.IgnoreFile} {
 			p.Line("dry-run: would create %s", f)

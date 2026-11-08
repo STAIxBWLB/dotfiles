@@ -11,25 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// dot sync push and its back-compat `sync` alias.
-
-func newSyncSyncCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:          "sync",
-		Short:        "Alias for `push` (kept for back-compat; prefer `dot sync push`)",
-		RunE:         runSync,
-		SilenceUsage: true,
-	}
-}
-
-// runSync handles the explicit `sync` subcommand. The historical
-// Pull+Push semantics were retired; this is now a thin alias for push that
-// prints a one-line deprecation hint so callers gradually migrate to
-// `push`. The bare `dot sync` (no subcommand) prints help instead.
-func runSync(cmd *cobra.Command, args []string) error {
-	printerFrom(cmd).Line("(note: `sync` is now an alias for `push`; use `dot sync pull` for baseline-tracked mirror payloads)")
-	return runSyncPush(cmd, args)
-}
+// dot sync push.
 
 func newSyncPushCmd() *cobra.Command {
 	cmd := &cobra.Command{

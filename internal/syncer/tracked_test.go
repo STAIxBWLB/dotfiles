@@ -191,46 +191,65 @@ func TestMaterializeSubmodulesAndTrackedFiles(t *testing.T) {
 	}
 }
 
-func TestMigrateLegacyStore_RenamesAndRewritesGitignore(t *testing.T) {
+// A workspace with only the pre-2.59.0 store is refused with the move that
+// keeps its baseline, never synced from an empty new store (#371).
+func TestLegacyStoreError(t *testing.T) {
 	root := t.TempDir()
+	if err := LegacyStoreError(root); err != nil {
+		t.Fatalf("no store at all: %v", err)
+	}
 	oldStore := filepath.Join(root, ".dotfiles", "gdrive-sync")
-	if err := os.MkdirAll(filepath.Join(oldStore, "log"), 0o755); err != nil {
+	if err := os.MkdirAll(oldStore, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(oldStore, "config.yaml"), []byte("paused: true\n"), 0o644); err != nil {
+	err := LegacyStoreError(root)
+	if err == nil || !strings.Contains(err.Error(), "mv ") || !strings.Contains(err.Error(), filepath.Join(root, ".dotfiles", "sync")) {
+		t.Fatalf("legacy only: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".dotfiles", "sync"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(oldStore, "log", "gdrive-sync.log"), []byte("line\n"), 0o644); err != nil {
-		t.Fatal(err)
+	if err := LegacyStoreError(root); err != nil {
+		t.Fatalf("new store present: %v", err)
 	}
-	gitignore := "!/.dotfiles/gdrive-sync/\n/.dotfiles/gdrive-sync/*\n!/.dotfiles/gdrive-sync/exclude.txt\n"
-	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(gitignore), 0o644); err != nil {
-		t.Fatal(err)
-	}
+}
 
-	migrated, err := MigrateLegacyStore(root)
-	if err != nil {
+// The printed remedy is shell-safe for any workspace path and keeps the old
+// baseline: run it through /bin/sh on a path holding $ and a quote (#371).
+func TestLegacyStoreErrorRemedyRunsInShell(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "work $HOME it's")
+	old := filepath.Join(root, ".dotfiles", "gdrive-sync")
+	if err := os.MkdirAll(old, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if !migrated {
-		t.Fatal("expected migration to run")
+	if err := os.WriteFile(filepath.Join(old, "baseline.manifest"), []byte("docs/a.md\t1\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(root, ".dotfiles", "sync", "config.yaml")); err != nil {
-		t.Errorf("config not at new store: %v", err)
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("!/.dotfiles/gdrive-sync/\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(root, ".dotfiles", "sync", "log", "sync.log")); err != nil {
-		t.Errorf("log not renamed: %v", err)
+	err := LegacyStoreError(root)
+	if err == nil {
+		t.Fatal("no refusal")
 	}
-	body, _ := os.ReadFile(filepath.Join(root, ".gitignore"))
-	if strings.Contains(string(body), "gdrive-sync") {
-		t.Errorf(".gitignore still references gdrive-sync:\n%s", body)
+	var command string
+	for _, line := range strings.Split(err.Error(), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "mv ") {
+			command = strings.TrimSpace(line)
+		}
 	}
-	if !strings.Contains(string(body), "!/.dotfiles/sync/exclude.txt") {
-		t.Errorf("operator whitelist line lost:\n%s", body)
+	cmd := osexec.Command("/bin/sh", "-c", command)
+	cmd.Env = []string{"PATH=/bin:/usr/bin", "HOME=/nonexistent"}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%s: %v %s", command, err, out)
 	}
-
-	// Idempotent: second call is a no-op.
-	if again, err := MigrateLegacyStore(root); err != nil || again {
-		t.Errorf("second migration = (%v, %v), want (false, nil)", again, err)
+	if data, err := os.ReadFile(filepath.Join(root, ".dotfiles", "sync", "baseline.manifest")); err != nil || string(data) != "docs/a.md\t1\n" {
+		t.Fatalf("baseline not carried: %q %v", data, err)
+	}
+	if body, _ := os.ReadFile(filepath.Join(root, ".gitignore")); string(body) != "!/.dotfiles/sync/\n" {
+		t.Fatalf(".gitignore = %q", body)
+	}
+	if err := LegacyStoreError(root); err != nil {
+		t.Fatalf("still refused after the remedy: %v", err)
 	}
 }

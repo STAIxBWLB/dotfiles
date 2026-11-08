@@ -33,7 +33,6 @@ files still stage into inbox/gdrive for manual routing.
 	  dot sync resume      Clear paused gate and re-arm installed schedulers
 
 Run without a subcommand to print this help.
-Deprecated aliases: 'dot gsync', 'dot gdrive-sync'.
 
 ```
 dot sync [flags]
@@ -79,6 +78,5 @@ dot sync [flags]
 * [dot sync setup](dot_sync_setup.md)	 - Install rsync (if missing) and manage the opt-in sync schedulers
 * [dot sync shared](dot_sync_shared.md)	 - Manage manual shared-folder exclusions
 * [dot sync status](dot_sync_status.md)	 - Show local↔mirror sync status
-* [dot sync sync](dot_sync_sync.md)	 - Alias for `push` (kept for back-compat; prefer `dot sync push`)
 * [dot sync target](dot_sync_target.md)	 - Show or set the sync target (local mirror dir or SSH remote)
 

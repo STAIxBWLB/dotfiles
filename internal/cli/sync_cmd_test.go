@@ -190,30 +190,26 @@ func TestParseFilterMode(t *testing.T) {
 	}
 }
 
-func TestRootRegistersSyncPrimaryAndLegacyAlias(t *testing.T) {
+// The gsync and gdrive-sync aliases were retired after a deprecation cycle
+// that began in v2.59.0 (#371).
+func TestRootDropsRetiredSyncAliases(t *testing.T) {
 	root := NewRootCmd("dev", "test")
 	known := knownSubcommands(root)
-	for _, name := range []string{"sync", "gsync", "gdrive-sync"} {
-		if !known[name] {
-			t.Fatalf("knownSubcommands missing %q", name)
-		}
+	if !known["sync"] {
+		t.Fatal("knownSubcommands missing sync")
 	}
-
-	cmd, _, err := root.Find([]string{"sync"})
-	if err != nil {
-		t.Fatalf("Find(sync): %v", err)
-	}
-	if cmd.Name() != "sync" {
-		t.Fatalf("Find(sync) = %q, want sync", cmd.Name())
-	}
-
 	for _, alias := range []string{"gsync", "gdrive-sync"} {
-		legacy, _, err := root.Find([]string{alias})
-		if err != nil {
-			t.Fatalf("Find(%s): %v", alias, err)
+		if known[alias] {
+			t.Errorf("%s is still registered", alias)
 		}
-		if legacy.Name() != "sync" {
-			t.Fatalf("Find(%s) = %q, want sync", alias, legacy.Name())
+		if c, _, err := root.Find([]string{alias}); err == nil && c != root {
+			t.Errorf("Find(%s) resolved to %s", alias, c.CommandPath())
+		}
+	}
+	sync, _, _ := root.Find([]string{"sync"})
+	for _, name := range []string{"sync", "mirror"} {
+		if c, _, err := sync.Find([]string{name}); err == nil && c != sync {
+			t.Errorf("dot sync %s is still registered", name)
 		}
 	}
 }
@@ -230,7 +226,6 @@ func TestBareSyncPrintsHelp(t *testing.T) {
 	got := out.String()
 	for _, want := range []string{
 		"Run without a subcommand to print this help.",
-		"Deprecated aliases: 'dot gsync', 'dot gdrive-sync'.",
 		"dot sync push",
 	} {
 		if !strings.Contains(got, want) {

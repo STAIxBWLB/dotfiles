@@ -405,7 +405,7 @@ func TestLoadLocalConfig_MissingReturnsFalse(t *testing.T) {
 	}
 }
 
-func TestMigrateFromGlobal_PopulatesLocalLayout(t *testing.T) {
+func TestSeedFromGlobal_PopulatesLocalLayout(t *testing.T) {
 	tmp := t.TempDir()
 	paths := ResolveLocalPaths(tmp)
 
@@ -416,9 +416,9 @@ func TestMigrateFromGlobal_PopulatesLocalLayout(t *testing.T) {
 	state.Modules.Gsync.Paused = true
 	state.Modules.Gsync.SharedExcludes = []string{"projects/legacy"}
 
-	cfg, err := MigrateFromGlobal(state, paths)
+	cfg, err := SeedFromGlobal(state, paths)
 	if err != nil {
-		t.Fatalf("MigrateFromGlobal: %v", err)
+		t.Fatalf("SeedFromGlobal: %v", err)
 	}
 	// Migrated fields:
 	if cfg.MirrorPath != "/legacy/mirror" || cfg.MaxDelete != 250 || cfg.Interval != 0 || !cfg.Paused {
@@ -446,16 +446,16 @@ func TestMigrateFromGlobal_PopulatesLocalLayout(t *testing.T) {
 	}
 }
 
-func TestLoadOrMigrateLocalConfig_MigrationRunsOnce(t *testing.T) {
+func TestLoadOrSeedLocalConfig_MigrationRunsOnce(t *testing.T) {
 	tmp := t.TempDir()
 	paths := ResolveLocalPaths(tmp)
 
 	state := &config.UserState{}
 	state.Modules.Gsync.MirrorPath = "/legacy/mirror"
 
-	first, err := LoadOrMigrateLocalConfig(state, paths)
+	first, err := LoadOrSeedLocalConfig(state, paths)
 	if err != nil {
-		t.Fatalf("first LoadOrMigrateLocalConfig: %v", err)
+		t.Fatalf("first LoadOrSeedLocalConfig: %v", err)
 	}
 	// Mutate the disk-resident config so we can detect re-migration.
 	first.MirrorPath = "/edited/by/operator"
@@ -464,9 +464,9 @@ func TestLoadOrMigrateLocalConfig_MigrationRunsOnce(t *testing.T) {
 	}
 
 	// Second call must see the operator's edit, NOT the global state.
-	second, err := LoadOrMigrateLocalConfig(state, paths)
+	second, err := LoadOrSeedLocalConfig(state, paths)
 	if err != nil {
-		t.Fatalf("second LoadOrMigrateLocalConfig: %v", err)
+		t.Fatalf("second LoadOrSeedLocalConfig: %v", err)
 	}
 	if second.MirrorPath != "/edited/by/operator" {
 		t.Errorf("re-migration overwrote local edits: MirrorPath = %q", second.MirrorPath)
