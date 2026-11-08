@@ -45,7 +45,7 @@ enrollment flow that works before scheduling.
 memory and commits them with `atomicWrite`; it does not stream records to disk.
 
 The simpler all-at-once write is not worth changing below six figures of files.
-The named upgrade trigger is [CONC-02](../.planning/REQUIREMENTS.md): replace
+The named upgrade trigger is CONC-02 (a planning requirement): replace
 it with an incremental index or directory-mtime pruning when the workspace tree
 reaches six figures of files.
 
