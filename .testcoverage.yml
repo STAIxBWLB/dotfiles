@@ -63,6 +63,8 @@ override:
     threshold: 70
   # Initial constrained Darwin fixture run for #153 measured 78.0% and 80.4%.
   # Linux CI remains authoritative; existing floors are unchanged.
+  - path: ^internal/aimemory$ # measured 92.5% on darwin at introduction (dotfiles#367)
+    threshold: 91
   - path: ^internal/aipolicy$
     threshold: 77
   - path: ^internal/aisession$

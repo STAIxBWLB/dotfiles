@@ -17,7 +17,7 @@ import (
 func newAIMemoryCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "memory",
-		Short: "Register amem for the agents and retire claude-mem",
+		Short: "Register amem, audit the agents' native memory, retire claude-mem",
 		Long: `Register amem (@staix/agent-mem) as the project memory for Kiro and
 GitHub Copilot, and print the 'amem setup' lines for Claude Code, Codex, Kimi,
 Qwen, pi and Antigravity, which amem registers itself.
@@ -27,12 +27,18 @@ version yourself or with 'dot ai family install amem', then run 'dot ai memory i
 writes no LaunchAgent for it. Sessions of agents without hooks reach amem
 through 'amem ingest <agent>', run at session end or on demand.
 
+'dot ai memory audit' reports the size and drift of each agent's native memory
+store, and 'dot ai memory archive' moves stale files out of the loaded layer
+(a dry run unless --apply is given).
+
 'dot ai memory retire-claude-mem' removes the old claude-mem integration. It is
 a dry run unless --apply is given.`,
 	}
 	cmd.AddCommand(newAIMemoryInstallCmd())
 	cmd.AddCommand(newAIMemoryStatusCmd())
 	cmd.AddCommand(newAIMemoryRetireCmd())
+	cmd.AddCommand(newAIMemoryAuditCmd())
+	cmd.AddCommand(newAIMemoryArchiveCmd())
 	return cmd
 }
 

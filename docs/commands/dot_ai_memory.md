@@ -1,6 +1,6 @@
 ## dot ai memory
 
-Register amem for the agents and retire claude-mem
+Register amem, audit the agents' native memory, retire claude-mem
 
 ### Synopsis
 
@@ -12,6 +12,10 @@ dot runs no memory process and installs amem only on request: install the exact
 version yourself or with 'dot ai family install amem', then run 'dot ai memory install'. amem has no resident worker, so dot
 writes no LaunchAgent for it. Sessions of agents without hooks reach amem
 through 'amem ingest <agent>', run at session end or on demand.
+
+'dot ai memory audit' reports the size and drift of each agent's native memory
+store, and 'dot ai memory archive' moves stale files out of the loaded layer
+(a dry run unless --apply is given).
 
 'dot ai memory retire-claude-mem' removes the old claude-mem integration. It is
 a dry run unless --apply is given.
@@ -36,6 +40,8 @@ a dry run unless --apply is given.
 ### SEE ALSO
 
 * [dot ai](dot_ai.md)	 - AI CLI/config helpers and settings backup/restore
+* [dot ai memory archive](dot_ai_memory_archive.md)	 - Move stale memory files into an archive (dry run unless --apply)
+* [dot ai memory audit](dot_ai_memory_audit.md)	 - Report the size and drift of each agent's native memory (read-only)
 * [dot ai memory install](dot_ai_memory_install.md)	 - Register amem's MCP server for Kiro and Copilot
 * [dot ai memory retire-claude-mem](dot_ai_memory_retire-claude-mem.md)	 - Remove the claude-mem integration (dry run unless --apply)
 * [dot ai memory status](dot_ai_memory_status.md)	 - Show amem integration health

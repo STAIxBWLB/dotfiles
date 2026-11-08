@@ -25,5 +25,5 @@ dot ai memory status [flags]
 
 ### SEE ALSO
 
-* [dot ai memory](dot_ai_memory.md)	 - Register amem for the agents and retire claude-mem
+* [dot ai memory](dot_ai_memory.md)	 - Register amem, audit the agents' native memory, retire claude-mem
 

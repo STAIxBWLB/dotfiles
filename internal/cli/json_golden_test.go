@@ -109,6 +109,7 @@ func goldenCases() []goldenCase {
 		{surface: "admit", args: []string{"admit", "--json", "--wait", "0", "--", "true"}, useErr: true, fixture: goldenAdmitFixture},
 		{surface: "admit", variant: "deferred", args: []string{"admit", "--json", "--wait", "0", "--", "true"}, wantExit: ExitDeferred, fixture: goldenAdmitDeferFixture},
 		{surface: "admit status", args: []string{"admit", "status", "--json"}, fixture: goldenAdmitStatusFixture},
+		{surface: "ai memory audit", args: []string{"ai", "memory", "audit", "--json"}, wantExit: 1, fixture: goldenMemoryFixture},
 		{surface: "ai policy inspect", args: []string{"ai", "policy", "inspect", "--json"}, fixture: goldenAIPolicyFixture},
 		{surface: "ai policy resolve", args: []string{"ai", "policy", "resolve", "--task", "status", "--project", "@ROOT@", "--json"}, fixture: goldenAIPolicyFixture},
 		{surface: "ai policy diff", args: []string{"ai", "policy", "diff", "--json"}, fixture: goldenAIPolicyFixture},
