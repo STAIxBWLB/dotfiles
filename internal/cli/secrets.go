@@ -136,7 +136,7 @@ func newSecretsInitCmd() *cobra.Command {
 func newSecretsRestoreCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "restore <source>",
-		Short: "Decrypt secrets from a source directory",
+		Short: "Advanced: decrypt only secrets (dot restore is the front door)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ses, err := secretsSessionFrom(cmd)

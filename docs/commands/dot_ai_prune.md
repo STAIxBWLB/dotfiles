@@ -1,6 +1,6 @@
 ## dot ai prune
 
-Delete older AI config snapshots, keeping the newest N
+Delete older AI snapshots (ai-config/ only), keeping the newest N
 
 ```
 dot ai prune [flags]

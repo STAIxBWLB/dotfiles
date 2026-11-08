@@ -203,7 +203,7 @@ func runAIStatus(cmd *cobra.Command, _ []string) error {
 func newAIPruneCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "prune",
-		Short: "Delete older AI config snapshots, keeping the newest N",
+		Short: "Delete older AI snapshots (ai-config/ only), keeping the newest N",
 		Args:  cobra.NoArgs,
 		RunE:  runAIPrune,
 	}

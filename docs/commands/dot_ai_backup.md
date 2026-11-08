@@ -1,6 +1,6 @@
 ## dot ai backup
 
-Create a versioned AI settings snapshot
+Advanced: snapshot only AI settings (dot backup is the front door)
 
 ```
 dot ai backup [flags]

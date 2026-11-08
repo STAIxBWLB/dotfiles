@@ -1,6 +1,6 @@
 ## dot profile restore
 
-Apply a profile snapshot (defaults to the latest) back to this host
+Advanced: restore only a profile snapshot (dot restore is the front door)
 
 ```
 dot profile restore [flags]
@@ -12,7 +12,7 @@ dot profile restore [flags]
       --from string       Backup root (overrides configured BackupRoot)
   -h, --help              help for restore
       --host string       Source hostname to restore from (default: this host)
-      --include-secrets   Restore ~/.ssh/age_key* from the snapshot if present
+      --include-age-key   Restore ~/.ssh/age_key* from the snapshot if present
       --no-state          Skip copying config.yaml back to ~/.config/dotfiles/
       --version string    Specific version to restore (default: latest)
 ```

@@ -1,6 +1,6 @@
 ## dot profile prune
 
-Delete older snapshots, keeping the newest N
+Delete older profile snapshots (profiles/ only), keeping the newest N
 
 ```
 dot profile prune [flags]

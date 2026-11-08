@@ -1,6 +1,6 @@
 ## dot secrets backup
 
-Copy encrypted secrets to a destination directory
+Advanced: copy only encrypted secrets (dot backup is the front door)
 
 ### Synopsis
 

@@ -16,7 +16,7 @@ import (
 func newAIBackupCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "backup",
-		Short: "Create a versioned AI settings snapshot",
+		Short: "Advanced: snapshot only AI settings (dot backup is the front door)",
 		Args:  cobra.NoArgs,
 		RunE:  runAIBackup,
 	}
@@ -46,7 +46,7 @@ func runAIBackup(cmd *cobra.Command, _ []string) error {
 func newAIRestoreCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "restore",
-		Short: "Restore AI settings from a versioned snapshot",
+		Short: "Advanced: restore only AI settings (dot restore is the front door)",
 		Args:  cobra.NoArgs,
 		RunE:  runAIRestore,
 	}

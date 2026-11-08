@@ -1,6 +1,6 @@
 ## dot secrets restore
 
-Decrypt secrets from a source directory
+Advanced: decrypt only secrets (dot restore is the front door)
 
 ```
 dot secrets restore <source> [flags]

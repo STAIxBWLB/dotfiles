@@ -30,8 +30,8 @@ dot backup [flags]
 
 ```
   -h, --help              help for backup
+      --include-age-key   Include ~/.ssh/age_key* in the profile snapshot
       --include-auth      Include AI auth tokens in the AI snapshot
-      --include-secrets   Include ~/.ssh/age_key* in the profile snapshot
       --scope string      Comma-separated domains to back up (profile,apps,ai,secrets)
       --tag string        Shared label stored in profile/AI snapshot metadata
       --to string         Backup root (overrides configured BackupRoot)
