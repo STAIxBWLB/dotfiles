@@ -230,7 +230,7 @@ func TestVaultRetireRequiresAWorkingVmemEntry(t *testing.T) {
 		}
 		combined := out + errOut
 		for _, key := range []string{"kiro", "copilot"} {
-			if !strings.Contains(combined, files[key]+" has no working vmem entry; run `dot ai vault install` first, obsidian is kept") {
+			if !strings.Contains(combined, files[key]+" has no working vmem entry; run `dot ai mcp install vmem` first, obsidian is kept") {
 				t.Fatalf("%v: missing skip message for %s:\n%s", args, key, combined)
 			}
 			if strings.Contains(combined, "remove mcpServers.obsidian from "+files[key]) {

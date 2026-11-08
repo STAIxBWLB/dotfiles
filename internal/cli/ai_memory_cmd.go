@@ -17,13 +17,13 @@ import (
 func newAIMemoryCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "memory",
-		Short: "Register amem, audit the agents' native memory, retire claude-mem",
+		Short: "Audit and archive native agent memory, or retire claude-mem",
 		Long: `Register amem (@staix/agent-mem) as the project memory for Kiro and
 GitHub Copilot, and print the 'amem setup' lines for Claude Code, Codex, Kimi,
 Qwen, pi and Antigravity, which amem registers itself.
 
 dot runs no memory process and installs amem only on request: install the exact
-version yourself or with 'dot ai family install amem', then run 'dot ai memory install'. amem has no resident worker, so dot
+version yourself or with 'dot ai family install amem', then run 'dot ai mcp install amem'. amem has no resident worker, so dot
 writes no LaunchAgent for it. Sessions of agents without hooks reach amem
 through 'amem ingest <agent>', run at session end or on demand.
 
@@ -34,8 +34,8 @@ store, and 'dot ai memory archive' moves stale files out of the loaded layer
 'dot ai memory retire-claude-mem' removes the old claude-mem integration. It is
 a dry run unless --apply is given.`,
 	}
-	cmd.AddCommand(newAIMemoryInstallCmd())
-	cmd.AddCommand(newAIMemoryStatusCmd())
+	cmd.AddCommand(deprecatedAICommand(newAIMemoryInstallCmd(), "dot ai mcp install amem"))
+	cmd.AddCommand(deprecatedAICommand(newAIMemoryStatusCmd(), "dot ai mcp status amem"))
 	cmd.AddCommand(newAIMemoryRetireCmd())
 	cmd.AddCommand(newAIMemoryAuditCmd())
 	cmd.AddCommand(newAIMemoryArchiveCmd())
@@ -81,7 +81,7 @@ agents. dot leaves the Kimi, Qwen and Antigravity configs untouched: 'amem setup
 owns them. Every other server and key is preserved. Re-running changes nothing.
 
 amem must already be installed (an @staix/agent-mem release inside the range
-'dot ai memory status' names) and on PATH. With --dry-run nothing is written.`,
+'dot ai mcp status amem' names) and on PATH. With --dry-run nothing is written.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dryRun, _ := cmd.Flags().GetBool("dry-run")
@@ -160,7 +160,7 @@ func newAIMemoryStatusCmd() *cobra.Command {
 			}
 			p.Section("Shared")
 			printMemoryState(p, "instructions", status.InstructionsEnabled, "agents SSOT memory block")
-			p.Line("Claude Code and Codex are registered by `amem setup`; see `dot ai memory install` for the lines.")
+			p.Line("Claude Code and Codex are registered by `amem setup`; see `dot ai mcp install amem` for the lines.")
 			return nil
 		},
 	}

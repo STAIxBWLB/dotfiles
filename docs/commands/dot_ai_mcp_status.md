@@ -1,9 +1,9 @@
-## dot ai vault status
+## dot ai mcp status
 
-Show vmem integration health
+Show one MCP integration's registration and version health
 
 ```
-dot ai vault status [flags]
+dot ai mcp status <amem|vmem|ares> [flags]
 ```
 
 ### Options
@@ -25,5 +25,5 @@ dot ai vault status [flags]
 
 ### SEE ALSO
 
-* [dot ai vault](dot_ai_vault.md)	 - Register vmem as the vault writer and retire the Obsidian MCP server
+* [dot ai mcp](dot_ai_mcp.md)	 - Register and inspect amem, vmem and ares MCP integrations
 

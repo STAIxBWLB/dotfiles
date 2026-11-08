@@ -72,11 +72,11 @@ Portable AI snapshots exclude skill roots, auth by default, caches, histories, d
 
 ## amem and the claude-mem retirement
 
-`dot ai memory install|status` register amem's MCP server for Kiro and Copilot and report its health (`dot` never installs amem; `amem setup` registers Claude Code, Codex, Kimi, Qwen, pi and Antigravity). `dot ai memory retire-claude-mem` is a dry run unless `--apply` is given; see the README. The former `dot ai memory sync|update|bridge` commands and the hourly peer sync LaunchAgent are gone: amem syncs through its own git refs and has no resident process.
+`dot ai mcp install|status amem` register amem's MCP server for Kiro and Copilot and report its health (`dot` never installs amem; `amem setup` registers Claude Code, Codex, Kimi, Qwen, pi and Antigravity). `dot ai memory retire-claude-mem` is a dry run unless `--apply` is given; see the README. The former `dot ai memory sync|update|bridge` commands and the hourly peer sync LaunchAgent are gone: amem syncs through its own git refs and has no resident process.
 
-`dot ai vault install|status` register vmem's MCP server for Kiro and Copilot and report its health, warning while the retired `obsidian` server is still registered (`dot` never installs vmem; `vmem setup` registers Claude Code, Codex, Kimi, Qwen, pi, jcode and Antigravity). `dot ai vault retire-mcpvault` is a dry run unless `--apply` is given and only edits the Kiro and Copilot configs.
+`dot ai mcp install|status vmem` register vmem's MCP server for Kiro and Copilot and report its health, warning while the retired `obsidian` server is still registered (`dot` never installs vmem; `vmem setup` registers Claude Code, Codex, Kimi, Qwen, pi, jcode and Antigravity). `dot ai vault retire-mcpvault` is a dry run unless `--apply` is given and only edits the Kiro and Copilot configs.
 
-`dot ai research install|status` register ares's MCP server for Kiro and Copilot, write the research block into the agents SSOT and report its health (`ares setup` registers Claude Code, Codex, Kimi, Qwen, pi, jcode and Antigravity). The policy auto-approves ares's read tools only.
+`dot ai mcp install|status ares` register ares's MCP server for Kiro and Copilot, write the research block into the agents SSOT and report its health (`ares setup` registers Claude Code, Codex, Kimi, Qwen, pi, jcode and Antigravity). The policy auto-approves ares's read tools only.
 
 ## Apps and profile snapshots
 

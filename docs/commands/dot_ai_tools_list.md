@@ -1,6 +1,6 @@
 ## dot ai tools list
 
-List selectable agents and four managed add-ons
+List selectable tooling or inspect installed CLIs and settings
 
 ```
 dot ai tools list [flags]
@@ -9,8 +9,10 @@ dot ai tools list [flags]
 ### Options
 
 ```
-  -h, --help   help for list
-      --json   Print JSON
+      --details        Show detected CLIs, portable settings and app casks instead of the catalog
+  -h, --help           help for list
+      --include-auth   Show auth/local-secret paths in the detailed inventory
+      --json           Print the selectable catalog as JSON
 ```
 
 ### Options inherited from parent commands

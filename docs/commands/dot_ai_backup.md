@@ -29,4 +29,5 @@ dot ai backup [flags]
 ### SEE ALSO
 
 * [dot ai](dot_ai.md)	 - AI CLI/config helpers and settings backup/restore
+* [dot ai backup status](dot_ai_backup_status.md)	 - Show AI settings live/backup status
 

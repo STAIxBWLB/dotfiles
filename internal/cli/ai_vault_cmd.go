@@ -15,20 +15,20 @@ import (
 func newAIVaultCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "vault",
-		Short: "Register vmem as the vault writer and retire the Obsidian MCP server",
+		Short: "Retire the legacy Obsidian MCP integration",
 		Long: `Register vmem (@staix/vault-mem) as the agents' vault server for Kiro and
 GitHub Copilot, and print the 'vmem setup' lines for Claude Code, Codex, Kimi,
 Qwen, pi, jcode and Antigravity, which vmem registers itself.
 
 dot runs no vault process and installs vmem only on request: install the exact
-version yourself or with 'dot ai family install vmem', then run 'dot ai vault install'.
+version yourself or with 'dot ai family install vmem', then run 'dot ai mcp install vmem'.
 
 'dot ai vault retire-mcpvault' removes the generic Obsidian MCP server
 ("obsidian", @bitbonsai/mcpvault) from the configs dot owns and prints the
 lines for the rest. It is a dry run unless --apply is given.`,
 	}
-	cmd.AddCommand(newAIVaultInstallCmd())
-	cmd.AddCommand(newAIVaultStatusCmd())
+	cmd.AddCommand(deprecatedAICommand(newAIVaultInstallCmd(), "dot ai mcp install vmem"))
+	cmd.AddCommand(deprecatedAICommand(newAIVaultStatusCmd(), "dot ai mcp status vmem"))
 	cmd.AddCommand(newAIVaultRetireCmd())
 	return cmd
 }
@@ -76,7 +76,7 @@ backup), and print the 'vmem setup' lines for the other agents. Every other
 server and key is preserved. Re-running changes nothing.
 
 vmem must already be installed (an @staix/vault-mem release inside the range
-'dot ai vault status' names) and on PATH. With --dry-run nothing is written.`,
+'dot ai mcp status vmem' names) and on PATH. With --dry-run nothing is written.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dryRun, _ := cmd.Flags().GetBool("dry-run")
@@ -153,7 +153,7 @@ func newAIVaultStatusCmd() *cobra.Command {
 				}
 				printMemoryState(p, row.label, row.ok, "MCP")
 			}
-			p.Line("Claude Code, Codex, Kimi, Qwen, pi, jcode and Antigravity are registered by `vmem setup`; see `dot ai vault install` for the lines.")
+			p.Line("Claude Code, Codex, Kimi, Qwen, pi, jcode and Antigravity are registered by `vmem setup`; see `dot ai mcp install vmem` for the lines.")
 			p.Section("Shared")
 			printMemoryState(p, "instructions", status.InstructionsEnabled, "agents SSOT vault block")
 			if len(status.ObsidianRegistered) > 0 {

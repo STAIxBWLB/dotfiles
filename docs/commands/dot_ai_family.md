@@ -11,7 +11,7 @@ A 'current' link names the active version and 'previous' the one before it;
 ~/.local/bin/<bin> points through 'current'. Activation is one rename: new
 sessions start the new version, running processes keep the files they started
 with and are listed, and nothing is stopped. Versions other than current and
-previous are removed once no running process uses them. 'dot ai rollback <id>'
+previous are removed once no running process uses them. 'dot ai family rollback <id>'
 makes previous current again.
 
 For ahub this is the global CLI only: 'ahub upgrade' still runs each project's
@@ -39,6 +39,7 @@ daemon from ~/.agenthub/releases. After ahub activates, run the printed
 
 * [dot ai](dot_ai.md)	 - AI CLI/config helpers and settings backup/restore
 * [dot ai family install](dot_ai_family_install.md)	 - Install family tools and make each one current
+* [dot ai family rollback](dot_ai_family_rollback.md)	 - Make a family tool's previous version current again
 * [dot ai family status](dot_ai_family_status.md)	 - Show each family tool's current and previous versions
 * [dot ai family update](dot_ai_family_update.md)	 - Move installed family tools to the registry's latest version
 

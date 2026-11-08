@@ -11,8 +11,16 @@ import (
 
 func newAIToolsCmd() *cobra.Command {
 	c := &cobra.Command{Use: "tools", Short: "Inspect or reconcile selected development tooling"}
-	list := &cobra.Command{Use: "list", Short: "List selectable agents and four managed add-ons", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	list := &cobra.Command{Use: "list", Short: "List selectable tooling or inspect installed CLIs and settings", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		asJSON, _ := cmd.Flags().GetBool("json")
+		details, _ := cmd.Flags().GetBool("details")
+		includeAuth, _ := cmd.Flags().GetBool("include-auth")
+		if details || includeAuth {
+			if asJSON {
+				return fmt.Errorf("--details and --include-auth produce a human inventory, not catalog JSON; omit those flags for --json or omit --json for the inventory")
+			}
+			return runAIList(cmd, nil)
+		}
 		if asJSON {
 			return json.NewEncoder(cmd.OutOrStdout()).Encode(struct {
 				Items []aitooling.Entry `json:"items"`
@@ -23,7 +31,9 @@ func newAIToolsCmd() *cobra.Command {
 		}
 		return nil
 	}}
-	list.Flags().Bool("json", false, "Print JSON")
+	list.Flags().Bool("json", false, "Print the selectable catalog as JSON")
+	list.Flags().Bool("details", false, "Show detected CLIs, portable settings and app casks instead of the catalog")
+	list.Flags().Bool("include-auth", false, "Show auth/local-secret paths in the detailed inventory")
 	c.AddCommand(list)
 	for _, spec := range []struct {
 		name, short string

@@ -435,7 +435,7 @@ func (m *VmemManager) RetireMcpvault(apply bool) (RetireMcpvaultResult, error) {
 		}
 		// Never leave an agent without a vault server: obsidian goes only where a working vmem entry already is.
 		if !hasMCPServer(target.path, VmemServerName, m.VmemPath, target.variant) {
-			result.Skipped = append(result.Skipped, fmt.Sprintf("%s: %s has no working vmem entry; run `dot ai vault install` first, obsidian is kept", target.agent, target.path))
+			result.Skipped = append(result.Skipped, fmt.Sprintf("%s: %s has no working vmem entry; run `dot ai mcp install vmem` first, obsidian is kept", target.agent, target.path))
 			continue
 		}
 		result.Files = append(result.Files, target.path)

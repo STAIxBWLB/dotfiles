@@ -1,9 +1,9 @@
-## dot ai status
+## dot ai backup status
 
 Show AI settings live/backup status
 
 ```
-dot ai status [flags]
+dot ai backup status [flags]
 ```
 
 ### Options
@@ -28,5 +28,5 @@ dot ai status [flags]
 
 ### SEE ALSO
 
-* [dot ai](dot_ai.md)	 - AI CLI/config helpers and settings backup/restore
+* [dot ai backup](dot_ai_backup.md)	 - Create a versioned AI settings snapshot
 

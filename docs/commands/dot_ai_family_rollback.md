@@ -1,4 +1,4 @@
-## dot ai rollback
+## dot ai family rollback
 
 Make a family tool's previous version current again
 
@@ -10,7 +10,7 @@ Running processes are listed and keep their files; new sessions start the
 restored version. The version it leaves becomes 'previous'.
 
 ```
-dot ai rollback <id> [flags]
+dot ai family rollback <id> [flags]
 ```
 
 ### Options
@@ -32,5 +32,5 @@ dot ai rollback <id> [flags]
 
 ### SEE ALSO
 
-* [dot ai](dot_ai.md)	 - AI CLI/config helpers and settings backup/restore
+* [dot ai family](dot_ai_family.md)	 - Install agent-hub family tools side by side, one directory per version
 
