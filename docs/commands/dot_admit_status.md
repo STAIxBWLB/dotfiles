@@ -9,7 +9,7 @@ Report the resource-admission controller's view: active slot owners
 per-probe availability, the last WindowServer watchdog evidence, and the
 hysteresis countdown when a defer episode is recovering. The evaluation is
 read-only: status never advances or resets the recovery window. Jobs
-launched outside 'dot admit' and 'dot ai run' hold no lease and are caught
+launched outside admission wrappers hold no lease and are caught
 only by the admit-time process scan.
 
 ```

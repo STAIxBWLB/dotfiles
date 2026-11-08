@@ -9,7 +9,7 @@ Use --task for an interactive session, or --input FILE (or -) for a trusted
 supervisor's JSONL turns. Managed turns re-evaluate workload at safe boundaries;
 continuations require a curated checkpoint. Same-provider turns use native resume;
 Claude/Codex handoffs start a new session from scope and completed-effect evidence.
-Manual native/Orca sessions are not taken over. Heavy commands still use dot ai run.
+Manual native/Orca sessions are not taken over. Heavy commands still use dot admit.
 
 ```
 dot ai session start [flags]

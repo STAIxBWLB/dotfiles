@@ -61,3 +61,25 @@ func TestAIRunProjectBindsAdmissionAndChildDirectory(t *testing.T) {
 		t.Fatalf("child cwd=%s expected=%s released=%t", actual, expected, released)
 	}
 }
+
+func TestAIRunDeprecationNamesReplacement(t *testing.T) {
+	c := newAIRunCmd()
+	if !c.Hidden || !strings.Contains(c.Short, "dot admit") {
+		t.Fatal("compatibility command must name its replacement")
+	}
+	wait, _ := c.Flags().GetDuration("wait")
+	if wait != 6*time.Minute {
+		t.Fatalf("compatibility wait=%s, want 6m", wait)
+	}
+	c.Flags().Bool("dry-run", true, "")
+	var out, stderr bytes.Buffer
+	c.SetOut(&out)
+	c.SetErr(&stderr)
+	c.SetArgs([]string{"--", "not-a-command"})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stderr.String(), "dot admit") || strings.Contains(out.String(), "deprecated") {
+		t.Fatal("invocation did not print replacement")
+	}
+}

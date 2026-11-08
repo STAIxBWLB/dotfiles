@@ -165,7 +165,7 @@ Dot-owned state trees:
   --set`/`--clear` that takes the coordinator role from this Mac.
 - `~/Library/LaunchAgents/com.dotfiles.ai.update.plist` — the macOS user
   stable-update job, owned by `dot ai update schedule enable|disable`
-- `dot ai run`, the selected-tooling updates and `dot ai update schedule
+- `dot admit`, the selected-tooling updates and `dot ai update schedule
   enable` hold their slots in the admission state root below (the same slots
   and pressure history as `dot admit`, #162). The former
   `/tmp/dotfiles-resource-<uid>/` store is no longer written.
@@ -304,7 +304,7 @@ tool):
   deadline), the heavy-work pressure history (`history.json`), the verified
   native dot-update pressure and quiet-swap history (`history-prebuilt.json`),
   and the per-scope notify dedup marks (`notify/`). `history.json` is written
-  by `dot admit` gate evaluations and by `dot ai run` and tooling updates
+  by `dot admit` gate evaluations and tooling updates
   through the same controller; slot acquire/heartbeat/release and defer
   notification also update this state. A completed `dot update` prebuilt-gate
   evaluation writes `history-prebuilt.json` atomically whether it admits or

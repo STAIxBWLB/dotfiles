@@ -30,7 +30,7 @@ Claude statistics were excluded.
 
 Reuse selected-agent inventory/home semantics, shared instruction ownership,
 Maru skill federation, curated handoff artifact validation and resourceguard.
-`dot ai run` remains heavyweight-command admission. `dot ai session` never holds
+`dot admit` remains heavyweight-command admission. `dot ai session` never holds
 that lease for an interactive session.
 
 Portable `modules.ai.policy` is typed state schema 3. Private ownership receipts,

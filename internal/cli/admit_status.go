@@ -21,7 +21,7 @@ func newAdmitStatusCmd() *cobra.Command {
 per-probe availability, the last WindowServer watchdog evidence, and the
 hysteresis countdown when a defer episode is recovering. The evaluation is
 read-only: status never advances or resets the recovery window. Jobs
-launched outside 'dot admit' and 'dot ai run' hold no lease and are caught
+launched outside admission wrappers hold no lease and are caught
 only by the admit-time process scan.`,
 		Args:         cobra.NoArgs,
 		RunE:         runAdmitStatus,
@@ -124,7 +124,7 @@ func runAdmitStatus(cmd *cobra.Command, _ []string) error {
 	for _, l := range owners {
 		line := fmt.Sprintf("  %s [%s] %s pid %d since %s", l.Scope, l.Class, l.Owner, l.PID, l.AcquiredAt.Format(time.RFC3339))
 		if l.Session != "" {
-			line += " (" + l.Session + ")" // e.g. a `dot ai run` job's purpose
+			line += " (" + l.Session + ")" // e.g. an admitted job's purpose
 		}
 		p.Line("%s", line)
 		p.Line("    cwd %s", l.CWD)

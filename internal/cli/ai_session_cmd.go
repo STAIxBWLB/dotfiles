@@ -24,7 +24,7 @@ Use --task for an interactive session, or --input FILE (or -) for a trusted
 supervisor's JSONL turns. Managed turns re-evaluate workload at safe boundaries;
 continuations require a curated checkpoint. Same-provider turns use native resume;
 Claude/Codex handoffs start a new session from scope and completed-effect evidence.
-Manual native/Orca sessions are not taken over. Heavy commands still use dot ai run.`, Args: cobra.NoArgs, RunE: runAISessionStart}
+Manual native/Orca sessions are not taken over. Heavy commands still use dot admit.`, Args: cobra.NoArgs, RunE: runAISessionStart}
 	addPolicyRequestFlags(start)
 	start.Flags().String("input", "", "Trusted JSONL turn stream file, or - for stdin")
 	start.Flags().Bool("fixed", false, "Freeze the initial configuration for this session")

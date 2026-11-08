@@ -30,7 +30,7 @@ func RunInDirectory(ctx context.Context, dir string, args []string, in io.Reader
 	c.Stdin = in
 	c.Stdout = out
 	c.Stderr = stderr
-	c.Env = limitedEnvironment(os.Environ())
+	c.Env = LimitedEnvironment(os.Environ())
 	return RunCommand(ctx, c)
 }
 
@@ -156,7 +156,9 @@ func finishGroup(pid int, kill func(int, syscall.Signal) error, pause func(time.
 	}
 	return cleanupErr
 }
-func limitedEnvironment(env []string) []string {
+
+// LimitedEnvironment sets the shared per-command worker limits without changing the caller environment.
+func LimitedEnvironment(env []string) []string {
 	var result []string
 	for _, entry := range env {
 		if strings.HasPrefix(entry, "CARGO_BUILD_JOBS=") || strings.HasPrefix(entry, "GOMAXPROCS=") || strings.HasPrefix(entry, "RUST_TEST_THREADS=") {

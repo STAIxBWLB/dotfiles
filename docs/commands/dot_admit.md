@@ -16,13 +16,19 @@ run in parallel. --class maintenance takes the single host-wide maintenance
 slot instead. On defer the exit code is 75 (EX_TEMPFAIL) with a
 machine-readable outcome on stdout when --json is set. When a command runs,
 its own stdout is the payload and the --json completion record goes to
-stderr, so the exit code is the machine-readable result. 'dot ai run' and
-the tooling updates share these slots. 'dot peer sync' and 'dot sync push'
+stderr, so the exit code is the machine-readable result. Selected-tooling
+updates share these slots. 'dot peer sync' and 'dot sync push'
 hold a background lease while they run, so their rsync never defers other
 work. Heavy work launched outside all of these holds no lease; a bounded
 process-table scan defers when such work runs in this repo or its repo is
 unknown. Use '--' before commands that collide with
 subcommand names.
+
+The child receives CARGO_BUILD_JOBS=2, RUST_TEST_THREADS=2 and GOMAXPROCS=2,
+replacing inherited values unless --no-limit-threads is set. Tool-specific
+flags (Go -p 2 -parallel 2; browser workers=1) remain the caller's choice.
+--project selects both the repository slot and the child's working directory.
+--dry-run previews the command without probes or state writes.
 
 ```
 dot admit [--class heavy|maintenance] [--wait 30m] [--json] -- <command> [args...] [flags]
@@ -31,10 +37,12 @@ dot admit [--class heavy|maintenance] [--wait 30m] [--json] -- <command> [args..
 ### Options
 
 ```
-      --class string    slot class: heavy (per-repo) or maintenance (host-wide) (default "heavy")
-  -h, --help            help for admit
-      --json            print the outcome as JSON
-      --wait duration   maximum time to wait for the slot before deferring (default 30m0s)
+      --class string       slot class: heavy (per-repo) or maintenance (host-wide) (default "heavy")
+  -h, --help               help for admit
+      --json               print the outcome as JSON
+      --no-limit-threads   Keep inherited worker settings instead of limiting Cargo, Rust tests and Go to 2
+      --project string     Checkout whose slot and working directory to use (defaults to current directory)
+      --wait duration      maximum time to wait for the slot before deferring (default 30m0s)
 ```
 
 ### Options inherited from parent commands
