@@ -6,7 +6,7 @@
 
 1. **Configuration**: `internal/config` loads the user state (`~/.config/dotfiles/config.yaml`), merges the selected profile (minimal, full, server) and detects the system. Older settings are rewritten to their current names at load.
 2. **Apply**: `dot apply` hands the resolved config to the modules in `internal/module`, in a fixed order. Each module checks what differs, then applies it through `internal/exec`, which honors `--dry-run`. Templates come from `internal/template`. A file is backed up before it is overwritten (`internal/fileutil`).
-3. **AI agents**: `internal/aisettings` writes the shared agent instructions, skills and MCP entries; `internal/aitooling` installs the selected agents and the agent-hub family. `internal/aipolicy` resolves work policies, and `internal/aimemory` audits the agents' own memory.
+3. **AI agents**: `internal/aisettings` writes the shared agent instructions and MCP entries and hands skill sharing to Maru, which owns skill sources and links; `internal/aitooling` installs the selected agents and the agent-hub family. `internal/aipolicy` resolves work policies, and `internal/aimemory` audits the agents' own memory.
 4. **Sync**: `internal/syncer` drives rsync for `dot sync` (workspace to a local or SSH mirror) and `dot peer` (two machines). Each store lives under `<workspace>/.dotfiles/<store>/` with its own filters, baseline and scheduler.
 5. **Heavy work**: `internal/admission` and `internal/resourceguard` give each repository one heavy-job slot, so builds and tests from several agents never run at once in the same repo.
 
@@ -23,7 +23,7 @@ The files `dot` may write are listed in [BOUNDARIES.md](../BOUNDARIES.md), and a
 | `internal/aipolicy` | Resolves portable work preferences against local capabilities |
 | `internal/aischedule` | The opt-in weekly AI maintenance LaunchAgent |
 | `internal/aisession` | Supervises native agent processes at turn boundaries |
-| `internal/aisettings` | Shared agent instructions, skills and MCP entries; AI settings backup and restore |
+| `internal/aisettings` | Shared agent instructions and MCP entries, skill sharing through Maru, AI settings backup and restore |
 | `internal/aitooling` | Installs and updates the selected agents and the agent-hub family tools |
 | `internal/appsettings` | Backup and restore of macOS application settings |
 | `internal/claudecfg` | Sole owner of `~/.claude/settings.json`, its lock and its write |

@@ -64,8 +64,8 @@ app and does not register an operating-system terminal command handler.
 User settings are stored in `~/.config/dotfiles/config.yaml`:
 
 ```yaml
-name: "Young Joon Lee"
-email: "hello@jeju.ai"
+name: "Your Name"
+email: "you@example.com"
 github_user: "your-github-user"
 timezone: "Asia/Seoul"
 profile: "full"
