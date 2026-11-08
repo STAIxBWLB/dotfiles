@@ -390,8 +390,8 @@ func TestLoadState_AIHUDPersistEnablesAI(t *testing.T) {
 }
 
 // Legacy configs carrying the deprecated modules.ai.skills.enabled flag and
-// the legacy anchor provider must still load without error; the values remain
-// available as diagnostics defaults but nothing acts on Enabled.
+// the legacy anchor provider must still load without error; anchor is
+// rewritten to maru at load (#373) and nothing acts on Enabled.
 func TestLoadState_AISkillsPersistsAndEnablesAI(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
@@ -407,7 +407,7 @@ func TestLoadState_AISkillsPersistsAndEnablesAI(t *testing.T) {
 	if !cfg.Modules.AI.Enabled {
 		t.Fatalf("AI skills should enable AI module, got enabled=%v skills=%#v", cfg.Modules.AI.Enabled, cfg.Modules.AI.Skills)
 	}
-	if cfg.Modules.AI.Skills.Provider != "anchor" || strings.Join(cfg.Modules.AI.Skills.Tools, ",") != "claude,codex" {
+	if cfg.Modules.AI.Skills.Provider != "maru" || strings.Join(cfg.Modules.AI.Skills.Tools, ",") != "claude,codex" {
 		t.Fatalf("skills config not applied: %#v", cfg.Modules.AI.Skills)
 	}
 }
