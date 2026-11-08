@@ -1,6 +1,6 @@
 ## dot ai update schedule disable
 
-disable the weekly AI update LaunchAgent
+Remove the weekly AI update LaunchAgent
 
 ```
 dot ai update schedule disable [flags]

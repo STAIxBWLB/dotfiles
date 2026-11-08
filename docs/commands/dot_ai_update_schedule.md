@@ -22,7 +22,7 @@ Manage opt-in Sunday 04:00 stable maintenance (macOS)
 ### SEE ALSO
 
 * [dot ai update](dot_ai_update.md)	 - Update explicitly selected agent CLIs and development tools
-* [dot ai update schedule disable](dot_ai_update_schedule_disable.md)	 - disable the weekly AI update LaunchAgent
-* [dot ai update schedule enable](dot_ai_update_schedule_enable.md)	 - enable the weekly AI update LaunchAgent
-* [dot ai update schedule status](dot_ai_update_schedule_status.md)	 - status the weekly AI update LaunchAgent
+* [dot ai update schedule disable](dot_ai_update_schedule_disable.md)	 - Remove the weekly AI update LaunchAgent
+* [dot ai update schedule enable](dot_ai_update_schedule_enable.md)	 - Install the weekly AI update LaunchAgent
+* [dot ai update schedule status](dot_ai_update_schedule_status.md)	 - Show the weekly AI update LaunchAgent state
 

@@ -1,6 +1,6 @@
 ## dot ai tools apply
 
-Inspect or apply saved tooling selections
+Install or repair the saved tooling selection
 
 ```
 dot ai tools apply [flags]

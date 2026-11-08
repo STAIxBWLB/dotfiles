@@ -4,7 +4,7 @@ Manage manual shared-folder exclusions
 
 ### Synopsis
 
-View and manage which folders gsync skips because they are shared.
+View and manage which folders dot sync skips because they are shared.
 
 This list contains relative paths the operator added to the workspace-local
 sync config. Use it for owned-but-shared-out folders that must never be

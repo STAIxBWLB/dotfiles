@@ -26,11 +26,11 @@ func newAIToolsCmd() *cobra.Command {
 	list.Flags().Bool("json", false, "Print JSON")
 	c.AddCommand(list)
 	for _, spec := range []struct {
-		name string
-		op   aitooling.Operation
-	}{{"status", aitooling.Inspect}, {"apply", aitooling.Ensure}} {
+		name, short string
+		op          aitooling.Operation
+	}{{"status", "Show the saved tooling selection and where installs drifted", aitooling.Inspect}, {"apply", "Install or repair the saved tooling selection", aitooling.Ensure}} {
 		op := spec.op
-		child := &cobra.Command{Use: spec.name, Short: "Inspect or apply saved tooling selections", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		child := &cobra.Command{Use: spec.name, Short: spec.short, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 			selection, err := effectiveToolingForCmd(cmd)
 			if err != nil {
 				return err

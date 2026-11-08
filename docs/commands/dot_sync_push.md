@@ -4,7 +4,7 @@ Preview and send workspace changes to mirror under a propagation policy
 
 ### Synopsis
 
-Push the workspace tree to the gdrive mirror under a propagation
+Push the workspace tree to the sync target (local: or ssh:) under a propagation
 policy. The default policy '{create:true, update:true, delete:false}'
 copies new and modified files but never deletes mirror-side content. By default
 push prints the upload plan and asks before applying.
