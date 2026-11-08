@@ -127,8 +127,8 @@ func TestActivateFontWithLegacyMigration_PreservesUnverifiedRootFonts(t *testing
 	destination := filepath.Join(fontRoot, "FiraCode")
 	rc := &RunContext{Runner: internalexec.NewRunner(false, slog.Default())}
 	pin := fontAssetPin{Family: "FiraCode", AssetName: "FiraCode.zip", URL: "https://example.invalid/FiraCode.zip", SHA256: hex.EncodeToString(digest[:])}
-	if err := activateFontWithLegacyMigration(context.Background(), rc, destination, pin); err != nil {
-		t.Fatalf("activateFontWithLegacyMigration: %v", err)
+	if err := activateFontComponent(context.Background(), rc, destination, pin); err != nil {
+		t.Fatalf("activateFontComponent: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(destination, "FiraCode-Regular.ttf")); err != nil {
 		t.Fatalf("activated pinned font unavailable: %v", err)

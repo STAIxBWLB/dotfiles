@@ -77,7 +77,7 @@ func (m *FontsModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, 
 	if rc.Runner.IsDir(destination) && fontPinMatches(rc, destination, pin) {
 		return &ApplyResult{}, nil
 	}
-	if err := activateFontWithLegacyMigration(ctx, rc, destination, pin); err != nil {
+	if err := activateFontComponent(ctx, rc, destination, pin); err != nil {
 		return nil, err
 	}
 	messages := []string{fmt.Sprintf("installed pinned Nerd Font %s to %s", family, destination)}
@@ -89,13 +89,6 @@ func (m *FontsModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, 
 		}
 	}
 	return &ApplyResult{Changed: true, Messages: messages}, nil
-}
-
-// activateFontWithLegacyMigration leaves root-level legacy files in place.
-// A refresh timestamp has no per-file inventory or digest, so it cannot prove
-// that a same-prefix font belongs to dot rather than the operator.
-func activateFontWithLegacyMigration(ctx context.Context, rc *RunContext, destination string, pin fontAssetPin) error {
-	return activateFontComponent(ctx, rc, destination, pin)
 }
 
 func fontPinMatches(rc *RunContext, root string, pin fontAssetPin) bool {

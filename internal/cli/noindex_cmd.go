@@ -18,10 +18,6 @@ import (
 
 const noindexLabel = "com.dotfiles.noindex"
 
-// legacyNoindexLabel is the hand-rolled agent this command replaces. Booting it
-// out on setup keeps two sweepers from running against the same trees.
-const legacyNoindexLabel = "com.entelecheia.spotlight-nmi"
-
 // noindexPlistTmpl mirrors the inline template used by `dot peer setup`. The
 // job only touches the local filesystem, so unlike the sync agent it needs no
 // PATH gymnastics.
@@ -179,9 +175,8 @@ func newNoindexSetupCmd() *cobra.Command {
 
 			ctx := context.Background()
 			// launchctl can only address the *invoking* user's domain, so under
-			// --home the plist belongs to someone else: write it, retire the
-			// legacy files in that home, and let them load it. Same rule as
-			// cleanupLegacyCloneScheduler.
+			// --home the plist belongs to someone else: write it and let
+			// them load it.
 			sameUser := sameUserHome(c)
 			if sameUser {
 				runner := guardRunner(false)
@@ -190,8 +185,6 @@ func newNoindexSetupCmd() *cobra.Command {
 					return fmt.Errorf("loading %s: %w", plist, err)
 				}
 			}
-
-			cleanupLegacyNoindex(ctx, p, home, sameUser)
 
 			if !sameUser {
 				p.Success("wrote %s", plist)
@@ -249,27 +242,4 @@ func guiTarget() string {
 func sameUserHome(cmd *cobra.Command) bool {
 	over, _ := cmd.Flags().GetString("home")
 	return over == ""
-}
-
-// cleanupLegacyNoindex retires the hand-rolled spotlight-nmi setup this command
-// replaces: its LaunchAgent, its sweeper script, and the shell snippet that
-// defined the npm/pnpm/yarn/bun wrappers. The wrappers now live in
-// ~/.config/shell/00-exports.sh, which `dot apply` owns; leaving the old file
-// behind would re-shadow the managed pnpm wrapper. Best-effort and quiet when
-// nothing is installed. Unloading is only attempted for the invoking user
-// (sameUser); under --home only the files in the target home are removed.
-func cleanupLegacyNoindex(ctx context.Context, p *Printer, home string, sameUser bool) {
-	legacyPlist := filepath.Join(home, "Library", "LaunchAgents", legacyNoindexLabel+".plist")
-	if _, err := os.Stat(legacyPlist); err == nil && sameUser {
-		_, _ = guardRunner(false).Run(ctx, "launchctl", "bootout", guiTarget()+"/"+legacyNoindexLabel)
-	}
-	for _, path := range []string{
-		legacyPlist,
-		filepath.Join(home, ".local", "bin", "nmi-stamp"),
-		filepath.Join(home, ".config", "shrc", "40-spotlight-nmi"),
-	} {
-		if err := os.Remove(path); err == nil {
-			p.Line("  removed legacy %s", path)
-		}
-	}
 }

@@ -161,11 +161,6 @@ func runApply(cmd *cobra.Command, _ []string) error {
 	brew := exec.NewBrew(runner)
 	tmplEngine := template.NewEngine()
 
-	// The rclone-based `dot clone` command is gone, but machines that ever
-	// ran `dot clone setup` still have its scheduler installed — with no
-	// remaining subcommand to remove it. Sweep those legacy units here.
-	cleanupLegacyCloneScheduler(ctx, p, runner, home, homeOverride == "")
-
 	// Build module list
 	registry := module.NewRegistry()
 	moduleFilter, err = module.NormalizeFilter(moduleFilter)
