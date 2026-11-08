@@ -1,6 +1,6 @@
 # Peer delete propagation with quarantine
 
-Status: implemented on `feat/peer-delete-propagation`
+Status: shipped in v2.62.0 (#48).
 Date: 2026-08-04
 
 Three things were learned while building it and are folded in below: the delete
