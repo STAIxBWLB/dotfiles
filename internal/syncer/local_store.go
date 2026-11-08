@@ -336,7 +336,7 @@ func LegacyStoreError(localPath string) error {
 	if pathExists(newDir) || !pathExists(oldDir) {
 		return nil
 	}
-	return fmt.Errorf("workspace sync store is still at %s, the location before dot 2.59.0; move it with\n  mv %q %q && sed -i.bak 's#%s#%s#g' %q\nthen re-run", oldDir, oldDir, newDir, legacyStoreDirRel, localStoreDirRel, filepath.Join(root, ".gitignore"))
+	return fmt.Errorf("workspace sync store is still at %s, the location before dot 2.59.0; move it with\n  mv %s %s && sed -i.bak 's#%s#%s#g' %s\nthen re-run", oldDir, shellQuote(oldDir), shellQuote(newDir), legacyStoreDirRel, localStoreDirRel, shellQuote(filepath.Join(root, ".gitignore")))
 }
 
 // EnsureLocalLayout creates the .dotfiles/sync/ directory plus

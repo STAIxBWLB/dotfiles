@@ -569,3 +569,30 @@ func TestSyncSharedCLI_ListsAndClearsAnEntryTheCleaningDrops(t *testing.T) {
 		t.Errorf("stored entries after clear = %q", cfg.SharedExcludes)
 	}
 }
+
+// A workspace with only the pre-2.59.0 store and a non-empty baseline is
+// refused by a real push before rsync runs: the mirror and the old store stay
+// exactly as they were, and no fresh store with an empty baseline appears (#371).
+func TestSyncPushRefusesLegacyOnlyStore(t *testing.T) {
+	if _, err := osexec.LookPath("rsync"); err != nil {
+		t.Skip("rsync not installed")
+	}
+	f := newSyncCLIFixture(t)
+	legacy := filepath.Join(f.local, ".dotfiles", "gdrive-sync")
+	writeCLITestFile(t, filepath.Join(legacy, "baseline.manifest"), "docs/a.md\t1\n")
+	writeCLITestFile(t, filepath.Join(legacy, "config.yaml"), "mirror_path: "+f.mirror+"\n")
+	writeCLITestFile(t, filepath.Join(f.local, "docs", "a.md"), "local edit\n")
+	writeCLITestFile(t, filepath.Join(f.mirror, "docs", "a.md"), "mirror copy\n")
+	before := snapshotTree(t, f.home)
+
+	_, _, err := runDotForTest("sync", "push", "--yes", "--mode", "force")
+	if err == nil || !strings.Contains(err.Error(), "mv ") {
+		t.Fatalf("push on a legacy-only store: %v", err)
+	}
+	if after := snapshotTree(t, f.home); after != before {
+		t.Fatalf("refused push changed files\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+	if _, err := os.Stat(filepath.Join(f.local, ".dotfiles", "sync")); !os.IsNotExist(err) {
+		t.Fatal("a fresh .dotfiles/sync store was created")
+	}
+}

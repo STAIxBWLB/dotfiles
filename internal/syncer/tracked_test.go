@@ -213,3 +213,43 @@ func TestLegacyStoreError(t *testing.T) {
 		t.Fatalf("new store present: %v", err)
 	}
 }
+
+// The printed remedy is shell-safe for any workspace path and keeps the old
+// baseline: run it through /bin/sh on a path holding $ and a quote (#371).
+func TestLegacyStoreErrorRemedyRunsInShell(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "work $HOME it's")
+	old := filepath.Join(root, ".dotfiles", "gdrive-sync")
+	if err := os.MkdirAll(old, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(old, "baseline.manifest"), []byte("docs/a.md\t1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("!/.dotfiles/gdrive-sync/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := LegacyStoreError(root)
+	if err == nil {
+		t.Fatal("no refusal")
+	}
+	var command string
+	for _, line := range strings.Split(err.Error(), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "mv ") {
+			command = strings.TrimSpace(line)
+		}
+	}
+	cmd := osexec.Command("/bin/sh", "-c", command)
+	cmd.Env = []string{"PATH=/bin:/usr/bin", "HOME=/nonexistent"}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%s: %v %s", command, err, out)
+	}
+	if data, err := os.ReadFile(filepath.Join(root, ".dotfiles", "sync", "baseline.manifest")); err != nil || string(data) != "docs/a.md\t1\n" {
+		t.Fatalf("baseline not carried: %q %v", data, err)
+	}
+	if body, _ := os.ReadFile(filepath.Join(root, ".gitignore")); string(body) != "!/.dotfiles/sync/\n" {
+		t.Fatalf(".gitignore = %q", body)
+	}
+	if err := LegacyStoreError(root); err != nil {
+		t.Fatalf("still refused after the remedy: %v", err)
+	}
+}
