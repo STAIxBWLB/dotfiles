@@ -37,7 +37,7 @@ they are machine state pi rebuilds itself.
 * [dot ai agents](dot_ai_agents.md)	 - Manage the shared AI agents instruction SSOT
 * [dot ai audit](dot_ai_audit.md)	 - Inspect append-only dot ai audit events
 * [dot ai auth](dot_ai_auth.md)	 - Inspect and refresh OAuth credentials for MCP servers
-* [dot ai backup](dot_ai_backup.md)	 - Create a versioned AI settings snapshot
+* [dot ai backup](dot_ai_backup.md)	 - Advanced: snapshot only AI settings (dot backup is the front door)
 * [dot ai coauthor-guard](dot_ai_coauthor-guard.md)	 - Warn or block AI-added Co-authored commit trailers
 * [dot ai export](dot_ai_export.md)	 - Export AI settings to a portable tar.gz archive
 * [dot ai family](dot_ai_family.md)	 - Install agent-hub family tools side by side, one directory per version
@@ -47,8 +47,8 @@ they are machine state pi rebuilds itself.
 * [dot ai mcp](dot_ai_mcp.md)	 - Register and inspect amem, vmem and ares MCP integrations
 * [dot ai memory](dot_ai_memory.md)	 - Audit and archive native agent memory, or retire claude-mem
 * [dot ai policy](dot_ai_policy.md)	 - Inspect, resolve and reconcile adaptive AI operating policies
-* [dot ai prune](dot_ai_prune.md)	 - Delete older AI config snapshots, keeping the newest N
-* [dot ai restore](dot_ai_restore.md)	 - Restore AI settings from a versioned snapshot
+* [dot ai prune](dot_ai_prune.md)	 - Delete older AI snapshots (ai-config/ only), keeping the newest N
+* [dot ai restore](dot_ai_restore.md)	 - Advanced: restore only AI settings (dot restore is the front door)
 * [dot ai session](dot_ai_session.md)	 - Launch controlled agents with adaptive policy and native continuation
 * [dot ai setup](dot_ai_setup.md)	 - Select agent CLIs, development add-ons, instructions and shared skills
 * [dot ai skills](dot_ai_skills.md)	 - Diagnose AI Markdown skills (read-only; the Maru app manages runtime symlinks)

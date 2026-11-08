@@ -21,7 +21,7 @@ import (
 func newAppsBackupCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "backup [token...]",
-		Short: "Snapshot macOS app settings to the backup archive",
+		Short: "Advanced: snapshot only macOS app settings (dot backup is the front door)",
 		Long: `Back up macOS application settings listed in the embedded manifest.
 
 Modes:
@@ -319,7 +319,7 @@ func splitCommaList(s string) []string {
 func newAppsRestoreCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "restore [token...]",
-		Short: "Restore macOS app settings from the backup archive",
+		Short: "Advanced: restore only macOS app settings (dot restore is the front door)",
 		Args:  cobra.ArbitraryArgs,
 		RunE:  runAppsRestore,
 	}

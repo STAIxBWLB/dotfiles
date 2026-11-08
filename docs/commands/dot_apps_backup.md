@@ -1,6 +1,6 @@
 ## dot apps backup
 
-Snapshot macOS app settings to the backup archive
+Advanced: snapshot only macOS app settings (dot backup is the front door)
 
 ### Synopsis
 

@@ -10,7 +10,7 @@ For a cautious apply, run `dot init --check-only`, `dot init --detect`, `dot dif
 
 ## Secrets and migration
 
-`dot secrets restore` decrypts to a 0600 temporary file and atomically renames it into place. A differing target is retained as `<dest>.bak-<timestamp>`; identical files remain unchanged. One-stop backup and restore coordinate profile, apps, AI, and secrets, can run `dot apply` after profile state, and retain pre-restore copies.
+`dot secrets restore` decrypts to a 0600 temporary file and atomically renames it into place. A differing target is retained as `<dest>.bak-<timestamp>`; identical files remain unchanged. `dot backup` and `dot restore` are the front door: they coordinate profile, apps, AI, and secrets, can run `dot apply` after profile state, and retain pre-restore copies. The per-domain `profile`, `apps`, `ai` and `secrets` backup/restore commands are the advanced path for one domain. `--include-age-key` (formerly `--include-secrets`) adds the plain `~/.ssh/age_key*` identity to a profile snapshot; the `secrets` domain is the encrypted `.age` files. `dot profile prune` and `dot ai prune` each prune only their own snapshot tree.
 
 ## Workspace commands
 

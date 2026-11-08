@@ -1,6 +1,6 @@
 ## dot profile backup
 
-Create a new versioned snapshot of this host's profile
+Advanced: snapshot only the profile (dot backup is the front door)
 
 ```
 dot profile backup [flags]
@@ -10,7 +10,7 @@ dot profile backup [flags]
 
 ```
   -h, --help              help for backup
-      --include-secrets   Copy ~/.ssh/age_key* into the snapshot
+      --include-age-key   Copy ~/.ssh/age_key* into the snapshot
       --tag string        Human-friendly label stored in meta.yaml
       --to string         Backup root (overrides configured BackupRoot)
 ```

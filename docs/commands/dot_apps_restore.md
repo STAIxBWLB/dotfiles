@@ -1,6 +1,6 @@
 ## dot apps restore
 
-Restore macOS app settings from the backup archive
+Advanced: restore only macOS app settings (dot restore is the front door)
 
 ```
 dot apps restore [token...] [flags]

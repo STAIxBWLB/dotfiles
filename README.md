@@ -88,16 +88,16 @@ optionally runs `dot apply` after the profile restore, and preserves every
 overwritten local file in per-step pre-restore backups. Unattended:
 `dot backup --yes --scope profile,ai,secrets` / `dot restore --yes --host <src>`.
 
-**Option B — individual commands:**
+**Option B — individual commands (advanced; `dot backup` / `dot restore` above are the front door):**
 
 ```bash
 # On the existing machine
-dot profile backup --tag "pre-migration" --include-secrets
+dot profile backup --tag "pre-migration" --include-age-key
 dot apps backup                       # also snapshot per-app settings
 dot ai backup                         # portable Claude/Codex/Copilot/Qwen/pi/Antigravity/Maru/MCP settings
 
 # On the new machine (Drive already mounted)
-dot profile restore --include-secrets # restores ~/.config/dotfiles + ~/.ssh/age_key*
+dot profile restore --include-age-key # restores ~/.config/dotfiles + ~/.ssh/age_key*
 dot apply                             # brew formulas + casks from install list
 dot apps restore                      # plists, Application Support, containers
 dot ai restore                        # Claude/Codex/Copilot/Antigravity/MCP settings

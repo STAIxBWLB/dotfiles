@@ -205,10 +205,10 @@ var useSections = []useSection{
 	}},
 	{"Profile snapshots (versioned config backup)", "Snapshot config.yaml, cask lists, and optional age keys into timestamped versions.", []usecase{
 		{"dot profile backup", "Create a new version snapshot under <backup-root>/profiles/<host>/"},
-		{"dot profile backup --tag pre-migration --include-secrets", "Tag the snapshot and include ~/.ssh/age_key*"},
+		{"dot profile backup --tag pre-migration --include-age-key", "Tag the snapshot and include ~/.ssh/age_key*"},
 		{"dot profile list", "List all snapshots for this host (★ marks latest)"},
 		{"dot profile restore", "Restore the latest snapshot (config.yaml -> ~/.config/dotfiles/)"},
-		{"dot profile restore --version 20260416T083412Z --include-secrets", "Restore a specific version including age keys"},
+		{"dot profile restore --version 20260416T083412Z --include-age-key", "Restore a specific version including age keys"},
 		{"dot profile prune --keep 5", "Delete snapshots older than the 5 most recent"},
 	}},
 	{"Cross-machine migration", "Move your full setup to a new Mac: one wizard per side.", []usecase{
@@ -216,7 +216,7 @@ var useSections = []useSection{
 		{"dot restore", "[new machine] Pick source host, restore in safe order, optional dot apply"},
 		{"dot backup --yes --scope profile,ai,secrets", "Unattended backup of selected domains"},
 		{"dot restore --yes --host <src>", "Unattended cross-host restore"},
-		{"dot profile restore --include-secrets && dot apply && dot apps restore && dot ai restore", "[new machine] Manual sequence equivalent to the wizard"},
+		{"dot profile restore --include-age-key && dot apply && dot apps restore && dot ai restore", "[new machine] Manual sequence equivalent to the wizard"},
 	}},
 	{"AI coding agents", "Choose the agents once; dot keeps their instructions, skills and tools in step.", []usecase{
 		{"dot ai setup", "Choose the agents and add-ons this machine runs"},

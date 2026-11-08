@@ -28,5 +28,5 @@ dot ai backup status [flags]
 
 ### SEE ALSO
 
-* [dot ai backup](dot_ai_backup.md)	 - Create a versioned AI settings snapshot
+* [dot ai backup](dot_ai_backup.md)	 - Advanced: snapshot only AI settings (dot backup is the front door)
 

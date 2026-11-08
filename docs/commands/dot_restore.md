@@ -30,8 +30,8 @@ dot restore [flags]
       --from string       Backup root (overrides configured BackupRoot)
   -h, --help              help for restore
       --host string       Source hostname to restore from (default: this host)
+      --include-age-key   Restore ~/.ssh/age_key* from the profile snapshot
       --include-auth      Restore AI auth tokens from the AI snapshot
-      --include-secrets   Restore ~/.ssh/age_key* from the profile snapshot
       --scope string      Comma-separated domains to restore (profile,apps,ai,secrets)
       --version string    Snapshot version for selected profile/AI domains (default: latest; must exist in each selected domain)
 ```

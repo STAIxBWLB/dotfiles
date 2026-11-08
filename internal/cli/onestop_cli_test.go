@@ -74,7 +74,7 @@ func TestOnestopBackupAllDomains(t *testing.T) {
 
 	// apps is excluded: it is darwin-only AND depends on brew + real app
 	// settings; the other three domains cover the wizard plumbing.
-	out, errOut, err := runDotForTest("backup", "--yes", "--to", f.root, "--scope", "profile,ai,secrets", "--include-secrets")
+	out, errOut, err := runDotForTest("backup", "--yes", "--to", f.root, "--scope", "profile,ai,secrets", "--include-age-key")
 	if err != nil {
 		t.Fatalf("backup: %v\nstdout=%s\nstderr=%s", err, out, errOut)
 	}
@@ -121,7 +121,7 @@ func TestOnestopBackupDryRunWritesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, errOut, err := runDotForTest("backup", "--yes", "--dry-run", "--to", f.root, "--scope", "profile,ai,secrets", "--include-secrets")
+	out, errOut, err := runDotForTest("backup", "--yes", "--dry-run", "--to", f.root, "--scope", "profile,ai,secrets", "--include-age-key")
 	if err != nil {
 		t.Fatalf("dry-run backup: %v\nstdout=%s\nstderr=%s", err, out, errOut)
 	}
@@ -167,7 +167,7 @@ func TestOnestopBackupCustomTagPropagates(t *testing.T) {
 func TestOnestopRestoreCrossHost(t *testing.T) {
 	f := newOnestopFixture(t)
 
-	if _, _, err := runDotForTest("backup", "--yes", "--to", f.root, "--scope", "profile,ai,secrets", "--include-secrets"); err != nil {
+	if _, _, err := runDotForTest("backup", "--yes", "--to", f.root, "--scope", "profile,ai,secrets", "--include-age-key"); err != nil {
 		t.Fatal(err)
 	}
 	// Move every per-host tree to a fake other host.
@@ -185,7 +185,7 @@ func TestOnestopRestoreCrossHost(t *testing.T) {
 	stubAge(t, false)
 
 	out, errOut, err := runDotForTest("restore", "--yes", "--from", f.root, "--host", "otherhost",
-		"--scope", "profile,ai,secrets", "--include-secrets")
+		"--scope", "profile,ai,secrets", "--include-age-key")
 	if err != nil {
 		t.Fatalf("restore: %v\nstdout=%s\nstderr=%s", err, out, errOut)
 	}

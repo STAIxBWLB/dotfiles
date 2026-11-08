@@ -33,9 +33,9 @@ Subcommands:
 ### SEE ALSO
 
 * [dot](dot.md)	 - User environment & workspace management tool
-* [dot apps backup](dot_apps_backup.md)	 - Snapshot macOS app settings to the backup archive
+* [dot apps backup](dot_apps_backup.md)	 - Advanced: snapshot only macOS app settings (dot backup is the front door)
 * [dot apps install](dot_apps_install.md)	 - Install macOS cask apps (interactive by default; args skip the picker)
 * [dot apps list](dot_apps_list.md)	 - Show the cask catalog (groups + defaults)
-* [dot apps restore](dot_apps_restore.md)	 - Restore macOS app settings from the backup archive
+* [dot apps restore](dot_apps_restore.md)	 - Advanced: restore only macOS app settings (dot restore is the front door)
 * [dot apps status](dot_apps_status.md)	 - Show install + backup presence for tracked apps
 

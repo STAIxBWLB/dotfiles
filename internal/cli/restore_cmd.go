@@ -47,7 +47,7 @@ commands (dot profile restore / dot ai restore) to mix versions.`,
 	c.Flags().String("host", "", "Source hostname to restore from (default: this host)")
 	c.Flags().String("version", "", "Snapshot version for selected profile/AI domains (default: latest; must exist in each selected domain)")
 	c.Flags().String("scope", "", "Comma-separated domains to restore (profile,apps,ai,secrets)")
-	c.Flags().Bool("include-secrets", false, "Restore ~/.ssh/age_key* from the profile snapshot")
+	addAgeKeyFlag(c, "Restore ~/.ssh/age_key* from the profile snapshot")
 	c.Flags().Bool("include-auth", false, "Restore AI auth tokens from the AI snapshot")
 	c.Flags().Bool("apply", false, "Run 'dot apply' after the profile restore")
 	return c
@@ -120,7 +120,7 @@ func runOnestopRestore(cmd *cobra.Command, _ []string) error {
 	}
 
 	// 6. Per-domain follow-ups.
-	includeSecrets, _ := cmd.Flags().GetBool("include-secrets")
+	includeSecrets := ageKeyFlag(cmd)
 	// Decrypting the .age archives needs the age identity, and resolving
 	// which archive is the SSH key needs ssh.key_name — both arrive with the
 	// profile snapshot. Unlike the backup side (see planAgeIdentity) this

@@ -1,6 +1,6 @@
 ## dot ai restore
 
-Restore AI settings from a versioned snapshot
+Advanced: restore only AI settings (dot restore is the front door)
 
 ```
 dot ai restore [flags]

@@ -29,7 +29,7 @@ Each snapshot captures:
   - apps/install.yaml    → install list (casks + casks_extra)
   - apps/backup.yaml     → backup list + backup root
   - meta.yaml            → timestamp, tag, hostname, user
-  - secrets/             → optional copy of ~/.ssh/age_key* (--include-secrets)
+  - secrets/             → optional copy of ~/.ssh/age_key* (--include-age-key)
 
 The shared backup root is resolved via --to/--from, the user state
 (BackupRoot), an auto-detected Drive "secrets" folder, or a local default.`,
@@ -226,13 +226,13 @@ func isSafePathSegment(s string) bool {
 func newProfileBackupCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "backup",
-		Short: "Create a new versioned snapshot of this host's profile",
+		Short: "Advanced: snapshot only the profile (dot backup is the front door)",
 		Args:  cobra.NoArgs,
 		RunE:  runProfileBackup,
 	}
 	c.Flags().String("to", "", "Backup root (overrides configured BackupRoot)")
 	c.Flags().String("tag", "", "Human-friendly label stored in meta.yaml")
-	c.Flags().Bool("include-secrets", false, "Copy ~/.ssh/age_key* into the snapshot")
+	addAgeKeyFlag(c, "Copy ~/.ssh/age_key* into the snapshot")
 	return c
 }
 
@@ -242,7 +242,7 @@ func runProfileBackup(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	tag, _ := cmd.Flags().GetString("tag")
-	includeSecrets, _ := cmd.Flags().GetBool("include-secrets")
+	includeSecrets := ageKeyFlag(cmd)
 
 	if _, err := os.Stat(eng.StatePath); err != nil && os.IsNotExist(err) {
 		return fmt.Errorf("no state file at %s — run 'dot init' first", eng.StatePath)
@@ -265,7 +265,7 @@ func runProfileBackup(cmd *cobra.Command, _ []string) error {
 	if snap.WithSecret {
 		p.Line("  %s  %s", ui.StyleKey.Render("Secrets:"), ui.StyleSuccess.Render(fmt.Sprintf("included (%d file(s))", snap.SecretsCopied)))
 	} else if includeSecrets {
-		p.Warn("  --include-secrets requested but no age_key* found under ~/.ssh — snapshot contains no secrets")
+		p.Warn("  --include-age-key requested but no age_key* found under ~/.ssh — snapshot contains no secrets")
 	}
 	return nil
 }
@@ -275,14 +275,14 @@ func runProfileBackup(cmd *cobra.Command, _ []string) error {
 func newProfileRestoreCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "restore",
-		Short: "Apply a profile snapshot (defaults to the latest) back to this host",
+		Short: "Advanced: restore only a profile snapshot (dot restore is the front door)",
 		Args:  cobra.NoArgs,
 		RunE:  runProfileRestore,
 	}
 	c.Flags().String("from", "", "Backup root (overrides configured BackupRoot)")
 	c.Flags().String("host", "", "Source hostname to restore from (default: this host)")
 	c.Flags().String("version", "", "Specific version to restore (default: latest)")
-	c.Flags().Bool("include-secrets", false, "Restore ~/.ssh/age_key* from the snapshot if present")
+	addAgeKeyFlag(c, "Restore ~/.ssh/age_key* from the snapshot if present")
 	c.Flags().Bool("no-state", false, "Skip copying config.yaml back to ~/.config/dotfiles/")
 	return c
 }
@@ -299,7 +299,7 @@ func runProfileRestore(cmd *cobra.Command, _ []string) error {
 	}
 	eng.Hostname = host
 	version, _ := cmd.Flags().GetString("version")
-	includeSecrets, _ := cmd.Flags().GetBool("include-secrets")
+	includeSecrets := ageKeyFlag(cmd)
 	noState, _ := cmd.Flags().GetBool("no-state")
 	p := printerFrom(cmd)
 
@@ -430,7 +430,7 @@ func runProfileList(cmd *cobra.Command, _ []string) error {
 func newProfilePruneCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "prune",
-		Short: "Delete older snapshots, keeping the newest N",
+		Short: "Delete older profile snapshots (profiles/ only), keeping the newest N",
 		Args:  cobra.NoArgs,
 		RunE:  runProfilePrune,
 	}
