@@ -169,6 +169,14 @@ var useSections = []useSection{
 		{"dot peer git realign --apply", "Move each repo's HEAD to the commit its files already match"},
 		{"dot peer doctor", "Probe everything that silently breaks a peer transfer"},
 	}},
+	{"Workspace structure on both trees", "Change folders in the workspace and its sync mirror together, and find where they drifted.", []usecase{
+		{"dot ws init", "Clone each configured workspace repo (work, vault) into the workspace"},
+		{"dot ws mkdir projects/new", "Create a directory on both workspaces"},
+		{"dot ws mv projects/old projects/new", "Rename or move a directory on both workspaces"},
+		{"dot ws rm projects/old", "Remove a directory from both workspaces"},
+		{"dot ws audit", "Report structural mismatches between the workspaces"},
+		{"dot ws reconcile", "Resolve those mismatches interactively"},
+	}},
 	{"SSH over Cloudflare Tunnel", "Expose this Mac's SSH service through a dot-managed local Cloudflare Tunnel.", []usecase{
 		{"dot tunnel setup", "Configure cloudflared, Remote Login, DNS route, and LaunchDaemon"},
 		{"dot tunnel setup --dry-run", "Preview the system commands without changing this Mac"},

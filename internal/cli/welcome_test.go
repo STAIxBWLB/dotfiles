@@ -37,9 +37,16 @@ func TestWelcomeNamesLiveCommands(t *testing.T) {
 				}
 			}
 			root := NewRootCmd("dev", "test")
-			c, _, err := root.Find(path)
+			c, rest, err := root.Find(path)
 			if err != nil || c == root {
 				t.Errorf("%q: no such command (%v)", part, err)
+				continue
+			}
+			// Find stops at the deepest match and returns the rest as args, so
+			// `dot sync no-such` would match `dot sync`. A group takes no
+			// positional args: a leftover word is an unknown subcommand.
+			if c.HasSubCommands() && len(rest) > 0 {
+				t.Errorf("%q: %s has no subcommand %q", part, c.CommandPath(), rest[0])
 				continue
 			}
 			if c.Deprecated != "" {
