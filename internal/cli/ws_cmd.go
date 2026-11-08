@@ -157,7 +157,14 @@ func wsBootstrap(cmd *cobra.Command) (ws.Roots, *exec.Runner, bool, error) {
 	if err != nil {
 		return ws.Roots{}, nil, false, fmt.Errorf("resolving gsync mirror: %w", err)
 	}
-	mirrorRoot := strings.TrimRight(gsyncCfg.MirrorPath, "/")
+	// ws edits the mirror as a local directory. An ssh: target has no local
+	// mirror tree, so refuse before any file operation instead of falling
+	// back to a stale or default local path (#379).
+	if gsyncCfg.Target.IsSSH() {
+		return ws.Roots{}, nil, false, fmt.Errorf("sync target is %s:%s (ssh); dot ws only edits a local mirror. Change the workspace in place and run 'dot sync push' to update the remote",
+			gsyncCfg.Target.Host, gsyncCfg.Target.Path)
+	}
+	mirrorRoot := strings.TrimRight(gsyncCfg.Target.Path, "/")
 	// Legacy dual-workspace configs pointed the mirror at
 	// workspace.gdrive_symlink before gsync owned mirror resolution. Honor
 	// that key while no gsync mirror is explicitly configured, so existing
