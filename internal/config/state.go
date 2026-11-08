@@ -259,9 +259,9 @@ type UserRsyncState struct {
 
 // UserGsyncState holds local↔local rsync mirror config from user state.
 //
-// `dot gsync` keeps ~/workspace/work and ~/gdrive-workspace/work in sync
-// via local rsync (no SSH). Workspace is authoritative: pull uses --update only,
-// push uses --delete-after. Last* timestamps are advisory (status display).
+// It holds the machine-wide defaults `dot sync` seeds a new workspace store
+// with (mirror path, max delete, shared excludes) and LocalPath, which locates
+// the workspace. Per-workspace settings live in <workspace>/.dotfiles/sync/.
 //
 // Paused defaults to true on a fresh state so the user explicitly opts in by
 // flipping it to false via `resume`.

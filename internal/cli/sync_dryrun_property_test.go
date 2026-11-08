@@ -137,16 +137,9 @@ func TestSyncInit_DryRunPreviewNamesEveryWrite(t *testing.T) {
 	}
 }
 
-// TestSyncInit_DryRunPreviewsThePostMigrationWorld is the sharper half.
-//
-// ResolveLocalPathsForProfile keeps a pre-rename fallback so READ-ONLY commands
-// stay truthful before MigrateLegacyStore has run, and plan 05-03 selected that
-// read-only resolver for every dry run — including dry runs of mutating
-// commands. For a mutating command, truthful means describing the world AFTER
-// the migration it performs first: a real `dot sync init` on a legacy workspace
-// renames .dotfiles/gdrive-sync to .dotfiles/sync and then operates there.
-//
-// Machines in that state exist: this repo migrated its own store in 2026-08.
+// TestSyncInit_DryRunRefusesALegacyStore: a workspace that still has only the
+// pre-2.59.0 store (.dotfiles/gdrive-sync) is refused, dry run or not, with the
+// move that fixes it; nothing is created (#371).
 func TestSyncInit_DryRunPreviewsThePostMigrationWorld(t *testing.T) {
 	legacyWorkspace := func(t *testing.T) (home, legacy, current string) {
 		t.Helper()
@@ -163,20 +156,12 @@ func TestSyncInit_DryRunPreviewsThePostMigrationWorld(t *testing.T) {
 			t.Fatal(err)
 		}
 		before := snapshotTree(t, filepath.Dir(filepath.Dir(legacy)))
-
-		out, errOut, err := runDotForTest("sync", "init", "--dry-run")
-		if err != nil {
-			t.Fatalf("dot sync init --dry-run: %v\nstdout=%s\nstderr=%s", err, out, errOut)
-		}
-
-		if !strings.Contains(out, current) {
-			t.Errorf("the preview describes the pre-migration world: it never names %s, which is where the real run operates after MigrateLegacyStore\nstdout=%s", current, out)
-		}
-		if !strings.Contains(out, legacy) {
-			t.Errorf("the preview is silent about the pending rename of %s, which is work the real run would do before anything else\nstdout=%s", legacy, out)
+		_, _, err := runDotForTest("sync", "init", "--dry-run")
+		if err == nil || !strings.Contains(err.Error(), "mv ") || !strings.Contains(err.Error(), current) {
+			t.Fatalf("want a refusal naming the move to %s, got %v", current, err)
 		}
 		if after := snapshotTree(t, filepath.Dir(filepath.Dir(legacy))); after != before {
-			t.Errorf("the preview renamed or created something\nbefore:\n%s\nafter:\n%s", before, after)
+			t.Errorf("the refusal changed the tree\nbefore:\n%s\nafter:\n%s", before, after)
 		}
 	})
 

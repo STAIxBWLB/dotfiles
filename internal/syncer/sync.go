@@ -179,14 +179,11 @@ func (c *Config) out() io.Writer {
 }
 
 // ResolveConfig builds the runtime Config by reading the per-workspace
-// local store (.dotfiles/gdrive-sync/), migrating from the legacy
-// global state on first call. Trailing slashes are normalized for
-// rsync semantics.
+// local store (.dotfiles/sync/), seeding it from the machine-wide defaults
+// on first call. Trailing slashes are normalized for rsync semantics.
 //
-// The global UserGsyncState is consulted only as a migration
-// source (and for LocalPath, the entry point that locates the
-// workspace). Once .dotfiles/gdrive-sync/config.yaml exists, the
-// global block is no longer read.
+// The global UserGsyncState is consulted only to seed a new store and for
+// LocalPath, the entry point that locates the workspace.
 func ResolveConfig(state *config.UserState) (*Config, error) {
 	return resolveConfig(state, true, "", DefaultProfile)
 }
@@ -240,11 +237,9 @@ func resolveConfig(state *config.UserState, migrate bool, home, profile string) 
 	}
 
 	// The gdrive-sync -> sync rename only ever applied to the default store.
-	if migrate && profile == DefaultProfile {
-		if migrated, err := MigrateLegacyStore(localPath); err != nil {
+	if profile == DefaultProfile {
+		if err := LegacyStoreError(localPath); err != nil {
 			return nil, err
-		} else if migrated {
-			fmt.Fprintln(os.Stderr, "note: migrated workspace store .dotfiles/gdrive-sync -> .dotfiles/sync")
 		}
 	}
 
@@ -252,7 +247,7 @@ func resolveConfig(state *config.UserState, migrate bool, home, profile string) 
 
 	var localCfg *LocalConfig
 	if migrate && profile == DefaultProfile {
-		localCfg, err = LoadOrMigrateLocalConfig(state, localPaths)
+		localCfg, err = LoadOrSeedLocalConfig(state, localPaths)
 		if err != nil {
 			return nil, err
 		}

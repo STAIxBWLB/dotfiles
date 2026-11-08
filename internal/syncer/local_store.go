@@ -21,8 +21,8 @@ import (
 const (
 	localStoreDirRel = ".dotfiles/sync"
 
-	// legacyStoreDirRel is the pre-rename store location. Read-only
-	// resolution falls back to it, and MigrateLegacyStore renames it.
+	// legacyStoreDirRel is the store location before dot 2.59.0. A workspace
+	// that still has only this store is refused with the move that fixes it.
 	legacyStoreDirRel = ".dotfiles/gdrive-sync"
 
 	localConfigName        = "config.yaml"
@@ -41,7 +41,6 @@ const (
 	localWorktreesDynName  = "worktrees.dyn.conf"
 	localLogDirRel         = "log"
 	localLogFileName       = "sync.log"
-	legacyLogFileName      = "gdrive-sync.log"
 
 	gitignoreBlockHeader = "# dot sync: track shared baseline + filter policy, ignore machine-local state"
 )
@@ -240,11 +239,6 @@ type LocalPaths struct {
 // ResolveLocalPaths returns the canonical layout for a given local
 // sync tree. localPath should be the absolute path to the workspace
 // root (with or without trailing slash).
-//
-// When the workspace still carries only the pre-rename store
-// (.dotfiles/gdrive-sync/) the layout points there, so read-only commands
-// stay truthful before MigrateLegacyStore has run. Once .dotfiles/sync/
-// exists it always wins.
 func ResolveLocalPaths(localPath string) *LocalPaths {
 	return ResolveLocalPathsForProfile(localPath, DefaultProfile)
 }
@@ -299,56 +293,16 @@ func invalidProfileError(profile string) error {
 }
 
 // ResolveLocalPathsForProfile returns the layout for one profile's store.
-// The legacy gdrive-sync fallback applies only to the default profile: it
-// exists to keep pre-rename workspaces truthful, and a new profile has no
-// legacy twin to fall back to.
 func ResolveLocalPathsForProfile(localPath, profile string) *LocalPaths {
-	return resolveLocalPaths(localPath, profile, true)
-}
-
-// ResolveLocalPathsPostMigration is ResolveLocalPathsForProfile WITHOUT the
-// pre-rename fallback: the layout a MUTATING command operates on, because such
-// a command runs MigrateLegacyStore before it touches anything.
-//
-// The fallback above must stay for read-only callers - it is what keeps
-// `dot sync status` truthful on a workspace that has not migrated yet - so this
-// is a second view, not a replacement. Use it to PREVIEW a mutating command,
-// and pair it with pendingLegacyStore so the preview names the rename too.
-func ResolveLocalPathsPostMigration(localPath, profile string) *LocalPaths {
-	return resolveLocalPaths(localPath, profile, false)
-}
-
-// pendingLegacyStore returns the pre-rename store MigrateLegacyStore would
-// rename, or "" when there is nothing to migrate. MigrateLegacyStore itself
-// asks the same function, so a preview and the run it previews cannot disagree
-// about whether a rename is coming.
-func pendingLegacyStore(localPath string) string {
-	root := strings.TrimRight(localPath, "/")
-	old := filepath.Join(root, legacyStoreDirRel)
-	if pathExists(filepath.Join(root, localStoreDirRel)) || !pathExists(old) {
-		return ""
-	}
-	return old
-}
-
-func resolveLocalPaths(localPath, profile string, legacyFallback bool) *LocalPaths {
 	root := strings.TrimRight(localPath, "/")
 	prof := NormalizeProfile(profile)
 	storeRel := filepath.Join(".dotfiles", prof)
 	if prof == DefaultProfile {
 		storeRel = localStoreDirRel
-		if legacyFallback && pendingLegacyStore(root) != "" {
-			storeRel = legacyStoreDirRel
-		}
 	}
 	store := filepath.Join(root, storeRel)
 	logDir := filepath.Join(store, localLogDirRel)
 	logFile := filepath.Join(logDir, localLogFileName)
-	if storeRel == legacyStoreDirRel && !pathExists(logFile) {
-		if legacy := filepath.Join(logDir, legacyLogFileName); pathExists(legacy) {
-			logFile = legacy
-		}
-	}
 	return &LocalPaths{
 		StoreDir:          store,
 		ConfigFile:        filepath.Join(store, localConfigName),
@@ -371,38 +325,18 @@ func resolveLocalPaths(localPath, profile string, legacyFallback bool) *LocalPat
 	}
 }
 
-// MigrateLegacyStore renames <root>/.dotfiles/gdrive-sync/ to
-// <root>/.dotfiles/sync/ and rewrites any gdrive-sync references in the
-// workspace .gitignore (managed block plus operator-added whitelist lines).
-// Returns true when a migration happened. No-op when the new store already
-// exists or no legacy store is present.
-func MigrateLegacyStore(localPath string) (bool, error) {
+// LegacyStoreError refuses a workspace that still has only the store from
+// before dot 2.59.0 (.dotfiles/gdrive-sync/). Syncing it from a fresh
+// .dotfiles/sync/ would start from an empty baseline, so the error names the
+// move that keeps its baseline and settings instead.
+func LegacyStoreError(localPath string) error {
 	root := strings.TrimRight(localPath, "/")
+	oldDir := filepath.Join(root, legacyStoreDirRel)
 	newDir := filepath.Join(root, localStoreDirRel)
-	oldDir := pendingLegacyStore(root)
-	if oldDir == "" {
-		return false, nil
+	if pathExists(newDir) || !pathExists(oldDir) {
+		return nil
 	}
-	if err := os.Rename(oldDir, newDir); err != nil {
-		return false, fmt.Errorf("renaming %s -> %s: %w", oldDir, newDir, err)
-	}
-	// Keep log continuity under the new file name.
-	oldLog := filepath.Join(newDir, localLogDirRel, legacyLogFileName)
-	newLog := filepath.Join(newDir, localLogDirRel, localLogFileName)
-	if pathExists(oldLog) && !pathExists(newLog) {
-		_ = os.Rename(oldLog, newLog)
-	}
-	// Rewrite .gitignore lines in place so operator-added whitelist entries
-	// (e.g. !/.dotfiles/gdrive-sync/exclude.txt) survive the rename.
-	gitignorePath := filepath.Join(root, ".gitignore")
-	if body, err := os.ReadFile(gitignorePath); err == nil &&
-		strings.Contains(string(body), legacyStoreDirRel) {
-		updated := strings.ReplaceAll(string(body), legacyStoreDirRel, localStoreDirRel)
-		if err := os.WriteFile(gitignorePath, []byte(updated), 0644); err != nil {
-			return true, fmt.Errorf("updating %s: %w", gitignorePath, err)
-		}
-	}
-	return true, nil
+	return fmt.Errorf("workspace sync store is still at %s, the location before dot 2.59.0; move it with\n  mv %q %q && sed -i.bak 's#%s#%s#g' %q\nthen re-run", oldDir, oldDir, newDir, legacyStoreDirRel, localStoreDirRel, filepath.Join(root, ".gitignore"))
 }
 
 // EnsureLocalLayout creates the .dotfiles/sync/ directory plus
@@ -750,14 +684,11 @@ func localConfigFromGlobal(globalState *config.UserState) *LocalConfig {
 	}
 }
 
-// MigrateFromGlobal seeds <localStoreDir>/config.yaml from the legacy
-// `state.modules.gdrive_sync` block when no local config exists yet.
-// Returns the freshly-built LocalConfig (also persisted to disk).
-//
-// Subsequent calls find the local config and skip migration entirely —
-// the global block is read at most once per workspace lifetime.
-func MigrateFromGlobal(globalState *config.UserState, paths *LocalPaths) (*LocalConfig, error) {
-	gs := globalState.Modules.Gsync
+// SeedFromGlobal writes <localStoreDir>/config.yaml for a workspace that has
+// none, from the machine-wide defaults in `state.modules.gdrive_sync`
+// (mirror path, max delete, shared excludes), which `dot sync target`
+// keeps for future workspaces. Returns the new LocalConfig.
+func SeedFromGlobal(globalState *config.UserState, paths *LocalPaths) (*LocalConfig, error) {
 	cfg := localConfigFromGlobal(globalState)
 	if err := EnsureLocalLayout(paths); err != nil {
 		return nil, err
@@ -765,22 +696,13 @@ func MigrateFromGlobal(globalState *config.UserState, paths *LocalPaths) (*Local
 	if err := SaveLocalConfig(paths, cfg); err != nil {
 		return nil, err
 	}
-	// Seed state.yaml with the legacy timestamps so `status` keeps continuity.
-	st := &LocalState{
-		LastPull:   gs.LastPull,
-		LastPush:   gs.LastPush,
-		LastIntake: gs.LastPull, // legacy `Pull` retired into `intake` semantics
-	}
-	if err := SaveLocalState(paths, st); err != nil {
-		return nil, err
-	}
 	return cfg, nil
 }
 
-// LoadOrMigrateLocalConfig is the single entry point ResolveConfig uses:
-// returns the local config, performing a one-time migration from the
-// global state if no local config exists yet.
-func LoadOrMigrateLocalConfig(globalState *config.UserState, paths *LocalPaths) (*LocalConfig, error) {
+// LoadOrSeedLocalConfig is the single entry point ResolveConfig uses:
+// returns the local config, seeding it from the machine-wide defaults when
+// the workspace has none yet.
+func LoadOrSeedLocalConfig(globalState *config.UserState, paths *LocalPaths) (*LocalConfig, error) {
 	if cfg, ok, err := LoadLocalConfig(paths); err != nil {
 		return nil, err
 	} else if ok {
@@ -792,7 +714,7 @@ func LoadOrMigrateLocalConfig(globalState *config.UserState, paths *LocalPaths) 
 		}
 		return cfg, nil
 	}
-	return MigrateFromGlobal(globalState, paths)
+	return SeedFromGlobal(globalState, paths)
 }
 
 // atomicWrite mirrors saveStateAt's marshal → temp → fsync → rename

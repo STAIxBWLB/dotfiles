@@ -128,8 +128,7 @@ func SetLocalPaused(cfg *Config, paused bool) error {
 }
 
 // SetLocalTarget writes the target into the workspace-local config so it takes
-// effect immediately. Local targets also update the legacy MirrorPath field so
-// older binaries reading this workspace resolve the same mirror.
+// effect immediately.
 func SetLocalTarget(cfg *Config, target Target) error {
 	if cfg.LocalPaths == nil {
 		return fmt.Errorf("local paths unresolved — bug in ResolveConfig")
@@ -139,9 +138,6 @@ func SetLocalTarget(cfg *Config, target Target) error {
 		return fmt.Errorf("load local config: %w", err)
 	}
 	localCfg.Target = target.String()
-	if target.Kind == TargetLocal {
-		localCfg.MirrorPath = target.Path
-	}
 	if err := SaveLocalConfig(cfg.LocalPaths, localCfg); err != nil {
 		return fmt.Errorf("save local config: %w", err)
 	}
@@ -154,12 +150,6 @@ type InitResult struct {
 	// DryRun reports that nothing below was created. The engine returns the
 	// flag and the paths; cli owns the wording it renders them with.
 	DryRun bool
-
-	// LegacyStoreDir names the pre-rename store the run would migrate to
-	// StoreDir before doing anything else. Set only under DryRun, and only when
-	// one is actually pending: a real run performs the rename and reports it on
-	// stderr from resolveConfig, so there is nothing left to preview.
-	LegacyStoreDir string
 
 	StoreDir    string
 	Workspace   string
@@ -193,19 +183,6 @@ func InitStore(cfg *Config, dryRun bool) (*InitResult, error) {
 	if paths == nil {
 		return nil, fmt.Errorf("local paths unresolved — bug in ResolveConfig")
 	}
-	var legacyStore string
-	if dryRun {
-		// Bootstrap hands a dry run the READ-ONLY resolver, which keeps the
-		// pre-rename fallback. That is right for a read-only command and wrong
-		// for this one: a real `dot sync init` migrates first and then operates
-		// under .dotfiles/sync, so previewing the pre-migration paths describes
-		// a world the run will have left behind. Re-resolve past the fallback
-		// and name the rename as work this command would do. The two resolvers
-		// agree when nothing is pending, so this is a no-op on a migrated
-		// workspace.
-		legacyStore = pendingLegacyStore(cfg.LocalPath)
-		paths = ResolveLocalPathsPostMigration(cfg.LocalPath, cfg.Profile)
-	}
 	inboxGdrive := trimTrailingSlash(cfg.LocalPath) + "/inbox/gdrive"
 	if !dryRun {
 		if err := EnsureLocalLayout(paths); err != nil {
@@ -216,17 +193,16 @@ func InitStore(cfg *Config, dryRun bool) (*InitResult, error) {
 		}
 	}
 	return &InitResult{
-		DryRun:         dryRun,
-		LegacyStoreDir: legacyStore,
-		StoreDir:       paths.StoreDir,
-		Workspace:      trimTrailingSlash(cfg.LocalPath),
-		Mirror:         trimTrailingSlash(cfg.MirrorPath),
-		Propagation:    cfg.Propagation,
-		FilterMode:     cfg.FilterMode,
-		InboxDir:       inboxGdrive,
-		ConfigFile:     paths.ConfigFile,
-		IncludeFile:    paths.IncludeFile,
-		IgnoreFile:     paths.IgnoreFile,
+		DryRun:      dryRun,
+		StoreDir:    paths.StoreDir,
+		Workspace:   trimTrailingSlash(cfg.LocalPath),
+		Mirror:      trimTrailingSlash(cfg.MirrorPath),
+		Propagation: cfg.Propagation,
+		FilterMode:  cfg.FilterMode,
+		InboxDir:    inboxGdrive,
+		ConfigFile:  paths.ConfigFile,
+		IncludeFile: paths.IncludeFile,
+		IgnoreFile:  paths.IgnoreFile,
 
 		WorkspaceIgnore: paths.WorkspaceIgnore,
 	}, nil

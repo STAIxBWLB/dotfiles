@@ -135,7 +135,7 @@ func TestSyncConflictsPruneCLI_DryRunThenYes(t *testing.T) {
 	wsConflict := f.seedOldConflict(t, f.local, "2026-01-01T00-00-00Z")
 	mirrorConflict := f.seedOldConflict(t, f.mirror, "2026-01-02T00-00-00Z")
 
-	out, errOut, err := runDotForTest("gsync", "conflicts", "prune", "--dry-run")
+	out, errOut, err := runDotForTest("sync", "conflicts", "prune", "--dry-run")
 	if err != nil {
 		t.Fatalf("prune --dry-run: %v\nstderr=%s", err, errOut)
 	}
@@ -153,7 +153,7 @@ func TestSyncConflictsPruneCLI_DryRunThenYes(t *testing.T) {
 		}
 	}
 
-	out, errOut, err = runDotForTest("gsync", "conflicts", "prune", "--yes")
+	out, errOut, err = runDotForTest("sync", "conflicts", "prune", "--yes")
 	if err != nil {
 		t.Fatalf("prune --yes: %v\nstderr=%s", err, errOut)
 	}
@@ -189,7 +189,7 @@ func TestSyncConflictsPruneCLI_LockHeldDeletesNothing(t *testing.T) {
 	}
 	defer release()
 
-	out, errOut, err := runDotForTest("gsync", "conflicts", "prune", "--yes")
+	out, errOut, err := runDotForTest("sync", "conflicts", "prune", "--yes")
 	if err != nil {
 		t.Fatalf("prune under held lock should not error: %v\nstderr=%s", err, errOut)
 	}
@@ -335,7 +335,7 @@ func TestSyncPullCLI_StrictFlagWiring(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, errOut, err := runDotForTest("gsync", "pull", "--dry-run")
+	out, errOut, err := runDotForTest("sync", "pull", "--dry-run")
 	if err != nil {
 		t.Fatalf("pull --dry-run: %v\nstderr=%s", err, errOut)
 	}
@@ -343,7 +343,7 @@ func TestSyncPullCLI_StrictFlagWiring(t *testing.T) {
 		t.Errorf("default fast tier should not plan a pull here:\n%s", out)
 	}
 
-	out, errOut, err = runDotForTest("gsync", "pull", "--strict", "--dry-run")
+	out, errOut, err = runDotForTest("sync", "pull", "--strict", "--dry-run")
 	if err != nil {
 		t.Fatalf("pull --strict --dry-run: %v\nstderr=%s", err, errOut)
 	}
@@ -357,7 +357,7 @@ func TestSyncMirrorCLI_SetsLocalConfigAndPrints(t *testing.T) {
 	newMirror := filepath.Join(f.home, "Dropbox", "work")
 
 	// Set the mirror.
-	out, errOut, err := runDotForTest("gsync", "mirror", newMirror)
+	out, errOut, err := runDotForTest("sync", "target", newMirror)
 	if err != nil {
 		t.Fatalf("gsync mirror set: %v\nstdout=%s\nstderr=%s", err, out, errOut)
 	}
@@ -371,12 +371,12 @@ func TestSyncMirrorCLI_SetsLocalConfigAndPrints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read local config: %v", err)
 	}
-	if !strings.Contains(string(data), "mirror_path: "+newMirror) {
-		t.Errorf("local config missing mirror_path:\n%s", data)
+	if !strings.Contains(string(data), "target: local:"+newMirror) {
+		t.Errorf("local config missing target:\n%s", data)
 	}
 
 	// No-arg prints the resolved mirror.
-	out, _, err = runDotForTest("gsync", "mirror")
+	out, _, err = runDotForTest("sync", "target")
 	if err != nil {
 		t.Fatalf("gsync mirror print: %v", err)
 	}
@@ -390,7 +390,7 @@ func TestSyncMirrorCLI_PrintAndDryRunAreReadOnly(t *testing.T) {
 	store := filepath.Join(f.local, ".dotfiles", "sync")
 
 	// No-arg print on a fresh workspace must not create the local layout.
-	if _, _, err := runDotForTest("gsync", "mirror"); err != nil {
+	if _, _, err := runDotForTest("sync", "target"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(store); !os.IsNotExist(err) {
@@ -399,7 +399,7 @@ func TestSyncMirrorCLI_PrintAndDryRunAreReadOnly(t *testing.T) {
 
 	// --dry-run set: shows the would-be path, still no layout, no .gitignore.
 	newMirror := filepath.Join(f.home, "Dropbox", "work")
-	out, _, err := runDotForTest("gsync", "mirror", newMirror, "--dry-run")
+	out, _, err := runDotForTest("sync", "target", newMirror, "--dry-run")
 	if err != nil {
 		t.Fatalf("gsync mirror --dry-run: %v", err)
 	}
@@ -423,7 +423,7 @@ func TestSyncMirrorCLI_HonorsHomeOverride(t *testing.T) {
 
 	// ~ in the path must expand against --home, and global state must be
 	// written for that home — not the current HOME.
-	out, errOut, err := runDotForTest("gsync", "mirror", "~/Dropbox/work", "--home", other)
+	out, errOut, err := runDotForTest("sync", "target", "~/Dropbox/work", "--home", other)
 	if err != nil {
 		t.Fatalf("gsync mirror --home: %v\nstdout=%s\nstderr=%s", err, out, errOut)
 	}
@@ -474,13 +474,13 @@ func TestSyncPushCLI_RecordsAPreflightRefusal(t *testing.T) {
 		t.Fatal(err)
 	}
 	paths := syncer.ResolveLocalPaths(f.local + "/")
-	if _, errOut, err := runDotForTest("gsync", "push", "--mode=clean", "--dry-run"); err != nil {
+	if _, errOut, err := runDotForTest("sync", "push", "--mode=clean", "--dry-run"); err != nil {
 		t.Fatalf("push --dry-run: %v\nstderr=%s", err, errOut)
 	}
 	if st, _ := syncer.LoadLocalState(paths); st != nil && st.LastPushError != "" {
 		t.Fatalf("a dry-run recorded %q", st.LastPushError)
 	}
-	if _, errOut, err := runDotForTest("gsync", "push", "--mode=clean"); err != nil {
+	if _, errOut, err := runDotForTest("sync", "push", "--mode=clean"); err != nil {
 		t.Fatalf("push: %v\nstderr=%s", err, errOut)
 	}
 	st, err := syncer.LoadLocalState(paths)
@@ -490,17 +490,17 @@ func TestSyncPushCLI_RecordsAPreflightRefusal(t *testing.T) {
 	if want := "push refused: Mirror path missing: "; !strings.HasPrefix(st.LastPushError, want) {
 		t.Errorf("LastPushError = %q, want prefix %q", st.LastPushError, want)
 	}
-	if out, _, _ := runDotForTest("gsync", "status"); !strings.Contains(out, "Push stalled") || !strings.Contains(out, "Mirror path missing") {
+	if out, _, _ := runDotForTest("sync", "status"); !strings.Contains(out, "Push stalled") || !strings.Contains(out, "Mirror path missing") {
 		t.Errorf("status does not name the refusal:\n%s", out)
 	}
 	// A paused profile records nothing, whatever else blocks the push.
 	if err := syncer.UpdateLocalState(paths, func(s *syncer.LocalState) { s.LastPushError = "" }); err != nil {
 		t.Fatal(err)
 	}
-	if _, errOut, err := runDotForTest("gsync", "pause"); err != nil {
+	if _, errOut, err := runDotForTest("sync", "pause"); err != nil {
 		t.Fatalf("pause: %v\nstderr=%s", err, errOut)
 	}
-	if _, errOut, err := runDotForTest("gsync", "push", "--mode=clean"); err != nil {
+	if _, errOut, err := runDotForTest("sync", "push", "--mode=clean"); err != nil {
 		t.Fatalf("paused push: %v\nstderr=%s", err, errOut)
 	}
 	if st, _ = syncer.LoadLocalState(paths); st.LastPushError != "" {
@@ -519,7 +519,7 @@ func TestSyncPushCLI_RecordsAnOwnerRefusalUnlessPaused(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := runDotForTest("gsync", "push", "--mode=clean"); err == nil {
+	if _, _, err := runDotForTest("sync", "push", "--mode=clean"); err == nil {
 		t.Fatal("a push on a non-owner succeeded")
 	}
 	st, err := syncer.LoadLocalState(paths)
@@ -533,10 +533,10 @@ func TestSyncPushCLI_RecordsAnOwnerRefusalUnlessPaused(t *testing.T) {
 	if err := syncer.UpdateLocalState(paths, func(s *syncer.LocalState) { s.LastPushError = "" }); err != nil {
 		t.Fatal(err)
 	}
-	if _, errOut, err := runDotForTest("gsync", "pause"); err != nil {
+	if _, errOut, err := runDotForTest("sync", "pause"); err != nil {
 		t.Fatalf("pause: %v\nstderr=%s", err, errOut)
 	}
-	_, _, _ = runDotForTest("gsync", "push", "--mode=clean")
+	_, _, _ = runDotForTest("sync", "push", "--mode=clean")
 	if st, _ = syncer.LoadLocalState(paths); st.LastPushError != "" {
 		t.Errorf("a paused profile recorded %q", st.LastPushError)
 	}
@@ -546,7 +546,7 @@ func TestSyncPushCLI_RecordsAnOwnerRefusalUnlessPaused(t *testing.T) {
 // clear` clears it instead of reporting an empty list (#231).
 func TestSyncSharedCLI_ListsAndClearsAnEntryTheCleaningDrops(t *testing.T) {
 	f := newSyncCLIFixture(t)
-	if _, errOut, err := runDotForTest("gsync", "shared", "add", "team/x"); err != nil {
+	if _, errOut, err := runDotForTest("sync", "shared", "add", "team/x"); err != nil {
 		t.Fatalf("shared add: %v\nstderr=%s", err, errOut)
 	}
 	paths := syncer.ResolveLocalPaths(f.local + "/")
@@ -558,11 +558,11 @@ func TestSyncSharedCLI_ListsAndClearsAnEntryTheCleaningDrops(t *testing.T) {
 	if err := syncer.SaveLocalConfig(paths, cfg); err != nil {
 		t.Fatal(err)
 	}
-	out, errOut, err := runDotForTest("gsync", "shared", "list")
+	out, errOut, err := runDotForTest("sync", "shared", "list")
 	if err != nil || !strings.Contains(out, "team/x") || !strings.Contains(out, "ignored") || !strings.Contains(out, `"/team/ops"`) {
 		t.Fatalf("shared list = %v\n%s%s", err, out, errOut)
 	}
-	if out, errOut, err := runDotForTest("gsync", "shared", "clear", "--yes"); err != nil || !strings.Contains(out, "Cleared 2") {
+	if out, errOut, err := runDotForTest("sync", "shared", "clear", "--yes"); err != nil || !strings.Contains(out, "Cleared 2") {
 		t.Fatalf("shared clear = %v\n%s%s", err, out, errOut)
 	}
 	if cfg, _, _ := syncer.LoadLocalConfig(paths); len(cfg.SharedExcludes) != 0 {

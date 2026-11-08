@@ -3,7 +3,6 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"unicode"
@@ -61,10 +60,9 @@ func escapeTerminalControls(value string) string {
 
 func newSyncCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "sync",
-		Aliases: []string{"gsync", "gdrive-sync"},
-		Short:   "Sync workspace to a local mirror or SSH remote via rsync",
-		Args:    cobra.NoArgs,
+		Use:   "sync",
+		Short: "Sync workspace to a local mirror or SSH remote via rsync",
+		Args:  cobra.NoArgs,
 		Long: `Unified workspace sync: rsync the workspace to a target — either a
 local cloud-client folder (e.g. ~/Dropbox/work) or an SSH remote (host:path).
 
@@ -93,15 +91,11 @@ files still stage into inbox/gdrive for manual routing.
 	  dot sync pause       Stop managed schedulers + set paused gate
 	  dot sync resume      Clear paused gate and re-arm installed schedulers
 
-Run without a subcommand to print this help.
-Deprecated aliases: 'dot gsync', 'dot gdrive-sync'.`,
+Run without a subcommand to print this help.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
 		SilenceUsage: true,
-		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
-			warnDeprecatedSyncAlias()
-		},
 	}
 	cmd.PersistentFlags().String("profile", syncer.DefaultProfile,
 		"sync profile (store under <workspace>/.dotfiles/<profile>/); \"sync\" is the cloud mirror")
@@ -109,7 +103,6 @@ Deprecated aliases: 'dot gsync', 'dot gdrive-sync'.`,
 	cmd.PersistentFlags().String("mode", syncer.ModeManual.String(), "execution mode for push/pull: manual, clean, or force")
 	cmd.PersistentFlags().String("filter-mode", "", "override config filter mode for this run: include or exclude")
 	cmd.AddCommand(
-		newSyncSyncCmd(),
 		newSyncPullCmd(),
 		newSyncPushCmd(),
 		newSyncIntakeCmd(),
@@ -125,25 +118,11 @@ Deprecated aliases: 'dot gsync', 'dot gdrive-sync'.`,
 		newSyncSharedCmd(),
 		newSyncInitCmd(),
 		newSyncTargetCmd(),
-		newSyncMirrorCmd(),
 		newSyncFiltersCmd(),
 		newSyncNamesCmd(),
 		newSyncFetchCmd(),
 	)
 	return cmd
-}
-
-// warnDeprecatedSyncAlias prints a one-line notice when the sync command
-// group was invoked through a legacy alias. Checked against os.Args because
-// cobra's CalledAs() reflects the leaf command, not the group.
-func warnDeprecatedSyncAlias() {
-	if len(os.Args) < 2 {
-		return
-	}
-	switch os.Args[1] {
-	case "gsync", "gdrive-sync":
-		fmt.Fprintf(os.Stderr, "note: 'dot %s' is deprecated; use 'dot sync'\n", os.Args[1])
-	}
 }
 
 // syncBootstrapOptions translates the sync command tree's flags into the

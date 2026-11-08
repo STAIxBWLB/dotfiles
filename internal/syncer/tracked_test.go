@@ -191,46 +191,25 @@ func TestMaterializeSubmodulesAndTrackedFiles(t *testing.T) {
 	}
 }
 
-func TestMigrateLegacyStore_RenamesAndRewritesGitignore(t *testing.T) {
+// A workspace with only the pre-2.59.0 store is refused with the move that
+// keeps its baseline, never synced from an empty new store (#371).
+func TestLegacyStoreError(t *testing.T) {
 	root := t.TempDir()
+	if err := LegacyStoreError(root); err != nil {
+		t.Fatalf("no store at all: %v", err)
+	}
 	oldStore := filepath.Join(root, ".dotfiles", "gdrive-sync")
-	if err := os.MkdirAll(filepath.Join(oldStore, "log"), 0o755); err != nil {
+	if err := os.MkdirAll(oldStore, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(oldStore, "config.yaml"), []byte("paused: true\n"), 0o644); err != nil {
+	err := LegacyStoreError(root)
+	if err == nil || !strings.Contains(err.Error(), "mv ") || !strings.Contains(err.Error(), filepath.Join(root, ".dotfiles", "sync")) {
+		t.Fatalf("legacy only: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".dotfiles", "sync"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(oldStore, "log", "gdrive-sync.log"), []byte("line\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	gitignore := "!/.dotfiles/gdrive-sync/\n/.dotfiles/gdrive-sync/*\n!/.dotfiles/gdrive-sync/exclude.txt\n"
-	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(gitignore), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	migrated, err := MigrateLegacyStore(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !migrated {
-		t.Fatal("expected migration to run")
-	}
-	if _, err := os.Stat(filepath.Join(root, ".dotfiles", "sync", "config.yaml")); err != nil {
-		t.Errorf("config not at new store: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(root, ".dotfiles", "sync", "log", "sync.log")); err != nil {
-		t.Errorf("log not renamed: %v", err)
-	}
-	body, _ := os.ReadFile(filepath.Join(root, ".gitignore"))
-	if strings.Contains(string(body), "gdrive-sync") {
-		t.Errorf(".gitignore still references gdrive-sync:\n%s", body)
-	}
-	if !strings.Contains(string(body), "!/.dotfiles/sync/exclude.txt") {
-		t.Errorf("operator whitelist line lost:\n%s", body)
-	}
-
-	// Idempotent: second call is a no-op.
-	if again, err := MigrateLegacyStore(root); err != nil || again {
-		t.Errorf("second migration = (%v, %v), want (false, nil)", again, err)
+	if err := LegacyStoreError(root); err != nil {
+		t.Fatalf("new store present: %v", err)
 	}
 }
