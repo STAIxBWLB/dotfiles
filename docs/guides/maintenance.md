@@ -21,7 +21,7 @@ optionally runs `dot apply` after the profile restore, and preserves every
 overwritten local file in per-step pre-restore backups. Unattended:
 `dot backup --yes --scope profile,ai,secrets` / `dot restore --yes --host <src>`.
 
-**Option B — individual commands:**
+**Option B — individual commands (advanced; `dot backup` / `dot restore` above are the front door):**
 
 ```bash
 # On the existing machine
