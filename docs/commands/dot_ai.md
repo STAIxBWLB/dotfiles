@@ -45,7 +45,7 @@ they are machine state pi rebuilds itself.
 * [dot ai hud](dot_ai_hud.md)	 - Manage dot-native Claude Code and Codex HUD status lines
 * [dot ai import](dot_ai_import.md)	 - Import AI settings from a portable tar.gz archive
 * [dot ai list](dot_ai_list.md)	 - List AI helpers, detected CLIs, and managed paths
-* [dot ai memory](dot_ai_memory.md)	 - Register amem for the agents and retire claude-mem
+* [dot ai memory](dot_ai_memory.md)	 - Register amem, audit the agents' native memory, retire claude-mem
 * [dot ai policy](dot_ai_policy.md)	 - Inspect, resolve and reconcile adaptive AI operating policies
 * [dot ai prune](dot_ai_prune.md)	 - Delete older AI config snapshots, keeping the newest N
 * [dot ai research](dot_ai_research.md)	 - Register ares, the research engine, for the agents dot owns

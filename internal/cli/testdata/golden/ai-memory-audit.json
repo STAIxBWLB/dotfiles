@@ -1,0 +1,162 @@
+{
+  "markersFile": "@HOME@/.config/dotfiles/agents/memory-markers.yaml",
+  "markersStatus": "ok",
+  "markers": [
+    {
+      "pattern": "old-plugin",
+      "regex": false,
+      "retired": "2026-10-01",
+      "replacement": "new-tool",
+      "reason": "the plugin was removed"
+    },
+    {
+      "pattern": "old-repo(-v1)?",
+      "regex": true,
+      "retired": "2026-09-01",
+      "replacement": "new-repo",
+      "reason": "the repository was renamed"
+    }
+  ],
+  "stores": [
+    {
+      "agent": "claude",
+      "path": "@HOME@/.claude/projects/-proj-a/memory",
+      "status": "ok",
+      "files": 3,
+      "bytes": 1900,
+      "modified": "2026-11-01T00:00:00Z",
+      "index": {
+        "path": "@HOME@/.claude/projects/-proj-a/memory/MEMORY.md",
+        "lines": 201,
+        "bytes": 1843,
+        "maxLines": 200,
+        "maxBytes": 25000,
+        "over": true
+      },
+      "brokenLinks": [
+        "gone.md"
+      ],
+      "orphans": [
+        "orphan.md"
+      ],
+      "markers": [
+        {
+          "marker": "old-plugin",
+          "hits": [
+            {
+              "file": "a.md",
+              "line": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "codex",
+      "path": "@HOME@/.codex/memories",
+      "status": "ok",
+      "files": 5,
+      "bytes": 98,
+      "modified": "2026-11-01T00:00:00Z",
+      "index": {
+        "path": "@HOME@/.codex/memories/memory_summary.md",
+        "lines": 2,
+        "bytes": 28,
+        "maxBytes": 10000,
+        "over": false
+      },
+      "markers": [
+        {
+          "marker": "old-plugin",
+          "hits": [
+            {
+              "file": "extensions/ad_hoc/notes/note-one.md",
+              "line": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "qwen",
+      "path": "@HOME@/.qwen/memories",
+      "status": "ok",
+      "files": 2,
+      "bytes": 42,
+      "modified": "2026-11-01T00:00:00Z",
+      "index": {
+        "path": "@HOME@/.qwen/memories/MEMORY.md",
+        "lines": 1,
+        "bytes": 21,
+        "over": false
+      },
+      "markers": [
+        {
+          "marker": "old-repo(-v1)?",
+          "hits": [
+            {
+              "file": "feedback/f.md",
+              "line": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "grok",
+      "path": "@HOME@/.grok/memory-v2/global",
+      "status": "ok",
+      "files": 1,
+      "bytes": 20,
+      "modified": "2026-11-01T00:00:00Z",
+      "index": {
+        "path": "@HOME@/.grok/memory-v2/global/MEMORY.md",
+        "lines": 2,
+        "bytes": 20,
+        "over": false
+      },
+      "markers": [
+        {
+          "marker": "old-plugin",
+          "hits": [
+            {
+              "file": "MEMORY.md",
+              "line": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "agent": "jcode",
+      "path": "jcode memory stats",
+      "status": "ok",
+      "files": 3,
+      "bytes": 0
+    }
+  ],
+  "crossAgent": [
+    {
+      "marker": "old-plugin",
+      "counts": {
+        "claude": 1,
+        "codex": 1,
+        "grok": 1,
+        "qwen": 0
+      }
+    },
+    {
+      "marker": "old-repo(-v1)?",
+      "counts": {
+        "claude": 0,
+        "codex": 0,
+        "grok": 0,
+        "qwen": 1
+      }
+    }
+  ],
+  "problems": [
+    "claude @HOME@/.claude/projects/-proj-a/memory/MEMORY.md: index over its limit",
+    "claude @HOME@/.claude/projects/-proj-a/memory: 1 broken index link(s)"
+  ]
+}

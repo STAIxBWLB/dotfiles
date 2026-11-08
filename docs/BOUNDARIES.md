@@ -197,6 +197,21 @@ tool):
   launchd act on the invoking user's real state, so a scratch home can be
   planned and read back but never applied. `$CLAUDE_MEM_DATA_DIR` is honored
   for the person's own home only.
+- Agent native memory stores: `<Claude config dir>/projects/*/memory/**`,
+  `$CODEX_HOME/memories/**`, `~/.qwen/memories/**`,
+  `~/.qwen/projects/*/memory/**`, the `MEMORY.md` indexes under
+  `~/.grok/memory-v2/**`, and jcode's store through `jcode memory stats`.
+  `dot ai memory audit` only reads them, for diagnostics. `dot ai memory
+  archive --apply` may move whole files inside them: a Claude or Qwen file to
+  `_archive/` in the same memory directory, a Codex file to
+  `$CODEX_HOME/memories-archive/`, never a Codex generated file
+  (`memory_summary.md`, `MEMORY.md`, `raw_memories.md`, `rollout_summaries/`)
+  and never a store's index. dot never edits or deletes memory content or
+  index files, and never writes jcode's store. Qwen memories stay excluded
+  from backup and restore.
+- `~/.config/dotfiles/agents/memory-markers.yaml` — the retired terms the
+  audit checks. dot only reads it; the person writes it. Untracked, and synced
+  between machines by `dot peer` with the rest of `~/.config/dotfiles`.
 - `~/.claude-mem.archive-` — the dated archive that retirement creates; a name
   prefix, not a directory, because the date and a same-day counter follow it.
 - `~/Library/LaunchAgents/com.dotfiles.claude-mem-bridge.plist` and

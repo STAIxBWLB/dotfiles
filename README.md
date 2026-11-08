@@ -330,6 +330,26 @@ process is running (quit the Claude and Codex sessions that load it first), when
 a file it must read cannot be read, and under `--home`; the dry run works with
 `--home` and reads nothing from your shell environment.
 
+Each agent also keeps its own native memory (Claude Code auto memory, Codex
+memories, Qwen memory, Grok memory-v2, jcode). `dot ai memory audit` reads them
+and reports, per store, the size of the always-loaded index against its limit
+(Claude `MEMORY.md` 200 lines or 25 KB, Codex `memory_summary.md` 10 KB), index
+links to missing files, files no index links to, and hits of retired terms
+listed in `~/.config/dotfiles/agents/memory-markers.yaml` (synced by `dot peer`
+with the agents SSOT). It writes nothing, prints file names and counts unless
+`--show` is given, and exits 1 when an index is over its limit or links a
+missing file. `dot ai memory archive <agent> <path>...` moves stale files out of
+the loaded layer (`_archive/` inside a Claude or Qwen memory directory,
+`$CODEX_HOME/memories-archive/` for Codex), lists the index lines that still
+name them, and with `--apply` prints the command that moves them back. It never
+edits a memory file or an index.
+
+```bash
+dot ai memory audit                          # all agents
+dot ai memory audit --agent claude,codex --show
+dot ai memory archive codex ~/.codex/memories/extensions/ad_hoc/notes/old.md --apply
+```
+
 The vault is written only through [vmem](https://github.com/STAIxBWLB/vault-mem)
 (`@staix/vault-mem`), which replaces the generic Obsidian MCP server
 (`obsidian`, `@bitbonsai/mcpvault`). dot registers it but never installs it.
