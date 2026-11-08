@@ -37,7 +37,8 @@ func newPreflightCmd() *cobra.Command {
 // --force is set.
 func runInitDetect(cmd *cobra.Command, checkOnly bool) error {
 	force, _ := cmd.Flags().GetBool("force")
-	homeOverride, _ := cmd.Flags().GetString("home")
+	// Same resolution as the wizard: --home, then $DOTFILES_HOME.
+	homeOverride := homeOverrideFrom(cmd)
 
 	home := homeOverride
 	if home == "" {
