@@ -155,7 +155,12 @@ func wsBootstrap(cmd *cobra.Command) (ws.Roots, *exec.Runner, bool, error) {
 
 	gsyncCfg, err := syncer.ResolveConfigReadOnlyForHomeProfile(state, home, syncer.DefaultProfile)
 	if err != nil {
-		return ws.Roots{}, nil, false, fmt.Errorf("resolving sync mirror: %w; run 'dot sync status' to see the sync config and 'dot sync target' to set a valid target", err)
+		localPath := expand(state.Modules.Gsync.LocalPath)
+		if localPath == "" {
+			localPath = filepath.Join(home, "workspace", "work")
+		}
+		cfgFile := syncer.ResolveLocalPathsForProfile(localPath, syncer.DefaultProfile).ConfigFile
+		return ws.Roots{}, nil, false, fmt.Errorf("resolving sync mirror: %w; fix %s (it must be readable, valid YAML, with 'target:' set to local:<dir> or ssh:<host>:<path>), then retry", err, cfgFile)
 	}
 	// ws edits the mirror as a local directory. An ssh: target has no local
 	// mirror tree, so refuse before any file operation instead of falling
