@@ -55,27 +55,9 @@ func (m *AIModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, err
 		return nil, err
 	}
 
-	legacy := filepath.Join(rc.HomeDir, ".config", "shell", "30-ai-tools.sh")
-	if rc.Runner.FileExists(legacy) {
-		changes = append(changes, Change{
-			Description: fmt.Sprintf("remove legacy %s", legacy),
-			Command:     fmt.Sprintf("rm %s", legacy),
-		})
-	}
-	// Copilot's fan-out target moved from ~/.config/github-copilot/AGENTS.md
-	// to ~/.copilot/copilot-instructions.md. Only a dot-rendered file (managed
-	// header) is removed: the old dir also holds IDE auth files, and the
-	// AGENTS.md there could be user-authored.
-	legacyCopilot := filepath.Join(rc.HomeDir, ".config", "github-copilot", "AGENTS.md")
-	if rc.Config.Modules.AI.Tooling == nil && aisettings.IsManagedAgentsFile(legacyCopilot) {
-		changes = append(changes, Change{
-			Description: fmt.Sprintf("remove legacy %s", legacyCopilot),
-			Command:     fmt.Sprintf("rm %q", legacyCopilot),
-		})
-	}
 	// Cursor and Grok were dropped from the agents registry (Grok reads
-	// ~/.claude/CLAUDE.md through its Claude compat); the same rule applies to
-	// their retired fan-out targets as to Copilot's above.
+	// ~/.claude/CLAUDE.md through its Claude compat). Only a dot-rendered
+	// file (managed header) is removed: the file could be user-authored.
 	for _, retired := range retiredAgentsTargets(rc.HomeDir) {
 		if aisettings.IsManagedAgentsFile(retired) {
 			changes = append(changes, Change{
@@ -212,21 +194,6 @@ func (m *AIModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, err
 	}
 	messages = append(messages, fileMessages...)
 
-	legacy := filepath.Join(rc.HomeDir, ".config", "shell", "30-ai-tools.sh")
-	if rc.Runner.FileExists(legacy) {
-		if err := rc.Runner.Remove(legacy); err != nil {
-			return nil, fmt.Errorf("removing legacy %s: %w", legacy, err)
-		}
-		messages = append(messages, fmt.Sprintf("removed legacy %s", legacy))
-	}
-	// See Check: only remove the old copilot target if dot rendered it.
-	legacyCopilot := filepath.Join(rc.HomeDir, ".config", "github-copilot", "AGENTS.md")
-	if rc.Config.Modules.AI.Tooling == nil && aisettings.IsManagedAgentsFile(legacyCopilot) {
-		if err := rc.Runner.Remove(legacyCopilot); err != nil {
-			return nil, fmt.Errorf("removing legacy %s: %w", legacyCopilot, err)
-		}
-		messages = append(messages, fmt.Sprintf("removed legacy %s", legacyCopilot))
-	}
 	for _, retired := range retiredAgentsTargets(rc.HomeDir) {
 		if aisettings.IsManagedAgentsFile(retired) {
 			if err := rc.Runner.Remove(retired); err != nil {

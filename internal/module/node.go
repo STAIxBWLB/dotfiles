@@ -3,24 +3,13 @@ package module
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
 // globalNpmPackages are installed globally when npm is available.
 var globalNpmPackages = []string{
 	"@tobilu/qmd", // local search engine for markdown/docs
-}
-
-// legacyPnpmKeys are pnpm-only keys that used to be written to ~/.npmrc.
-// npm 11+ warns about them, so we scrub them from any legacy ~/.npmrc.
-var legacyPnpmKeys = []string{
-	"virtual-store-dir",
-	"store-dir",
-	"cache-dir",
 }
 
 // NodeModule manages npm/pnpm configuration and global tools.
@@ -31,11 +20,6 @@ func (m *NodeModule) Name() string { return "node" }
 // pnpmNpmrcPath returns ~/.config/pnpm/npmrc — the pnpm-dedicated config path.
 func pnpmNpmrcPath(rc *RunContext) string {
 	return filepath.Join(rc.HomeDir, ".config", "pnpm", "npmrc")
-}
-
-// legacyNpmrcPath returns ~/.npmrc — the path we no longer manage but still clean.
-func legacyNpmrcPath(rc *RunContext) string {
-	return filepath.Join(rc.HomeDir, ".npmrc")
 }
 
 func pnpmNpmrcFile(rc *RunContext) templatedFile {
@@ -70,15 +54,6 @@ func (m *NodeModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, e
 				Command:     fmt.Sprintf("mkdir -p %s", dir),
 			})
 		}
-	}
-
-	// Legacy ~/.npmrc cleanup — scrub pnpm-only keys so npm stops warning.
-	legacyPath := legacyNpmrcPath(rc)
-	if legacyNpmrcNeedsCleanup(rc.Runner, legacyPath) {
-		changes = append(changes, Change{
-			Description: fmt.Sprintf("scrub pnpm-only keys from legacy %s", legacyPath),
-			Command:     "strip virtual-store-dir/store-dir/cache-dir from ~/.npmrc",
-		})
 	}
 
 	// Node.js install via fnm — required so `npm` is usable after apply.
@@ -191,18 +166,6 @@ func (m *NodeModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, e
 	}
 	messages = append(messages, fileMessages...)
 
-	// Scrub pnpm-only keys from legacy ~/.npmrc (removes the file if it becomes empty).
-	legacyPath := legacyNpmrcPath(rc)
-	cleaned, removed, err := cleanLegacyNpmrc(rc.Runner, legacyPath)
-	if err != nil {
-		return nil, fmt.Errorf("cleaning legacy %s: %w", legacyPath, err)
-	}
-	if removed {
-		messages = append(messages, fmt.Sprintf("removed stale %s (pnpm keys migrated)", legacyPath))
-	} else if cleaned {
-		messages = append(messages, fmt.Sprintf("scrubbed pnpm-only keys from %s", legacyPath))
-	}
-
 	// Ensure a Node.js version is installed via fnm so npm is usable after apply.
 	fnmAvailable := rc.Runner.CommandExists("fnm")
 	if fnmAvailable && !fnmHasInstalledVersion(ctx, rc) {
@@ -246,112 +209,4 @@ func (m *NodeModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, e
 	}
 
 	return &ApplyResult{Changed: len(messages) > 0, Messages: messages}, nil
-}
-
-// legacyNpmrcNeedsCleanup returns true when ~/.npmrc exists and contains any pnpm-only key.
-func legacyNpmrcNeedsCleanup(runner *exec.Runner, path string) bool {
-	if !runner.FileExists(path) {
-		return false
-	}
-	data, err := runner.ReadFile(path)
-	if err != nil {
-		return false
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if lineHasLegacyPnpmKey(line) {
-			return true
-		}
-	}
-	return false
-}
-
-// cleanLegacyNpmrc strips pnpm-only keys from ~/.npmrc. Returns (cleaned, removed, err):
-//   - cleaned=true when at least one line was removed
-//   - removed=true when the file ended up empty and was deleted
-func cleanLegacyNpmrc(runner *exec.Runner, path string) (bool, bool, error) {
-	if !runner.FileExists(path) {
-		return false, false, nil
-	}
-	data, err := runner.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, false, nil
-		}
-		return false, false, err
-	}
-
-	lines := strings.Split(string(data), "\n")
-	kept := make([]string, 0, len(lines))
-	cleaned := false
-	for _, line := range lines {
-		if lineHasLegacyPnpmKey(line) {
-			cleaned = true
-			continue
-		}
-		kept = append(kept, line)
-	}
-	if !cleaned {
-		return false, false, nil
-	}
-
-	// Also drop the legacy managed-by header so a fully-migrated file is considered empty.
-	trimmedKept := dropLegacyHeaderComments(kept)
-	if allBlank(trimmedKept) {
-		if err := runner.Remove(path); err != nil {
-			return false, false, err
-		}
-		return true, true, nil
-	}
-
-	out := strings.Join(trimmedKept, "\n")
-	if !strings.HasSuffix(out, "\n") {
-		out += "\n"
-	}
-	if err := runner.WriteFile(path, []byte(out), 0644); err != nil {
-		return false, false, err
-	}
-	return true, false, nil
-}
-
-func lineHasLegacyPnpmKey(line string) bool {
-	trimmed := strings.TrimSpace(line)
-	for _, key := range legacyPnpmKeys {
-		if strings.HasPrefix(trimmed, key+"=") {
-			return true
-		}
-	}
-	return false
-}
-
-// dropLegacyHeaderComments removes the two comment lines we used to write above the pnpm keys
-// so that a fully-migrated file is considered empty.
-func dropLegacyHeaderComments(lines []string) []string {
-	legacyHeaders := []string{
-		"# Managed by dotfiles-v2 — do not edit manually",
-		"# Relocate pnpm virtual store outside Google Drive",
-	}
-	out := make([]string, 0, len(lines))
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		matched := false
-		for _, h := range legacyHeaders {
-			if trimmed == h {
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			out = append(out, line)
-		}
-	}
-	return out
-}
-
-func allBlank(lines []string) bool {
-	for _, l := range lines {
-		if strings.TrimSpace(l) != "" {
-			return false
-		}
-	}
-	return true
 }
