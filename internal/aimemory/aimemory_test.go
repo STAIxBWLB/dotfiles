@@ -33,7 +33,7 @@ func fixture(t *testing.T) Options {
 	write(t, filepath.Join(claude, archiveDir, "x.md"), "old-plugin\n")
 	codex := filepath.Join(home, ".codex/memories")
 	write(t, filepath.Join(codex, "memory_summary.md"), strings.Repeat("x", codexMaxBytes+1))
-	write(t, filepath.Join(codex, indexName), "see rollout_summaries/r1.md and extensions/ad_hoc/notes/gone.md\n")
+	write(t, filepath.Join(codex, indexName), "see rollout_summaries/r1.md and extensions/ad_hoc/notes/gone.md\n- [L](missing-link.md)\n")
 	write(t, filepath.Join(codex, "rollout_summaries/r1.md"), "r1\n")
 	write(t, filepath.Join(codex, "rollout_summaries/r2.md"), "r2\n")
 	write(t, filepath.Join(codex, "extensions/ad_hoc/notes/n.md"), "old-plugin\n")
@@ -69,7 +69,7 @@ func TestAudit(t *testing.T) {
 		t.Errorf("claude markers %+v (text must stay out without Show)", c.Markers)
 	}
 	x := store(t, r, "codex")
-	if !x.Index.Over || strings.Join(x.Broken, ",") != "extensions/ad_hoc/notes/gone.md" || strings.Join(x.Orphans, ",") != "extensions/ad_hoc/notes/n.md,rollout_summaries/r2.md" {
+	if !x.Index.Over || strings.Join(x.Broken, ",") != "extensions/ad_hoc/notes/gone.md,missing-link.md" || strings.Join(x.Orphans, ",") != "extensions/ad_hoc/notes/n.md,rollout_summaries/r2.md" {
 		t.Errorf("codex: over %v broken %v orphans %v", x.Index.Over, x.Broken, x.Orphans)
 	}
 	if g := store(t, r, "grok"); len(g.Markers) != 1 {
@@ -124,6 +124,19 @@ func TestAuditUnreadable(t *testing.T) {
 	}
 	if c := store(t, r, "claude"); strings.Join(c.Unreadable, ",") != "a.md" {
 		t.Errorf("unreadable %v", c.Unreadable)
+	}
+	// A Codex index read failure counts even with no markers to scan for.
+	idx := filepath.Join(o.CodexHome, "memories", indexName)
+	if err := os.Chmod(idx, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(idx, 0o644) })
+	o.MarkersPath = filepath.Join(o.Home, "none.yaml")
+	if r, err = Audit(o); err != nil {
+		t.Fatal(err)
+	}
+	if x := store(t, r, "codex"); strings.Join(x.Unreadable, ",") != indexName {
+		t.Errorf("codex unreadable %v", x.Unreadable)
 	}
 	found := false
 	for _, p := range r.Problems {

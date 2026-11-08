@@ -201,7 +201,7 @@ func auditAgent(o Options, agent string, markers []Marker) []Store {
 	case "claude":
 		roots := o.claudeRoots()
 		if len(roots) == 0 {
-			return []Store{missing(agent, filepath.Join(o.ClaudeDirs[len(o.ClaudeDirs)-1], "projects", "*", "memory"), "no project memory directory")}
+			return []Store{missing(agent, filepath.Join(o.ClaudeDirs[len(o.ClaudeDirs)-1], "projects", "*", "memory"), "no project memory directory; Claude Code creates one when auto memory saves a note, or set CLAUDE_CONFIG_DIR to the profile to audit")}
 		}
 		var out []Store
 		for _, root := range roots {
@@ -213,7 +213,7 @@ func auditAgent(o Options, agent string, markers []Marker) []Store {
 		var out []Store
 		for _, root := range roots {
 			if !isDir(root) {
-				out = append(out, missing(agent, root, "not found"))
+				out = append(out, missing(agent, root, "not found; Qwen creates it when it saves a memory"))
 				continue
 			}
 			out = append(out, linkedStore(agent, root, &Index{}, markers, o.Show))
@@ -222,7 +222,7 @@ func auditAgent(o Options, agent string, markers []Marker) []Store {
 	case "codex":
 		root := o.codexRoot()
 		if !isDir(root) {
-			return []Store{missing(agent, root, "not found")}
+			return []Store{missing(agent, root, "not found; Codex creates it when memories are on, or set CODEX_HOME to the home to audit")}
 		}
 		s := scanStore(agent, root, markers, o.Show)
 		s.Index = indexSize(&s, filepath.Join(root, "memory_summary.md"), &Index{MaxBytes: codexMaxBytes})
@@ -231,7 +231,7 @@ func auditAgent(o Options, agent string, markers []Marker) []Store {
 	case "grok":
 		root := o.grokRoot()
 		if !isDir(root) {
-			return []Store{missing(agent, root, "not found")}
+			return []Store{missing(agent, root, "not found; Grok creates it when it saves a memory")}
 		}
 		indexes, _ := filepath.Glob(filepath.Join(root, "workspaces", "*", indexName))
 		indexes = append([]string{filepath.Join(root, "global", indexName)}, indexes...)
@@ -247,7 +247,7 @@ func auditAgent(o Options, agent string, markers []Marker) []Store {
 			out = append(out, s)
 		}
 		if len(out) == 0 {
-			return []Store{missing(agent, root, "no MEMORY.md index")}
+			return []Store{missing(agent, root, "no MEMORY.md index; Grok writes one with its first saved memory")}
 		}
 		return out
 	case "jcode":
@@ -376,15 +376,9 @@ func linkedStore(agent, root string, limits *Index, markers []Marker, show bool)
 	linked := map[string]bool{}
 	if data, err := os.ReadFile(idx); err == nil {
 		for _, m := range linkRe.FindAllStringSubmatch(string(data), -1) {
-			target := m[1]
-			if i := strings.IndexByte(target, '#'); i >= 0 {
-				target = target[:i]
-			}
-			if target == "" || strings.Contains(target, "://") || strings.HasPrefix(target, "mailto:") || filepath.IsAbs(target) {
+			target, ok := localLink(m[1])
+			if !ok {
 				continue
-			}
-			if unescaped, err := url.PathUnescape(target); err == nil {
-				target = unescaped
 			}
 			rel := filepath.ToSlash(filepath.Clean(target))
 			if linked[rel] {
@@ -416,9 +410,18 @@ func codexLinks(s *Store, root string) {
 	for _, name := range []string{indexName, "memory_summary.md"} {
 		data, err := os.ReadFile(filepath.Join(root, name))
 		if err != nil {
+			if !os.IsNotExist(err) {
+				s.Unreadable = append(s.Unreadable, name)
+			}
 			continue
 		}
-		for _, m := range codexRefRe.FindAllStringSubmatch(string(data), -1) {
+		refs := codexRefRe.FindAllStringSubmatch(string(data), -1)
+		for _, m := range linkRe.FindAllStringSubmatch(string(data), -1) {
+			if target, ok := localLink(m[1]); ok {
+				refs = append(refs, []string{"", target})
+			}
+		}
+		for _, m := range refs {
 			rel := filepath.ToSlash(filepath.Clean(m[1]))
 			if named[rel] {
 				continue
@@ -440,6 +443,21 @@ func codexLinks(s *Store, root string) {
 }
 
 var linkRe = regexp.MustCompile(`\]\(([^)\s]+)\)`)
+
+// localLink returns a Markdown link target as a store-relative path, without
+// its fragment and percent escapes; web, mail and absolute links are not.
+func localLink(target string) (string, bool) {
+	if i := strings.IndexByte(target, '#'); i >= 0 {
+		target = target[:i]
+	}
+	if target == "" || strings.Contains(target, "://") || strings.HasPrefix(target, "mailto:") || filepath.IsAbs(target) {
+		return "", false
+	}
+	if unescaped, err := url.PathUnescape(target); err == nil {
+		target = unescaped
+	}
+	return target, true
+}
 
 // indexSize measures an injected index against its limits. A missing index
 // returns a zero-size record, which is under any limit; an unreadable one is

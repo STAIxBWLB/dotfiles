@@ -138,7 +138,7 @@ func printMemoryAudit(p *Printer, r aimemory.Report, show bool) {
 	if r.MarkersStatus == aimemory.StatusOK {
 		p.KV("Markers", fmt.Sprintf("%s (%d)", r.MarkersFile, len(r.Markers)))
 	} else {
-		p.KV("Markers", "unavailable: "+r.MarkersFile+" not found, no retired-term checks")
+		p.KV("Markers", "unavailable: "+r.MarkersFile+" not found, no retired-term checks; create it in the form 'dot ai memory audit --help' shows")
 	}
 	agent := ""
 	empty := 0
