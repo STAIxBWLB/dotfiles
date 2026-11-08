@@ -258,3 +258,23 @@ func TestApplyArchiveRechecksDestination(t *testing.T) {
 		t.Fatal("the file moved through a symlinked archive")
 	}
 }
+
+// A store directory that is a symlink is walked through, not reported empty.
+func TestAuditSymlinkedStore(t *testing.T) {
+	o := fixture(t)
+	qwen := filepath.Join(o.Home, ".qwen/memories")
+	real := filepath.Join(o.Home, "qwen-real")
+	if err := os.Rename(qwen, real); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, qwen); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Audit(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := store(t, r, "qwen"); s.Files != 2 || len(s.Orphans) != 0 {
+		t.Fatalf("symlinked store: files %d orphans %v", s.Files, s.Orphans)
+	}
+}

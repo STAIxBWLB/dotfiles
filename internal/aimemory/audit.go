@@ -321,6 +321,10 @@ func jcodeTotal(text string) (int, bool) {
 // files lists the store's regular files relative to root, outside _archive,
 // and what it could not read.
 func files(root string) (out, unreadable []string) {
+	// WalkDir does not descend into a root that is itself a symlink.
+	if real, err := filepath.EvalSymlinks(root); err == nil {
+		root = real
+	}
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			rel, _ := filepath.Rel(root, path)
