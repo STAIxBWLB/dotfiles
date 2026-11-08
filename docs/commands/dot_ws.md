@@ -4,7 +4,7 @@ Dual-workspace (work + cloud mirror) folder operations
 
 ### Synopsis
 
-Operate on both the workspace root and the gsync mirror simultaneously.
+Operate on both the workspace root and the sync mirror simultaneously.
 
 Subcommands keep the two trees in structural sync:
   init       Clone configured workspace repos (recursive)
