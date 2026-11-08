@@ -1,6 +1,6 @@
 ## dot sync configure
 
-Persist sync profile and scheduler settings
+Set target, owner and scheduler settings in one call (scripting API; setup, target and owner are the interactive front-ends)
 
 ```
 dot sync configure [flags]
@@ -9,6 +9,7 @@ dot sync configure [flags]
 ### Options
 
 ```
+      --filter-mode string     filter mode to save: include or exclude
   -h, --help                   help for configure
       --json                   print the refreshed status document
       --max-delete int         maximum deletes per push; 0 uses the default (default -1)
@@ -24,15 +25,12 @@ dot sync configure [flags]
 ### Options inherited from parent commands
 
 ```
-      --config string        Path to custom config YAML
-      --dry-run              Show what would be done without executing
-      --filter-mode string   override config filter mode for this run: include or exclude
-      --home string          Override home directory (for admin setup of other users)
-      --mode string          execution mode for push/pull: manual, clean, or force (default "manual")
-      --module strings       Run specific modules only
-      --profile string       sync profile (store under <workspace>/.dotfiles/<profile>/); "sync" is the cloud mirror (default "sync")
-  -V, --verbose              Show rsync progress output
-      --yes                  Unattended mode (skip all prompts)
+      --config string   Path to custom config YAML
+      --dry-run         Show what would be done without executing
+      --home string     Override home directory (for admin setup of other users)
+      --store string    sync store under <workspace>/.dotfiles/<store>/; "sync" is the cloud mirror, "peer" the other Mac (default "sync")
+  -V, --verbose         Show rsync progress output
+      --yes             Unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO

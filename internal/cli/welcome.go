@@ -75,8 +75,8 @@ func printUsecases(cmd *cobra.Command) {
 	p.Section("Global flags (work with most commands)")
 	printFlag(p, "--yes", "Unattended mode, skip all prompts")
 	printFlag(p, "--dry-run", "Preview without making changes")
-	printFlag(p, "--profile", "Override profile (minimal|full|server)")
-	printFlag(p, "--module", "Run specific modules only (repeatable)")
+	printFlag(p, "--profile", "apply, check, diff, config, status: override profile (minimal|full|server)")
+	printFlag(p, "--module", "apply, check, diff: run specific modules only (repeatable)")
 	printFlag(p, "--config", "Custom config YAML path")
 	printFlag(p, "--home", "Override home directory (admin setup)")
 

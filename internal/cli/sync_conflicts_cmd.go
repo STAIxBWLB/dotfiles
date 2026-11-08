@@ -25,7 +25,7 @@ peer profile also includes ~/.dot-peer-conflicts from its host-path pass.
   dot sync conflicts prune                 # remove backups older than 30 days
   dot sync conflicts prune --older-than 7
   dot sync conflicts prune --all           # remove every backup
-  dot sync conflicts prune --all --remote-only --profile=peer
+  dot sync conflicts prune --all --remote-only --store=peer
                                              # preserve this machine's backups`,
 		RunE: runSyncConflictsList,
 	}

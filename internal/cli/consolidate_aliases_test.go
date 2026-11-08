@@ -19,19 +19,20 @@ func TestRenamedCommandsKeepWorkingAndNameReplacement(t *testing.T) {
 		old, new []string
 		want     string
 	}{
-		{[]string{"check"}, []string{"diff", "--summary"}, "dot diff --summary"},
+		// --module is local to the commands that read it (#380).
+		{[]string{"check", "--module", "git"}, []string{"diff", "--summary", "--module", "git"}, "dot diff --summary"},
 		{[]string{"doctor"}, []string{"layouts", "doctor"}, "dot layouts doctor"},
 		{[]string{"preflight", "--check-only"}, []string{"init", "--check-only"}, "dot init --check-only"},
 	} {
 		t.Run(strings.Join(tc.old, " "), func(t *testing.T) {
-			oldOut, oldErr, err := runDotForTest(append([]string{"--home", home, "--module", "git"}, tc.old...)...)
+			oldOut, oldErr, err := runDotForTest(append([]string{"--home", home}, tc.old...)...)
 			if err != nil {
 				t.Fatalf("old name failed: %v\n%s", err, oldErr)
 			}
 			if !strings.Contains(oldErr, tc.want) || strings.Contains(oldOut, "deprecated") {
 				t.Fatalf("stderr must name %q and stdout must stay clean\nstdout=%s\nstderr=%s", tc.want, oldOut, oldErr)
 			}
-			newOut, newErr, err := runDotForTest(append([]string{"--home", home, "--module", "git"}, tc.new...)...)
+			newOut, newErr, err := runDotForTest(append([]string{"--home", home}, tc.new...)...)
 			if err != nil {
 				t.Fatalf("new name failed: %v\n%s", err, newErr)
 			}

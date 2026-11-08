@@ -3,8 +3,10 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
 	"io"
 	osexec "os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -356,5 +358,57 @@ func TestSyncStatusSeparatesLiveConflictsFromBackups(t *testing.T) {
 	got = render(&syncer.Status{LiveConflicts: 6})
 	if !strings.Contains(got, "6 live") || strings.Contains(got, "Backups:") {
 		t.Fatalf("live only:\n%s", got)
+	}
+}
+
+// --store names the sync store; --profile still works for one release, warns,
+// and is gone from every command that is not dot sync (#380).
+func TestSyncStoreFlagAndDeprecatedProfile(t *testing.T) {
+	f := newSyncCLIFixture(t)
+	_ = f
+	out, errOut, err := runDotForTest("sync", "status", "--profile", "sync")
+	if err != nil || !strings.Contains(errOut, "use --store") || strings.Contains(out, "deprecated") {
+		t.Fatalf("deprecated --profile: err=%v stderr=%q stdout=%q", err, errOut, out)
+	}
+	if _, _, err := runDotForTest("sync", "status", "--store", "sync"); err != nil {
+		t.Fatalf("--store: %v", err)
+	}
+	if _, _, err := runDotForTest("peer", "status", "--profile", "x"); err == nil || !strings.Contains(err.Error(), "unknown flag") {
+		t.Fatalf("peer status --profile: %v", err)
+	}
+	if _, _, err := runDotForTest("sync", "status", "--mode", "clean"); err == nil || !strings.Contains(err.Error(), "unknown flag") {
+		t.Fatalf("sync status --mode: %v", err)
+	}
+	// Two different stores through both names is refused, not silently resolved.
+	if _, _, err := runDotForTest("sync", "status", "--store", "sync", "--profile", "peer"); err == nil || !strings.Contains(err.Error(), "name different stores") {
+		t.Fatalf("conflicting --store/--profile: %v", err)
+	}
+	// Only the commands that read --profile take it.
+	for _, args := range [][]string{{"watchdog", "status", "--profile", "x"}, {"container", "status", "--profile", "x"}} {
+		if _, _, err := runDotForTest(args...); err == nil || !strings.Contains(err.Error(), "unknown flag") {
+			t.Errorf("%v: %v", args, err)
+		}
+	}
+	// sync configure saves the filter mode, so it keeps --filter-mode.
+	if _, _, err := runDotForTest("sync", "configure", "--filter-mode", "exclude"); err != nil {
+		t.Fatalf("sync configure --filter-mode: %v", err)
+	}
+}
+
+// dot init --profile preselects the profile (scripts call `dot init --profile
+// server --yes`); an unknown name is refused with the valid ones (#380).
+func TestInitProfileFlagPreselects(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	if _, errOut, err := runDotForTest("init", "--profile", "server", "--yes", "--home", home); err != nil {
+		t.Fatalf("init --profile server: %v\n%s", err, errOut)
+	}
+	state, err := config.LoadStateForHome(home)
+	if err != nil || state.Profile != "server" {
+		t.Fatalf("profile = %q, err %v", state.Profile, err)
+	}
+	if _, _, err := runDotForTest("init", "--profile", "nope", "--yes", "--home", home); err == nil || !strings.Contains(err.Error(), "unknown profile") {
+		t.Fatalf("unknown profile: %v", err)
 	}
 }

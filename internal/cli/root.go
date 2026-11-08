@@ -43,8 +43,6 @@ Also available as 'dotfiles' for back-compat.`,
 	// Persistent flags for all subcommands
 	root.PersistentFlags().Bool("yes", false, "Unattended mode (skip all prompts)")
 	root.PersistentFlags().Bool("dry-run", false, "Show what would be done without executing")
-	root.PersistentFlags().String("profile", "", "Profile name (minimal, full, server)")
-	root.PersistentFlags().StringSlice("module", nil, "Run specific modules only")
 	root.PersistentFlags().String("config", "", "Path to custom config YAML")
 	root.PersistentFlags().String("home", "", "Override home directory (for admin setup of other users)")
 
@@ -97,6 +95,7 @@ Also available as 'dotfiles' for back-compat.`,
 	root.AddCommand(newRegisterCmd())
 	root.AddCommand(newUnregisterCmd())
 	root.AddCommand(newLayoutsCmd())
+	scopeProfileFlags(root)
 	root.AddCommand(newDoctorCmd())
 
 	// macOS apps + settings backup/restore
@@ -217,4 +216,29 @@ func executeWithSignals(cmd *cobra.Command) error {
 	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return cmd.ExecuteContext(ctx)
+}
+
+// scopeProfileFlags registers --profile and --module only on the commands that
+// read them; as root persistent flags they appeared on every command, where
+// they meant nothing (#380). init takes --profile as the profile to preselect.
+func scopeProfileFlags(root *cobra.Command) {
+	readers := map[string]bool{
+		"apply": true, "check": true, "diff": true, "config": true, "status": true, "init": true,
+		"watchdog setup": true, "watchdog notify": true, "container setup": true,
+	}
+	var walk func(c *cobra.Command, path string)
+	walk = func(c *cobra.Command, path string) {
+		for _, sub := range c.Commands() {
+			name := strings.TrimSpace(path + " " + sub.Name())
+			if readers[name] {
+				sub.Flags().String("profile", "", "Profile name (minimal, full, server)")
+				switch name {
+				case "apply", "check", "diff":
+					sub.Flags().StringSlice("module", nil, "Run specific modules only")
+				}
+			}
+			walk(sub, name)
+		}
+	}
+	walk(root, "")
 }

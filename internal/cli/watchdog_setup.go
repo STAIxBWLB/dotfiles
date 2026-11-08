@@ -212,7 +212,7 @@ func runWatchdogStatus(cmd *cobra.Command, _ []string) error {
 func newWatchdogNotifyCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:          "notify <level> <message>",
-		Short:        "Send a watchdog alert (macOS notification and/or ntfy)",
+		Short:        "Send a watchdog alert (monit invokes this; run it by hand to test alerts)",
 		Args:         cobra.ExactArgs(2),
 		RunE:         runWatchdogNotify,
 		SilenceUsage: true,

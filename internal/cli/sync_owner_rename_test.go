@@ -210,13 +210,13 @@ func TestSyncOwnerSetAwayRemovesThePeerScheduler(t *testing.T) {
 	writeCLITestFile(t, plist, "<plist/>")
 
 	// Setting itself again keeps the scheduler.
-	if _, errOut, err := runDotForTest("sync", "owner", "--profile=peer", "--set", self); err != nil {
+	if _, errOut, err := runDotForTest("sync", "owner", "--store=peer", "--set", self); err != nil {
 		t.Fatalf("--set self: %v\n%s", err, errOut)
 	}
 	if _, err := os.Stat(plist); err != nil {
 		t.Fatalf("the coordinator's own --set removed its scheduler: %v", err)
 	}
-	out, errOut, err := runDotForTest("sync", "owner", "--profile=peer", "--set", "other-mac")
+	out, errOut, err := runDotForTest("sync", "owner", "--store=peer", "--set", "other-mac")
 	if err != nil {
 		t.Fatalf("--set other: %v\n%s", err, errOut)
 	}
@@ -253,7 +253,7 @@ func TestSyncOwnerSetDryRunWritesNothing(t *testing.T) {
 	plist := filepath.Join(f.home, "Library", "LaunchAgents", "com.dotfiles.peer.plist")
 	writeCLITestFile(t, plist, "<plist/>")
 	before, _ := os.ReadFile(store)
-	if _, errOut, err := runDotForTest("--dry-run", "sync", "owner", "--profile=peer", "--set", "other-mac"); err != nil {
+	if _, errOut, err := runDotForTest("--dry-run", "sync", "owner", "--store=peer", "--set", "other-mac"); err != nil {
 		t.Fatalf("%v\n%s", err, errOut)
 	}
 	if after, _ := os.ReadFile(store); string(after) != string(before) {

@@ -14,7 +14,7 @@ import (
 func newSyncConfigureCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "configure",
-		Short:        "Persist sync profile and scheduler settings",
+		Short:        "Set target, owner and scheduler settings in one call (scripting API; setup, target and owner are the interactive front-ends)",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE:         runSyncConfigure,
@@ -78,8 +78,7 @@ func runSyncConfigure(cmd *cobra.Command, _ []string) error {
 			syncer.AssignOwner(local, strings.TrimSpace(owner))
 		}
 	}
-	// --filter-mode is inherited from the parent sync command's persistent
-	// flags, so it is valid both before and after the configure subcommand.
+	// --filter-mode is registered on configure itself (newSyncCmd, #380).
 	if cmd.Flags().Changed("filter-mode") {
 		raw, _ := cmd.Flags().GetString("filter-mode")
 		mode, err := syncer.ParseFilterMode(raw)

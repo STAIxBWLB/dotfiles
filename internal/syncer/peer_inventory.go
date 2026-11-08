@@ -285,6 +285,8 @@ func remotePeerStatusCommand(dot string) string {
 const PeerStatusUnscannedEnv = "DOT_PEER_STATUS_UNSCANNED"
 
 func remotePeerNormalizeCommand(dot, excludes string) string {
+	// The peer may run an older dot that knows only --profile; every release
+	// since 2.80 accepts it as a deprecated alias of --store (#380).
 	return PeerNormalizeExcludesEnv + "=" + shellQuote(excludes) + " exec " + shellQuote(dot) + " sync names normalize --profile=peer --yes"
 }
 
