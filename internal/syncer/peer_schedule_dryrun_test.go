@@ -46,7 +46,7 @@ func peerScheduleSandbox(t *testing.T) (*Config, string) {
 
 	binDir := t.TempDir()
 	status := fmt.Sprintf(
-		`{"schemaVersion":%d,"kind":"peer","profile":{"configured":true,"owner":%q,"workspacePath":%q,"target":{"path":%q}}}`,
+		`{"schemaVersion":%d,"kind":"peer","dotVersion":"9.9.9 (fake)","profile":{"configured":true,"owner":%q,"workspacePath":%q,"target":{"path":%q}}}`,
 		PeerStatusSchemaVersion, owner, cfg.Target.Path, localPath)
 	// `echo` is a shell builtin, so the stub needs nothing else on PATH. The
 	// document carries no single quote, so single-quoting it is safe.

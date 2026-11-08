@@ -206,7 +206,7 @@ const (
 	PeerEventHostPathsMissing                           // no host-path list exists; Path names where one would live
 	PeerEventHomeTrackedStart                           // the tracked host-path pass begins
 	PeerEventPartialTransfer                            // rsync moved some but not all of a pass; Err carries it
-	PeerEventPeerLacksHandover                          // peer dot predates epochs; Path names the binary, "path (banner)"
+	PeerEventPeerLacksHandover                          // no longer emitted (#374): a pre-epoch peer is refused; kept so later kinds keep their values
 	PeerEventReplicaPushFailed                          // the replica push after a complete run failed; Err carries it
 	PeerEventDotVersionMismatch                         // peer dot release differs from this one; Path names the peer binary
 	PeerEventPeerDotUnreleased                          // the peer has only a non-release dot and no remote_dot pin; Path names it
@@ -579,21 +579,19 @@ func PeerSync(ctx context.Context, opts PeerSyncOptions) (*PeerSyncResult, error
 	if err := resolvePeerRsync(ctx, probe, cfg); err != nil {
 		return nil, err
 	}
-	// The fence runs on first contact, before any transfer. A previous-
-	// release peer (no dotVersion, no epoch) gets exactly the pre-epoch
-	// owner-mismatch behavior; an epoch pair resolves coordinator divergence
-	// here and the loser demotes itself instead of syncing.
+	// The fence runs on first contact, before any transfer. A peer whose dot
+	// reports no version (before 2.70.23) is refused with `dot update` as the
+	// fix (#374); an epoch pair resolves coordinator divergence here and the
+	// loser demotes itself instead of syncing.
 	remoteStatus, err := fetchRemotePeerStatus(ctx, probe, cfg)
 	if err != nil {
 		return nil, err
 	}
-	demote, legacy, err := peerFence(cfg, remoteStatus)
+	demote, err := peerFence(cfg, remoteStatus)
 	if err != nil {
 		return nil, err
 	}
 	switch {
-	case legacy:
-		emitPeer(opts.Progress, PeerEvent{Kind: PeerEventPeerLacksHandover, Path: cfg.remoteDot.String()})
 	case cfg.remoteDot.Unreleased():
 		emitPeer(opts.Progress, PeerEvent{Kind: PeerEventPeerDotUnreleased, Path: cfg.remoteDot.String()})
 	case dotVersionsDiffer(opts.LocalDotVersion, cfg.remoteDot):

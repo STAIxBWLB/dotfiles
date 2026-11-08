@@ -159,7 +159,7 @@ func TestSameOwner_SharedAliasIsNotTheSameOwner(t *testing.T) {
 	remote := &remotePeerStatus{OwnerEpoch: 3, DotVersion: "9.9.9"}
 	remote.Profile.Owner, remote.Profile.OwnerAliases = "m3x23", []string{"youngs-macbook-pro"}
 	remote.Profile.WorkspacePath, remote.Profile.Target.Path = "/p", "/w"
-	if _, _, err := peerFence(cfg, remote); err == nil || !strings.Contains(err.Error(), "equal owner epochs") {
+	if _, err := peerFence(cfg, remote); err == nil || !strings.Contains(err.Error(), "equal owner epochs") {
 		t.Fatalf("fence err = %v, want the equal-epoch refusal", err)
 	}
 }
@@ -204,7 +204,7 @@ func TestRenameOwner_GenericNamesAndDryRun(t *testing.T) {
 
 func TestPeerOwnerViewReadsTheStatusDocument(t *testing.T) {
 	sb := newPeerHandoverSandbox(t, peerStatusFields{epoch: 1, dotVersion: "9.9.9 (fake)"}, 1)
-	status := fmt.Sprintf(`{"schemaVersion":%d,"kind":"peer","profile":{"configured":true,"owner":%q,"machineNames":["m3x23","macbook-pro-2023"],"workspacePath":%q,"target":{"path":%q}},"job":{"state":"not installed"}}`,
+	status := fmt.Sprintf(`{"schemaVersion":%d,"kind":"peer","dotVersion":"9.9.9 (fake)","profile":{"configured":true,"owner":%q,"machineNames":["m3x23","macbook-pro-2023"],"workspacePath":%q,"target":{"path":%q}},"job":{"state":"not installed"}}`,
 		PeerStatusSchemaVersion, sb.owner, sb.peer, sb.local)
 	installFakePeerSSH(t, status)
 	view, err := PeerOwnerView(context.Background(), peerScheduleRunner(false), sb.cfg)
@@ -238,14 +238,14 @@ func TestPeerFenceRefusesAPeerThatAlsoPassesItsGuard(t *testing.T) {
 	remote := &remotePeerStatus{OwnerEpoch: 3, DotVersion: "9.9.9"}
 	remote.Profile.Owner, remote.Profile.OwnerAliases, remote.Profile.CanPush = "b", []string{"a"}, true
 	remote.Profile.WorkspacePath, remote.Profile.Target.Path = "/p", "/w"
-	if _, _, err := peerFence(cfg, remote); err == nil || !strings.Contains(err.Error(), "also passes its own owner guard") {
+	if _, err := peerFence(cfg, remote); err == nil || !strings.Contains(err.Error(), "also passes its own owner guard") {
 		t.Fatalf("fence err = %v", err)
 	}
 	if err := checkRemotePeerOwnerMatch(cfg, remote); err == nil || !strings.Contains(err.Error(), "also passes its own owner guard") {
 		t.Fatalf("owner match err = %v", err)
 	}
 	remote.Profile.CanPush = false
-	if _, _, err := peerFence(cfg, remote); err != nil {
+	if _, err := peerFence(cfg, remote); err != nil {
 		t.Fatalf("a half-migrated pair refused: %v", err)
 	}
 }

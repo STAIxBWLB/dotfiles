@@ -106,7 +106,7 @@ func peerDryRunSandbox(t *testing.T) (*Config, *LocalPaths) {
 		Propagation: DefaultPropagationPolicy(),
 	}
 	status := fmt.Sprintf(
-		`{"schemaVersion":%d,"kind":"peer","profile":{"configured":true,"owner":%q,"workspacePath":%q,"target":{"path":%q}}}`,
+		`{"schemaVersion":%d,"kind":"peer","dotVersion":"9.9.9 (fake)","profile":{"configured":true,"owner":%q,"workspacePath":%q,"target":{"path":%q}}}`,
 		PeerStatusSchemaVersion, owner, peer, local)
 	installFakePeerSSH(t, status)
 	return cfg, paths

@@ -1,6 +1,6 @@
 ## dot ai memory
 
-Audit and archive native agent memory, or retire claude-mem
+Audit and archive native agent memory
 
 ### Synopsis
 

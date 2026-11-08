@@ -56,5 +56,5 @@ dot ai memory audit [flags]
 
 ### SEE ALSO
 
-* [dot ai memory](dot_ai_memory.md)	 - Audit and archive native agent memory, or retire claude-mem
+* [dot ai memory](dot_ai_memory.md)	 - Audit and archive native agent memory
 

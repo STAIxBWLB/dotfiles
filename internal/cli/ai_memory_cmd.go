@@ -17,7 +17,7 @@ import (
 func newAIMemoryCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "memory",
-		Short: "Audit and archive native agent memory, or retire claude-mem",
+		Short: "Audit and archive native agent memory",
 		Long: `Register amem (@staix/agent-mem) as the project memory for Kiro and
 GitHub Copilot, and print the 'amem setup' lines for Claude Code, Codex, Kimi,
 Qwen, pi and Antigravity, which amem registers itself.
