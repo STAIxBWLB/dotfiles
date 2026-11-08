@@ -93,17 +93,20 @@ type MarkerHits struct {
 }
 
 type Store struct {
-	Agent    string       `json:"agent"`
-	Path     string       `json:"path"`
-	Status   string       `json:"status"`
-	Reason   string       `json:"reason,omitempty"`
-	Files    int          `json:"files"`
-	Bytes    int64        `json:"bytes"`
-	Modified string       `json:"modified,omitempty"`
-	Index    *Index       `json:"index,omitempty"`
-	Broken   []string     `json:"brokenLinks,omitempty"`
-	Orphans  []string     `json:"orphans,omitempty"`
-	Markers  []MarkerHits `json:"markers,omitempty"`
+	Agent    string   `json:"agent"`
+	Path     string   `json:"path"`
+	Status   string   `json:"status"`
+	Reason   string   `json:"reason,omitempty"`
+	Files    int      `json:"files"`
+	Bytes    int64    `json:"bytes"`
+	Modified string   `json:"modified,omitempty"`
+	Index    *Index   `json:"index,omitempty"`
+	Broken   []string `json:"brokenLinks,omitempty"`
+	Orphans  []string `json:"orphans,omitempty"`
+	// Unreadable lists what could not be read, so a permission error never
+	// passes for a clean or empty store.
+	Unreadable []string     `json:"unreadable,omitempty"`
+	Markers    []MarkerHits `json:"markers,omitempty"`
 }
 
 // CrossRow counts one marker's hits per agent. An agent with no readable store
@@ -130,22 +133,22 @@ func LoadMarkers(path string) ([]Marker, bool, error) {
 		return nil, false, nil
 	}
 	if err != nil {
-		return nil, false, err
+		return nil, false, fmt.Errorf("read %s: %w; check its permissions, or move it aside to audit without marker checks", path, err)
 	}
 	var doc struct {
 		Markers []Marker `yaml:"markers"`
 	}
 	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, false, fmt.Errorf("%s: %w", path, err)
+		return nil, false, fmt.Errorf("%s is not valid YAML (%w); fix it to the form shown by 'dot ai memory audit --help'", path, err)
 	}
 	for i := range doc.Markers {
 		m := &doc.Markers[i]
 		if strings.TrimSpace(m.Pattern) == "" {
-			return nil, false, fmt.Errorf("%s: marker %d has no pattern", path, i+1)
+			return nil, false, fmt.Errorf("%s: marker %d has no pattern; add 'pattern: <text>' to it or remove the entry", path, i+1)
 		}
 		if m.Regex {
 			if m.re, err = regexp.Compile(m.Pattern); err != nil {
-				return nil, false, fmt.Errorf("%s: marker %q: %w", path, m.Pattern, err)
+				return nil, false, fmt.Errorf("%s: marker %q is not a valid Go regular expression (%w); fix it, or drop 'regex: true' to match it as plain text", path, m.Pattern, err)
 			}
 		}
 	}
@@ -175,12 +178,18 @@ func Audit(o Options) (Report, error) {
 		}
 		r.Stores = append(r.Stores, auditAgent(o, agent, markers)...)
 	}
+	for i := range r.Stores {
+		r.Stores[i].Unreadable = uniqueSorted(r.Stores[i].Unreadable)
+	}
 	for _, s := range r.Stores {
 		if s.Index != nil && s.Index.Over {
-			r.Problems = append(r.Problems, fmt.Sprintf("%s %s: index over its limit", s.Agent, s.Index.Path))
+			r.Problems = append(r.Problems, fmt.Sprintf("%s %s: index over its limit; archive stale files with 'dot ai memory archive %s PATH' and remove their index lines", s.Agent, s.Index.Path, s.Agent))
 		}
 		if len(s.Broken) > 0 {
-			r.Problems = append(r.Problems, fmt.Sprintf("%s %s: %d broken index link(s)", s.Agent, s.Path, len(s.Broken)))
+			r.Problems = append(r.Problems, fmt.Sprintf("%s %s: %d index link(s) to missing files; remove those lines from the index or restore the files", s.Agent, s.Path, len(s.Broken)))
+		}
+		if len(s.Unreadable) > 0 {
+			r.Problems = append(r.Problems, fmt.Sprintf("%s %s: %d path(s) could not be read; check their permissions (ls -l) and re-run", s.Agent, s.Path, len(s.Unreadable)))
 		}
 	}
 	r.CrossAgent = crossAgent(r.Stores, markers)
@@ -216,7 +225,8 @@ func auditAgent(o Options, agent string, markers []Marker) []Store {
 			return []Store{missing(agent, root, "not found")}
 		}
 		s := scanStore(agent, root, markers, o.Show)
-		s.Index = indexSize(filepath.Join(root, "memory_summary.md"), &Index{MaxBytes: codexMaxBytes})
+		s.Index = indexSize(&s, filepath.Join(root, "memory_summary.md"), &Index{MaxBytes: codexMaxBytes})
+		codexLinks(&s, root)
 		return []Store{s}
 	case "grok":
 		root := o.grokRoot()
@@ -232,8 +242,8 @@ func auditAgent(o Options, agent string, markers []Marker) []Store {
 				continue
 			}
 			s := Store{Agent: agent, Path: filepath.Dir(idx), Status: StatusOK, Files: 1, Bytes: info.Size(), Modified: stamp(info.ModTime())}
-			s.Index = indexSize(idx, &Index{})
-			s.Markers = scanMarkers(filepath.Dir(idx), []string{indexName}, markers, o.Show)
+			s.Index = indexSize(&s, idx, &Index{})
+			s.Markers = scanMarkers(&s, filepath.Dir(idx), []string{indexName}, markers, o.Show)
 			out = append(out, s)
 		}
 		if len(out) == 0 {
@@ -242,12 +252,12 @@ func auditAgent(o Options, agent string, markers []Marker) []Store {
 		return out
 	case "jcode":
 		if o.JcodeStats == nil {
-			return []Store{missing(agent, "jcode memory stats", "jcode not reachable")}
+			return []Store{missing(agent, "jcode memory stats", "jcode not on PATH, or --home is set; install jcode or run without --home")}
 		}
 		text, err := o.JcodeStats()
 		total, ok := jcodeTotal(text)
 		if err != nil || !ok {
-			return []Store{missing(agent, "jcode memory stats", "stats unreadable")}
+			return []Store{missing(agent, "jcode memory stats", "'jcode memory stats' failed or printed no Total; run it by hand to see why")}
 		}
 		return []Store{{Agent: agent, Path: "jcode memory stats", Status: StatusOK, Files: total}}
 	}
@@ -308,11 +318,13 @@ func jcodeTotal(text string) (int, bool) {
 	return n, err == nil
 }
 
-// files lists the store's regular files relative to root, outside _archive.
-func files(root string) []string {
-	var out []string
+// files lists the store's regular files relative to root, outside _archive,
+// and what it could not read.
+func files(root string) (out, unreadable []string) {
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
+			rel, _ := filepath.Rel(root, path)
+			unreadable = append(unreadable, filepath.ToSlash(rel))
 			return nil
 		}
 		if d.IsDir() && d.Name() == archiveDir && path != root {
@@ -325,16 +337,19 @@ func files(root string) []string {
 		return nil
 	})
 	sort.Strings(out)
-	return out
+	return out, unreadable
 }
 
 func scanStore(agent, root string, markers []Marker, show bool) Store {
 	s := Store{Agent: agent, Path: root, Status: StatusOK}
 	var latest time.Time
 	var md []string
-	for _, rel := range files(root) {
+	all, unreadable := files(root)
+	s.Unreadable = unreadable
+	for _, rel := range all {
 		info, err := os.Stat(filepath.Join(root, rel))
 		if err != nil {
+			s.Unreadable = append(s.Unreadable, rel)
 			continue
 		}
 		s.Files++
@@ -349,7 +364,7 @@ func scanStore(agent, root string, markers []Marker, show bool) Store {
 	if !latest.IsZero() {
 		s.Modified = stamp(latest)
 	}
-	s.Markers = scanMarkers(root, md, markers, show)
+	s.Markers = scanMarkers(&s, root, md, markers, show)
 	return s
 }
 
@@ -357,7 +372,7 @@ func scanStore(agent, root string, markers []Marker, show bool) Store {
 func linkedStore(agent, root string, limits *Index, markers []Marker, show bool) Store {
 	s := scanStore(agent, root, markers, show)
 	idx := filepath.Join(root, indexName)
-	s.Index = indexSize(idx, limits)
+	s.Index = indexSize(&s, idx, limits)
 	linked := map[string]bool{}
 	if data, err := os.ReadFile(idx); err == nil {
 		for _, m := range linkRe.FindAllStringSubmatch(string(data), -1) {
@@ -381,7 +396,8 @@ func linkedStore(agent, root string, limits *Index, markers []Marker, show bool)
 			}
 		}
 	}
-	for _, rel := range files(root) {
+	all, _ := files(root)
+	for _, rel := range all {
 		if rel != indexName && strings.HasSuffix(rel, ".md") && !linked[rel] {
 			s.Orphans = append(s.Orphans, rel)
 		}
@@ -389,15 +405,53 @@ func linkedStore(agent, root string, limits *Index, markers []Marker, show bool)
 	return s
 }
 
+// codexRefRe matches the store paths Codex writes into its generated indexes
+// as plain text, such as rollout_summaries/<name>.md.
+var codexRefRe = regexp.MustCompile(`\b((?:rollout_summaries|extensions|skills)/[A-Za-z0-9_./-]*?\.md)\b`)
+
+// codexLinks checks the paths named by MEMORY.md and memory_summary.md, and
+// lists rollout summaries and ad-hoc notes that neither names.
+func codexLinks(s *Store, root string) {
+	named := map[string]bool{}
+	for _, name := range []string{indexName, "memory_summary.md"} {
+		data, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			continue
+		}
+		for _, m := range codexRefRe.FindAllStringSubmatch(string(data), -1) {
+			rel := filepath.ToSlash(filepath.Clean(m[1]))
+			if named[rel] {
+				continue
+			}
+			named[rel] = true
+			if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
+				s.Broken = append(s.Broken, rel)
+			}
+		}
+	}
+	all, _ := files(root)
+	for _, rel := range all {
+		source := strings.HasPrefix(rel, "rollout_summaries/") || strings.HasPrefix(rel, "extensions/ad_hoc/notes/")
+		if source && strings.HasSuffix(rel, ".md") && !named[rel] {
+			s.Orphans = append(s.Orphans, rel)
+		}
+	}
+	sort.Strings(s.Broken)
+}
+
 var linkRe = regexp.MustCompile(`\]\(([^)\s]+)\)`)
 
 // indexSize measures an injected index against its limits. A missing index
-// returns a zero-size record, which is under any limit.
-func indexSize(path string, limits *Index) *Index {
+// returns a zero-size record, which is under any limit; an unreadable one is
+// recorded on the store.
+func indexSize(s *Store, path string, limits *Index) *Index {
 	idx := *limits
 	idx.Path = path
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if !os.IsNotExist(err) {
+			s.Unreadable = append(s.Unreadable, filepath.Base(path))
+		}
 		return &idx
 	}
 	idx.Bytes = int64(len(data))
@@ -409,13 +463,18 @@ func indexSize(path string, limits *Index) *Index {
 	return &idx
 }
 
-func scanMarkers(root string, rels []string, markers []Marker, show bool) []MarkerHits {
+func scanMarkers(s *Store, root string, rels []string, markers []Marker, show bool) []MarkerHits {
 	var out []MarkerHits
+	failed := map[string]bool{}
 	for _, m := range markers {
 		var hits []Hit
 		for _, rel := range rels {
 			f, err := os.Open(filepath.Join(root, rel))
 			if err != nil {
+				if !failed[rel] {
+					failed[rel] = true
+					s.Unreadable = append(s.Unreadable, rel)
+				}
 				continue
 			}
 			sc := bufio.NewScanner(f)
@@ -428,6 +487,10 @@ func scanMarkers(root string, rels []string, markers []Marker, show bool) []Mark
 					}
 					hits = append(hits, h)
 				}
+			}
+			if sc.Err() != nil && !failed[rel] {
+				failed[rel] = true
+				s.Unreadable = append(s.Unreadable, rel)
 			}
 			f.Close()
 		}
@@ -456,4 +519,18 @@ func crossAgent(stores []Store, markers []Marker) []CrossRow {
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+func uniqueSorted(list []string) []string {
+	sort.Strings(list)
+	out := list[:0]
+	for i, v := range list {
+		if i == 0 || v != list[i-1] {
+			out = append(out, v)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

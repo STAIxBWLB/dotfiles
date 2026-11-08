@@ -47,7 +47,8 @@ func memoryOptionsFromCmd(cmd *cobra.Command) aimemory.Options {
 		if v := os.Getenv("CODEX_HOME"); filepath.IsAbs(v) {
 			o.CodexHome = v
 		}
-		// jcode keeps its store under the real home, so --home never reads it.
+		// jcode keeps its store under the real home, so --home never reads it
+		// and the audit reports it unavailable.
 		if bin, err := exec.LookPath("jcode"); err == nil {
 			o.JcodeStats = func() (string, error) {
 				ctx, cancel := context.WithTimeout(cmd.Context(), 20*time.Second)
@@ -112,7 +113,7 @@ a missing file.`,
 				printMemoryAudit(printerFrom(cmd), r, o.Show)
 			}
 			if len(r.Problems) > 0 {
-				return &ExitCodeError{Code: 1, Err: fmt.Errorf("memory audit: %d problem(s)", len(r.Problems))}
+				return &ExitCodeError{Code: 1, Err: fmt.Errorf("memory audit: %d problem(s), listed under Problems with the step that fixes each", len(r.Problems))}
 			}
 			return nil
 		},
@@ -155,7 +156,7 @@ func printMemoryAudit(p *Printer, r aimemory.Report, show bool) {
 			continue
 		}
 		marker := ui.StyleSuccess.Render(ui.MarkPresent)
-		if (s.Index != nil && s.Index.Over) || len(s.Broken) > 0 {
+		if (s.Index != nil && s.Index.Over) || len(s.Broken) > 0 || len(s.Unreadable) > 0 {
 			marker = ui.StyleError.Render(ui.MarkFail)
 		}
 		line := fmt.Sprintf("%s  %d files, %s", s.Path, s.Files, humanBytes(s.Bytes))
@@ -178,6 +179,9 @@ func printMemoryAudit(p *Printer, r aimemory.Report, show bool) {
 		}
 		for _, b := range s.Broken {
 			p.Line("      broken link: %s", b)
+		}
+		for _, u := range s.Unreadable {
+			p.Line("      unreadable: %s", u)
 		}
 		if len(s.Orphans) > 0 {
 			p.Line("      not in the index (%d): %s", len(s.Orphans), strings.Join(s.Orphans, ", "))
@@ -270,6 +274,9 @@ resolve outside it, the store's own index, and a destination that exists.`,
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			apply, _ := cmd.Flags().GetBool("apply")
+			if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
+				apply = false
+			}
 			moves, err := aimemory.PlanArchive(memoryOptionsFromCmd(cmd), args[0], args[1:])
 			if err != nil {
 				return err
@@ -284,7 +291,7 @@ resolve outside it, the store's own index, and a destination that exists.`,
 				}
 			}
 			if !apply {
-				p.Line("Dry run: nothing moved. Re-run with --apply.")
+				p.Line("Dry run: nothing moved. Re-run with --apply (and without --dry-run).")
 				return nil
 			}
 			done, err := aimemory.ApplyArchive(moves)
@@ -295,7 +302,7 @@ resolve outside it, the store's own index, and a destination that exists.`,
 				p.Line("  %s", aimemory.ReverseCommand(done))
 			}
 			if err != nil {
-				return errors.Join(fmt.Errorf("archive stopped after %d of %d file(s)", len(done), len(moves)), err)
+				return errors.Join(fmt.Errorf("archive stopped after %d of %d file(s); fix the cause below and re-run with the files not yet moved, or undo the moved ones with the command above", len(done), len(moves)), err)
 			}
 			return nil
 		},

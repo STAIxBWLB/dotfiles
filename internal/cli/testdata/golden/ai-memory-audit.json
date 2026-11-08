@@ -65,6 +65,10 @@
         "maxBytes": 10000,
         "over": false
       },
+      "orphans": [
+        "extensions/ad_hoc/notes/note-one.md",
+        "rollout_summaries/r1.md"
+      ],
       "markers": [
         {
           "marker": "old-plugin",
@@ -156,7 +160,7 @@
     }
   ],
   "problems": [
-    "claude @HOME@/.claude/projects/-proj-a/memory/MEMORY.md: index over its limit",
-    "claude @HOME@/.claude/projects/-proj-a/memory: 1 broken index link(s)"
+    "claude @HOME@/.claude/projects/-proj-a/memory/MEMORY.md: index over its limit; archive stale files with 'dot ai memory archive claude PATH' and remove their index lines",
+    "claude @HOME@/.claude/projects/-proj-a/memory: 1 index link(s) to missing files; remove those lines from the index or restore the files"
   ]
 }

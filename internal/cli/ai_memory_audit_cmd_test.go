@@ -199,6 +199,10 @@ func TestMemoryArchiveRoundTrip(t *testing.T) {
 	if err != nil || !strings.Contains(out, "memories-archive/extensions/ad_hoc/notes/note-one.md") || !strings.Contains(out, "still named by") {
 		t.Fatalf("codex preview: %v\n%s", err, out)
 	}
+	out, _, err = runDotForTest("ai", "memory", "archive", "claude", orphan, "--apply", "--dry-run")
+	if err != nil || !strings.Contains(out, "Dry run") {
+		t.Fatalf("--apply --dry-run must preview only: %v\n%s", err, out)
+	}
 	if treeDigest(t, home) != before {
 		t.Fatal("a preview changed the tree")
 	}
