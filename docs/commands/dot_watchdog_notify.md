@@ -1,6 +1,6 @@
 ## dot watchdog notify
 
-Send a watchdog alert (macOS notification and/or ntfy)
+Send a watchdog alert (monit invokes this; run it by hand to test alerts)
 
 ```
 dot watchdog notify <level> <message> [flags]
@@ -18,7 +18,6 @@ dot watchdog notify <level> <message> [flags]
       --config string    Path to custom config YAML
       --dry-run          Show what would be done without executing
       --home string      Override home directory (for admin setup of other users)
-      --module strings   Run specific modules only
       --profile string   Profile name (minimal, full, server)
       --yes              Unattended mode (skip all prompts)
 ```

@@ -14,7 +14,7 @@ import (
 func newSyncConfigureCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "configure",
-		Short:        "Persist sync profile and scheduler settings",
+		Short:        "Set target, owner and scheduler settings in one call (scripting API; setup, target and owner are the interactive front-ends)",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE:         runSyncConfigure,

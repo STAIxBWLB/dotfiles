@@ -97,11 +97,13 @@ Run without a subcommand to print this help.`,
 		},
 		SilenceUsage: true,
 	}
-	cmd.PersistentFlags().String("profile", syncer.DefaultProfile,
-		"sync profile (store under <workspace>/.dotfiles/<profile>/); \"sync\" is the cloud mirror")
+	cmd.PersistentFlags().String("store", syncer.DefaultProfile,
+		"sync store under <workspace>/.dotfiles/<store>/; \"sync\" is the cloud mirror, \"peer\" the other Mac")
+	cmd.PersistentFlags().String("profile", "", "Deprecated: use --store")
+	// Hidden, not MarkDeprecated: cobra writes that notice to stdout, which
+	// would corrupt --json output; syncStoreFrom warns on stderr instead.
+	_ = cmd.PersistentFlags().MarkHidden("profile")
 	cmd.PersistentFlags().BoolP("verbose", "V", false, "Show rsync progress output")
-	cmd.PersistentFlags().String("mode", syncer.ModeManual.String(), "execution mode for push/pull: manual, clean, or force")
-	cmd.PersistentFlags().String("filter-mode", "", "override config filter mode for this run: include or exclude")
 	cmd.AddCommand(
 		newSyncPullCmd(),
 		newSyncPushCmd(),
@@ -122,7 +124,30 @@ Run without a subcommand to print this help.`,
 		newSyncNamesCmd(),
 		newSyncFetchCmd(),
 	)
+	// --mode and --filter-mode only mean something where a transfer or the
+	// file set is computed (#380).
+	for _, sub := range cmd.Commands() {
+		switch sub.Name() {
+		case "push", "pull":
+			sub.Flags().String("mode", syncer.ModeManual.String(), "execution mode for push/pull: manual, clean, or force")
+		}
+		switch sub.Name() {
+		case "push", "pull", "intake", "fetch", "status", "names", "filters":
+			sub.PersistentFlags().String("filter-mode", "", "override config filter mode for this run: include or exclude")
+		}
+	}
 	return cmd
+}
+
+// syncStoreFrom is --store, or the deprecated --profile when that was given.
+func syncStoreFrom(cmd *cobra.Command) string {
+	if cmd.Flags().Changed("profile") {
+		fmt.Fprintln(cmd.ErrOrStderr(), "warning: dot sync --profile is deprecated; use --store (it will be removed after one release)")
+		v, _ := cmd.Flags().GetString("profile")
+		return v
+	}
+	v, _ := cmd.Flags().GetString("store")
+	return v
 }
 
 // syncBootstrapOptions translates the sync command tree's flags into the
@@ -131,7 +156,7 @@ Run without a subcommand to print this help.`,
 // (syncer.Bootstrap, D-07).
 func syncBootstrapOptions(cmd *cobra.Command, readOnly bool) syncer.BootstrapOptions {
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	profile, _ := cmd.Flags().GetString("profile")
+	profile := syncStoreFrom(cmd)
 	verbose, _ := cmd.Flags().GetBool("verbose")
 	filterMode, _ := cmd.Flags().GetString("filter-mode")
 	return syncer.BootstrapOptions{

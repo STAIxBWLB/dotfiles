@@ -41,27 +41,24 @@ dot sync [flags]
 ### Options
 
 ```
-      --filter-mode string   override config filter mode for this run: include or exclude
-  -h, --help                 help for sync
-      --mode string          execution mode for push/pull: manual, clean, or force (default "manual")
-      --profile string       sync profile (store under <workspace>/.dotfiles/<profile>/); "sync" is the cloud mirror (default "sync")
-  -V, --verbose              Show rsync progress output
+  -h, --help           help for sync
+      --store string   sync store under <workspace>/.dotfiles/<store>/; "sync" is the cloud mirror, "peer" the other Mac (default "sync")
+  -V, --verbose        Show rsync progress output
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --config string    Path to custom config YAML
-      --dry-run          Show what would be done without executing
-      --home string      Override home directory (for admin setup of other users)
-      --module strings   Run specific modules only
-      --yes              Unattended mode (skip all prompts)
+      --config string   Path to custom config YAML
+      --dry-run         Show what would be done without executing
+      --home string     Override home directory (for admin setup of other users)
+      --yes             Unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO
 
 * [dot](dot.md)	 - User environment & workspace management tool
-* [dot sync configure](dot_sync_configure.md)	 - Persist sync profile and scheduler settings
+* [dot sync configure](dot_sync_configure.md)	 - Set target, owner and scheduler settings in one call (scripting API; setup, target and owner are the interactive front-ends)
 * [dot sync conflicts](dot_sync_conflicts.md)	 - List or prune .sync-conflicts/ backup directories
 * [dot sync fetch](dot_sync_fetch.md)	 - Restore specific files or folders from the target on demand
 * [dot sync filters](dot_sync_filters.md)	 - Show the effective filter layers or reset them from templates

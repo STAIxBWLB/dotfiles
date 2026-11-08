@@ -17,25 +17,24 @@ dot watchdog [flags]
 ### Options
 
 ```
-  -h, --help   help for watchdog
+  -h, --help             help for watchdog
+      --profile string   Profile name (minimal, full, server)
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --config string    Path to custom config YAML
-      --dry-run          Show what would be done without executing
-      --home string      Override home directory (for admin setup of other users)
-      --module strings   Run specific modules only
-      --profile string   Profile name (minimal, full, server)
-      --yes              Unattended mode (skip all prompts)
+      --config string   Path to custom config YAML
+      --dry-run         Show what would be done without executing
+      --home string     Override home directory (for admin setup of other users)
+      --yes             Unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO
 
 * [dot](dot.md)	 - User environment & workspace management tool
 * [dot watchdog log](dot_watchdog_log.md)	 - Tail the watchdog JSON-lines event log
-* [dot watchdog notify](dot_watchdog_notify.md)	 - Send a watchdog alert (macOS notification and/or ntfy)
+* [dot watchdog notify](dot_watchdog_notify.md)	 - Send a watchdog alert (monit invokes this; run it by hand to test alerts)
 * [dot watchdog reap](dot_watchdog_reap.md)	 - Run one reaper pass (the LaunchAgent invokes this)
 * [dot watchdog setup](dot_watchdog_setup.md)	 - Install the watchdog reaper agent, WARP heal daemon, monit supervision, Beszel agent, and optional power hardening (macOS)
 * [dot watchdog status](dot_watchdog_status.md)	 - Show watchdog config, LaunchAgent, and sample state

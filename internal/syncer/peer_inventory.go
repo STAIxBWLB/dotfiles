@@ -57,7 +57,7 @@ func peerRemoteInventory(ctx context.Context, runner *exec.Runner, cfg *Config, 
 	snap, err := parsePeerRemoteInventory(res.Stdout, time.UTC, baseline, requireNFD)
 	if errors.Is(err, errPeerNameNotNFD) {
 		// The name lives on the peer, so the fix runs there (#182).
-		return nil, fmt.Errorf("%w on %s; run there: dot sync names normalize --profile=peer --yes (dot peer doctor counts them)", err, cfg.Target.Host)
+		return nil, fmt.Errorf("%w on %s; run there: dot sync names normalize --store=peer --yes (dot peer doctor counts them)", err, cfg.Target.Host)
 	}
 	return snap, err
 }
@@ -285,7 +285,7 @@ func remotePeerStatusCommand(dot string) string {
 const PeerStatusUnscannedEnv = "DOT_PEER_STATUS_UNSCANNED"
 
 func remotePeerNormalizeCommand(dot, excludes string) string {
-	return PeerNormalizeExcludesEnv + "=" + shellQuote(excludes) + " exec " + shellQuote(dot) + " sync names normalize --profile=peer --yes"
+	return PeerNormalizeExcludesEnv + "=" + shellQuote(excludes) + " exec " + shellQuote(dot) + " sync names normalize --store=peer --yes"
 }
 
 // remotePeerStatus is the narrow view of a remote `dot peer status --json`
@@ -448,7 +448,7 @@ func ownerMatchError(local, remote fenceSide) error {
 	}
 	if remote.CanPush {
 		return fmt.Errorf(
-			"peer coordinator check: the peer also passes its own owner guard (its owner %q, local %q); two coordinators would write to each other. Set one owner on both machines with `dot sync owner --profile=peer --set <coordinator>`",
+			"peer coordinator check: the peer also passes its own owner guard (its owner %q, local %q); two coordinators would write to each other. Set one owner on both machines with `dot sync owner --store=peer --set <coordinator>`",
 			remote.Owner, local.Owner)
 	}
 	if NormalizeHostname(local.Owner) == "" || !sameOwner(local.Owner, local.Aliases, remote.Owner, remote.Aliases) {

@@ -183,7 +183,7 @@ func runPeerStatus(cmd *cobra.Command, _ []string) error {
 	case role == "coordinator":
 		p.KV("Role", "coordinator")
 	case strings.TrimSpace(cfg.Owner) == "":
-		p.KV("Role", "peer; no coordinator set (dot sync owner --profile=peer --set <machine>)")
+		p.KV("Role", "peer; no coordinator set (dot sync owner --store=peer --set <machine>)")
 	default:
 		p.KV("Role", "peer; syncs run on the coordinator "+cfg.Owner)
 	}

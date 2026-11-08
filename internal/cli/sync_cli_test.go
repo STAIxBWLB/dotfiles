@@ -227,7 +227,7 @@ func TestSyncConflictsSSHProfileListsAndPrunesRemoteRoots(t *testing.T) {
 	}
 	stubSSHForSyncCLI(t)
 
-	out, errOut, err := runDotForTest("sync", "conflicts", "--profile=peer")
+	out, errOut, err := runDotForTest("sync", "conflicts", "--store=peer")
 	if err != nil {
 		t.Fatalf("SSH conflict list: %v\nstderr=%s", err, errOut)
 	}
@@ -241,7 +241,7 @@ func TestSyncConflictsSSHProfileListsAndPrunesRemoteRoots(t *testing.T) {
 		t.Fatalf("SSH conflict list regressed to local root scan:\n%s", out)
 	}
 
-	out, errOut, err = runDotForTest("sync", "conflicts", "prune", "--profile=peer", "--dry-run")
+	out, errOut, err = runDotForTest("sync", "conflicts", "prune", "--store=peer", "--dry-run")
 	if err != nil {
 		t.Fatalf("SSH conflict prune --dry-run: %v\nstderr=%s", err, errOut)
 	}
@@ -254,7 +254,7 @@ func TestSyncConflictsSSHProfileListsAndPrunesRemoteRoots(t *testing.T) {
 		}
 	}
 
-	out, errOut, err = runDotForTest("sync", "conflicts", "prune", "--profile=peer", "--remote-only", "--yes")
+	out, errOut, err = runDotForTest("sync", "conflicts", "prune", "--store=peer", "--remote-only", "--yes")
 	if err != nil {
 		t.Fatalf("SSH conflict prune --yes: %v\nstderr=%s", err, errOut)
 	}
@@ -451,7 +451,7 @@ func TestSyncTargetOnThePeerProfileKeepsOwnerAndEpoch(t *testing.T) {
 	f := newSyncCLIFixture(t)
 	store := filepath.Join(f.local, ".dotfiles", "peer", "config.yaml")
 	writeCLITestFile(t, store, "target: ssh:peer-alias:/Users/a/elsewhere\nowner: the-coordinator\nowner_epoch: 2\npropagation:\n  create: true\n  update: true\n  delete: true\n")
-	if _, errOut, err := runDotForTest("sync", "target", "--profile=peer", "ssh:peer-alias:/Users/a/work"); err != nil {
+	if _, errOut, err := runDotForTest("sync", "target", "--store=peer", "ssh:peer-alias:/Users/a/work"); err != nil {
 		t.Fatalf("%v\n%s", err, errOut)
 	}
 	got, _, err := syncer.LoadLocalConfig(syncer.ResolveLocalPathsForProfile(f.local, "peer"))

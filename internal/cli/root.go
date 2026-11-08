@@ -43,8 +43,6 @@ Also available as 'dotfiles' for back-compat.`,
 	// Persistent flags for all subcommands
 	root.PersistentFlags().Bool("yes", false, "Unattended mode (skip all prompts)")
 	root.PersistentFlags().Bool("dry-run", false, "Show what would be done without executing")
-	root.PersistentFlags().String("profile", "", "Profile name (minimal, full, server)")
-	root.PersistentFlags().StringSlice("module", nil, "Run specific modules only")
 	root.PersistentFlags().String("config", "", "Path to custom config YAML")
 	root.PersistentFlags().String("home", "", "Override home directory (for admin setup of other users)")
 
@@ -97,6 +95,7 @@ Also available as 'dotfiles' for back-compat.`,
 	root.AddCommand(newRegisterCmd())
 	root.AddCommand(newUnregisterCmd())
 	root.AddCommand(newLayoutsCmd())
+	scopeProfileFlags(root)
 	root.AddCommand(newDoctorCmd())
 
 	// macOS apps + settings backup/restore
@@ -217,4 +216,26 @@ func executeWithSignals(cmd *cobra.Command) error {
 	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return cmd.ExecuteContext(ctx)
+}
+
+// scopeProfileFlags registers --profile and --module only on the commands that
+// read them; as root persistent flags they appeared on every command, where
+// they meant nothing (#380).
+func scopeProfileFlags(root *cobra.Command) {
+	for _, c := range root.Commands() {
+		flagSet := c.Flags
+		switch c.Name() {
+		case "apply", "check", "diff", "config", "status":
+		case "watchdog", "container":
+			flagSet = c.PersistentFlags
+		default:
+			continue
+		}
+		flags := flagSet()
+		flags.String("profile", "", "Profile name (minimal, full, server)")
+		switch c.Name() {
+		case "apply", "check", "diff":
+			flags.StringSlice("module", nil, "Run specific modules only")
+		}
+	}
 }
