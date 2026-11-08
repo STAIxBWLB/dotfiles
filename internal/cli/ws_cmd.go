@@ -24,7 +24,7 @@ func newWorkspaceDualCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ws",
 		Short: "Dual-workspace (work + cloud mirror) folder operations",
-		Long: `Operate on both the workspace root and the gsync mirror simultaneously.
+		Long: `Operate on both the workspace root and the sync mirror simultaneously.
 
 Subcommands keep the two trees in structural sync:
   init       Clone configured workspace repos (recursive)
@@ -155,7 +155,7 @@ func wsBootstrap(cmd *cobra.Command) (ws.Roots, *exec.Runner, bool, error) {
 
 	gsyncCfg, err := syncer.ResolveConfigReadOnlyForHomeProfile(state, home, syncer.DefaultProfile)
 	if err != nil {
-		return ws.Roots{}, nil, false, fmt.Errorf("resolving gsync mirror: %w", err)
+		return ws.Roots{}, nil, false, fmt.Errorf("resolving sync mirror: %w", err)
 	}
 	// ws edits the mirror as a local directory. An ssh: target has no local
 	// mirror tree, so refuse before any file operation instead of falling
