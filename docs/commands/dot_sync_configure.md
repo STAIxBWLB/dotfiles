@@ -9,6 +9,7 @@ dot sync configure [flags]
 ### Options
 
 ```
+      --filter-mode string     filter mode to save: include or exclude
   -h, --help                   help for configure
       --json                   print the refreshed status document
       --max-delete int         maximum deletes per push; 0 uses the default (default -1)

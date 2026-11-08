@@ -377,4 +377,8 @@ func TestSyncStoreFlagAndDeprecatedProfile(t *testing.T) {
 	if _, _, err := runDotForTest("sync", "status", "--mode", "clean"); err == nil || !strings.Contains(err.Error(), "unknown flag") {
 		t.Fatalf("sync status --mode: %v", err)
 	}
+	// sync configure saves the filter mode, so it keeps --filter-mode.
+	if _, _, err := runDotForTest("sync", "configure", "--filter-mode", "exclude"); err != nil {
+		t.Fatalf("sync configure --filter-mode: %v", err)
+	}
 }

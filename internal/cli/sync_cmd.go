@@ -134,6 +134,8 @@ Run without a subcommand to print this help.`,
 		switch sub.Name() {
 		case "push", "pull", "intake", "fetch", "status", "names", "filters":
 			sub.PersistentFlags().String("filter-mode", "", "override config filter mode for this run: include or exclude")
+		case "configure":
+			sub.Flags().String("filter-mode", "", "filter mode to save: include or exclude")
 		}
 	}
 	return cmd
