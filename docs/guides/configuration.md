@@ -17,6 +17,27 @@ dot reconfigure                 # switch between minimal ↔ rich
 
 Config key: `modules.terminal.prompt_style` (state: `modules.prompt_style`).
 
+## Your Own Shell and SSH Lines
+
+`dot apply` rewrites `~/.zshrc`, `~/.bashrc` and `~/.ssh/config` whole, so
+lines added to them by hand or by an installer are removed. Put them where dot
+never writes:
+
+| File | Read by |
+|------|---------|
+| `~/.zshrc.local` | last line of `~/.zshrc` |
+| `~/.bashrc.local` | last line of `~/.bashrc` |
+| `~/.ssh/config.d/*` | first line of `~/.ssh/config`, so it applies to every host and its values win over the defaults below it |
+
+`dot diff` lists the files `dot apply` would rewrite.
+
+## Container Service
+
+On a host where the container backend is already installed, `dot apply` writes
+the shim and its state file but leaves the service as you left it: it does not
+start a stopped container system or re-register its login job. Run
+`dot container setup` to start it.
+
 ## Terminal Apps
 
 `dot init` and `dot reconfigure` include a non-server terminal app selection.
@@ -105,6 +126,8 @@ modules:
     enabled: true
     backend: auto          # auto | apple | docker | podman
     dns: [1.1.1.1, 1.0.0.1]  # default --dns; empty = backend default
+  conda:
+    enabled: false         # turn the profile's conda module off; omit to keep the profile default
   rsync:
     remote_host: "user@ubuntu-server"
     remote_path: "~/workspace/work/"

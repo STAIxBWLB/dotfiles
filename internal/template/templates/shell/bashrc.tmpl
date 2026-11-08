@@ -16,3 +16,6 @@ command -v direnv &>/dev/null && eval "$(direnv hook bash)"
 if command -v zsh &>/dev/null && [ -z "$ZSH_VERSION" ]; then
   echo "Tip: run 'zsh' or 'chsh -s $(which zsh)' to switch to zsh"
 fi
+
+# User lines (dot never writes this file)
+if [ -r ~/.bashrc.local ]; then . ~/.bashrc.local; fi

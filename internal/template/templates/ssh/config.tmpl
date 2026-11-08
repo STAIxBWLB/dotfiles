@@ -1,3 +1,6 @@
+# 사용자 커스텀 (git 미추적). Host 블록보다 앞에 둬야 모든 호스트에 적용된다.
+Include ~/.ssh/config.d/*
+
 Host *
     IdentityFile ~/.ssh/{{ .SSHKeyName }}
     ServerAliveInterval 60
@@ -12,6 +15,3 @@ Host github.com
     HostName github.com
     User git
     IdentityFile ~/.ssh/{{ .SSHKeyName }}
-
-# 사용자 커스텀 (git 미추적)
-Include ~/.ssh/config.d/*

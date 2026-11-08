@@ -26,7 +26,8 @@ import (
 // state and not an error.
 // Version 3 adds portable AI policy; older writers must not drop it.
 // Version 4 adds modules.container, for the same reason.
-const currentSchemaVersion = 4
+// Version 5 adds modules.conda.
+const currentSchemaVersion = 5
 
 // peekSchemaVersion recovers the top-level schema_version from raw state bytes
 // with a second decode into a one-field struct.
@@ -227,7 +228,17 @@ type UserModulesState struct {
 	Tunnel       UserTunnelState       `yaml:"tunnel,omitempty"`
 	Guard        UserGuardState        `yaml:"guard,omitempty"`
 	Container    UserContainerState    `yaml:"container,omitempty"`
+	Conda        UserToggleState       `yaml:"conda,omitempty"`
 }
+
+// UserToggleState turns a profile module on or off for this user; unset
+// keeps the profile default.
+type UserToggleState struct {
+	Enabled *bool `yaml:"enabled,omitempty"`
+}
+
+// IsZero lets yaml.v3 omit an unset toggle from user state.
+func (s UserToggleState) IsZero() bool { return s.Enabled == nil }
 
 // UserContainerState holds the opt-in and settings for the container module.
 type UserContainerState struct {
@@ -904,6 +915,9 @@ func ApplyStateToConfig(cfg *Config, state *UserState) {
 	}
 	if len(state.Modules.MacApps.CasksExtra) > 0 {
 		cfg.CasksExtra = append(cfg.CasksExtra, state.Modules.MacApps.CasksExtra...)
+	}
+	if e := state.Modules.Conda.Enabled; e != nil {
+		cfg.Modules.Conda.Enabled = *e
 	}
 	if c := state.Modules.Container; c.Enabled {
 		cfg.Modules.Container.Enabled = true
