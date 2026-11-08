@@ -20,11 +20,12 @@ dot init [flags]
 ### Options
 
 ```
-      --check-only    Only run environment checks, don't write config
-      --detect        Write a config generated from the detected system, without prompts
-      --force         With --detect, overwrite an existing config file
-      --from string   Import settings from an exported config file (identity & preferences as defaults)
-  -h, --help          help for init
+      --check-only       Only run environment checks, don't write config
+      --detect           Write a config generated from the detected system, without prompts
+      --force            With --detect, overwrite an existing config file
+      --from string      Import settings from an exported config file (identity & preferences as defaults)
+  -h, --help             help for init
+      --profile string   Profile name (minimal, full, server)
 ```
 
 ### Options inherited from parent commands
