@@ -15,6 +15,7 @@ import (
 func newAICmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ai",
+		RunE:  runAIGroupHelp,
 		Short: "AI CLI/config helpers and settings backup/restore",
 		Long: `Manage portable AI assistant configuration.
 
@@ -49,6 +50,13 @@ they are machine state pi rebuilds itself.`,
 	cmd.AddCommand(newAIAuthCmd())
 	cmd.AddCommand(newAIAuditCmd())
 	return cmd
+}
+
+func runAIGroupHelp(cmd *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return fmt.Errorf("unknown command %q for %q; run '%s --help' for available commands", args[0], cmd.CommandPath(), cmd.CommandPath())
+	}
+	return cmd.Help()
 }
 
 // extraDetectedCLIs are probed by `dot ai tools list --details` but are not `dot ai update`

@@ -15,6 +15,7 @@ import (
 func newAIVaultCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "vault",
+		RunE:  runAIGroupHelp,
 		Short: "Retire the legacy Obsidian MCP integration",
 		Long: `Register vmem (@staix/vault-mem) as the agents' vault server for Kiro and
 GitHub Copilot, and print the 'vmem setup' lines for Claude Code, Codex, Kimi,

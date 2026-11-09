@@ -140,8 +140,14 @@ func TestAIGroupRemovedAliasesRejectWithoutWrites(t *testing.T) {
 		{"research"}, {"research", "install"}, {"research", "status"},
 	} {
 		args := append([]string{"--home", home, "ai"}, route...)
-		if _, _, err := runDotForTest(args...); err == nil {
-			t.Errorf("removed route %v succeeded", route)
+		if _, _, err := runDotForTest(args...); err == nil || !strings.Contains(err.Error(), "unknown command") || !strings.Contains(err.Error(), "--help") {
+			t.Errorf("removed route %v must fail with guidance: %v", route, err)
+		}
+	}
+	for _, route := range [][]string{{"ai"}, {"ai", "memory"}, {"ai", "vault"}} {
+		args := append([]string{"--home", home}, route...)
+		if out, _, err := runDotForTest(args...); err != nil || !strings.Contains(out, "Usage:") {
+			t.Errorf("bare group %v must still show help: %v\n%s", route, err, out)
 		}
 	}
 	if treeDigest(t, home) != before {
