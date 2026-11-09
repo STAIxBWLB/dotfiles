@@ -302,6 +302,13 @@ func TestJSONGoldens(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if strings.HasPrefix(tc.surface, "ai policy ") {
+				// Keep policy inspection inside the fixture's native profiles.
+				// The fixture already sets HOME and XDG_CONFIG_HOME.
+				for _, key := range []string{"CLAUDE_CONFIG_DIR", "CODEX_HOME", "KIMI_CODE_HOME", "OPENCODE_CONFIG_DIR"} {
+					t.Setenv(key, "")
+				}
+			}
 			home, root := tc.fixture(t)
 			// Fixture directory arguments keep runtime policy inspection out of
 			// the developer's project settings without changing the process cwd.
