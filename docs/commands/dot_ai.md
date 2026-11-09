@@ -14,6 +14,10 @@ With --include-auth, the snapshot carries each tool's credential file
 .gemini/oauth_creds.json). pi sessions, extensions, and skills stay out:
 they are machine state pi rebuilds itself.
 
+```
+dot ai [flags]
+```
+
 ### Options
 
 ```

@@ -15,6 +15,10 @@ version yourself or with 'dot ai family install vmem', then run 'dot ai mcp inst
 ("obsidian", @bitbonsai/mcpvault) from the configs dot owns and prints the
 lines for the rest. It is a dry run unless --apply is given.
 
+```
+dot ai vault [flags]
+```
+
 ### Options
 
 ```
