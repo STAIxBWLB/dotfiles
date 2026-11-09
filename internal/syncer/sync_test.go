@@ -57,6 +57,20 @@ func newIsolatedState(t *testing.T) *config.UserState {
 	return state
 }
 
+// writeStoreConfig puts body at <localPath>/.dotfiles/sync/config.yaml, the
+// store ResolveConfig reads. A read-only resolve never creates one, so a test
+// that wants a store must write it itself.
+func writeStoreConfig(t *testing.T, localPath, body string) {
+	t.Helper()
+	dir := filepath.Join(localPath, ".dotfiles", "sync")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPullArgs_WorkspaceAuthoritative(t *testing.T) {
 	cfg := newTestConfig(t)
 	conflict := &ConflictDir{Timestamp: "2026-05-01T12-00-00Z"}
@@ -353,7 +367,6 @@ func TestResolveConfig_StateOverrides(t *testing.T) {
 	tmp := t.TempDir()
 	state := &config.UserState{}
 	state.Modules.Gsync.LocalPath = tmp
-	state.Modules.Gsync.MirrorPath = "/custom/mirror"
 	state.Modules.Gsync.MaxDelete = 50
 
 	cfg, err := ResolveConfig(state)
@@ -362,9 +375,6 @@ func TestResolveConfig_StateOverrides(t *testing.T) {
 	}
 	if cfg.LocalPath != tmp+"/" {
 		t.Errorf("LocalPath = %q, want %q", cfg.LocalPath, tmp+"/")
-	}
-	if cfg.MirrorPath != "/custom/mirror/" {
-		t.Errorf("MirrorPath = %q, want trailing-slashed /custom/mirror/", cfg.MirrorPath)
 	}
 	if cfg.MaxDelete != 50 {
 		t.Errorf("MaxDelete = %d, want 50", cfg.MaxDelete)
@@ -413,7 +423,7 @@ func TestResolveConfig_PrefersCloudMirror(t *testing.T) {
 	}
 }
 
-func TestResolveConfig_LocalMirrorWinsOverCloud(t *testing.T) {
+func TestResolveConfig_LocalTargetWinsOverCloud(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	if err := os.MkdirAll(filepath.Join(home, "Library", "CloudStorage", "Dropbox", "secrets"), 0o755); err != nil {
@@ -421,7 +431,7 @@ func TestResolveConfig_LocalMirrorWinsOverCloud(t *testing.T) {
 	}
 	state := &config.UserState{}
 	state.Modules.Gsync.LocalPath = t.TempDir()
-	state.Modules.Gsync.MirrorPath = "/explicit/mirror"
+	writeStoreConfig(t, state.Modules.Gsync.LocalPath, "target: local:/explicit/mirror\n")
 
 	cfg, err := ResolveConfig(state)
 	if err != nil {
@@ -429,6 +439,23 @@ func TestResolveConfig_LocalMirrorWinsOverCloud(t *testing.T) {
 	}
 	if cfg.MirrorPath != "/explicit/mirror/" {
 		t.Errorf("MirrorPath = %q, want explicit /explicit/mirror/ (cloud must not override)", cfg.MirrorPath)
+	}
+}
+
+// #394 row 10: the retired mirror_path key decides nothing any more. A store
+// that still carries one and no target resolves the detected default, the same
+// as a store with an empty target.
+func TestResolveConfig_IgnoresTheRetiredMirrorPathKey(t *testing.T) {
+	state := newIsolatedState(t)
+	writeStoreConfig(t, state.Modules.Gsync.LocalPath, "mirror_path: /legacy/mirror\n")
+
+	cfg, err := ResolveConfigReadOnly(state)
+	if err != nil {
+		t.Fatalf("ResolveConfigReadOnly: %v", err)
+	}
+	want := filepath.Join(os.Getenv("HOME"), "gdrive-workspace", "work") + "/"
+	if cfg.MirrorPath != want {
+		t.Errorf("MirrorPath = %q, want the detected default %q (mirror_path must not be read)", cfg.MirrorPath, want)
 	}
 }
 
@@ -440,7 +467,7 @@ func TestResolveConfigReadOnlyForHome_UsesGivenHome(t *testing.T) {
 	overrideHome := t.TempDir()
 	state := &config.UserState{}
 	state.Modules.Gsync.LocalPath = t.TempDir()
-	// MirrorPath empty → default is <home>/gdrive-workspace/work.
+	// No target in the store → default is <home>/gdrive-workspace/work.
 
 	cfg, err := ResolveConfigReadOnlyForHomeProfile(state, overrideHome, DefaultProfile)
 	if err != nil {
@@ -462,7 +489,7 @@ func TestResolveConfigReadOnlyForHome_ExpandsTildeAgainstHome(t *testing.T) {
 
 	state := &config.UserState{}
 	state.Modules.Gsync.LocalPath = t.TempDir()
-	state.Modules.Gsync.MirrorPath = "~/cloud/work"
+	writeStoreConfig(t, state.Modules.Gsync.LocalPath, "target: local:~/cloud/work\n")
 
 	cfg, err := ResolveConfigReadOnlyForHomeProfile(state, overrideHome, DefaultProfile)
 	if err != nil {

@@ -177,6 +177,37 @@ func sliceHasRetiredCask(tokens []string) bool {
 	return false
 }
 
+// retiredStateKeys are the state keys no release reads any more, with what
+// replaces each one. `modules.gsync.mirror_path` lost its last reader when
+// ResolveConfig stopped falling back to it (#394 row 10): the destination is
+// the workspace store's `target` now, so the value cannot be carried over and
+// is only dropped.
+var retiredStateKeys = map[string]string{
+	"modules.gsync.mirror_path": "`dot sync` uses the workspace store's `target` (set it with `dot sync target`)",
+}
+
+// detectRetiredKeys records which retired keys the raw state still sets, so
+// the next save can say what it dropped. It reads the raw bytes the way
+// applyLegacyKeys does -- the field these keys named is gone, so a decode
+// cannot see them -- but it runs for every schema version: #373's stamped-file
+// rule governs keys whose values are carried, and these have no value left to
+// carry.
+func detectRetiredKeys(state *UserState, raw []byte) {
+	var legacy struct {
+		Modules struct {
+			Gsync struct {
+				MirrorPath string `yaml:"mirror_path"`
+			} `yaml:"gsync"`
+		} `yaml:"modules"`
+	}
+	if err := yaml.Unmarshal(raw, &legacy); err != nil {
+		return
+	}
+	if legacy.Modules.Gsync.MirrorPath != "" {
+		state.retiredKeys = append(state.retiredKeys, "modules.gsync.mirror_path")
+	}
+}
+
 // warnForwardSchema reports that a state file was written by a newer dot. It
 // does not fail the load: an additively-forward file still decodes, and an
 // incompatibly-forward one gets this warning before its decode error so the
@@ -210,6 +241,12 @@ type UserState struct {
 	// so yaml.v3 cannot see it: the flag can never be written to disk and
 	// needs no tag. saveStateAt reads it to print one note per converted write.
 	carriedLegacy []string
+
+	// retiredKeys names the keys the file this state was read from still
+	// carried after they stopped being read, in detection order. Unexported for
+	// the same reason as carriedLegacy: the save that drops them is the only
+	// place that may speak of them, and it prints one note, then clears this.
+	retiredKeys []string
 }
 
 // UserModulesState holds module opt-in/config from user state.
@@ -329,21 +366,21 @@ type UserRsyncState struct {
 // UserGsyncState holds local↔local rsync mirror config from user state.
 //
 // It holds the machine-wide defaults `dot sync` seeds a new workspace store
-// with (mirror path, max delete, shared excludes) and LocalPath, which locates
-// the workspace. Per-workspace settings live in <workspace>/.dotfiles/sync/.
+// with (max delete, shared excludes) and LocalPath, which locates the
+// workspace. The destination is not one of them: it lives in the workspace
+// store's `target`. Per-workspace settings live in <workspace>/.dotfiles/sync/.
 //
 // Paused defaults to true on a fresh state so the user explicitly opts in by
 // flipping it to false via `resume`.
 type UserGsyncState struct {
-	LocalPath      string    `yaml:"local_path,omitempty"`  // primary tree, default ~/workspace/work
-	MirrorPath     string    `yaml:"mirror_path,omitempty"` // mirror tree, default ~/gdrive-workspace/work
+	LocalPath      string    `yaml:"local_path,omitempty"` // primary tree, default ~/workspace/work
 	LastPull       time.Time `yaml:"last_pull,omitempty"`
 	LastPush       time.Time `yaml:"last_push,omitempty"`
 	ConflictDir    string    `yaml:"conflict_dir,omitempty"`    // default <local>/.sync-conflicts
 	Paused         bool      `yaml:"paused,omitempty"`          // gates pull/push/sync; cleared by `resume`
 	MaxDelete      int       `yaml:"max_delete,omitempty"`      // safety cap for push --delete-after, default 1000
 	Interval       int       `yaml:"interval,omitempty"`        // auto-sync interval in seconds (launchd/systemd), default 300
-	SharedExcludes []string  `yaml:"shared_excludes,omitempty"` // operator-curated owned-but-shared-out folders, relative to mirror_path
+	SharedExcludes []string  `yaml:"shared_excludes,omitempty"` // operator-curated owned-but-shared-out folders, relative to the sync target
 }
 
 // UserTunnelState holds the Cloudflare Tunnel values managed by `dot tunnel`.
@@ -492,12 +529,12 @@ func (s *UserState) Validate() error {
 		}
 	}
 	for _, p := range s.Modules.Gsync.SharedExcludes {
-		// Paths must be relative to mirror_path. Absolute paths and parent
+		// Paths must be relative to the sync target. Absolute paths and parent
 		// escapes would let the manual list reach outside the mirror tree
 		// and exclude unrelated content (or be portable across machines
 		// in misleading ways).
 		if strings.HasPrefix(p, "/") {
-			return fmt.Errorf("gdrive_sync.shared_excludes entry %q must be relative to mirror_path (no leading /)", p)
+			return fmt.Errorf("gdrive_sync.shared_excludes entry %q must be relative to the sync target (no leading /)", p)
 		}
 		for _, seg := range strings.Split(p, "/") {
 			if seg == ".." {
@@ -626,6 +663,11 @@ func readStateFile(path, noun string) (*UserState, int, error) {
 	if version == 0 {
 		applyLegacyKeys(&state, data)
 	}
+	// Retired keys are the exception to that gate: #373 is about keys whose
+	// values are carried over, and these have no value to carry. The only
+	// question left is whether the file still sets one, which the save must
+	// answer out loud, stamped or not.
+	detectRetiredKeys(&state, data)
 	rewriteRetiredValues(&state)
 	return &state, version, nil
 }
@@ -749,6 +791,15 @@ func saveStateAt(path string, state *UserState) error {
 	if len(state.carriedLegacy) > 0 {
 		fmt.Fprintf(os.Stderr, "note: migrated legacy state keys to their canonical form: %s\n",
 			strings.Join(state.carriedLegacy, ", "))
+	}
+	// A retired key is the other half of the same notice: nothing replaces its
+	// value, so the note has to name the command that sets the replacement.
+	// Printed once and cleared, so a run that saves twice says it once.
+	if len(state.retiredKeys) > 0 {
+		for _, key := range state.retiredKeys {
+			fmt.Fprintf(os.Stderr, "note: dropped the retired `%s` key: %s\n", key, retiredStateKeys[key])
+		}
+		state.retiredKeys = nil
 	}
 	return nil
 }

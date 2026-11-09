@@ -57,7 +57,8 @@ func ParseTarget(spec string) (Target, error) {
 		}
 		return Target{Kind: TargetSSH, Host: host, Path: path}, nil
 	default:
-		// Bare paths keep legacy mirror_path values working.
+		// A bare path is the shorthand `dot sync target ~/Dropbox/work` takes;
+		// it is not a read of any retired config key.
 		if err := validateTargetField("local path", spec, true); err != nil {
 			return Target{}, err
 		}

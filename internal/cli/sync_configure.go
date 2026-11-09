@@ -59,7 +59,6 @@ func runSyncConfigure(cmd *cobra.Command, _ []string) error {
 		}
 		if target.Kind == syncer.TargetLocal {
 			target.Path = appsettings.ExpandHome(target.Path, homeFor(cmd))
-			local.MirrorPath = target.Path
 		}
 		local.Target = target.String()
 	}

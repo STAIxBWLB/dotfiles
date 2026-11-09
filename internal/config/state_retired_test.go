@@ -65,3 +65,57 @@ func TestLoadState_StampedFileIgnoresStrayLegacyKey(t *testing.T) {
 		t.Fatalf("stray legacy keys were overlaid: ai=%v warp=%v carried=%v", loaded.Modules.AI.Enabled, loaded.Modules.Warp, loaded.carriedLegacy)
 	}
 }
+
+// #394 row 10: modules.gsync.mirror_path lost its last reader, so a file that
+// still sets it must stop carrying it and say so once. The stamped version is
+// the point: #373's gate governs keys whose values are carried over, and this
+// one has no value left to carry, so the note has to fire for a canonical file
+// too.
+func TestLoadState_DropsTheRetiredMirrorPathKeyOnce(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	body := "schema_version: 4\nname: Test\nprofile: full\nmodules:\n  gsync:\n    mirror_path: /legacy/mirror\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := loadStateAt(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(loaded.retiredKeys) != 1 || loaded.retiredKeys[0] != "modules.gsync.mirror_path" {
+		t.Fatalf("retiredKeys = %v, want [modules.gsync.mirror_path]", loaded.retiredKeys)
+	}
+
+	out := captureStderr(t, func() {
+		if err := saveStateAt(path, loaded); err != nil {
+			t.Fatalf("save: %v", err)
+		}
+	})
+	if got := strings.Count(out, "note: dropped the retired `modules.gsync.mirror_path` key"); got != 1 {
+		t.Fatalf("want exactly one retired-key note, got %d in %q", got, out)
+	}
+	if !strings.Contains(out, "`dot sync target`") {
+		t.Errorf("the note does not name the command that sets the replacement: %q", out)
+	}
+
+	data, _ := os.ReadFile(path)
+	if strings.Contains(string(data), "mirror_path") {
+		t.Fatalf("saved file still carries the retired key:\n%s", data)
+	}
+
+	// One note per run: the save that announced the key clears the flag.
+	if again := captureStderr(t, func() {
+		if err := saveStateAt(path, loaded); err != nil {
+			t.Fatalf("second save: %v", err)
+		}
+	}); strings.Contains(again, "retired") {
+		t.Errorf("second save repeated the note: %q", again)
+	}
+
+	reloaded, err := loadStateAt(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reloaded.retiredKeys) != 0 {
+		t.Errorf("rewritten file still reports retired keys: %v", reloaded.retiredKeys)
+	}
+}

@@ -282,8 +282,9 @@ func resolveConfig(state *config.UserState, migrate bool, home, profile string) 
 		}
 	}
 
-	// Resolve the destination: the canonical `target` spec wins, then the
-	// legacy mirror_path (local + global), then the detected cloud default.
+	// Resolve the destination: the store's `target` spec decides it, else the
+	// detected cloud default. The retired `mirror_path` key is not read at all
+	// (#394 row 10); a file that still carries one is only noted at save.
 	var target Target
 	mirrorIsDefault := false
 	if spec := strings.TrimSpace(localCfg.Target); spec != "" {
@@ -293,15 +294,8 @@ func resolveConfig(state *config.UserState, migrate bool, home, profile string) 
 		}
 		target = t
 	} else {
-		mirrorPath := localCfg.MirrorPath
-		if mirrorPath == "" {
-			mirrorPath = gs.MirrorPath
-		}
-		mirrorIsDefault = mirrorPath == ""
-		if mirrorIsDefault {
-			mirrorPath = defaultMirrorPath(home)
-		}
-		target = Target{Kind: TargetLocal, Path: mirrorPath}
+		mirrorIsDefault = true
+		target = Target{Kind: TargetLocal, Path: defaultMirrorPath(home)}
 	}
 	mirrorPath := ""
 	if target.Kind == TargetLocal {
@@ -639,7 +633,7 @@ func refuseSharedDriveMirror(cfg *Config) error {
 		return fmt.Errorf(
 			"refusing to sync: mirror %q resolves under a Drive 'Shared drives' root.\n"+
 				"Workspace-authoritative semantics would propagate deletions into a team drive.\n"+
-				"Point gsync.mirror_path at a folder under My Drive instead",
+				"Set the sync target to a folder under My Drive instead (`dot sync target`)",
 			cfg.MirrorPath,
 		)
 	}

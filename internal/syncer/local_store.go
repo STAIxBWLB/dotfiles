@@ -135,7 +135,8 @@ func (p PropagationPolicy) String() string {
 // settings. Persists to <localStoreDir>/config.yaml.
 type LocalConfig struct {
 	// Target is the canonical destination spec ("local:~/Dropbox/work" or
-	// "ssh:user@host:path"). When empty, MirrorPath (legacy) applies.
+	// "ssh:user@host:path"). When empty, ResolveConfig uses the detected cloud
+	// default; it never consults a mirror path from anywhere else.
 	Target string `yaml:"target,omitempty"`
 	// Owner is the hostname allowed to push this profile. A mirror with two
 	// pushers corrupts: both carry different baselines and delete propagation
@@ -164,7 +165,6 @@ type LocalConfig struct {
 	// the opposite: "either machine can continue the same work" includes the
 	// uncommitted state inside submodules, which Git by definition has not seen.
 	IncludeSubmodules bool              `yaml:"include_submodules,omitempty"`
-	MirrorPath        string            `yaml:"mirror_path,omitempty"`
 	FilterMode        FilterMode        `yaml:"filter_mode,omitempty"`
 	Propagation       PropagationPolicy `yaml:"propagation"`
 	MaxDelete         int               `yaml:"max_delete,omitempty"`
@@ -184,6 +184,12 @@ type LocalConfig struct {
 	// ("~/" is the peer's home). Unset, the newest release found there wins;
 	// set it to use a dev build (#176).
 	RemoteDot string `yaml:"remote_dot,omitempty"`
+	// retiredKeys names the keys the file this config was read from still
+	// carried after they stopped being read, in load order. Unexported, so it
+	// can never be written to disk and needs no tag; SaveLocalConfig prints one
+	// note per retired key and then clears it, which keeps a store that is
+	// written twice in one run quiet the second time.
+	retiredKeys []string
 }
 
 // LocalState holds non-config runtime telemetry — the sticky timestamps
@@ -471,6 +477,7 @@ func LoadLocalConfig(paths *LocalPaths) (*LocalConfig, bool, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, false, fmt.Errorf("parsing %s: %w", paths.ConfigFile, err)
 	}
+	cfg.retiredKeys = retiredLocalConfigKeysIn(data)
 	if err := cfg.Propagation.Validate(); err != nil {
 		// Fall back to defaults when on-disk policy is unusable rather than blocking.
 		fmt.Fprintf(os.Stderr, "warning: %s has invalid propagation (%v); using defaults\n", paths.ConfigFile, err)
@@ -518,7 +525,56 @@ func SaveLocalConfig(paths *LocalPaths, cfg *LocalConfig) error {
 	if data, err = keepUnknownConfigKeys(paths.ConfigFile, data); err != nil {
 		return err
 	}
-	return atomicWrite(paths.ConfigFile, data)
+	if err := atomicWrite(paths.ConfigFile, data); err != nil {
+		return err
+	}
+	announceRetiredLocalConfigKeys(paths.ConfigFile, cfg)
+	return nil
+}
+
+// announceRetiredLocalConfigKeys reports the keys this save dropped, once per
+// loaded config: a key that no release reads any more disappears here, and
+// saying so is the difference between a migration and a silent edit of the
+// user's file. Kept at the write choke point so no read path can print it.
+func announceRetiredLocalConfigKeys(path string, cfg *LocalConfig) {
+	if len(cfg.retiredKeys) == 0 {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "note: dropped the retired `%s` key from %s; `dot sync` uses this store's `target` (set it with `dot sync target`)\n",
+		strings.Join(cfg.retiredKeys, "`, `"), path)
+	cfg.retiredKeys = nil
+}
+
+// retiredLocalConfigKeys are the config keys this release no longer reads
+// (#394 row 10 removed mirror_path in favor of target). A save drops them
+// rather than carrying them the way keepUnknownConfigKeys carries a key
+// LocalConfig does not own, and LoadLocalConfig records them so the drop is
+// announced.
+var retiredLocalConfigKeys = []string{"mirror_path"}
+
+func isRetiredLocalConfigKey(key string) bool {
+	for _, retired := range retiredLocalConfigKeys {
+		if key == retired {
+			return true
+		}
+	}
+	return false
+}
+
+// retiredLocalConfigKeysIn returns the retired keys the given config bytes
+// still set to a non-empty value.
+func retiredLocalConfigKeysIn(data []byte) []string {
+	var probe map[string]any
+	if err := yaml.Unmarshal(data, &probe); err != nil {
+		return nil
+	}
+	var found []string
+	for _, key := range retiredLocalConfigKeys {
+		if value, ok := probe[key]; ok && value != nil && value != "" {
+			found = append(found, key)
+		}
+	}
+	return found
 }
 
 // keepUnknownConfigKeys carries over the top-level keys of the config on
@@ -554,7 +610,7 @@ func keepUnknownConfigKeys(path string, data []byte) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("refusing to save %s: %w", path, err)
 		}
-		if known[key.Value] || key.ShortTag() == "!!merge" {
+		if known[key.Value] || isRetiredLocalConfigKey(key.Value) || key.ShortTag() == "!!merge" {
 			continue
 		}
 		value, err := resolveYAMLAliases(was.Content[0].Content[i+1])
@@ -671,7 +727,6 @@ func UpdateLocalState(paths *LocalPaths, mutate func(*LocalState)) error {
 func localConfigFromGlobal(globalState *config.UserState) *LocalConfig {
 	gs := globalState.Modules.Gsync
 	return &LocalConfig{
-		MirrorPath:     gs.MirrorPath,
 		FilterMode:     DefaultFilterMode(),
 		Propagation:    DefaultPropagationPolicy(),
 		MaxDelete:      gs.MaxDelete,
@@ -686,8 +741,9 @@ func localConfigFromGlobal(globalState *config.UserState) *LocalConfig {
 
 // SeedFromGlobal writes <localStoreDir>/config.yaml for a workspace that has
 // none, from the machine-wide defaults in `state.modules.gdrive_sync`
-// (mirror path, max delete, shared excludes), which `dot sync target`
-// keeps for future workspaces. Returns the new LocalConfig.
+// (max delete, shared excludes). The destination is not among them: a store
+// starts with an empty `target`, so ResolveConfig uses the detected cloud
+// default until `dot sync target` sets one. Returns the new LocalConfig.
 func SeedFromGlobal(globalState *config.UserState, paths *LocalPaths) (*LocalConfig, error) {
 	cfg := localConfigFromGlobal(globalState)
 	if err := EnsureLocalLayout(paths); err != nil {

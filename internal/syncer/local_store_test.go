@@ -1,6 +1,7 @@
 package syncer
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -204,7 +205,7 @@ func TestLocalConfig_RoundTrip(t *testing.T) {
 	paths := ResolveLocalPaths(tmp)
 
 	original := &LocalConfig{
-		MirrorPath:     "/x/mirror",
+		Target:         "local:/x/mirror",
 		FilterMode:     FilterModeExclude,
 		Propagation:    PropagationPolicy{Create: true, Update: true, Delete: true},
 		MaxDelete:      500,
@@ -226,7 +227,7 @@ func TestLocalConfig_RoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatal("LoadLocalConfig reported missing after save")
 	}
-	if got.MirrorPath != original.MirrorPath ||
+	if got.Target != original.Target ||
 		got.FilterMode != original.FilterMode ||
 		got.Propagation != original.Propagation ||
 		got.MaxDelete != original.MaxDelete ||
@@ -410,7 +411,6 @@ func TestSeedFromGlobal_PopulatesLocalLayout(t *testing.T) {
 	paths := ResolveLocalPaths(tmp)
 
 	state := &config.UserState{}
-	state.Modules.Gsync.MirrorPath = "/legacy/mirror"
 	state.Modules.Gsync.MaxDelete = 250
 	state.Modules.Gsync.Interval = 600
 	state.Modules.Gsync.Paused = true
@@ -421,8 +421,12 @@ func TestSeedFromGlobal_PopulatesLocalLayout(t *testing.T) {
 		t.Fatalf("SeedFromGlobal: %v", err)
 	}
 	// Migrated fields:
-	if cfg.MirrorPath != "/legacy/mirror" || cfg.MaxDelete != 250 || cfg.Interval != 0 || !cfg.Paused {
+	if cfg.MaxDelete != 250 || cfg.Interval != 0 || !cfg.Paused {
 		t.Errorf("migrated fields wrong: %+v", cfg)
+	}
+	// The destination is not inherited: only the store's own target sets it.
+	if cfg.Target != "" {
+		t.Errorf("seeded Target = %q, want empty (destination is per-store)", cfg.Target)
 	}
 	if cfg.FilterMode != FilterModeInclude {
 		t.Errorf("migrated FilterMode = %q, want include", cfg.FilterMode)
@@ -451,14 +455,14 @@ func TestLoadOrSeedLocalConfig_MigrationRunsOnce(t *testing.T) {
 	paths := ResolveLocalPaths(tmp)
 
 	state := &config.UserState{}
-	state.Modules.Gsync.MirrorPath = "/legacy/mirror"
+	state.Modules.Gsync.MaxDelete = 777
 
 	first, err := LoadOrSeedLocalConfig(state, paths)
 	if err != nil {
 		t.Fatalf("first LoadOrSeedLocalConfig: %v", err)
 	}
 	// Mutate the disk-resident config so we can detect re-migration.
-	first.MirrorPath = "/edited/by/operator"
+	first.MaxDelete = 250
 	if err := SaveLocalConfig(paths, first); err != nil {
 		t.Fatalf("SaveLocalConfig: %v", err)
 	}
@@ -468,9 +472,87 @@ func TestLoadOrSeedLocalConfig_MigrationRunsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second LoadOrSeedLocalConfig: %v", err)
 	}
-	if second.MirrorPath != "/edited/by/operator" {
-		t.Errorf("re-migration overwrote local edits: MirrorPath = %q", second.MirrorPath)
+	if second.MaxDelete != 250 {
+		t.Errorf("re-migration overwrote local edits: MaxDelete = %d, want 250", second.MaxDelete)
 	}
+}
+
+// #394 row 10: a store that still carries the retired mirror_path key loads,
+// drops it on the next save (keepUnknownConfigKeys must not carry it back a
+// third time), and says so once. A second save in the same run stays quiet.
+func TestSaveLocalConfig_DropsTheRetiredMirrorPathKeyOnce(t *testing.T) {
+	tmp := t.TempDir()
+	paths := ResolveLocalPaths(tmp)
+	if err := os.MkdirAll(paths.StoreDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.ConfigFile, []byte("target: local:/dropbox/work\nmirror_path: /dropbox/work\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, ok, err := LoadLocalConfig(paths)
+	if err != nil || !ok {
+		t.Fatalf("LoadLocalConfig: ok=%v err=%v", ok, err)
+	}
+	if cfg.Target != "local:/dropbox/work" {
+		t.Fatalf("Target = %q, want the canonical value", cfg.Target)
+	}
+
+	out := captureSyncerStderr(t, func() {
+		if err := SaveLocalConfig(paths, cfg); err != nil {
+			t.Fatalf("SaveLocalConfig: %v", err)
+		}
+	})
+	if !strings.Contains(out, "note: dropped the retired `mirror_path` key") || !strings.Contains(out, "`dot sync target`") {
+		t.Errorf("save did not announce the drop once:\n%s", out)
+	}
+	saved, err := os.ReadFile(paths.ConfigFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(saved), "mirror_path") {
+		t.Errorf("saved config still carries the retired key:\n%s", saved)
+	}
+	if !strings.Contains(string(saved), "target: local:/dropbox/work") {
+		t.Errorf("saved config lost the target:\n%s", saved)
+	}
+
+	again, ok, err := LoadLocalConfig(paths)
+	if err != nil || !ok {
+		t.Fatalf("second LoadLocalConfig: ok=%v err=%v", ok, err)
+	}
+	if quiet := captureSyncerStderr(t, func() {
+		if err := SaveLocalConfig(paths, again); err != nil {
+			t.Fatalf("second SaveLocalConfig: %v", err)
+		}
+	}); quiet != "" {
+		t.Errorf("second save spoke again: %q", quiet)
+	}
+}
+
+// captureSyncerStderr runs fn with os.Stderr redirected to a pipe and returns
+// what was written. The syncer's notes go straight to os.Stderr and take no
+// injectable writer, so the pipe is the only seam.
+func captureSyncerStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	orig := os.Stderr
+	os.Stderr = w
+	done := make(chan string, 1)
+	go func() {
+		var buf strings.Builder
+		_, _ = io.Copy(&buf, r)
+		done <- buf.String()
+	}()
+	fn()
+	os.Stderr = orig
+	_ = w.Close()
+	out := <-done
+	_ = r.Close()
+	return out
 }
 
 func TestLocalState_RoundTrip(t *testing.T) {
@@ -635,7 +717,7 @@ func TestSaveLocalConfigRefusesRunawayAliases(t *testing.T) {
 // are exactly what it marshals (an untagged field would be carried twice).
 func TestLocalConfigKeysMatchWhatItMarshals(t *testing.T) {
 	full := LocalConfig{Target: "t", Owner: "o", OwnerAliases: []string{"a"}, OwnerEpoch: 1, FencePending: true, IncludeSubmodules: true,
-		MirrorPath: "m", FilterMode: DefaultFilterMode(), MaxDelete: 1, Interval: 1, PullInterval: 1, PushMode: "clean", PullMode: "clean",
+		FilterMode: DefaultFilterMode(), MaxDelete: 1, Interval: 1, PullInterval: 1, PushMode: "clean", PullMode: "clean",
 		Paused: true, SharedExcludes: []string{"x"}, Hooks: PeerHooks{OnActivate: []string{"a"}}, RemoteDot: "d", HostMerge: map[string][]string{"f": {"k"}}}
 	data, err := yaml.Marshal(&full)
 	if err != nil {
