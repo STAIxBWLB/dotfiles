@@ -8,38 +8,31 @@ import (
 	"testing"
 )
 
-func TestAIGroupBackupStatusCompatibility(t *testing.T) {
+func TestAIGroupBackupStatusReadOnly(t *testing.T) {
 	home := t.TempDir()
 	root := t.TempDir()
 	args := []string{"--home", home, "ai", "backup", "status", "--from", root, "--host", "fixture-host"}
 	before := treeDigest(t, home)
 	out, stderr, err := runDotForTest(args...)
-	if err != nil || strings.Contains(stderr, "deprecated") {
+	if err != nil || out == "" || strings.Contains(stderr, "deprecated") {
 		t.Fatalf("canonical status: %v\n%s", err, stderr)
-	}
-	legacy, warning, legacyErr := runDotForTest("--home", home, "ai", "status", "--from", root, "--host", "fixture-host")
-	if legacyErr != nil || legacy != out || !strings.Contains(warning, "dot ai backup status") || strings.Contains(legacy, "deprecated") {
-		t.Fatalf("legacy status: %v\nstdout=%s\nstderr=%s", legacyErr, legacy, warning)
 	}
 	if treeDigest(t, home) != before {
 		t.Fatal("backup status wrote to the home")
 	}
 }
 
-func TestAIGroupListCompatibility(t *testing.T) {
+func TestAIGroupDetailedList(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("PATH", t.TempDir())
 	for _, auth := range []bool{false, true} {
 		canonical := []string{"--home", home, "ai", "tools", "list", "--details"}
-		legacy := []string{"--home", home, "ai", "list"}
 		if auth {
 			canonical = append(canonical, "--include-auth")
-			legacy = append(legacy, "--include-auth")
 		}
-		out, _, err := runDotForTest(canonical...)
-		old, warning, oldErr := runDotForTest(legacy...)
-		if err != nil || oldErr != nil || out != old || !strings.Contains(warning, "dot ai tools list --details") || strings.Contains(old, "deprecated") {
-			t.Fatalf("list auth=%t: %v / %v\n%s", auth, err, oldErr, warning)
+		out, warning, err := runDotForTest(canonical...)
+		if err != nil || !strings.Contains(out, "Detected CLI tools") || strings.Contains(warning, "deprecated") {
+			t.Fatalf("list auth=%t: %v\nstdout=%s\nstderr=%s", auth, err, out, warning)
 		}
 	}
 	_, _, err := runDotForTest("ai", "tools", "list", "--details", "--json")
@@ -48,37 +41,25 @@ func TestAIGroupListCompatibility(t *testing.T) {
 	}
 }
 
-func TestAIGroupFamilyRollbackCompatibility(t *testing.T) {
-	home := t.TempDir()
-	_, _, canonical := runDotForTest("--home", home, "--dry-run", "ai", "family", "rollback", "amem")
-	_, warning, legacy := runDotForTest("--home", home, "--dry-run", "ai", "rollback", "amem")
-	if canonical == nil || legacy == nil || canonical.Error() != legacy.Error() || !strings.Contains(warning, "dot ai family rollback") {
-		t.Fatalf("rollback canonical=%v legacy=%v warning=%s", canonical, legacy, warning)
-	}
-}
-
-func TestAIGroupMCPCompatibilityAndOwnership(t *testing.T) {
+func TestAIGroupMCPOwnership(t *testing.T) {
 	for _, spec := range []struct {
-		id, legacy string
-		fake       func(*testing.T) string
-	}{{"amem", "memory", fakeAmem}, {"vmem", "vault", fakeVmem}, {"ares", "research", func(t *testing.T) string { return fakeAres(t, "0.1.0") }}} {
+		id   string
+		fake func(*testing.T) string
+	}{{"amem", fakeAmem}, {"vmem", fakeVmem}, {"ares", func(t *testing.T) string { return fakeAres(t, "0.1.0") }}} {
 		t.Run(spec.id, func(t *testing.T) {
 			binary := spec.fake(t)
 			home, files := researchFixture(t)
 			cfg := writeAgentsConfig(t, home, "kiro", "copilot")
 			before := treeDigest(t, home)
 			prefix := []string{"--home", home, "--config", cfg}
-			out, _, err := runDotForTest(append(append([]string{}, prefix...), "ai", "mcp", "status", spec.id)...)
-			legacy, warning, oldErr := runDotForTest(append(append([]string{}, prefix...), "ai", spec.legacy, "status")...)
-			if err != nil || oldErr != nil || out != legacy || !strings.Contains(warning, "dot ai mcp status "+spec.id) || strings.Contains(legacy, "deprecated") {
-				t.Fatalf("status parity: %v / %v\n%s", err, oldErr, warning)
+			_, warning, err := runDotForTest(append(append([]string{}, prefix...), "ai", "mcp", "status", spec.id)...)
+			if err != nil || strings.Contains(warning, "deprecated") {
+				t.Fatalf("status: %v\n%s", err, warning)
 			}
-			for _, command := range [][]string{{"ai", "mcp", "install", spec.id}, {"ai", spec.legacy, "install"}} {
-				args := append(append([]string{}, prefix...), "--dry-run")
-				plan, _, planErr := runDotForTest(append(args, command...)...)
-				if planErr != nil || !strings.Contains(plan, "would write") {
-					t.Fatalf("dry run %v: %v\n%s", command, planErr, plan)
-				}
+			args := append(append([]string{}, prefix...), "--dry-run", "ai", "mcp", "install", spec.id)
+			plan, _, planErr := runDotForTest(args...)
+			if planErr != nil || !strings.Contains(plan, "would write") {
+				t.Fatalf("dry run: %v\n%s", planErr, plan)
 			}
 			if treeDigest(t, home) != before {
 				t.Fatal("status or dry run wrote to the fixture")
@@ -145,5 +126,31 @@ func TestAIGroupMCPRequiresSelectionForExplicitHome(t *testing.T) {
 		if treeDigest(t, home) != before {
 			t.Fatalf("%s wrote before validating selection", id)
 		}
+	}
+}
+
+func TestAIGroupRemovedAliasesRejectWithoutWrites(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("PATH", t.TempDir())
+	before := treeDigest(t, home)
+	for _, route := range [][]string{
+		{"list"}, {"status"}, {"rollback", "amem"},
+		{"memory", "install"}, {"memory", "status"},
+		{"vault", "install"}, {"vault", "status"},
+		{"research"}, {"research", "install"}, {"research", "status"},
+	} {
+		args := append([]string{"--home", home, "ai"}, route...)
+		if _, _, err := runDotForTest(args...); err == nil || !strings.Contains(err.Error(), "unknown command") || !strings.Contains(err.Error(), "--help") {
+			t.Errorf("removed route %v must fail with guidance: %v", route, err)
+		}
+	}
+	for _, route := range [][]string{{"ai"}, {"ai", "memory"}, {"ai", "vault"}} {
+		args := append([]string{"--home", home}, route...)
+		if out, _, err := runDotForTest(args...); err != nil || !strings.Contains(out, "Usage:") {
+			t.Errorf("bare group %v must still show help: %v\n%s", route, err, out)
+		}
+	}
+	if treeDigest(t, home) != before {
+		t.Fatal("removed command wrote files")
 	}
 }

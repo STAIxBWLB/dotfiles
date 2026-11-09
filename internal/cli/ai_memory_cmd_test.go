@@ -77,7 +77,7 @@ func TestAgentsApplyDryRunWritesNeitherTheSSOTNorTargets(t *testing.T) {
 	}
 }
 
-// AC2: `dot ai memory install` on a clean HOME registers amem for Kiro and Copilot, writes no launchd
+// AC2: `dot ai mcp install amem` on a clean HOME registers amem for Kiro and Copilot, writes no launchd
 // agent, leaves the `amem setup` clients alone, and prints the `amem setup` lines.
 func fakeAmem(t *testing.T) string {
 	t.Helper()
@@ -95,7 +95,7 @@ func TestMemoryInstallOnCleanHomeRegistersKiroAndCopilotWithNoLaunchAgent(t *tes
 	home := t.TempDir()
 	amem := fakeAmem(t)
 	cfg := writeAgentsConfig(t, home, "kimi", "qwen", "antigravity", "kiro", "copilot")
-	out, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "memory", "install")
+	out, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "mcp", "install", "amem")
 	if err != nil {
 		t.Fatalf("install: %v\nstderr=%s", err, errOut)
 	}
@@ -133,7 +133,7 @@ func TestMemoryInstallDryRunWritesNothingAndSaysWhatItWould(t *testing.T) {
 	home := t.TempDir()
 	fakeAmem(t)
 	cfg := writeAgentsConfig(t, home, "kimi", "qwen", "antigravity", "kiro", "copilot")
-	out, errOut, err := runDotForTest("--home", home, "--config", cfg, "--dry-run", "ai", "memory", "install")
+	out, errOut, err := runDotForTest("--home", home, "--config", cfg, "--dry-run", "ai", "mcp", "install", "amem")
 	if err != nil {
 		t.Fatalf("%v\n%s", err, errOut)
 	}
@@ -163,7 +163,7 @@ func TestMemoryInstallWithOnlyAmemSetupClientsSaysWhyNothingIsWritten(t *testing
 	home := t.TempDir()
 	fakeAmem(t)
 	cfg := writeAgentsConfig(t, home, "kimi", "qwen")
-	out, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "memory", "install")
+	out, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "mcp", "install", "amem")
 	if err != nil {
 		t.Fatalf("%v\n%s", err, errOut)
 	}
@@ -181,7 +181,7 @@ func TestMemoryInstallWithoutAmemOnPathExplainsTheExactInstall(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("PATH", t.TempDir())
 	cfg := writeAgentsConfig(t, home, "kiro")
-	_, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "memory", "install")
+	_, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "mcp", "install", "amem")
 	if err == nil || !strings.Contains(err.Error()+errOut, "@staix/agent-mem "+aisettings.AmemSupportedRange) {
 		t.Fatalf("no actionable message: %v\n%s", err, errOut)
 	}
@@ -194,17 +194,17 @@ func TestMemoryStatusSaysWhichAgentsAreReady(t *testing.T) {
 	home := t.TempDir()
 	fakeAmem(t)
 	cfg := writeAgentsConfig(t, home, "kimi", "qwen", "antigravity", "kiro", "copilot")
-	out, _, err := runDotForTest("--home", home, "--config", cfg, "ai", "memory", "status")
+	out, _, err := runDotForTest("--home", home, "--config", cfg, "ai", "mcp", "status", "amem")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(out, "ready") {
 		t.Fatalf("a clean home reported ready:\n%s", out)
 	}
-	if _, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "memory", "install"); err != nil {
+	if _, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "mcp", "install", "amem"); err != nil {
 		t.Fatalf("%v\n%s", err, errOut)
 	}
-	out, _, err = runDotForTest("--home", home, "--config", cfg, "ai", "memory", "status")
+	out, _, err = runDotForTest("--home", home, "--config", cfg, "ai", "mcp", "status", "amem")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -392,7 +392,7 @@ func TestMemoryStatusDoesNotCallAnUnselectedAgentMissing(t *testing.T) {
 	home := t.TempDir()
 	fakeAmem(t)
 	cfg := writeAgentsConfig(t, home, "kiro")
-	out, _, err := runDotForTest("--home", home, "--config", cfg, "ai", "memory", "status")
+	out, _, err := runDotForTest("--home", home, "--config", cfg, "ai", "mcp", "status", "amem")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -433,7 +433,7 @@ func TestMemoryStatusWarnsOnlyOutsideTheSupportedRange(t *testing.T) {
 			home := t.TempDir()
 			fakeAmemScript(t, c.script)
 			cfg := writeAgentsConfig(t, home, "kiro")
-			out, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "memory", "status")
+			out, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "mcp", "status", "amem")
 			if err != nil {
 				t.Fatal(err)
 			}

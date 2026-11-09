@@ -20,6 +20,10 @@ store, and 'dot ai memory archive' moves stale files out of the loaded layer
 'dot ai memory retire-claude-mem' removes the old claude-mem integration. It is
 a dry run unless --apply is given.
 
+```
+dot ai memory [flags]
+```
+
 ### Options
 
 ```

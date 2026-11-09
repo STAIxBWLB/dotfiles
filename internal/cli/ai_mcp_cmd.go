@@ -6,23 +6,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// deprecatedAICommand keeps a moved command callable for one release. Cobra's
-// Deprecated field prints on stdout; warnings here must not corrupt payloads.
-func deprecatedAICommand(cmd *cobra.Command, replacement string) *cobra.Command {
-	cmd.Hidden = true
-	cmd.Short = "Deprecated: use " + replacement
-	cmd.Long = "Deprecated: use '" + replacement + "' instead. This compatibility path will be removed after one release.\n\n" + cmd.Long
-	validate := cmd.Args
-	cmd.Args = func(c *cobra.Command, args []string) error {
-		fmt.Fprintf(c.ErrOrStderr(), "Warning: %s is deprecated; use '%s' instead. This compatibility path will be removed after one release.\n", c.CommandPath(), replacement)
-		if validate != nil {
-			return validate(c, args)
-		}
-		return nil
-	}
-	return cmd
-}
-
 func newAIMCPCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use: "mcp",

@@ -15,6 +15,7 @@ import (
 func newAIVaultCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "vault",
+		RunE:  runAIGroupHelp,
 		Short: "Retire the legacy Obsidian MCP integration",
 		Long: `Register vmem (@staix/vault-mem) as the agents' vault server for Kiro and
 GitHub Copilot, and print the 'vmem setup' lines for Claude Code, Codex, Kimi,
@@ -27,8 +28,6 @@ version yourself or with 'dot ai family install vmem', then run 'dot ai mcp inst
 ("obsidian", @bitbonsai/mcpvault) from the configs dot owns and prints the
 lines for the rest. It is a dry run unless --apply is given.`,
 	}
-	cmd.AddCommand(deprecatedAICommand(newAIVaultInstallCmd(), "dot ai mcp install vmem"))
-	cmd.AddCommand(deprecatedAICommand(newAIVaultStatusCmd(), "dot ai mcp status vmem"))
 	cmd.AddCommand(newAIVaultRetireCmd())
 	return cmd
 }

@@ -60,7 +60,7 @@ func TestVaultInstallDryRunListsEveryFileAndWritesNothing(t *testing.T) {
 	home, files := vaultFixture(t)
 	before := snapshotFiles(t, files)
 	ssotBefore := readFile(t, ssotFor(t, home))
-	out, errOut, err := runDotForTest("--home", home, "--dry-run", "ai", "vault", "install")
+	out, errOut, err := runDotForTest("--home", home, "--dry-run", "ai", "mcp", "install", "vmem")
 	if err != nil {
 		t.Fatalf("%v %s", err, errOut)
 	}
@@ -80,7 +80,7 @@ func TestVaultInstallRegistersKiroAndCopilotIdempotently(t *testing.T) {
 	claudeBefore, codexBefore := readFile(t, files["claude"]), readFile(t, files["codex"])
 	cfg := writeAgentsConfig(t, home, "kiro", "copilot")
 	for i := 0; i < 2; i++ {
-		if _, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "vault", "install"); err != nil {
+		if _, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "mcp", "install", "vmem"); err != nil {
 			t.Fatalf("%v %s", err, errOut)
 		}
 	}
@@ -113,7 +113,7 @@ func TestVaultInstallRegistersKiroAndCopilotIdempotently(t *testing.T) {
 	if readFile(t, files["claude"]) != claudeBefore || readFile(t, files["codex"]) != codexBefore {
 		t.Fatal("install touched a file dot does not own")
 	}
-	out, _, err := runDotForTest("--home", home, "--config", cfg, "--dry-run", "ai", "vault", "install")
+	out, _, err := runDotForTest("--home", home, "--config", cfg, "--dry-run", "ai", "mcp", "install", "vmem")
 	if err != nil || !strings.Contains(out, "Nothing to change") {
 		t.Fatalf("not idempotent: %v\n%s", err, out)
 	}
@@ -122,7 +122,7 @@ func TestVaultInstallRegistersKiroAndCopilotIdempotently(t *testing.T) {
 func TestVaultStatusWarnsWhileObsidianIsRegistered(t *testing.T) {
 	fakeVmem(t)
 	home, files := vaultFixture(t)
-	out, errOut, err := runDotForTest("--home", home, "ai", "vault", "status")
+	out, errOut, err := runDotForTest("--home", home, "ai", "mcp", "status", "vmem")
 	if err != nil {
 		t.Fatalf("%v %s", err, errOut)
 	}
@@ -137,7 +137,7 @@ func TestVaultStatusWarnsWhileObsidianIsRegistered(t *testing.T) {
 	}
 	clean := t.TempDir()
 	writeCLITestFile(t, ssotFor(t, clean), "# Rules\n")
-	out, errOut, _ = runDotForTest("--home", clean, "ai", "vault", "status")
+	out, errOut, _ = runDotForTest("--home", clean, "ai", "mcp", "status", "vmem")
 	if strings.Contains(out+errOut, "still registered") {
 		t.Fatalf("warned without obsidian:\n%s", out+errOut)
 	}
@@ -147,7 +147,7 @@ func TestVaultRetireIsDryRunByDefaultAndNeverTouchesUnownedFiles(t *testing.T) {
 	fakeVmem(t)
 	home, files := vaultFixture(t)
 	cfg := writeAgentsConfig(t, home, "kiro", "copilot")
-	if _, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "vault", "install"); err != nil {
+	if _, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "mcp", "install", "vmem"); err != nil {
 		t.Fatalf("%v %s", err, errOut)
 	}
 	before := snapshotFiles(t, files)
@@ -190,7 +190,7 @@ func TestVaultRetireRefusesWithoutVmem(t *testing.T) {
 	if !equalMaps(snapshotFiles(t, files), before) {
 		t.Fatal("refused run changed files")
 	}
-	if _, _, err := runDotForTest("--home", home, "ai", "vault", "install"); err == nil {
+	if _, _, err := runDotForTest("--home", home, "ai", "mcp", "install", "vmem"); err == nil {
 		t.Fatal("install without vmem succeeded")
 	}
 }
@@ -200,7 +200,7 @@ func TestVaultRetireSkipsUnselectedAgents(t *testing.T) {
 	fakeVmem(t)
 	home, files := vaultFixture(t)
 	both := writeAgentsConfig(t, home, "kiro", "copilot")
-	if _, errOut, err := runDotForTest("--home", home, "--config", both, "ai", "vault", "install"); err != nil {
+	if _, errOut, err := runDotForTest("--home", home, "--config", both, "ai", "mcp", "install", "vmem"); err != nil {
 		t.Fatalf("%v %s", err, errOut)
 	}
 	copilotBefore := readFile(t, files["copilot"])

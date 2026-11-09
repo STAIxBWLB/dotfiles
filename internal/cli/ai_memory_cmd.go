@@ -17,6 +17,7 @@ import (
 func newAIMemoryCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "memory",
+		RunE:  runAIGroupHelp,
 		Short: "Audit and archive native agent memory",
 		Long: `Register amem (@staix/agent-mem) as the project memory for Kiro and
 GitHub Copilot, and print the 'amem setup' lines for Claude Code, Codex, Kimi,
@@ -34,8 +35,6 @@ store, and 'dot ai memory archive' moves stale files out of the loaded layer
 'dot ai memory retire-claude-mem' removes the old claude-mem integration. It is
 a dry run unless --apply is given.`,
 	}
-	cmd.AddCommand(deprecatedAICommand(newAIMemoryInstallCmd(), "dot ai mcp install amem"))
-	cmd.AddCommand(deprecatedAICommand(newAIMemoryStatusCmd(), "dot ai mcp status amem"))
 	cmd.AddCommand(newAIMemoryRetireCmd())
 	cmd.AddCommand(newAIMemoryAuditCmd())
 	cmd.AddCommand(newAIMemoryArchiveCmd())

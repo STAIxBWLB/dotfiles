@@ -29,7 +29,7 @@ func TestAIFamilyCommands(t *testing.T) {
 	if err != nil || !strings.Contains(out, "ahub: not-installed") || !strings.Contains(out, "vmem: not-installed") || !strings.Contains(out, "ares: not-installed") || !strings.Contains(out, "acon: not-installed") {
 		t.Fatalf("status = %q, %v", out, err)
 	}
-	if _, _, err = runDotForTest("--home", home, "ai", "rollback", "amem"); err == nil || !strings.Contains(err.Error(), "no previous version") {
+	if _, _, err = runDotForTest("--home", home, "ai", "family", "rollback", "amem"); err == nil || !strings.Contains(err.Error(), "no previous version") {
 		t.Fatalf("rollback = %v", err)
 	}
 	if _, _, err = runDotForTest("--home", home, "ai", "family", "install", "amem", "--version", "latest"); err == nil || !strings.Contains(err.Error(), "stable X.Y.Z") {

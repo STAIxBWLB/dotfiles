@@ -15,6 +15,7 @@ import (
 func newAICmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ai",
+		RunE:  runAIGroupHelp,
 		Short: "AI CLI/config helpers and settings backup/restore",
 		Long: `Manage portable AI assistant configuration.
 
@@ -31,8 +32,6 @@ they are machine state pi rebuilds itself.`,
 	cmd.AddCommand(newAIToolsCmd())
 	cmd.AddCommand(newAIPolicyCmd())
 	cmd.AddCommand(newAISessionCmd())
-	cmd.AddCommand(deprecatedAICommand(newAIListCmd(), "dot ai tools list --details"))
-	cmd.AddCommand(deprecatedAICommand(newAIStatusCmd(), "dot ai backup status"))
 	cmd.AddCommand(newAIBackupCmd())
 	cmd.AddCommand(newAIRestoreCmd())
 	cmd.AddCommand(newAIExportCmd())
@@ -44,25 +43,19 @@ they are machine state pi rebuilds itself.`,
 	cmd.AddCommand(newAISkillsCmd())
 	cmd.AddCommand(newAIMemoryCmd())
 	cmd.AddCommand(newAIVaultCmd())
-	cmd.AddCommand(newAIResearchCmd())
 	cmd.AddCommand(newAIUpdateCmd())
 	cmd.AddCommand(newAIFamilyCmd())
 	cmd.AddCommand(newAIMCPCmd())
-	cmd.AddCommand(deprecatedAICommand(newAIRollbackCmd(), "dot ai family rollback"))
 	cmd.AddCommand(newAIAuthCmd())
 	cmd.AddCommand(newAIAuditCmd())
 	return cmd
 }
 
-func newAIListCmd() *cobra.Command {
-	c := &cobra.Command{
-		Use:   "list",
-		Short: "List AI helpers, detected CLIs, and managed paths",
-		Args:  cobra.NoArgs,
-		RunE:  runAIList,
+func runAIGroupHelp(cmd *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return fmt.Errorf("unknown command %q for %q; run '%s --help' for available commands", args[0], cmd.CommandPath(), cmd.CommandPath())
 	}
-	c.Flags().Bool("include-auth", false, "Show auth/local-secret paths that are excluded by default")
-	return c
+	return cmd.Help()
 }
 
 // extraDetectedCLIs are probed by `dot ai tools list --details` but are not `dot ai update`

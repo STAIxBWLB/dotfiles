@@ -142,7 +142,7 @@ func TestAIMemoryStatusAndDryRunAreReadOnly(t *testing.T) {
 	t.Setenv("PATH", amemDir)
 	before := treeOf(t, home)
 
-	status, errOut, err := runDotForTest("--home", home, "ai", "memory", "status")
+	status, errOut, err := runDotForTest("--home", home, "ai", "mcp", "status", "amem")
 	if err != nil {
 		t.Fatalf("memory status: %v\nstderr=%s", err, errOut)
 	}
@@ -152,7 +152,7 @@ func TestAIMemoryStatusAndDryRunAreReadOnly(t *testing.T) {
 		}
 	}
 
-	dryRun, errOut, err := runDotForTest("--home", home, "--dry-run", "ai", "memory", "install")
+	dryRun, errOut, err := runDotForTest("--home", home, "--dry-run", "ai", "mcp", "install", "amem")
 	if err != nil {
 		t.Fatalf("memory install --dry-run: %v\nstderr=%s", err, errOut)
 	}
