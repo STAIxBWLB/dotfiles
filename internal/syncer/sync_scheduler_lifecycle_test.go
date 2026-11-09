@@ -228,3 +228,89 @@ func schedulerLifecycleActionCount(commands []string) int {
 	}
 	return count
 }
+
+// `dot sync resume` is the command that re-arms installed units, so it is where
+// a unit installed before #394 gets its retired `--profile=` rewritten: the
+// service manager reads the command line at load time, so a rewrite without the
+// reload that follows here would leave the job broken.
+func TestSyncResumeMigratesAUnitInstalledWithTheRetiredStoreFlag(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("HOME", root)
+	binDir := filepath.Join(root, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	record := filepath.Join(root, "scheduler-args")
+	writeStub(t, filepath.Join(binDir, "launchctl"), "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$DOTFILES_TEST_SCHEDULER_ARGS\"\nexit 0\n")
+	writeStub(t, filepath.Join(binDir, "systemctl"), "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$DOTFILES_TEST_SCHEDULER_ARGS\"\necho active\nexit 0\n")
+	t.Setenv("PATH", binDir)
+	t.Setenv("DOTFILES_TEST_SCHEDULER_ARGS", record)
+
+	paths, err := resolvePathsForHomeProfile(root, "research")
+	if err != nil {
+		t.Fatalf("resolvePathsForHomeProfile: %v", err)
+	}
+	// Install the unit this platform's scheduler reads: the launchd plist on
+	// macOS, the systemd service elsewhere (its timer carries the state query
+	// and the reload).
+	unit := paths.PlistFor(SchedulerKindPush)
+	stale := "<string>" + retiredStoreFlag + "research</string>\n"
+	if runtime.GOOS != "darwin" {
+		unit = paths.SystemdServiceFor(SchedulerKindPush)
+		stale = "ExecStart=%s sync push " + retiredStoreFlag + "research\n"
+	}
+	if err := os.MkdirAll(filepath.Dir(unit), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(unit, []byte(stale), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "darwin" {
+		timer := paths.SystemdTimerFor(SchedulerKindPush)
+		if err := os.MkdirAll(filepath.Dir(timer), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(timer, []byte("[Timer]\nOnUnitActiveSec=15m\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	localPaths := ResolveLocalPaths(filepath.Join(root, "workspace"))
+	if err := SaveLocalConfig(localPaths, &LocalConfig{Propagation: DefaultPropagationPolicy()}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &Config{
+		Profile:     "research",
+		LocalPath:   filepath.Join(root, "workspace"),
+		LocalPaths:  localPaths,
+		SystemPaths: paths,
+		Interval:    900,
+		Paused:      true,
+	}
+	result, err := SyncResume(context.Background(), cfg, exec.NewRunner(false, slog.New(slog.NewTextHandler(io.Discard, nil))))
+	if err != nil {
+		t.Fatalf("SyncResume: %v", err)
+	}
+	if len(result.MigratedStores) != 1 || result.MigratedStores[0] != "research" {
+		t.Fatalf("migrated stores = %q, want [research]", result.MigratedStores)
+	}
+	if !result.SchedulerResumed {
+		t.Fatal("the installed unit was not re-armed after the migration")
+	}
+	body, err := os.ReadFile(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), retiredStoreFlag) || !strings.Contains(string(body), storeFlag+"research") {
+		t.Fatalf("%s still runs the retired flag:\n%s", unit, body)
+	}
+	// The migration itself talks to no service manager: the only calls are the
+	// state query and the reload the resume already made.
+	got := readSchedulerLifecycleCommands(t, record)
+	want := []string{
+		schedulerStateCommand(paths, SchedulerKindPush),
+		schedulerLifecycleCommand(paths, SchedulerKindPush, "resume"),
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("service-manager argv = %q, want %q", got, want)
+	}
+}

@@ -219,6 +219,92 @@ func profileArg(profile string) string {
 	return profile
 }
 
+// retiredStoreFlag is the scheduler store argument removed in #394; storeFlag
+// is the spelling units render today. A unit stores the whole command line and
+// launchd and systemd replay it on every tick, while `dot update` and
+// `dot apply` never rewrite an installed unit. One rendered before the removal
+// therefore keeps invoking `dot sync push --profile=<store>` and fails with
+// "unknown flag" on every run, silently, until it is rewritten here.
+const (
+	retiredStoreFlag = "--profile="
+	storeFlag        = "--store="
+)
+
+// retiredStoreIn returns the store a rendered unit names with the retired
+// argument, or "" when it names none. The value ends where a rendered plist
+// (<string>--profile=peer</string>) or a systemd ExecStart (--profile=peer
+// "--home=…") ends it.
+func retiredStoreIn(content string) string {
+	idx := strings.Index(content, retiredStoreFlag)
+	if idx < 0 {
+		return ""
+	}
+	value := content[idx+len(retiredStoreFlag):]
+	if end := strings.IndexAny(value, " \t\r\n\"'<>"); end >= 0 {
+		value = value[:end]
+	}
+	return value
+}
+
+// installedUnitPath returns the unit file holding this platform's scheduler
+// for the kind: the launchd plist on macOS, the systemd service elsewhere.
+// Reading whichever file exists keeps the migration platform-neutral.
+func (s *Scheduler) installedUnitPath(kind SchedulerKind) string {
+	for _, path := range []string{s.Paths.PlistFor(kind), s.Paths.SystemdServiceFor(kind)} {
+		if path != "" && s.Runner.FileExists(path) {
+			return path
+		}
+	}
+	return ""
+}
+
+// StaleStoreUnit reports the store an installed unit names with the retired
+// --profile argument. Read-only, so status can name the fix without writing.
+//
+// The peer store is exempt: com.dotfiles.peer.plist belongs to `dot peer setup`
+// (it runs `dot peer sync` and renders no store argument), and `dot sync
+// --store=peer` is refused outright, so rewriting that file would leave a
+// command that cannot run. `dot peer setup` re-renders it.
+func (s *Scheduler) StaleStoreUnit(kind SchedulerKind) (string, bool) {
+	if s.Paths.schedulerProfile() == PeerProfile {
+		return "", false
+	}
+	path := s.installedUnitPath(kind)
+	if path == "" {
+		return "", false
+	}
+	content, err := s.Runner.ReadFile(path)
+	if err != nil {
+		return "", false
+	}
+	store := retiredStoreIn(string(content))
+	return store, store != ""
+}
+
+// MigrateStaleStoreUnit rewrites the retired argument to --store in place and
+// changes nothing else: store, mode, interval, --home and log paths stay as
+// the operator installed them, so a migration cannot silently re-time or
+// re-enable a scheduler. The caller reloads the unit, because loading is what
+// makes the service manager read the new command line.
+func (s *Scheduler) MigrateStaleStoreUnit(kind SchedulerKind) (string, error) {
+	store, stale := s.StaleStoreUnit(kind)
+	if !stale {
+		return "", nil
+	}
+	path := s.installedUnitPath(kind)
+	content, err := s.Runner.ReadFile(path)
+	if err != nil {
+		return store, fmt.Errorf("reading installed unit %s: %w", path, err)
+	}
+	// The unit holds exactly one store argument, inside the ProgramArguments
+	// entry the plist or systemd template rendered.
+	migrated := strings.ReplaceAll(string(content), retiredStoreFlag, storeFlag)
+	if err := s.Runner.WriteFileAtomic(path, []byte(migrated), 0644); err != nil {
+		return store, fmt.Errorf("rewriting installed unit %s: %w", path, err)
+	}
+	return store, nil
+}
+
 type Scheduler struct {
 	Runner *exec.Runner
 	Paths  *Paths

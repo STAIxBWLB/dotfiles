@@ -109,6 +109,7 @@ func runSyncStatus(cmd *cobra.Command, _ []string) error {
 	} else {
 		p.KV("Pull scheduler", "(off — `dot sync setup --pull-interval=DUR` to enable)")
 	}
+	reportStaleStoreUnits(p, sched)
 	if st.Propagation.Delete {
 		p.KV("Max delete", fmt.Sprintf("%d", st.MaxDelete))
 	}
@@ -132,6 +133,29 @@ func runSyncStatus(cmd *cobra.Command, _ []string) error {
 	}
 	p.Blank()
 	return nil
+}
+
+// reportStaleStoreUnits names an installed unit that still calls
+// `dot sync --profile=<store>`. This release rejects that flag, and neither
+// `dot update` nor `dot apply` rewrites an installed unit, so the scheduled run
+// fails on every tick while status would otherwise report it as running (#394).
+// Status stays read-only: it prints the reload pair that rewrites the unit,
+// which is the same idiom the spawn-failed recovery already names.
+func reportStaleStoreUnits(p *Printer, sched *syncer.Scheduler) {
+	for _, unit := range []struct {
+		kind  syncer.SchedulerKind
+		label string
+	}{
+		{syncer.SchedulerKindPush, "push"},
+		{syncer.SchedulerKindIntake, "pull"},
+	} {
+		store, stale := sched.StaleStoreUnit(unit.kind)
+		if !stale {
+			continue
+		}
+		command := fmt.Sprintf("dot sync --store=%s pause && dot sync --store=%s resume", store, store)
+		p.Warn("the installed %s unit still calls `dot sync --profile=%s`, which this release no longer accepts, so its scheduled runs fail; reload it with `%s`", unit.label, store, command)
+	}
 }
 
 // printConflictState shows live conflicts apart from retained backups (#264):

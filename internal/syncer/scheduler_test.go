@@ -620,3 +620,157 @@ func TestResolvedPathsIncludeSchedulerArtifacts(t *testing.T) {
 		t.Errorf("SystemdTimer tail wrong: %s", paths.SystemdTimer)
 	}
 }
+
+// A unit installed before #394 stores the whole command line with
+// `dot sync push --profile=<store>`, a flag this release rejects. Nothing
+// rewrites an installed unit (neither `dot update` nor `dot apply` touches it)
+// and launchd and systemd replay the stored line, so the scheduled run fails
+// with "unknown flag" on every tick. The fixtures are real renders of the
+// current templates with the flag spelled the old way, which is byte-identical
+// to what 2.80.1 installed.
+func TestSchedulerMigratesUnitsInstalledWithTheRetiredStoreFlag(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		tmpl string
+		unit func(*Paths, SchedulerKind) string
+	}{
+		{"launchd plist", "sync/com.dotfiles.sync.plist.tmpl", (*Paths).PlistFor},
+		{"systemd service", "sync/dotfiles-sync.service.tmpl", (*Paths).SystemdServiceFor},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := resolvedSchedulerConfig(t, t.TempDir(), "research")
+			scheduler, paths, err := ResolveScheduler(cfg, peerScheduleRunner(false))
+			if err != nil {
+				t.Fatalf("ResolveScheduler: %v", err)
+			}
+			data := scheduler.templateDataFor(SchedulerKindPush)
+			if err := preparePlistTemplateData(&data); err != nil {
+				t.Fatal(err)
+			}
+			current, err := scheduler.Engine.Render(tc.tmpl, data)
+			if err != nil {
+				t.Fatalf("render %s: %v", tc.tmpl, err)
+			}
+			unit := tc.unit(paths, SchedulerKindPush)
+			if err := os.MkdirAll(filepath.Dir(unit), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			installed := strings.ReplaceAll(string(current), storeFlag+"research", retiredStoreFlag+"research")
+			if installed == string(current) {
+				t.Fatalf("fixture did not render a store argument:\n%s", current)
+			}
+			if err := os.WriteFile(unit, []byte(installed), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			if store, stale := scheduler.StaleStoreUnit(SchedulerKindPush); store != "research" || !stale {
+				t.Fatalf("StaleStoreUnit = %q, %v; want research, true", store, stale)
+			}
+			store, err := scheduler.MigrateStaleStoreUnit(SchedulerKindPush)
+			if err != nil || store != "research" {
+				t.Fatalf("MigrateStaleStoreUnit = %q, %v; want research", store, err)
+			}
+			migrated, err := os.ReadFile(unit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Only the flag changed: the store, mode, interval, --home and log
+			// paths are exactly what a fresh render writes.
+			if string(migrated) != string(current) {
+				t.Fatalf("migrated unit =\n%s\nwant the fresh render\n%s", migrated, current)
+			}
+			if _, stale := scheduler.StaleStoreUnit(SchedulerKindPush); stale {
+				t.Fatal("the migrated unit still names the retired flag")
+			}
+			if store, err := scheduler.MigrateStaleStoreUnit(SchedulerKindPush); err != nil || store != "" {
+				t.Fatalf("second migration = %q, %v; want a no-op", store, err)
+			}
+		})
+	}
+}
+
+// A unit for the default store renders no store argument at all, so the
+// migration must leave it byte-identical: rewriting a working scheduler is not
+// part of the fix.
+func TestSchedulerLeavesUnitsWithoutAStoreArgumentAlone(t *testing.T) {
+	cfg := resolvedSchedulerConfig(t, t.TempDir(), DefaultProfile)
+	scheduler, paths, err := ResolveScheduler(cfg, peerScheduleRunner(false))
+	if err != nil {
+		t.Fatalf("ResolveScheduler: %v", err)
+	}
+	data := scheduler.templateDataFor(SchedulerKindPush)
+	if err := preparePlistTemplateData(&data); err != nil {
+		t.Fatal(err)
+	}
+	current, err := scheduler.Engine.Render("sync/com.dotfiles.sync.plist.tmpl", data)
+	if err != nil {
+		t.Fatalf("render plist: %v", err)
+	}
+	unit := paths.PlistFor(SchedulerKindPush)
+	if err := os.MkdirAll(filepath.Dir(unit), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(unit, current, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if store, stale := scheduler.StaleStoreUnit(SchedulerKindPush); stale {
+		t.Fatalf("default-store unit read as stale (store %q)", store)
+	}
+	if store, err := scheduler.MigrateStaleStoreUnit(SchedulerKindPush); err != nil || store != "" {
+		t.Fatalf("MigrateStaleStoreUnit = %q, %v; want a no-op", store, err)
+	}
+	body, err := os.ReadFile(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != string(current) {
+		t.Fatalf("a unit without a store argument was rewritten:\n%s", body)
+	}
+}
+
+// com.dotfiles.peer.plist belongs to `dot peer setup`, which renders
+// `dot peer sync` with no store argument, and `dot sync --store=peer` is
+// refused, so the peer store is outside the migration: rewriting that file
+// would leave a command that cannot run.
+func TestSchedulerLeavesThePeerSchedulerUnitAlone(t *testing.T) {
+	cfg := resolvedSchedulerConfig(t, t.TempDir(), PeerProfile)
+	scheduler, paths, err := ResolveScheduler(cfg, peerScheduleRunner(false))
+	if err != nil {
+		t.Fatalf("ResolveScheduler: %v", err)
+	}
+	unit := paths.PlistFor(SchedulerKindPush)
+	if err := os.MkdirAll(filepath.Dir(unit), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stale := "<string>" + retiredStoreFlag + "peer</string>\n"
+	if err := os.WriteFile(unit, []byte(stale), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if store, isStale := scheduler.StaleStoreUnit(SchedulerKindPush); isStale {
+		t.Fatalf("the peer scheduler unit read as stale (store %q)", store)
+	}
+	if store, err := scheduler.MigrateStaleStoreUnit(SchedulerKindPush); err != nil || store != "" {
+		t.Fatalf("MigrateStaleStoreUnit = %q, %v; want a no-op", store, err)
+	}
+	if body, err := os.ReadFile(unit); err != nil || string(body) != stale {
+		t.Fatalf("the peer scheduler unit was rewritten: %v\n%s", err, body)
+	}
+}
+
+// The store value ends at the argument boundary each unit format draws, so the
+// fix names exactly the store the operator installed.
+func TestRetiredStoreInReadsArgumentBoundaries(t *testing.T) {
+	for _, tc := range []struct{ content, want string }{
+		{"<string>--profile=peer</string>", "peer"},
+		{`ExecStart=/opt/homebrew/bin/dot sync push --mode=clean --profile=research-2 "--home=/Users/a work"`, "research-2"},
+		{"    <string>--profile=backup</string>\n", "backup"},
+		{"dot sync push --store=peer", ""},
+		{"", ""},
+	} {
+		if got := retiredStoreIn(tc.content); got != tc.want {
+			t.Errorf("retiredStoreIn(%q) = %q, want %q", tc.content, got, tc.want)
+		}
+	}
+}
