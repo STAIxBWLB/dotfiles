@@ -1,7 +1,7 @@
 // Package resourceguard admits one heavyweight job per repository, across all
 // worktrees and agent profiles, while enforcing shared host-pressure recovery.
 // It is a thin adapter over internal/admission, the engine behind `dot admit`,
-// so `dot ai run`, the tooling updates and `dot admit` contend for the same
+// so tooling updates and `dot admit` contend for the same
 // slots and read the same pressure history (#162).
 package resourceguard
 
@@ -244,7 +244,7 @@ func (a *adapter) acquirePolicy(ctx context.Context, opts Options, policy admiss
 		return nil, &DeferredError{Reason: "uncovered heavyweight work: " + strings.Join(jobs, ", ")}
 	}
 
-	// Children inherit the nested marker, so a `dot admit` or `dot ai run`
+	// Children inherit the nested marker, so a `dot admit` invocation
 	// inside this job runs in the slot instead of deadlocking on it.
 	// ponytail: process-wide env; fine while one guarded job runs per process.
 	prev, hadPrev := os.LookupEnv(admission.NestedEnv)

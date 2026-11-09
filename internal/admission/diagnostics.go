@@ -6,7 +6,7 @@ import (
 
 // UncoveredNote is the bypass-visibility disclaimer every status view
 // carries: the controller only sees jobs launched through it.
-const UncoveredNote = "jobs launched outside `dot admit` and `dot ai run` hold no lease; a bounded process-table scan catches common heavy work, not every process"
+const UncoveredNote = "jobs launched outside `dot admit` hold no lease; a bounded process-table scan catches common heavy work, not every process"
 
 // DeferOutcome is the machine-readable record `dot admit` prints when it
 // defers (exit 75, EX_TEMPFAIL). RetryAfterSeconds is advisory.

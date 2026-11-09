@@ -108,8 +108,6 @@ dot admit --project . --wait 6m -- cargo test -- --test-threads=2
 dot admit status                                       # owners, pressure evidence, hysteresis countdown
 ```
 
-`dot ai run` is a deprecated compatibility command for one release; use `dot admit` for new invocations. The compatibility command retains its 6-minute default wait (maximum 10 minutes), `--project`, dry run and supervised process cleanup.
-
 On defer `dot admit` exits 75 (`EX_TEMPFAIL`) and `--json` prints the machine-readable outcome (`scope`, `owner`, `reason`, `retry_after`). Leases carry pid + start time and a heartbeat, so a crashed owner's slot is reclaimed safely, and a job launched inside an admitted job runs in its parent's slot when it asks for the same scope and class. Thresholds mirror the workspace resource policy. State lives in the real user's `~/.local/state/dot/admission/`; `--home` does not partition it.
 
 ---
