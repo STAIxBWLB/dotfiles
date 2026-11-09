@@ -37,7 +37,7 @@ type StatusEntry struct {
 	ManagedByAgents bool
 }
 
-// StatusResult is the whole dot ai status view.
+// StatusResult is the whole dot ai backup status view.
 type StatusResult struct {
 	Hostname string
 	HostRoot string

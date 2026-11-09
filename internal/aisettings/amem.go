@@ -36,7 +36,7 @@ const AmemServerName = "amem"
 const (
 	memoryBlockStart = "<!-- dotfiles:amem:start -->"
 	memoryBlockEnd   = "<!-- dotfiles:amem:end -->"
-	// legacyMemoryBlockStart and End delimit the block `dot ai memory install`
+	// legacyMemoryBlockStart and End delimit the block `dot ai mcp install amem`
 	// wrote for claude-mem. Every apply removes it, once and exactly.
 	legacyMemoryBlockStart = "<!-- dotfiles:claude-mem:start -->"
 	legacyMemoryBlockEnd   = "<!-- dotfiles:claude-mem:end -->"

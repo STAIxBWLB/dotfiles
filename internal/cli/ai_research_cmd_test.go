@@ -46,7 +46,7 @@ func TestResearchInstallDryRunListsEveryFileAndWritesNothing(t *testing.T) {
 	home, files := researchFixture(t)
 	before := snapshotFiles(t, files)
 	ssotBefore := readFile(t, ssotFor(t, home))
-	out, errOut, err := runDotForTest("--home", home, "--dry-run", "ai", "research", "install")
+	out, errOut, err := runDotForTest("--home", home, "--dry-run", "ai", "mcp", "install", "ares")
 	if err != nil {
 		t.Fatalf("%v %s", err, errOut)
 	}
@@ -67,7 +67,7 @@ func TestResearchInstallRegistersKiroAndCopilotIdempotently(t *testing.T) {
 	claudeBefore, codexBefore := readFile(t, files["claude"]), readFile(t, files["codex"])
 	cfg := writeAgentsConfig(t, home, "kiro", "copilot")
 	for i := 0; i < 2; i++ {
-		if _, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "research", "install"); err != nil {
+		if _, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "mcp", "install", "ares"); err != nil {
 			t.Fatalf("%v %s", err, errOut)
 		}
 	}
@@ -91,11 +91,11 @@ func TestResearchInstallRegistersKiroAndCopilotIdempotently(t *testing.T) {
 	if readFile(t, files["claude"]) != claudeBefore || readFile(t, files["codex"]) != codexBefore {
 		t.Fatal("install touched a file dot does not own")
 	}
-	out, _, err := runDotForTest("--home", home, "--config", cfg, "--dry-run", "ai", "research", "install")
+	out, _, err := runDotForTest("--home", home, "--config", cfg, "--dry-run", "ai", "mcp", "install", "ares")
 	if err != nil || !strings.Contains(out, "Nothing to change") {
 		t.Fatalf("not idempotent: %v\n%s", err, out)
 	}
-	out, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "research", "status")
+	out, errOut, err := runDotForTest("--home", home, "--config", cfg, "ai", "mcp", "status", "ares")
 	if err != nil || strings.Count(out, "ready") != 3 || !strings.Contains(out, "0.1.0 (supported "+aisettings.AresSupportedRange+", compiled fallback)") || strings.Contains(out+errOut, "outside the supported range") {
 		t.Fatalf("status after install: %v\n%s%s", err, out, errOut)
 	}
@@ -106,13 +106,13 @@ func TestResearchWithoutAres(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	home, files := researchFixture(t)
 	before := snapshotFiles(t, files)
-	if _, _, err := runDotForTest("--home", home, "ai", "research", "install"); err == nil || !strings.Contains(err.Error(), "ares is not on PATH") {
+	if _, _, err := runDotForTest("--home", home, "ai", "mcp", "install", "ares"); err == nil || !strings.Contains(err.Error(), "ares is not on PATH") {
 		t.Fatalf("expected refusal, got %v", err)
 	}
 	if !equalMaps(snapshotFiles(t, files), before) {
 		t.Fatal("refused install changed files")
 	}
-	out, errOut, err := runDotForTest("--home", home, "ai", "research", "status")
+	out, errOut, err := runDotForTest("--home", home, "ai", "mcp", "status", "ares")
 	if err != nil || !strings.Contains(out, "not found on PATH") || !strings.Contains(out, "missing") {
 		t.Fatalf("status without ares: %v\n%s%s", err, out, errOut)
 	}
@@ -122,7 +122,7 @@ func TestResearchWithoutAres(t *testing.T) {
 func TestResearchStatusWarnsOnVersionMismatch(t *testing.T) {
 	fakeAres(t, "1.2.0")
 	home, _ := researchFixture(t)
-	out, errOut, err := runDotForTest("--home", home, "ai", "research", "status")
+	out, errOut, err := runDotForTest("--home", home, "ai", "mcp", "status", "ares")
 	if err != nil {
 		t.Fatalf("%v %s", err, errOut)
 	}

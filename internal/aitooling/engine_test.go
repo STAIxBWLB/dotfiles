@@ -344,7 +344,7 @@ func TestExplicitHomeClearsNativeRootAndCredentialOverrides(t *testing.T) {
 func TestClaudeMemIsNoLongerACatalogAddon(t *testing.T) {
 	for _, entry := range Catalog() {
 		if entry.ID == "claude-mem" || entry.ID == "amem" {
-			t.Fatalf("%s must not be an automatic add-on: amem is registered by `dot ai memory install`, never installed by dot", entry.ID)
+			t.Fatalf("%s must not be an automatic add-on: amem is registered by `dot ai mcp install amem`, never installed by dot", entry.ID)
 		}
 	}
 	if err := ValidateSelection(config.AIToolingConfig{Tools: []string{"claude-mem"}}); err == nil {

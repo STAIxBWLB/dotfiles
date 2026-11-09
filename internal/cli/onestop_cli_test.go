@@ -395,7 +395,7 @@ func TestHostFlagRejectsTraversal(t *testing.T) {
 		{"profile", "list", "--from", root, "--host", "../../etc"},
 		{"profile", "restore", "--from", root, "--host", "..", "--yes"},
 		{"profile", "prune", "--from", root, "--host", "a/b", "--keep", "0", "--yes"},
-		{"ai", "status", "--from", root, "--host", "../evil"},
+		{"ai", "backup", "status", "--from", root, "--host", "../evil"},
 	} {
 		_, _, err := runDotForTest(cmd...)
 		if err == nil || !strings.Contains(err.Error(), "invalid --host") {

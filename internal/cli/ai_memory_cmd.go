@@ -34,8 +34,6 @@ store, and 'dot ai memory archive' moves stale files out of the loaded layer
 'dot ai memory retire-claude-mem' removes the old claude-mem integration. It is
 a dry run unless --apply is given.`,
 	}
-	cmd.AddCommand(deprecatedAICommand(newAIMemoryInstallCmd(), "dot ai mcp install amem"))
-	cmd.AddCommand(deprecatedAICommand(newAIMemoryStatusCmd(), "dot ai mcp status amem"))
 	cmd.AddCommand(newAIMemoryRetireCmd())
 	cmd.AddCommand(newAIMemoryAuditCmd())
 	cmd.AddCommand(newAIMemoryArchiveCmd())

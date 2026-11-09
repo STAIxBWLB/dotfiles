@@ -27,8 +27,6 @@ version yourself or with 'dot ai family install vmem', then run 'dot ai mcp inst
 ("obsidian", @bitbonsai/mcpvault) from the configs dot owns and prints the
 lines for the rest. It is a dry run unless --apply is given.`,
 	}
-	cmd.AddCommand(deprecatedAICommand(newAIVaultInstallCmd(), "dot ai mcp install vmem"))
-	cmd.AddCommand(deprecatedAICommand(newAIVaultStatusCmd(), "dot ai mcp status vmem"))
 	cmd.AddCommand(newAIVaultRetireCmd())
 	return cmd
 }

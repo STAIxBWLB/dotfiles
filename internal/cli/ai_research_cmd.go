@@ -11,28 +11,6 @@ import (
 	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
-func newAIResearchCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:    "research",
-		Hidden: true,
-		Short:  "Register ares, the research engine, for the agents dot owns",
-		Long: `Register ares (@staix/agent-research) as the agents' research MCP server for
-Kiro and GitHub Copilot, and print the 'ares setup' lines for Claude Code,
-Codex, Kimi, Qwen, pi, jcode and Antigravity, which ares registers itself.
-
-dot runs no research process and installs ares only on request: install it
-with 'dot ai family install ares' (or 'bun add -g @staix/agent-research'),
-then run 'dot ai mcp install ares'.
-
-The AI policy auto-approves ares's read tools only. Tools that write a study,
-decide a gate, reach the network or start or read a container keep their
-approval prompt.`,
-	}
-	cmd.AddCommand(deprecatedAICommand(newAIResearchInstallCmd(), "dot ai mcp install ares"))
-	cmd.AddCommand(deprecatedAICommand(newAIResearchStatusCmd(), "dot ai mcp status ares"))
-	return cmd
-}
-
 func newAresManagerFromCmd(cmd *cobra.Command) (*aisettings.AresManager, error) {
 	aresPath, err := exec.LookPath("ares")
 	if err == nil {
