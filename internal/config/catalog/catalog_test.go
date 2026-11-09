@@ -84,7 +84,7 @@ func TestLoadMacApps(t *testing.T) {
 }
 
 func TestNormalizeCaskTokens(t *testing.T) {
-	got := NormalizeCaskTokens([]string{"raycast", "anchor", "maru-workspace", "raycast"})
+	got := NormalizeCaskTokens([]string{"raycast", "", "maru-workspace", "raycast"})
 	want := []string{"raycast", "maru-workspace"}
 	if len(got) != len(want) {
 		t.Fatalf("NormalizeCaskTokens = %v, want %v", got, want)

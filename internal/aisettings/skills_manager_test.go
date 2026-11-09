@@ -65,14 +65,21 @@ func TestSkillsManagerStatusSourceMissing(t *testing.T) {
 	}
 }
 
-func TestSkillsManagerAnchorAliasResolvesToMaru(t *testing.T) {
+func TestSkillsManagerRejectsRetiredAnchorProvider(t *testing.T) {
+	mgr := NewSkillsManager(t.TempDir())
+	if _, err := mgr.Status(SkillsOptions{Provider: "anchor", Tools: []string{"claude"}}); err == nil {
+		t.Fatal("retired anchor provider must be rejected")
+	}
+}
+
+func TestSkillsManagerMaruProviderDefaults(t *testing.T) {
 	home := t.TempDir()
 	writeSkillTestFile(t, filepath.Join(home, ".maru", "skills", "vault-extract", "SKILL.md"), "# Vault Extract\n")
 	mgr := NewSkillsManager(home)
 
-	report, err := mgr.Status(SkillsOptions{Provider: "anchor", Tools: []string{"claude"}})
+	report, err := mgr.Status(SkillsOptions{Provider: SkillsProviderMaru, Tools: []string{"claude"}})
 	if err != nil {
-		t.Fatalf("Status with legacy anchor provider: %v", err)
+		t.Fatalf("Status with maru provider: %v", err)
 	}
 	if report.Provider != SkillsProviderMaru {
 		t.Fatalf("provider = %q, want %q", report.Provider, SkillsProviderMaru)
@@ -85,20 +92,12 @@ func TestSkillsManagerAnchorAliasResolvesToMaru(t *testing.T) {
 	}
 }
 
-func TestSkillsManagerNormalizesLegacyInventoryOnlyTargets(t *testing.T) {
-	home := t.TempDir()
-	writeSkillTestFile(t, filepath.Join(home, ".maru", "skills", "shared-skill", "SKILL.md"), "# Shared\n")
-	mgr := NewSkillsManager(home)
-
-	report, err := mgr.Status(SkillsOptions{Provider: SkillsProviderMaru, Tools: []string{"agents", "gemini", "antigravity"}})
-	if err != nil {
-		t.Fatalf("legacy inventory-only targets must not reject config: %v", err)
-	}
-	if len(report.Warnings) != 3 {
-		t.Fatalf("migration warnings = %v, want one per legacy target", report.Warnings)
-	}
-	if !defaultToolsHas(report.Tools, "claude") || !defaultToolsHas(report.Tools, "codex") {
-		t.Fatalf("legacy-only targets should normalize to managed defaults, got %v", report.Tools)
+func TestSkillsManagerRejectsRetiredInventoryOnlyTargets(t *testing.T) {
+	mgr := NewSkillsManager(t.TempDir())
+	for _, tool := range []string{"agents", "agy"} {
+		if _, err := mgr.Status(SkillsOptions{Provider: SkillsProviderMaru, Tools: []string{tool}}); err == nil {
+			t.Errorf("retired skills tool %q must be rejected", tool)
+		}
 	}
 }
 

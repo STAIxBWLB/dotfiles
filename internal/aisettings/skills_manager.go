@@ -12,9 +12,6 @@ const (
 	SkillsProviderMaru = "maru"
 	SkillsProviderPath = "path"
 
-	// skillsProviderAnchorAlias is the legacy provider name; it resolves to maru.
-	skillsProviderAnchorAlias = "anchor"
-
 	DefaultMaruSkillsRoot = "~/.maru/skills"
 
 	SkillLinkStatusInSync        = "in-sync"
@@ -261,9 +258,6 @@ func (m *SkillsManager) resolveOptions(opts SkillsOptions) (SkillsOptions, error
 	if provider == "" {
 		return SkillsOptions{}, fmt.Errorf("skills provider is required (maru or path)")
 	}
-	if provider == skillsProviderAnchorAlias {
-		provider = SkillsProviderMaru
-	}
 	switch provider {
 	case SkillsProviderMaru:
 		if ssot == "" {
@@ -274,6 +268,9 @@ func (m *SkillsManager) resolveOptions(opts SkillsOptions) (SkillsOptions, error
 			return SkillsOptions{}, fmt.Errorf("skills ssot path is required when provider is %q", SkillsProviderPath)
 		}
 	default:
+		if provider == "anchor" {
+			return SkillsOptions{}, fmt.Errorf("skills provider %q was renamed: use %s", opts.Provider, SkillsProviderMaru)
+		}
 		return SkillsOptions{}, fmt.Errorf("unknown skills provider %q", opts.Provider)
 	}
 	tools, migrationWarnings, err := m.resolveToolIDs(opts.Tools)
@@ -303,10 +300,6 @@ func (m *SkillsManager) resolveToolIDs(ids []string) ([]string, []string, error)
 			}
 			tool, ok := m.Tool(part)
 			if !ok {
-				if isInventoryOnlySkillTool(part) {
-					warnings = append(warnings, fmt.Sprintf("legacy skills tool %q is inventory-only and was removed from managed targets; Maru manages claude and codex", part))
-					continue
-				}
 				return nil, nil, fmt.Errorf("unknown skills tool %q (valid: %s)", part, m.toolIDList())
 			}
 			if seen[tool.ID] {
@@ -317,15 +310,6 @@ func (m *SkillsManager) resolveToolIDs(ids []string) ([]string, []string, error)
 		}
 	}
 	return out, warnings, nil
-}
-
-func isInventoryOnlySkillTool(id string) bool {
-	switch strings.ToLower(strings.TrimSpace(id)) {
-	case "agents", "gemini", "antigravity", "agy":
-		return true
-	default:
-		return false
-	}
 }
 
 func (m *SkillsManager) listSources(root string) ([]SkillSourceItem, []string, error) {

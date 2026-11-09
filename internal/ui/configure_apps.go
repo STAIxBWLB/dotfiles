@@ -49,7 +49,7 @@ func ConfigureAI(state *config.UserState, yes bool, freshDefault bool) error {
 
 	modeDefault := "none"
 	switch state.Modules.AI.Skills.Provider {
-	case "maru", "anchor": // anchor is a legacy alias for maru
+	case "maru":
 		modeDefault = "maru"
 	case "path":
 		modeDefault = "custom path"
