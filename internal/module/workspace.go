@@ -2,7 +2,10 @@ package module
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -13,8 +16,10 @@ import (
 // WorkspaceModule manages workspace symlink federation and shell config.
 //
 // Symlink safety rules:
-//   - Only create symlinks when the link path does NOT exist at all.
-//   - Never delete, overwrite, or modify existing symlinks or directories.
+//   - Create a symlink only when the link path does not exist at all, or holds a
+//     dangling symlink (its target is gone) that is removed first.
+//   - Never delete, overwrite, or modify real files, directories, or symlinks
+//     whose target still exists.
 //   - Broken symlinks are repaired only if an explicit target is configured.
 //
 // Dual-workspace architecture:
@@ -159,6 +164,9 @@ func (m *WorkspaceModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResu
 			if !m.targetReachable(rc, symlink) {
 				return nil, fmt.Errorf("symlink target does not exist: %s", cfg.Symlink)
 			}
+			if err := m.removeDanglingSymlink(rc, workspacePath); err != nil {
+				return nil, fmt.Errorf("replacing dangling workspace symlink: %w", err)
+			}
 			if err := rc.Runner.Symlink(symlink, workspacePath); err != nil {
 				return nil, fmt.Errorf("symlinking workspace: %w", err)
 			}
@@ -171,6 +179,9 @@ func (m *WorkspaceModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResu
 		if !m.pathUsable(rc, gdriveSymlink) {
 			if !m.targetReachable(rc, gdrive) {
 				return nil, fmt.Errorf("gdrive target does not exist: %s", cfg.Gdrive)
+			}
+			if err := m.removeDanglingSymlink(rc, gdriveSymlink); err != nil {
+				return nil, fmt.Errorf("replacing dangling gdrive symlink: %w", err)
 			}
 			if err := rc.Runner.Symlink(gdrive, gdriveSymlink); err != nil {
 				return nil, fmt.Errorf("symlinking gdrive: %w", err)
@@ -186,6 +197,9 @@ func (m *WorkspaceModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResu
 			gdriveWork := filepath.Join(gdriveSymlink, "work")
 			gdriveXref := filepath.Join(workDir, ".gdrive")
 			if m.targetReachable(rc, gdriveWork) && !m.pathUsable(rc, gdriveXref) {
+				if err := m.removeDanglingSymlink(rc, gdriveXref); err != nil {
+					return nil, fmt.Errorf("replacing dangling work/.gdrive symlink: %w", err)
+				}
 				if err := rc.Runner.Symlink(gdriveWork, gdriveXref); err != nil {
 					return nil, fmt.Errorf("symlinking work/.gdrive: %w", err)
 				}
@@ -201,6 +215,9 @@ func (m *WorkspaceModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResu
 					linkPath := filepath.Join(inboxDir, sub)
 					gdriveTarget := filepath.Join(gdriveSymlink, "work", "inbox", sub)
 					if m.targetReachable(rc, gdriveTarget) && !m.pathUsable(rc, linkPath) {
+						if err := m.removeDanglingSymlink(rc, linkPath); err != nil {
+							return nil, fmt.Errorf("replacing dangling inbox/%s symlink: %w", sub, err)
+						}
 						if err := rc.Runner.Symlink(gdriveTarget, linkPath); err != nil {
 							return nil, fmt.Errorf("symlinking inbox/%s: %w", sub, err)
 						}
@@ -248,4 +265,29 @@ func (m *WorkspaceModule) pathUsable(rc *RunContext, path string) bool {
 // targetReachable returns true if path exists and is accessible (follows symlinks).
 func (m *WorkspaceModule) targetReachable(rc *RunContext, path string) bool {
 	return rc.Runner.FileExists(path) || rc.Runner.IsDir(path)
+}
+
+// removeDanglingSymlink removes path only when it is a symlink whose target is
+// missing, so the Symlink call that follows can create the link Apply planned.
+// A real file or directory, and a symlink whose target exists, are left alone.
+// Removal goes through Runner.Remove, so a dry run removes nothing.
+//
+// Only a target confirmed missing (fs.ErrNotExist) counts as dangling. Any other
+// stat failure, such as a target behind an untraversable directory or an
+// unavailable mount, leaves the link in place and is returned as an error.
+func (m *WorkspaceModule) removeDanglingSymlink(rc *RunContext, path string) error {
+	if !rc.Runner.IsSymlink(path) {
+		return nil
+	}
+	_, statErr := os.Stat(path)
+	if statErr == nil {
+		return nil
+	}
+	if !errors.Is(statErr, fs.ErrNotExist) {
+		return fmt.Errorf("cannot tell whether the target of symlink %s exists (%v); left it in place, check the link target's permissions or mount", path, statErr)
+	}
+	if err := rc.Runner.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
