@@ -57,6 +57,20 @@ func newIsolatedState(t *testing.T) *config.UserState {
 	return state
 }
 
+// writeStoreConfig puts body at <localPath>/.dotfiles/sync/config.yaml, the
+// store ResolveConfig reads. A read-only resolve never creates one, so a test
+// that wants a store must write it itself.
+func writeStoreConfig(t *testing.T, localPath, body string) {
+	t.Helper()
+	dir := filepath.Join(localPath, ".dotfiles", "sync")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPullArgs_WorkspaceAuthoritative(t *testing.T) {
 	cfg := newTestConfig(t)
 	conflict := &ConflictDir{Timestamp: "2026-05-01T12-00-00Z"}
@@ -353,7 +367,6 @@ func TestResolveConfig_StateOverrides(t *testing.T) {
 	tmp := t.TempDir()
 	state := &config.UserState{}
 	state.Modules.Gsync.LocalPath = tmp
-	state.Modules.Gsync.MirrorPath = "/custom/mirror"
 	state.Modules.Gsync.MaxDelete = 50
 
 	cfg, err := ResolveConfig(state)
@@ -362,9 +375,6 @@ func TestResolveConfig_StateOverrides(t *testing.T) {
 	}
 	if cfg.LocalPath != tmp+"/" {
 		t.Errorf("LocalPath = %q, want %q", cfg.LocalPath, tmp+"/")
-	}
-	if cfg.MirrorPath != "/custom/mirror/" {
-		t.Errorf("MirrorPath = %q, want trailing-slashed /custom/mirror/", cfg.MirrorPath)
 	}
 	if cfg.MaxDelete != 50 {
 		t.Errorf("MaxDelete = %d, want 50", cfg.MaxDelete)
@@ -413,7 +423,7 @@ func TestResolveConfig_PrefersCloudMirror(t *testing.T) {
 	}
 }
 
-func TestResolveConfig_LocalMirrorWinsOverCloud(t *testing.T) {
+func TestResolveConfig_LocalTargetWinsOverCloud(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	if err := os.MkdirAll(filepath.Join(home, "Library", "CloudStorage", "Dropbox", "secrets"), 0o755); err != nil {
@@ -421,7 +431,7 @@ func TestResolveConfig_LocalMirrorWinsOverCloud(t *testing.T) {
 	}
 	state := &config.UserState{}
 	state.Modules.Gsync.LocalPath = t.TempDir()
-	state.Modules.Gsync.MirrorPath = "/explicit/mirror"
+	writeStoreConfig(t, state.Modules.Gsync.LocalPath, "target: local:/explicit/mirror\n")
 
 	cfg, err := ResolveConfig(state)
 	if err != nil {
@@ -429,6 +439,200 @@ func TestResolveConfig_LocalMirrorWinsOverCloud(t *testing.T) {
 	}
 	if cfg.MirrorPath != "/explicit/mirror/" {
 		t.Errorf("MirrorPath = %q, want explicit /explicit/mirror/ (cloud must not override)", cfg.MirrorPath)
+	}
+}
+
+// #394 row 10: the retired mirror_path key decides nothing any more. A store
+// that still carries one and no target resolves the detected default, the same
+// as a store with an empty target.
+func TestResolveConfig_IgnoresTheRetiredMirrorPathKey(t *testing.T) {
+	state := newIsolatedState(t)
+	writeStoreConfig(t, state.Modules.Gsync.LocalPath, "mirror_path: /legacy/mirror\n")
+
+	cfg, err := ResolveConfigReadOnly(state)
+	if err != nil {
+		t.Fatalf("ResolveConfigReadOnly: %v", err)
+	}
+	want := filepath.Join(os.Getenv("HOME"), "gdrive-workspace", "work") + "/"
+	if cfg.MirrorPath != want {
+		t.Errorf("MirrorPath = %q, want the detected default %q (mirror_path must not be read)", cfg.MirrorPath, want)
+	}
+}
+
+// #394 row 10: a store with no `target` resolves the detected default, but the
+// folder it still names in `mirror_path` was the destination until this release.
+// A different folder has to stop a transfer instead of moving it silently: push
+// and pull propagate, so a run could delete in a tree nobody picked.
+func TestRefuseRetiredDestinationChange_RefusesAnotherFolder(t *testing.T) {
+	state := newIsolatedState(t)
+	writeStoreConfig(t, state.Modules.Gsync.LocalPath, "mirror_path: /legacy/mirror\n")
+
+	// Resolution itself must not refuse: `dot sync target`, the fix the error
+	// names, resolves a config of its own before it can write the store.
+	cfg, err := ResolveConfigReadOnly(state)
+	if err != nil {
+		t.Fatalf("ResolveConfigReadOnly: %v", err)
+	}
+	if cfg.retiredMirrorSource != "this store's config" {
+		t.Errorf("retiredMirrorSource = %q, want the store", cfg.retiredMirrorSource)
+	}
+
+	err = refuseRetiredDestinationChange(cfg)
+	if err == nil {
+		t.Fatal("a store naming another folder in mirror_path must refuse a transfer")
+	}
+	for _, want := range []string{
+		"/legacy/mirror",
+		"dot sync target /legacy/mirror",
+		strings.TrimRight(cfg.MirrorPath, "/"),
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal does not name %q:\n%v", want, err)
+		}
+	}
+}
+
+// The same folder spelled through a symlink is not a destination change: the
+// peer Mac's ~/Dropbox is a symlink into ~/Library/CloudStorage/Dropbox.
+func TestRefuseRetiredDestinationChange_AllowsALinkedSameFolder(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cloud := filepath.Join(home, "Library", "CloudStorage", "Dropbox")
+	for _, dir := range []string{"work", "secrets"} {
+		if err := os.MkdirAll(filepath.Join(cloud, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(cloud, filepath.Join(home, "Dropbox")); err != nil {
+		t.Fatal(err)
+	}
+	state := &config.UserState{}
+	state.Modules.Gsync.LocalPath = t.TempDir()
+	writeStoreConfig(t, state.Modules.Gsync.LocalPath,
+		"mirror_path: "+filepath.Join(home, "Dropbox", "work")+"\n")
+
+	cfg, err := ResolveConfigReadOnly(state)
+	if err != nil {
+		t.Fatalf("ResolveConfigReadOnly: %v", err)
+	}
+	want := filepath.Join(cloud, "work") + "/"
+	if cfg.MirrorPath != want {
+		t.Fatalf("MirrorPath = %q, want the cloud default %q", cfg.MirrorPath, want)
+	}
+	if err := refuseRetiredDestinationChange(cfg); err != nil {
+		t.Errorf("the same tree through a symlink must sync, got: %v", err)
+	}
+}
+
+// The global state is the other place the key can still live, and a new
+// workspace store is seeded from it.
+func TestRefuseRetiredDestinationChange_ReadsTheGlobalState(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	localPath := t.TempDir()
+	statePath := filepath.Join(t.TempDir(), "config.yaml")
+	// `gdrive_sync` is the tag the struct and every real file use; `gsync` was
+	// never a key, so a fixture spelled that way proves nothing.
+	body := "schema_version: 4\nname: Test\nprofile: full\nmodules:\n  gdrive_sync:\n    local_path: " +
+		localPath + "\n    mirror_path: /legacy/mirror\n"
+	if err := os.WriteFile(statePath, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	state, err := config.LoadStateFrom(statePath)
+	if err != nil {
+		t.Fatalf("LoadStateFrom: %v", err)
+	}
+
+	cfg, err := ResolveConfigReadOnly(state)
+	if err != nil {
+		t.Fatalf("ResolveConfigReadOnly: %v", err)
+	}
+	if cfg.retiredMirrorSource != "the global state" {
+		t.Errorf("retiredMirrorSource = %q, want the global state", cfg.retiredMirrorSource)
+	}
+	err = refuseRetiredDestinationChange(cfg)
+	if err == nil {
+		t.Fatal("an empty target with a global mirror_path must refuse a transfer")
+	}
+	if !strings.Contains(err.Error(), "the global state") || !strings.Contains(err.Error(), "/legacy/mirror") {
+		t.Errorf("refusal does not name the source and the stored value:\n%v", err)
+	}
+}
+
+// The refusals hang off the transfer entries, not off resolution: a push plan
+// built from such a store stops before it walks either tree.
+func TestPlanPush_RefusesARetiredDestination(t *testing.T) {
+	state := newIsolatedState(t)
+	writeStoreConfig(t, state.Modules.Gsync.LocalPath, "mirror_path: /legacy/mirror\n")
+	cfg, err := ResolveConfigReadOnly(state)
+	if err != nil {
+		t.Fatalf("ResolveConfigReadOnly: %v", err)
+	}
+
+	_, err = PlanPush(cfg)
+	if err == nil {
+		t.Fatal("PlanPush planned a push into a destination nobody chose")
+	}
+	if !strings.Contains(err.Error(), "dot sync target /legacy/mirror") {
+		t.Errorf("PlanPush refusal does not name the fix:\n%v", err)
+	}
+}
+
+// The refusal must not be one-shot. Its only evidence is the retired value, and
+// every routine store save rewrites the file: `dot sync pause`/`resume` (the
+// reload the other half of this change tells users to run), `dot sync owner`,
+// `dot sync setup`, `dot sync shared` all go through SaveLocalConfig while
+// `target` is still empty. A save that dropped the key there would hand the
+// next push the detected default, which is exactly the silent redirect this
+// guard exists to stop.
+func TestPlanPush_SurvivesAnUnrelatedStoreSave(t *testing.T) {
+	state := newIsolatedState(t)
+	writeStoreConfig(t, state.Modules.Gsync.LocalPath, "mirror_path: /legacy/mirror\n")
+
+	cfg, err := ResolveConfigReadOnly(state)
+	if err != nil {
+		t.Fatalf("ResolveConfigReadOnly: %v", err)
+	}
+	out := captureSyncerStderr(t, func() {
+		if err := SetLocalPaused(cfg, true); err != nil {
+			t.Fatalf("SetLocalPaused: %v", err)
+		}
+	})
+	if strings.Contains(out, "retired") {
+		t.Errorf("an unrelated save announced a drop: %q", out)
+	}
+	saved, err := os.ReadFile(cfg.LocalPaths.ConfigFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(saved), "mirror_path: /legacy/mirror") {
+		t.Fatalf("the save dropped the only evidence of the destination change:\n%s", saved)
+	}
+
+	// The next run resolves afresh, as the next `dot sync push` would.
+	next, err := ResolveConfigReadOnly(state)
+	if err != nil {
+		t.Fatalf("ResolveConfigReadOnly after the save: %v", err)
+	}
+	if _, err := PlanPush(next); err == nil {
+		t.Fatal("after an unrelated save the push no longer refuses a destination nobody chose")
+	} else if !strings.Contains(err.Error(), "dot sync target /legacy/mirror") {
+		t.Errorf("the refusal after the save does not name the fix:\n%v", err)
+	}
+}
+
+// A store that sets `target` moved its destination deliberately: the retired
+// key is irrelevant, whatever it says.
+func TestRefuseRetiredDestinationChange_IgnoresAStoreWithTarget(t *testing.T) {
+	state := newIsolatedState(t)
+	writeStoreConfig(t, state.Modules.Gsync.LocalPath, "target: local:/chosen/mirror\nmirror_path: /legacy/mirror\n")
+
+	cfg, err := ResolveConfigReadOnly(state)
+	if err != nil {
+		t.Fatalf("ResolveConfigReadOnly: %v", err)
+	}
+	if err := refuseRetiredDestinationChange(cfg); err != nil {
+		t.Errorf("an explicit target must not be guarded: %v", err)
 	}
 }
 
@@ -440,7 +644,7 @@ func TestResolveConfigReadOnlyForHome_UsesGivenHome(t *testing.T) {
 	overrideHome := t.TempDir()
 	state := &config.UserState{}
 	state.Modules.Gsync.LocalPath = t.TempDir()
-	// MirrorPath empty → default is <home>/gdrive-workspace/work.
+	// No target in the store → default is <home>/gdrive-workspace/work.
 
 	cfg, err := ResolveConfigReadOnlyForHomeProfile(state, overrideHome, DefaultProfile)
 	if err != nil {
@@ -462,7 +666,7 @@ func TestResolveConfigReadOnlyForHome_ExpandsTildeAgainstHome(t *testing.T) {
 
 	state := &config.UserState{}
 	state.Modules.Gsync.LocalPath = t.TempDir()
-	state.Modules.Gsync.MirrorPath = "~/cloud/work"
+	writeStoreConfig(t, state.Modules.Gsync.LocalPath, "target: local:~/cloud/work\n")
 
 	cfg, err := ResolveConfigReadOnlyForHomeProfile(state, overrideHome, DefaultProfile)
 	if err != nil {

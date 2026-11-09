@@ -39,7 +39,7 @@ func newSyncCLIFixture(t *testing.T) *syncCLIFixture {
 	if err := os.MkdirAll(filepath.Dir(stateFile), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	state := "modules:\n  gsync:\n    local_path: " + local + "\n    mirror_path: " + mirror + "\n"
+	state := "modules:\n  gsync:\n    local_path: " + local + "\n"
 	if err := os.WriteFile(stateFile, []byte(state), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -414,33 +414,34 @@ func TestSyncMirrorCLI_PrintAndDryRunAreReadOnly(t *testing.T) {
 	}
 }
 
-func TestSyncMirrorCLI_HonorsHomeOverride(t *testing.T) {
+func TestSyncTargetCLI_HonorsHomeOverride(t *testing.T) {
 	f := newSyncCLIFixture(t)
 	other := t.TempDir() // a different user's home
 	if err := os.MkdirAll(filepath.Join(other, ".config", "dotfiles"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
-	// ~ in the path must expand against --home, and global state must be
-	// written for that home — not the current HOME.
+	// ~ in the path must expand against --home, and the store that records it
+	// must be that home's store — not the current user's.
 	out, errOut, err := runDotForTest("sync", "target", "~/Dropbox/work", "--home", other)
 	if err != nil {
-		t.Fatalf("gsync mirror --home: %v\nstdout=%s\nstderr=%s", err, out, errOut)
+		t.Fatalf("sync target --home: %v\nstdout=%s\nstderr=%s", err, out, errOut)
 	}
 	wantMirror := filepath.Join(other, "Dropbox", "work")
 	if !strings.Contains(out, wantMirror) {
 		t.Errorf("~ should expand against --home %q:\n%s", wantMirror, out)
 	}
-	otherCfg, err := os.ReadFile(filepath.Join(other, ".config", "dotfiles", "config.yaml"))
+	otherStore := filepath.Join(other, "workspace", "work", ".dotfiles", "sync", "config.yaml")
+	otherCfg, err := os.ReadFile(otherStore)
 	if err != nil {
-		t.Fatalf("read --home state: %v", err)
+		t.Fatalf("read --home store: %v", err)
 	}
-	if !strings.Contains(string(otherCfg), "mirror_path: "+wantMirror) {
-		t.Errorf("--home global state missing mirror_path:\n%s", otherCfg)
+	if !strings.Contains(string(otherCfg), "target: local:"+wantMirror) {
+		t.Errorf("--home store missing the target:\n%s", otherCfg)
 	}
-	// The current user's state must NOT have been written with this mirror.
-	if cur, _ := os.ReadFile(filepath.Join(f.home, ".config", "dotfiles", "config.yaml")); strings.Contains(string(cur), wantMirror) {
-		t.Errorf("current-user state wrongly written under --home:\n%s", cur)
+	// The current user's store must NOT have been written with this target.
+	if cur, _ := os.ReadFile(filepath.Join(f.local, ".dotfiles", "sync", "config.yaml")); strings.Contains(string(cur), wantMirror) {
+		t.Errorf("current-user store wrongly written under --home:\n%s", cur)
 	}
 }
 
@@ -580,7 +581,7 @@ func TestSyncPushRefusesLegacyOnlyStore(t *testing.T) {
 	f := newSyncCLIFixture(t)
 	legacy := filepath.Join(f.local, ".dotfiles", "gdrive-sync")
 	writeCLITestFile(t, filepath.Join(legacy, "baseline.manifest"), "docs/a.md\t1\n")
-	writeCLITestFile(t, filepath.Join(legacy, "config.yaml"), "mirror_path: "+f.mirror+"\n")
+	writeCLITestFile(t, filepath.Join(legacy, "config.yaml"), "target: local:"+f.mirror+"\n")
 	writeCLITestFile(t, filepath.Join(f.local, "docs", "a.md"), "local edit\n")
 	writeCLITestFile(t, filepath.Join(f.mirror, "docs", "a.md"), "mirror copy\n")
 	before := snapshotTree(t, f.home)

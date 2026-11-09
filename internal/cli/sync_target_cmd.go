@@ -68,39 +68,19 @@ func runSyncTarget(cmd *cobra.Command, args []string) error {
 			p.KV("Target", bs.Config.Target.String())
 			return nil
 		}
-		p.Line("[dry-run] would set target to %s (local config%s)", target.String(),
-			map[bool]string{true: " + global state", false: ""}[target.Kind == syncer.TargetLocal])
+		p.Line("[dry-run] would set target to %s (local config)", target.String())
 		return nil
 	}
 
-	homeOverride, _ := cmd.Flags().GetString("home")
-
-	// Local config governs the current workspace (global state is ignored
-	// once it exists), so write it for immediate effect — but only for the
-	// current user. Under --home the admin isn't in the target user's
-	// workspace, so the local config (always current-workspace) doesn't
-	// apply; only the home-aware global state below is meaningful there.
-	if homeOverride == "" {
-		bs, err := syncer.Bootstrap(syncBootstrapOptions(cmd, false))
-		if err != nil {
-			return err
-		}
-		if err := syncer.SetLocalTarget(bs.Config, target); err != nil {
-			return err
-		}
+	// The store belongs to the workspace and the workspace belongs to the home:
+	// Bootstrap resolved both against --home, so an admin running this for
+	// another user writes that user's store, not the invoking user's.
+	bs, err := syncer.Bootstrap(syncBootstrapOptions(cmd, false))
+	if err != nil {
+		return err
 	}
-
-	// Global state, home-aware: local targets are inherited by future
-	// workspaces. SSH targets stay workspace-local.
-	if target.Kind == syncer.TargetLocal {
-		state, err := loadStateForCmd(cmd)
-		if err != nil {
-			return fmt.Errorf("load global state: %w", err)
-		}
-		state.Modules.Gsync.MirrorPath = target.Path
-		if err := persistUserState(cmd, state); err != nil {
-			p.Warn("could not update global state: %v", err)
-		}
+	if err := syncer.SetLocalTarget(bs.Config, target); err != nil {
+		return err
 	}
 
 	p.Line("%s", ui.StyleSuccess.Render("✓ sync target set"))

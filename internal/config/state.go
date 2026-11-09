@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/STAIxBWLB/dotfiles/internal/appsettings"
+	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
 	"github.com/STAIxBWLB/dotfiles/internal/sliceutil"
 	"github.com/STAIxBWLB/dotfiles/internal/tunnel"
 	"gopkg.in/yaml.v3"
@@ -177,6 +179,72 @@ func sliceHasRetiredCask(tokens []string) bool {
 	return false
 }
 
+// retiredStateKeys are the state keys no release reads any more, with what
+// replaces each one. `modules.gdrive_sync.mirror_path` lost its last reader
+// when ResolveConfig stopped falling back to it (#394 row 10): the destination
+// is the workspace store's `target` now, so the value cannot be carried over as
+// a setting. It is carried as evidence while it would still move a
+// destination (retiredMirrorPathStillMoves), and dropped once it does not.
+var retiredStateKeys = map[string]string{
+	retiredMirrorPathStateKey: "`dot sync` uses the workspace store's `target` (set it with `dot sync target`)",
+}
+
+const retiredMirrorPathStateKey = "modules.gdrive_sync.mirror_path"
+
+// detectRetiredKeys records which retired keys the raw state still sets, so
+// the next save can say what it dropped. It reads the raw bytes the way
+// applyLegacyKeys does -- the field these keys named is gone, so a decode
+// cannot see them -- but it runs for every schema version: #373's stamped-file
+// rule governs keys whose values are carried, and these have no value left to
+// carry.
+func detectRetiredKeys(state *UserState, raw []byte) {
+	var legacy struct {
+		Modules struct {
+			Gsync struct {
+				MirrorPath string `yaml:"mirror_path"`
+			} `yaml:"gdrive_sync"`
+		} `yaml:"modules"`
+	}
+	if err := yaml.Unmarshal(raw, &legacy); err != nil {
+		return
+	}
+	if legacy.Modules.Gsync.MirrorPath != "" {
+		state.retiredKeys = append(state.retiredKeys, retiredMirrorPathStateKey)
+		state.retiredMirrorPath = legacy.Modules.Gsync.MirrorPath
+	}
+}
+
+// RetiredMirrorPath returns the value this state file still sets for the
+// retired `modules.gdrive_sync.mirror_path` key, or "". The sync engine reads
+// it only to refuse a silent destination change on a store that never set
+// `target`: the key does not route anything any more (#394 row 10).
+func (s *UserState) RetiredMirrorPath() string {
+	if s == nil {
+		return ""
+	}
+	return s.retiredMirrorPath
+}
+
+// retiredMirrorPathStillMoves reports whether this state's retired value has to
+// survive a save. A workspace store that sets no target resolves the detected
+// cloud default, and `dot sync` refuses exactly that while the retired value
+// names a different folder (syncer.refuseRetiredDestinationChange reads it from
+// here when the store has none of its own). Dropping it on an unrelated save
+// (`dot apply`, `dot reconfigure`) would take that evidence away, and the next
+// push would mirror, and delete, in a tree nobody picked. Once the value names
+// the folder resolution would use, it decides nothing and goes.
+func retiredMirrorPathStillMoves(state *UserState, home string) bool {
+	value := strings.TrimSpace(state.retiredMirrorPath)
+	if value == "" {
+		return false
+	}
+	if home == "" {
+		// No home, so no default to compare with: keep the evidence.
+		return true
+	}
+	return !fileutil.SameDirectory(appsettings.ExpandHome(value, home), appsettings.DefaultMirrorPath(home))
+}
+
 // warnForwardSchema reports that a state file was written by a newer dot. It
 // does not fail the load: an additively-forward file still decodes, and an
 // incompatibly-forward one gets this warning before its decode error so the
@@ -210,6 +278,18 @@ type UserState struct {
 	// so yaml.v3 cannot see it: the flag can never be written to disk and
 	// needs no tag. saveStateAt reads it to print one note per converted write.
 	carriedLegacy []string
+
+	// retiredKeys names the keys the file this state was read from still
+	// carried after they stopped being read, in detection order. Unexported for
+	// the same reason as carriedLegacy: the save that drops them is the only
+	// place that may speak of them, and it prints one note, then clears this.
+	retiredKeys []string
+
+	// retiredMirrorPath is the value `modules.gdrive_sync.mirror_path` held in
+	// that same file, kept for the one reader that refuses a destination change
+	// (RetiredMirrorPath), and written back by a save until it names the folder
+	// resolution would use.
+	retiredMirrorPath string
 }
 
 // UserModulesState holds module opt-in/config from user state.
@@ -329,21 +409,21 @@ type UserRsyncState struct {
 // UserGsyncState holds local↔local rsync mirror config from user state.
 //
 // It holds the machine-wide defaults `dot sync` seeds a new workspace store
-// with (mirror path, max delete, shared excludes) and LocalPath, which locates
-// the workspace. Per-workspace settings live in <workspace>/.dotfiles/sync/.
+// with (max delete, shared excludes) and LocalPath, which locates the
+// workspace. The destination is not one of them: it lives in the workspace
+// store's `target`. Per-workspace settings live in <workspace>/.dotfiles/sync/.
 //
 // Paused defaults to true on a fresh state so the user explicitly opts in by
 // flipping it to false via `resume`.
 type UserGsyncState struct {
-	LocalPath      string    `yaml:"local_path,omitempty"`  // primary tree, default ~/workspace/work
-	MirrorPath     string    `yaml:"mirror_path,omitempty"` // mirror tree, default ~/gdrive-workspace/work
+	LocalPath      string    `yaml:"local_path,omitempty"` // primary tree, default ~/workspace/work
 	LastPull       time.Time `yaml:"last_pull,omitempty"`
 	LastPush       time.Time `yaml:"last_push,omitempty"`
 	ConflictDir    string    `yaml:"conflict_dir,omitempty"`    // default <local>/.sync-conflicts
 	Paused         bool      `yaml:"paused,omitempty"`          // gates pull/push/sync; cleared by `resume`
 	MaxDelete      int       `yaml:"max_delete,omitempty"`      // safety cap for push --delete-after, default 1000
 	Interval       int       `yaml:"interval,omitempty"`        // auto-sync interval in seconds (launchd/systemd), default 300
-	SharedExcludes []string  `yaml:"shared_excludes,omitempty"` // operator-curated owned-but-shared-out folders, relative to mirror_path
+	SharedExcludes []string  `yaml:"shared_excludes,omitempty"` // operator-curated owned-but-shared-out folders, relative to the sync target
 }
 
 // UserTunnelState holds the Cloudflare Tunnel values managed by `dot tunnel`.
@@ -489,12 +569,12 @@ func (s *UserState) Validate() error {
 		}
 	}
 	for _, p := range s.Modules.Gsync.SharedExcludes {
-		// Paths must be relative to mirror_path. Absolute paths and parent
+		// Paths must be relative to the sync target. Absolute paths and parent
 		// escapes would let the manual list reach outside the mirror tree
 		// and exclude unrelated content (or be portable across machines
 		// in misleading ways).
 		if strings.HasPrefix(p, "/") {
-			return fmt.Errorf("gdrive_sync.shared_excludes entry %q must be relative to mirror_path (no leading /)", p)
+			return fmt.Errorf("gdrive_sync.shared_excludes entry %q must be relative to the sync target (no leading /)", p)
 		}
 		for _, seg := range strings.Split(p, "/") {
 			if seg == ".." {
@@ -625,6 +705,12 @@ func readStateFile(path, noun string) (*UserState, int, error) {
 	if version == 0 {
 		applyLegacyKeys(&state, data)
 	}
+	// Retired keys are the exception to that gate: #373 is about keys whose
+	// values are migrated to a canonical form, and there is no canonical form
+	// for these. The value is kept only as evidence for the destination refusal
+	// in internal/syncer, and the save decides whether to keep or drop it,
+	// stamped or not.
+	detectRetiredKeys(&state, data)
 	rewriteRetiredValues(&state)
 	return &state, version, nil
 }
@@ -693,6 +779,14 @@ func MarshalState(state *UserState) ([]byte, error) {
 // On POSIX filesystems, rename is atomic, so partial writes cannot corrupt
 // the existing config file.
 func saveStateAt(path string, state *UserState) error {
+	home, _ := os.UserHomeDir()
+	return saveStateAtForHome(path, state, home)
+}
+
+// saveStateAtForHome is saveStateAt for an explicit home: `dot ... --home`
+// writes another user's state, and the retired destination is judged against
+// that home's detected default, never the invoking user's.
+func saveStateAtForHome(path string, state *UserState, home string) error {
 	if err := state.Validate(); err != nil {
 		return fmt.Errorf("refusing to save invalid state: %w", err)
 	}
@@ -708,6 +802,15 @@ func saveStateAt(path string, state *UserState) error {
 	data, err := MarshalState(state)
 	if err != nil {
 		return err
+	}
+	// A retired value that would still move a sync destination is evidence, not
+	// a setting: it stays in the file until it names the folder resolution would
+	// use, so an unrelated save cannot quietly hand the next push a new one.
+	carryRetired := state.retiredMirrorPath != "" && retiredMirrorPathStillMoves(state, home)
+	if carryRetired {
+		if data, err = carryRetiredMirrorPath(data, strings.TrimSpace(state.retiredMirrorPath)); err != nil {
+			return err
+		}
 	}
 
 	// Write to temp file in the same directory (same filesystem → rename is atomic)
@@ -749,7 +852,71 @@ func saveStateAt(path string, state *UserState) error {
 		fmt.Fprintf(os.Stderr, "note: migrated legacy state keys to their canonical form: %s\n",
 			strings.Join(state.carriedLegacy, ", "))
 	}
+	// A retired key is the other half of the same notice: nothing replaces its
+	// value, so the note has to name the command that sets the replacement.
+	// Printed once and cleared, so a run that saves twice says it once. A key
+	// this save carried was not dropped, and says nothing.
+	if len(state.retiredKeys) > 0 {
+		for _, key := range state.retiredKeys {
+			if carryRetired && key == retiredMirrorPathStateKey {
+				continue
+			}
+			fmt.Fprintf(os.Stderr, "note: dropped the retired `%s` key: %s\n", key, retiredStateKeys[key])
+		}
+		state.retiredKeys = nil
+	}
+	if !carryRetired {
+		// The value is gone from the file, so the memory of it goes too: a
+		// later save in the same run would otherwise write it back.
+		state.retiredMirrorPath = ""
+	}
 	return nil
+}
+
+// carryRetiredMirrorPath writes the retired key back into the marshaled state.
+// The struct has no field for it any more, so this is a document edit: find
+// (or add) modules.gdrive_sync and append the key. The value is carried as
+// evidence for the destination refusal; nothing reads it as a setting.
+func carryRetiredMirrorPath(data []byte, value string) ([]byte, error) {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("carrying the retired mirror_path: %w", err)
+	}
+	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("carrying the retired mirror_path: the state is not a mapping")
+	}
+	node := doc.Content[0]
+	for _, section := range []string{"modules", "gdrive_sync"} {
+		node = yamlMappingChild(node, section)
+	}
+	node.Content = append(node.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "mirror_path"},
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value},
+	)
+	out, err := yaml.Marshal(&doc)
+	if err != nil {
+		return nil, fmt.Errorf("carrying the retired mirror_path: %w", err)
+	}
+	return out, nil
+}
+
+// yamlMappingChild returns the mapping's value node for key, adding an empty
+// mapping when the key is missing or holds something else. The state struct
+// always writes both sections, so this is the defensive path.
+func yamlMappingChild(mapping *yaml.Node, key string) *yaml.Node {
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value != key {
+			continue
+		}
+		if mapping.Content[i+1].Kind != yaml.MappingNode {
+			mapping.Content[i+1] = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		}
+		return mapping.Content[i+1]
+	}
+	child := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	mapping.Content = append(mapping.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}, child)
+	return child
 }
 
 // schemaForceEnv overrides the downgrade refusal below. It ships with the name
@@ -833,7 +1000,7 @@ func LoadStateForHome(homeDir string) (*UserState, error) {
 
 // SaveStateForHome writes user state to a specific home directory atomically.
 func SaveStateForHome(homeDir string, state *UserState) error {
-	return saveStateAt(StatePathForHome(homeDir), state)
+	return saveStateAtForHome(StatePathForHome(homeDir), state, homeDir)
 }
 
 // ApplyStateToConfig merges user state into a Config loaded from a profile.
