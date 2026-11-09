@@ -440,7 +440,7 @@ func TestAdmitSlotIgnoresHomeFlag(t *testing.T) {
 	}
 }
 
-// AC4: a `dot ai run` lease shows in `dot admit status` with its purpose.
+// A resource admission lease shows in `dot admit status` with its purpose.
 func TestAdmitStatusShowsLeaseSession(t *testing.T) {
 	home, workdir := admitSandbox(t)
 	stubAdmitMonitor(t, healthyAdmitSnapshot())

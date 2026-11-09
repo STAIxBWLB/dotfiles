@@ -29,7 +29,6 @@ they are machine state pi rebuilds itself.`,
 	cmd.AddCommand(newAIHandoffCmd())
 	cmd.AddCommand(newAISetupCmd())
 	cmd.AddCommand(newAIToolsCmd())
-	cmd.AddCommand(newAIRunCmd())
 	cmd.AddCommand(newAIPolicyCmd())
 	cmd.AddCommand(newAISessionCmd())
 	cmd.AddCommand(deprecatedAICommand(newAIListCmd(), "dot ai tools list --details"))

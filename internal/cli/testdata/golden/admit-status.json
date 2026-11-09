@@ -39,5 +39,5 @@
       "deadline": "2026-09-27T12:01:00+09:00"
     }
   ],
-  "note": "jobs launched outside `dot admit` and `dot ai run` hold no lease; a bounded process-table scan catches common heavy work, not every process"
+  "note": "jobs launched outside `dot admit` hold no lease; a bounded process-table scan catches common heavy work, not every process"
 }

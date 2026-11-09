@@ -53,7 +53,7 @@ func deferred(err error) bool {
 	return errors.As(err, &d)
 }
 
-// AC1: dot admit (a direct store slot) and dot ai run (the adapter) exclude
+// dot admit (a direct store slot) and guarded tooling updates exclude
 // each other for the same repository.
 func TestAdapterAndDotAdmitShareRepositorySlot(t *testing.T) {
 	snap, none := healthySnapshot(), []string(nil)
