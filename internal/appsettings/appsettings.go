@@ -793,6 +793,18 @@ func DetectCloudCandidate(home string) string {
 	return DetectDriveCandidate(home)
 }
 
+// DefaultMirrorPath is the folder `dot sync` mirrors into when a workspace
+// store sets no target: "<cloud>/work" on the same cloud as the detected
+// backup root, or ~/gdrive-workspace/work when no cloud root qualifies.
+func DefaultMirrorPath(home string) string {
+	if cloud := DetectCloudCandidate(home); cloud != "" {
+		// cloud is "<root>/secrets/dotfiles-backup"; the mirror lives at
+		// "<root>/work", two levels up from the secrets marker.
+		return filepath.Join(filepath.Dir(filepath.Dir(cloud)), "work")
+	}
+	return filepath.Join(home, "gdrive-workspace", "work")
+}
+
 // detectDropboxCandidate scans for a Dropbox cloud root (under
 // ~/Library/CloudStorage, then the ~/Dropbox symlink in home) that has a
 // "secrets" subdirectory marker. CloudStorage is scanned first so the

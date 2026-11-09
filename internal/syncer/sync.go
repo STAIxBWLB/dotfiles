@@ -16,25 +16,20 @@ import (
 	"github.com/STAIxBWLB/dotfiles/internal/appsettings"
 	"github.com/STAIxBWLB/dotfiles/internal/config"
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
 )
 
-// defaultMirrorPath is the mirror used when neither the local config nor the
-// global state set one. It prefers a detected cloud root (Dropbox, then
-// Google Drive) so the mirror follows the same cloud the backup root uses;
-// absent any cloud root it falls back to ~/gdrive-workspace/work.
+// defaultMirrorPath is the mirror used when the store sets no target. It
+// prefers a detected cloud root (Dropbox, then Google Drive) so the mirror
+// follows the same cloud the backup root uses; absent any cloud root it falls
+// back to ~/gdrive-workspace/work.
 func defaultMirrorPath(home string) string {
-	if cloud := appsettings.DetectCloudCandidate(home); cloud != "" {
-		// cloud is "<root>/secrets/dotfiles-backup"; the mirror lives at
-		// "<root>/work", i.e. two levels up from the secrets marker.
-		return filepath.Join(filepath.Dir(filepath.Dir(cloud)), "work")
-	}
-	return filepath.Join(home, defaultMirrorRel)
+	return appsettings.DefaultMirrorPath(home)
 }
 
 // Defaults applied when the user state has not specified a value.
 const (
 	defaultLocalRel    = "workspace/work"
-	defaultMirrorRel   = "gdrive-workspace/work"
 	defaultMaxDelete   = 1000
 	logRotateMaxLines  = 2000
 	logRotateKeepLines = 1000
@@ -252,6 +247,7 @@ func resolveConfig(state *config.UserState, migrate bool, home, profile string) 
 	}
 
 	localPaths := ResolveLocalPathsForProfile(localPath, profile)
+	localPaths.Home = home
 
 	var localCfg *LocalConfig
 	if migrate && profile == DefaultProfile {
@@ -676,7 +672,7 @@ func refuseRetiredDestinationChange(cfg *Config) error {
 	if cfg == nil || cfg.retiredMirrorPath == "" || !cfg.MirrorIsDefault {
 		return nil
 	}
-	if sameDirectory(cfg.retiredMirrorPath, cfg.MirrorPath) {
+	if fileutil.SameDirectory(cfg.retiredMirrorPath, cfg.MirrorPath) {
 		return nil
 	}
 	stored := strings.TrimRight(cfg.retiredMirrorPath, "/")
@@ -687,25 +683,6 @@ func refuseRetiredDestinationChange(cfg *Config) error {
 			"Keep the stored folder with `dot sync target %s`, or accept the new one with `dot sync target %s`",
 		cfg.retiredMirrorSource, stored, detected, stored, detected,
 	)
-}
-
-// sameDirectory reports whether two paths name the same directory, following
-// symlinks on both sides: the peer Mac's ~/Dropbox is a symlink into
-// ~/Library/CloudStorage, so a textual compare would split one tree in two. A
-// path that does not resolve (it may not exist yet) makes the comparison
-// textual, which leans towards refusing rather than guessing.
-func sameDirectory(a, b string) bool {
-	a, b = strings.TrimSpace(a), strings.TrimSpace(b)
-	if a == "" || b == "" {
-		return false
-	}
-	ca, cb := filepath.Clean(a), filepath.Clean(b)
-	ra, errA := filepath.EvalSymlinks(ca)
-	rb, errB := filepath.EvalSymlinks(cb)
-	if errA == nil && errB == nil {
-		return ra == rb
-	}
-	return ca == cb
 }
 
 // ── pull / push / sync ──────────────────────────────────────────────────
@@ -848,6 +825,12 @@ type FetchResult struct {
 // (#231). An absolute path is read relative to the workspace when it lies
 // under it.
 func Fetch(ctx context.Context, runner *exec.Runner, cfg *Config, rels []string, dryRun bool) (*FetchResult, error) {
+	// A fetch copies mirror → workspace, so a destination that moved without
+	// being asked would refill the workspace from a tree nobody picked and
+	// overwrite what is there. Same refusal as the other transfer entries.
+	if err := refuseRetiredDestinationChange(cfg); err != nil {
+		return nil, err
+	}
 	if !dryRun {
 		if err := ensureLogDir(cfg.LogFile); err != nil {
 			return nil, err

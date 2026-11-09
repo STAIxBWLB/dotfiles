@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/STAIxBWLB/dotfiles/internal/config"
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
@@ -293,5 +294,37 @@ func TestPullDirect_WithoutBackupIgnoresTheConflictsDir(t *testing.T) {
 	runner := exec.NewRunner(true, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err := PullDirect(context.Background(), runner, cfg, false); err != nil && strings.Contains(err.Error(), "unsafe backup directory") {
 		t.Errorf("PullDirect refused although it passes no --backup: %v", err)
+	}
+}
+
+// Fetch copies mirror → workspace, so a destination that moved unasked would
+// refill the workspace from a tree nobody picked and overwrite what is there.
+// It refuses on the same terms as push and pull (#394 row 10) and writes
+// nothing.
+func TestFetch_RefusesARetiredDestination(t *testing.T) {
+	f := newIntakeFixture(t)
+	t.Setenv("HOME", t.TempDir())
+	if err := os.WriteFile(f.cfg.LocalPaths.ConfigFile, []byte("mirror_path: /legacy/mirror\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.writeMirror("notes/a.md", "mirror copy")
+	f.writeLocal("notes/a.md", "workspace copy")
+
+	state := &config.UserState{}
+	state.Modules.Gsync.LocalPath = f.local
+	cfg, err := ResolveConfigReadOnly(state)
+	if err != nil {
+		t.Fatalf("ResolveConfigReadOnly: %v", err)
+	}
+	if !cfg.MirrorIsDefault {
+		t.Fatalf("the store sets no target, so the destination must be the default: %q", cfg.MirrorPath)
+	}
+
+	if _, err := Fetch(context.Background(), f.runner, cfg, []string{"notes/a.md"}, false); err == nil ||
+		!strings.Contains(err.Error(), "dot sync target /legacy/mirror") {
+		t.Fatalf("Fetch = %v, want a refusal naming the fix", err)
+	}
+	if body, _ := os.ReadFile(filepath.Join(f.local, "notes/a.md")); string(body) != "workspace copy" {
+		t.Errorf("the workspace copy was overwritten: %q", body)
 	}
 }

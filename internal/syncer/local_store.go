@@ -11,6 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
 	"github.com/STAIxBWLB/dotfiles/internal/template"
 )
 
@@ -242,6 +243,11 @@ type LocalPaths struct {
 	LogFile           string
 	WorkspaceRoot     string // the local sync tree itself (parent of .dotfiles)
 	WorkspaceIgnore   string // <local>/.gitignore (workspace-level)
+	// Home is the home this layout was resolved for (resolveConfig sets it).
+	// A save needs it to tell a retired destination from the detected default;
+	// empty means the caller built the layout without one, so a save cannot
+	// prove a retired value is moot and carries it.
+	Home string
 }
 
 // ResolveLocalPaths returns the canonical layout for a given local
@@ -524,33 +530,63 @@ func SaveLocalConfig(paths *LocalPaths, cfg *LocalConfig) error {
 	if err != nil {
 		return fmt.Errorf("marshaling local config: %w", err)
 	}
-	if data, err = keepUnknownConfigKeys(paths.ConfigFile, data); err != nil {
+	carried := retiredKeysStillInPlay(cfg, paths.Home)
+	if data, err = keepUnknownConfigKeys(paths.ConfigFile, data, carried); err != nil {
 		return err
 	}
 	if err := atomicWrite(paths.ConfigFile, data); err != nil {
 		return err
 	}
-	announceRetiredLocalConfigKeys(paths.ConfigFile, cfg)
+	announceRetiredLocalConfigKeys(paths.ConfigFile, cfg, carried)
 	return nil
+}
+
+// retiredKeysStillInPlay names the retired keys a save has to carry instead of
+// dropping. The only evidence `dot sync` has for refusing a destination that
+// would move unasked is the value this store still sets (see
+// refuseRetiredDestinationChange), so a save for an unrelated reason
+// (`dot sync pause`, `dot sync owner`, `dot sync setup`, `dot sync shared`)
+// must not take it away: after one of those, the store would resolve the
+// detected default and the next push would mirror, and delete, there.
+//
+// A store that sets `target` chose its destination itself, and one whose value
+// names the folder resolution would land on decides nothing either, so both
+// drop. Without a home the save cannot prove the match, and carrying is the
+// safe side of that doubt.
+func retiredKeysStillInPlay(cfg *LocalConfig, home string) map[string]bool {
+	stored := strings.TrimSpace(cfg.retired[retiredMirrorPathKey])
+	if stored == "" || strings.TrimSpace(cfg.Target) != "" {
+		return nil
+	}
+	if home != "" && fileutil.SameDirectory(expandHome(stored, home), defaultMirrorPath(home)) {
+		return nil
+	}
+	return map[string]bool{retiredMirrorPathKey: true}
 }
 
 // announceRetiredLocalConfigKeys reports the keys this save dropped, once per
 // loaded config: a key that no release reads any more disappears here, and
 // saying so is the difference between a migration and a silent edit of the
-// user's file. Kept at the write choke point so no read path can print it.
-func announceRetiredLocalConfigKeys(path string, cfg *LocalConfig) {
+// user's file. Kept at the write choke point so no read path can print it. A
+// carried key stays in cfg.retired, so a later save in the same run carries it
+// again rather than announcing a drop that did not happen.
+func announceRetiredLocalConfigKeys(path string, cfg *LocalConfig, carried map[string]bool) {
 	if len(cfg.retired) == 0 {
 		return
 	}
 	keys := make([]string, 0, len(cfg.retired))
 	for _, key := range retiredLocalConfigKeys {
-		if _, ok := cfg.retired[key]; ok {
-			keys = append(keys, key)
+		if _, ok := cfg.retired[key]; !ok || carried[key] {
+			continue
 		}
+		keys = append(keys, key)
+		delete(cfg.retired, key)
+	}
+	if len(keys) == 0 {
+		return
 	}
 	fmt.Fprintf(os.Stderr, "note: dropped the retired `%s` key from %s; `dot sync` uses this store's `target` (set it with `dot sync target`)\n",
 		strings.Join(keys, "`, `"), path)
-	cfg.retired = nil
 }
 
 // retiredMirrorPathKey is the one retired key whose value the sync engine still
@@ -602,8 +638,12 @@ func retiredLocalConfigValues(data []byte) map[string]string {
 // aliases resolved (an anchor on a key the struct rewrote is gone), and
 // the result must load as a config, or the save refuses.
 //
+// retiredCarried names the retired keys this save must carry rather than drop
+// (retiredKeysStillInPlay): they are the store's only evidence for refusing a
+// destination change, so they follow the same path as any unknown key.
+//
 // ponytail: known ceiling. See docs/CEILINGS.md (unknown config keys, top level only).
-func keepUnknownConfigKeys(path string, data []byte) ([]byte, error) {
+func keepUnknownConfigKeys(path string, data []byte, retiredCarried map[string]bool) ([]byte, error) {
 	old, err := os.ReadFile(path)
 	if err != nil {
 		return data, nil
@@ -626,7 +666,7 @@ func keepUnknownConfigKeys(path string, data []byte) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("refusing to save %s: %w", path, err)
 		}
-		if known[key.Value] || isRetiredLocalConfigKey(key.Value) || key.ShortTag() == "!!merge" {
+		if known[key.Value] || (isRetiredLocalConfigKey(key.Value) && !retiredCarried[key.Value]) || key.ShortTag() == "!!merge" {
 			continue
 		}
 		value, err := resolveYAMLAliases(was.Content[0].Content[i+1])

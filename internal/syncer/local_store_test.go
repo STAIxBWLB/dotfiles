@@ -530,6 +530,74 @@ func TestSaveLocalConfig_DropsTheRetiredMirrorPathKeyOnce(t *testing.T) {
 	}
 }
 
+// The mirror of that rule: a store with no target whose retired value names a
+// different folder than the detected default is the only thing that stops
+// `dot sync` from mirroring into a tree nobody picked. Every routine save
+// rewrites the file, so such a save must carry the value and stay quiet; only
+// one whose value names the default may drop it, and then it says so.
+func TestSaveLocalConfig_CarriesTheRetiredMirrorPathWhileItStillMoves(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	tmp := t.TempDir()
+	paths := ResolveLocalPaths(tmp)
+	paths.Home = home
+	if err := os.MkdirAll(paths.StoreDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.ConfigFile, []byte("mirror_path: /legacy/mirror\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, ok, err := LoadLocalConfig(paths)
+	if err != nil || !ok {
+		t.Fatalf("LoadLocalConfig: ok=%v err=%v", ok, err)
+	}
+	out := captureSyncerStderr(t, func() {
+		if err := SaveLocalConfig(paths, cfg); err != nil {
+			t.Fatalf("SaveLocalConfig: %v", err)
+		}
+	})
+	if strings.Contains(out, "retired") {
+		t.Errorf("a carried key was announced as dropped: %q", out)
+	}
+	saved, err := os.ReadFile(paths.ConfigFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(saved), "mirror_path: /legacy/mirror") {
+		t.Fatalf("the save dropped a value that still moves the destination:\n%s", saved)
+	}
+
+	// The same store, once its value names the folder resolution would use: the
+	// key decides nothing, so it goes, out loud.
+	moot := filepath.Join(home, "gdrive-workspace", "work")
+	if want := defaultMirrorPath(home); moot != want {
+		t.Fatalf("test default drifted: %q vs %q", moot, want)
+	}
+	if err := os.WriteFile(paths.ConfigFile, []byte("mirror_path: "+moot+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mootCfg, ok, err := LoadLocalConfig(paths)
+	if err != nil || !ok {
+		t.Fatalf("second LoadLocalConfig: ok=%v err=%v", ok, err)
+	}
+	out = captureSyncerStderr(t, func() {
+		if err := SaveLocalConfig(paths, mootCfg); err != nil {
+			t.Fatalf("second SaveLocalConfig: %v", err)
+		}
+	})
+	if !strings.Contains(out, "note: dropped the retired `mirror_path` key") {
+		t.Errorf("a key that decides nothing was dropped without a note: %q", out)
+	}
+	if saved, err = os.ReadFile(paths.ConfigFile); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(saved), "mirror_path") {
+		t.Errorf("saved config still carries the retired key:\n%s", saved)
+	}
+}
+
 // captureSyncerStderr runs fn with os.Stderr redirected to a pipe and returns
 // what was written. The syncer's notes go straight to os.Stderr and take no
 // injectable writer, so the pipe is the only seam.

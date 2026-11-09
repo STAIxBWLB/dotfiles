@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/STAIxBWLB/dotfiles/internal/appsettings"
 )
 
 // #373 AC1: each retired value loads, is rewritten on the next save and
@@ -66,14 +68,17 @@ func TestLoadState_StampedFileIgnoresStrayLegacyKey(t *testing.T) {
 	}
 }
 
-// #394 row 10: modules.gsync.mirror_path lost its last reader, so a file that
-// still sets it must stop carrying it and say so once. The stamped version is
-// the point: #373's gate governs keys whose values are carried over, and this
-// one has no value left to carry, so the note has to fire for a canonical file
-// too.
-func TestLoadState_DropsTheRetiredMirrorPathKeyOnce(t *testing.T) {
+// #394 row 10: modules.gdrive_sync.mirror_path lost its last reader, so a file
+// that still sets it has nothing left to resolve. It does not lose the value
+// yet: while it names a folder other than the detected default, a workspace
+// store without `target` would silently redirect, and internal/syncer refuses
+// exactly that on the strength of this value. Any unrelated save (`dot apply`,
+// `dot reconfigure`) must carry it through, silently.
+func TestLoadState_CarriesTheRetiredMirrorPathWhileItStillMoves(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	body := "schema_version: 4\nname: Test\nprofile: full\nmodules:\n  gsync:\n    mirror_path: /legacy/mirror\n"
+	body := "schema_version: 4\nname: Test\nprofile: full\nmodules:\n  gdrive_sync:\n    mirror_path: /legacy/mirror\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -81,11 +86,9 @@ func TestLoadState_DropsTheRetiredMirrorPathKeyOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if len(loaded.retiredKeys) != 1 || loaded.retiredKeys[0] != "modules.gsync.mirror_path" {
-		t.Fatalf("retiredKeys = %v, want [modules.gsync.mirror_path]", loaded.retiredKeys)
+	if len(loaded.retiredKeys) != 1 || loaded.retiredKeys[0] != retiredMirrorPathStateKey {
+		t.Fatalf("retiredKeys = %v, want [%s]", loaded.retiredKeys, retiredMirrorPathStateKey)
 	}
-	// The sync engine refuses a silent destination change with this value, so
-	// the loader has to hand the value on, not only the key's name.
 	if got := loaded.RetiredMirrorPath(); got != "/legacy/mirror" {
 		t.Errorf("RetiredMirrorPath = %q, want /legacy/mirror", got)
 	}
@@ -95,7 +98,60 @@ func TestLoadState_DropsTheRetiredMirrorPathKeyOnce(t *testing.T) {
 			t.Fatalf("save: %v", err)
 		}
 	})
-	if got := strings.Count(out, "note: dropped the retired `modules.gsync.mirror_path` key"); got != 1 {
+	if strings.Contains(out, "retired") {
+		t.Errorf("a carried key was announced as dropped: %q", out)
+	}
+
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "mirror_path: /legacy/mirror") {
+		t.Fatalf("the save dropped a value that still moves a destination:\n%s", data)
+	}
+
+	// Carrying is idempotent: the flag is spent, the value stays.
+	if again := captureStderr(t, func() {
+		if err := saveStateAt(path, loaded); err != nil {
+			t.Fatalf("second save: %v", err)
+		}
+	}); strings.Contains(again, "retired") {
+		t.Errorf("second save repeated the note: %q", again)
+	}
+	reloaded, err := loadStateAt(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reloaded.RetiredMirrorPath(); got != "/legacy/mirror" {
+		t.Errorf("reloaded value = %q, want /legacy/mirror", got)
+	}
+}
+
+// The other half of the same rule: once the retired value names the folder
+// resolution would use, it decides nothing, so the save drops it and says so
+// once. The stamped version is the point: #373's gate governs keys whose values
+// are migrated, and this one has no canonical form, so the note has to fire for
+// a canonical file too.
+func TestLoadState_DropsTheRetiredMirrorPathKeyOnceItIsMoot(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	moot := filepath.Join(home, "gdrive-workspace", "work")
+	if want := appsettings.DefaultMirrorPath(home); moot != want {
+		t.Fatalf("test default drifted: %q vs %q", moot, want)
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	body := "schema_version: 4\nname: Test\nprofile: full\nmodules:\n  gdrive_sync:\n    mirror_path: " + moot + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := loadStateAt(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	out := captureStderr(t, func() {
+		if err := saveStateAt(path, loaded); err != nil {
+			t.Fatalf("save: %v", err)
+		}
+	})
+	if got := strings.Count(out, "note: dropped the retired `"+retiredMirrorPathStateKey+"` key"); got != 1 {
 		t.Fatalf("want exactly one retired-key note, got %d in %q", got, out)
 	}
 	if !strings.Contains(out, "`dot sync target`") {

@@ -531,7 +531,9 @@ func TestRefuseRetiredDestinationChange_ReadsTheGlobalState(t *testing.T) {
 	t.Setenv("HOME", home)
 	localPath := t.TempDir()
 	statePath := filepath.Join(t.TempDir(), "config.yaml")
-	body := "schema_version: 4\nname: Test\nprofile: full\nmodules:\n  gsync:\n    local_path: " +
+	// `gdrive_sync` is the tag the struct and every real file use; `gsync` was
+	// never a key, so a fixture spelled that way proves nothing.
+	body := "schema_version: 4\nname: Test\nprofile: full\nmodules:\n  gdrive_sync:\n    local_path: " +
 		localPath + "\n    mirror_path: /legacy/mirror\n"
 	if err := os.WriteFile(statePath, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
@@ -573,6 +575,49 @@ func TestPlanPush_RefusesARetiredDestination(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "dot sync target /legacy/mirror") {
 		t.Errorf("PlanPush refusal does not name the fix:\n%v", err)
+	}
+}
+
+// The refusal must not be one-shot. Its only evidence is the retired value, and
+// every routine store save rewrites the file: `dot sync pause`/`resume` (the
+// reload the other half of this change tells users to run), `dot sync owner`,
+// `dot sync setup`, `dot sync shared` all go through SaveLocalConfig while
+// `target` is still empty. A save that dropped the key there would hand the
+// next push the detected default, which is exactly the silent redirect this
+// guard exists to stop.
+func TestPlanPush_SurvivesAnUnrelatedStoreSave(t *testing.T) {
+	state := newIsolatedState(t)
+	writeStoreConfig(t, state.Modules.Gsync.LocalPath, "mirror_path: /legacy/mirror\n")
+
+	cfg, err := ResolveConfigReadOnly(state)
+	if err != nil {
+		t.Fatalf("ResolveConfigReadOnly: %v", err)
+	}
+	out := captureSyncerStderr(t, func() {
+		if err := SetLocalPaused(cfg, true); err != nil {
+			t.Fatalf("SetLocalPaused: %v", err)
+		}
+	})
+	if strings.Contains(out, "retired") {
+		t.Errorf("an unrelated save announced a drop: %q", out)
+	}
+	saved, err := os.ReadFile(cfg.LocalPaths.ConfigFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(saved), "mirror_path: /legacy/mirror") {
+		t.Fatalf("the save dropped the only evidence of the destination change:\n%s", saved)
+	}
+
+	// The next run resolves afresh, as the next `dot sync push` would.
+	next, err := ResolveConfigReadOnly(state)
+	if err != nil {
+		t.Fatalf("ResolveConfigReadOnly after the save: %v", err)
+	}
+	if _, err := PlanPush(next); err == nil {
+		t.Fatal("after an unrelated save the push no longer refuses a destination nobody chose")
+	} else if !strings.Contains(err.Error(), "dot sync target /legacy/mirror") {
+		t.Errorf("the refusal after the save does not name the fix:\n%v", err)
 	}
 }
 
