@@ -62,6 +62,9 @@ func PullTracked(cfg *Config, opts PullOptions) (*PullResult, error) {
 	if err := refuseSharedDriveMirror(cfg); err != nil {
 		return nil, err
 	}
+	if err := refuseRetiredDestinationChange(cfg); err != nil {
+		return nil, err
+	}
 
 	paths := cfg.LocalPaths
 	local := strings.TrimRight(cfg.LocalPath, "/")

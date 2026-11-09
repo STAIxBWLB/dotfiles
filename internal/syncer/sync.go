@@ -52,18 +52,26 @@ type Config struct {
 	MirrorPath        string   // local mirror tree with trailing slash; empty for ssh targets
 	Target            Target   // parsed destination (local dir or ssh host:path)
 	MirrorIsDefault   bool     // target came from defaultMirrorPath, not explicit config
-	FilterMode        FilterMode
-	IncludeFile       string   // editable include list (under .dotfiles/sync/)
-	IncludePatterns   []string // parsed include list used by Go filters + rsync args
-	ExcludesFile      string   // materialized static exclude list (under .dotfiles/sync/)
-	IgnoreFile        string   // user-supplied ignore patterns (under .dotfiles/sync/)
-	AllowFile         string   // explicit secrets opt-in patterns (under .dotfiles/sync/)
-	AllowPatterns     []string // parsed allow.txt — re-included ahead of the secrets layer
-	ConfigDir         string   // workspace-local store dir (.dotfiles/sync/) — dynamic files land here
-	SharedExcludes    []string // operator-curated shared paths (relative to MirrorPath)
-	LogFile           string
-	LockDir           string // copied once from SystemPaths.LockDir at the single resolution point
-	RsyncPath         string // resolved rsync binary; empty if not installed
+	// retiredMirrorPath is the folder a file this config was resolved from still
+	// names in the retired `mirror_path` key, expanded and absolute, when the
+	// store set no target and the destination fell back to the detected default.
+	// retiredMirrorSource says which file named it. The transfer entries read
+	// these only to refuse a destination that would move silently
+	// (refuseRetiredDestinationChange); they never route anything.
+	retiredMirrorPath   string
+	retiredMirrorSource string
+	FilterMode          FilterMode
+	IncludeFile         string   // editable include list (under .dotfiles/sync/)
+	IncludePatterns     []string // parsed include list used by Go filters + rsync args
+	ExcludesFile        string   // materialized static exclude list (under .dotfiles/sync/)
+	IgnoreFile          string   // user-supplied ignore patterns (under .dotfiles/sync/)
+	AllowFile           string   // explicit secrets opt-in patterns (under .dotfiles/sync/)
+	AllowPatterns       []string // parsed allow.txt — re-included ahead of the secrets layer
+	ConfigDir           string   // workspace-local store dir (.dotfiles/sync/) — dynamic files land here
+	SharedExcludes      []string // operator-curated shared paths (relative to MirrorPath)
+	LogFile             string
+	LockDir             string // copied once from SystemPaths.LockDir at the single resolution point
+	RsyncPath           string // resolved rsync binary; empty if not installed
 	// RemoteRsyncPath is passed as --rsync-path for ssh targets whose default
 	// rsync cannot serve a modern client (macOS 26 openrsync). Empty = default OK.
 	RemoteRsyncPath string
@@ -283,10 +291,15 @@ func resolveConfig(state *config.UserState, migrate bool, home, profile string) 
 	}
 
 	// Resolve the destination: the store's `target` spec decides it, else the
-	// detected cloud default. The retired `mirror_path` key is not read at all
-	// (#394 row 10); a file that still carries one is only noted at save.
+	// detected cloud default. The retired `mirror_path` key is never a route
+	// (#394 row 10); it is still read here when the store sets no target,
+	// because a machine that names another folder in it would otherwise change
+	// destination without being asked. The transfer entries refuse on that
+	// (refuseRetiredDestinationChange); this resolve does not, so the
+	// `dot sync target` that fixes it can still run.
 	var target Target
 	mirrorIsDefault := false
+	retiredMirrorPath, retiredMirrorSource := "", ""
 	if spec := strings.TrimSpace(localCfg.Target); spec != "" {
 		t, err := ParseTarget(spec)
 		if err != nil {
@@ -296,6 +309,11 @@ func resolveConfig(state *config.UserState, migrate bool, home, profile string) 
 	} else {
 		mirrorIsDefault = true
 		target = Target{Kind: TargetLocal, Path: defaultMirrorPath(home)}
+		if legacy := strings.TrimSpace(localCfg.retired[retiredMirrorPathKey]); legacy != "" {
+			retiredMirrorPath, retiredMirrorSource = expandHome(legacy, home), "this store's config"
+		} else if legacy := strings.TrimSpace(state.RetiredMirrorPath()); legacy != "" {
+			retiredMirrorPath, retiredMirrorSource = expandHome(legacy, home), "the global state"
+		}
 	}
 	mirrorPath := ""
 	if target.Kind == TargetLocal {
@@ -335,41 +353,43 @@ func resolveConfig(state *config.UserState, migrate bool, home, profile string) 
 	}
 
 	return &Config{
-		Profile:           profile,
-		Home:              override,
-		Owner:             localCfg.Owner,
-		HostMerge:         localCfg.HostMerge,
-		OwnerAliases:      localCfg.OwnerAliases,
-		Hooks:             localCfg.Hooks,
-		RemoteDot:         localCfg.RemoteDot,
-		OwnerEpoch:        localCfg.OwnerEpoch,
-		FencePending:      localCfg.FencePending,
-		IncludeSubmodules: localCfg.IncludeSubmodules,
-		LocalPath:         localPath,
-		MirrorPath:        mirrorPath,
-		Target:            target,
-		MirrorIsDefault:   mirrorIsDefault,
-		FilterMode:        filterMode,
-		IncludeFile:       localPaths.IncludeFile,
-		IncludePatterns:   includePatterns,
-		ExcludesFile:      localPaths.ExcludeFile,
-		IgnoreFile:        localPaths.IgnoreFile,
-		AllowFile:         localPaths.AllowFile,
-		AllowPatterns:     allowPatterns,
-		ConfigDir:         localPaths.StoreDir,
-		SharedExcludes:    append([]string(nil), localCfg.SharedExcludes...),
-		LogFile:           localPaths.LogFile,
-		LockDir:           systemPaths.LockDir,
-		RsyncPath:         rsyncPath,
-		MaxDelete:         maxDelete,
-		Interval:          schedule.Interval,
-		PullInterval:      schedule.PullInterval,
-		PushMode:          schedule.PushMode,
-		PullMode:          schedule.PullMode,
-		Propagation:       policy,
-		Paused:            localCfg.Paused,
-		LocalPaths:        localPaths,
-		SystemPaths:       systemPaths,
+		Profile:             profile,
+		Home:                override,
+		Owner:               localCfg.Owner,
+		HostMerge:           localCfg.HostMerge,
+		OwnerAliases:        localCfg.OwnerAliases,
+		Hooks:               localCfg.Hooks,
+		RemoteDot:           localCfg.RemoteDot,
+		OwnerEpoch:          localCfg.OwnerEpoch,
+		FencePending:        localCfg.FencePending,
+		IncludeSubmodules:   localCfg.IncludeSubmodules,
+		LocalPath:           localPath,
+		MirrorPath:          mirrorPath,
+		Target:              target,
+		MirrorIsDefault:     mirrorIsDefault,
+		retiredMirrorPath:   retiredMirrorPath,
+		retiredMirrorSource: retiredMirrorSource,
+		FilterMode:          filterMode,
+		IncludeFile:         localPaths.IncludeFile,
+		IncludePatterns:     includePatterns,
+		ExcludesFile:        localPaths.ExcludeFile,
+		IgnoreFile:          localPaths.IgnoreFile,
+		AllowFile:           localPaths.AllowFile,
+		AllowPatterns:       allowPatterns,
+		ConfigDir:           localPaths.StoreDir,
+		SharedExcludes:      append([]string(nil), localCfg.SharedExcludes...),
+		LogFile:             localPaths.LogFile,
+		LockDir:             systemPaths.LockDir,
+		RsyncPath:           rsyncPath,
+		MaxDelete:           maxDelete,
+		Interval:            schedule.Interval,
+		PullInterval:        schedule.PullInterval,
+		PushMode:            schedule.PushMode,
+		PullMode:            schedule.PullMode,
+		Propagation:         policy,
+		Paused:              localCfg.Paused,
+		LocalPaths:          localPaths,
+		SystemPaths:         systemPaths,
 	}, nil
 }
 
@@ -640,6 +660,54 @@ func refuseSharedDriveMirror(cfg *Config) error {
 	return nil
 }
 
+// refuseRetiredDestinationChange stops a run whose destination would move
+// without being asked. A store with no `target` resolves the detected cloud
+// default, but the same machine may still name another folder in the retired
+// `mirror_path` key, which chose the destination until #394 row 10. Push and
+// pull both propagate, so going ahead could delete or overwrite in a tree the
+// user never picked, and the save-time note arrives too late to say so.
+//
+// Reading the key here is a refusal, not a route: the same directory (through
+// symlinks too) proceeds with the default this config already resolved, and
+// anything else stops before a transfer with the command that settles it. It
+// is deliberately not part of resolution: `dot sync target`, the fix the error
+// names, resolves a config of its own and would fail with everything else.
+func refuseRetiredDestinationChange(cfg *Config) error {
+	if cfg == nil || cfg.retiredMirrorPath == "" || !cfg.MirrorIsDefault {
+		return nil
+	}
+	if sameDirectory(cfg.retiredMirrorPath, cfg.MirrorPath) {
+		return nil
+	}
+	stored := strings.TrimRight(cfg.retiredMirrorPath, "/")
+	detected := strings.TrimRight(cfg.MirrorPath, "/")
+	return fmt.Errorf(
+		"refusing to sync: %s still sets the retired `mirror_path` to %q and this store has no `target`.\n"+
+			"Sync would use %q instead, and push and pull both propagate changes.\n"+
+			"Keep the stored folder with `dot sync target %s`, or accept the new one with `dot sync target %s`",
+		cfg.retiredMirrorSource, stored, detected, stored, detected,
+	)
+}
+
+// sameDirectory reports whether two paths name the same directory, following
+// symlinks on both sides: the peer Mac's ~/Dropbox is a symlink into
+// ~/Library/CloudStorage, so a textual compare would split one tree in two. A
+// path that does not resolve (it may not exist yet) makes the comparison
+// textual, which leans towards refusing rather than guessing.
+func sameDirectory(a, b string) bool {
+	a, b = strings.TrimSpace(a), strings.TrimSpace(b)
+	if a == "" || b == "" {
+		return false
+	}
+	ca, cb := filepath.Clean(a), filepath.Clean(b)
+	ra, errA := filepath.EvalSymlinks(ca)
+	rb, errB := filepath.EvalSymlinks(cb)
+	if errA == nil && errB == nil {
+		return ra == rb
+	}
+	return ca == cb
+}
+
 // ── pull / push / sync ──────────────────────────────────────────────────
 
 // Push local → mirror under cfg.Propagation. The policy maps to rsync flags
@@ -677,6 +745,9 @@ func Push(ctx context.Context, runner *exec.Runner, cfg *Config, dryRun bool) er
 		}
 	}
 	if err := refuseSharedDriveMirror(cfg); err != nil {
+		return err
+	}
+	if err := refuseRetiredDestinationChange(cfg); err != nil {
 		return err
 	}
 	rf, err := prepareRuntimeFilters(cfg, dryRun)
@@ -958,6 +1029,9 @@ func fetchScopeArgs(entries []fetchEntry) ([]string, error) {
 // files are never deleted; remote-newer files overwrite local with a backup
 // under .sync-conflicts/.
 func PullDirect(ctx context.Context, runner *exec.Runner, cfg *Config, dryRun bool) error {
+	if err := refuseRetiredDestinationChange(cfg); err != nil {
+		return err
+	}
 	if !dryRun {
 		if err := ensureLogDir(cfg.LogFile); err != nil {
 			return err

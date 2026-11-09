@@ -70,6 +70,9 @@ func Intake(ctx context.Context, runner *exec.Runner, cfg *Config, opts IntakeOp
 	if err := refuseSharedDriveMirror(cfg); err != nil {
 		return nil, err
 	}
+	if err := refuseRetiredDestinationChange(cfg); err != nil {
+		return nil, err
+	}
 
 	paths := cfg.LocalPaths
 	mirror := strings.TrimRight(cfg.MirrorPath, "/")

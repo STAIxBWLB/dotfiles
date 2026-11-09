@@ -84,6 +84,11 @@ func TestLoadState_DropsTheRetiredMirrorPathKeyOnce(t *testing.T) {
 	if len(loaded.retiredKeys) != 1 || loaded.retiredKeys[0] != "modules.gsync.mirror_path" {
 		t.Fatalf("retiredKeys = %v, want [modules.gsync.mirror_path]", loaded.retiredKeys)
 	}
+	// The sync engine refuses a silent destination change with this value, so
+	// the loader has to hand the value on, not only the key's name.
+	if got := loaded.RetiredMirrorPath(); got != "/legacy/mirror" {
+		t.Errorf("RetiredMirrorPath = %q, want /legacy/mirror", got)
+	}
 
 	out := captureStderr(t, func() {
 		if err := saveStateAt(path, loaded); err != nil {
@@ -117,5 +122,8 @@ func TestLoadState_DropsTheRetiredMirrorPathKeyOnce(t *testing.T) {
 	}
 	if len(reloaded.retiredKeys) != 0 {
 		t.Errorf("rewritten file still reports retired keys: %v", reloaded.retiredKeys)
+	}
+	if got := reloaded.RetiredMirrorPath(); got != "" {
+		t.Errorf("rewritten file still reports a retired value: %q", got)
 	}
 }

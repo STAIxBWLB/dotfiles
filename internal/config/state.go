@@ -205,7 +205,19 @@ func detectRetiredKeys(state *UserState, raw []byte) {
 	}
 	if legacy.Modules.Gsync.MirrorPath != "" {
 		state.retiredKeys = append(state.retiredKeys, "modules.gsync.mirror_path")
+		state.retiredMirrorPath = legacy.Modules.Gsync.MirrorPath
 	}
+}
+
+// RetiredMirrorPath returns the value this state file still sets for the
+// retired `modules.gsync.mirror_path` key, or "". The sync engine reads it only
+// to refuse a silent destination change on a store that never set `target`: the
+// key does not route anything any more (#394 row 10).
+func (s *UserState) RetiredMirrorPath() string {
+	if s == nil {
+		return ""
+	}
+	return s.retiredMirrorPath
 }
 
 // warnForwardSchema reports that a state file was written by a newer dot. It
@@ -247,6 +259,11 @@ type UserState struct {
 	// the same reason as carriedLegacy: the save that drops them is the only
 	// place that may speak of them, and it prints one note, then clears this.
 	retiredKeys []string
+
+	// retiredMirrorPath is the value `modules.gsync.mirror_path` held in that
+	// same file, kept for the one reader that refuses a destination change
+	// (RetiredMirrorPath).
+	retiredMirrorPath string
 }
 
 // UserModulesState holds module opt-in/config from user state.

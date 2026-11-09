@@ -459,6 +459,138 @@ func TestResolveConfig_IgnoresTheRetiredMirrorPathKey(t *testing.T) {
 	}
 }
 
+// #394 row 10: a store with no `target` resolves the detected default, but the
+// folder it still names in `mirror_path` was the destination until this release.
+// A different folder has to stop a transfer instead of moving it silently: push
+// and pull propagate, so a run could delete in a tree nobody picked.
+func TestRefuseRetiredDestinationChange_RefusesAnotherFolder(t *testing.T) {
+	state := newIsolatedState(t)
+	writeStoreConfig(t, state.Modules.Gsync.LocalPath, "mirror_path: /legacy/mirror\n")
+
+	// Resolution itself must not refuse: `dot sync target`, the fix the error
+	// names, resolves a config of its own before it can write the store.
+	cfg, err := ResolveConfigReadOnly(state)
+	if err != nil {
+		t.Fatalf("ResolveConfigReadOnly: %v", err)
+	}
+	if cfg.retiredMirrorSource != "this store's config" {
+		t.Errorf("retiredMirrorSource = %q, want the store", cfg.retiredMirrorSource)
+	}
+
+	err = refuseRetiredDestinationChange(cfg)
+	if err == nil {
+		t.Fatal("a store naming another folder in mirror_path must refuse a transfer")
+	}
+	for _, want := range []string{
+		"/legacy/mirror",
+		"dot sync target /legacy/mirror",
+		strings.TrimRight(cfg.MirrorPath, "/"),
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal does not name %q:\n%v", want, err)
+		}
+	}
+}
+
+// The same folder spelled through a symlink is not a destination change: the
+// peer Mac's ~/Dropbox is a symlink into ~/Library/CloudStorage/Dropbox.
+func TestRefuseRetiredDestinationChange_AllowsALinkedSameFolder(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cloud := filepath.Join(home, "Library", "CloudStorage", "Dropbox")
+	for _, dir := range []string{"work", "secrets"} {
+		if err := os.MkdirAll(filepath.Join(cloud, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(cloud, filepath.Join(home, "Dropbox")); err != nil {
+		t.Fatal(err)
+	}
+	state := &config.UserState{}
+	state.Modules.Gsync.LocalPath = t.TempDir()
+	writeStoreConfig(t, state.Modules.Gsync.LocalPath,
+		"mirror_path: "+filepath.Join(home, "Dropbox", "work")+"\n")
+
+	cfg, err := ResolveConfigReadOnly(state)
+	if err != nil {
+		t.Fatalf("ResolveConfigReadOnly: %v", err)
+	}
+	want := filepath.Join(cloud, "work") + "/"
+	if cfg.MirrorPath != want {
+		t.Fatalf("MirrorPath = %q, want the cloud default %q", cfg.MirrorPath, want)
+	}
+	if err := refuseRetiredDestinationChange(cfg); err != nil {
+		t.Errorf("the same tree through a symlink must sync, got: %v", err)
+	}
+}
+
+// The global state is the other place the key can still live, and a new
+// workspace store is seeded from it.
+func TestRefuseRetiredDestinationChange_ReadsTheGlobalState(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	localPath := t.TempDir()
+	statePath := filepath.Join(t.TempDir(), "config.yaml")
+	body := "schema_version: 4\nname: Test\nprofile: full\nmodules:\n  gsync:\n    local_path: " +
+		localPath + "\n    mirror_path: /legacy/mirror\n"
+	if err := os.WriteFile(statePath, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	state, err := config.LoadStateFrom(statePath)
+	if err != nil {
+		t.Fatalf("LoadStateFrom: %v", err)
+	}
+
+	cfg, err := ResolveConfigReadOnly(state)
+	if err != nil {
+		t.Fatalf("ResolveConfigReadOnly: %v", err)
+	}
+	if cfg.retiredMirrorSource != "the global state" {
+		t.Errorf("retiredMirrorSource = %q, want the global state", cfg.retiredMirrorSource)
+	}
+	err = refuseRetiredDestinationChange(cfg)
+	if err == nil {
+		t.Fatal("an empty target with a global mirror_path must refuse a transfer")
+	}
+	if !strings.Contains(err.Error(), "the global state") || !strings.Contains(err.Error(), "/legacy/mirror") {
+		t.Errorf("refusal does not name the source and the stored value:\n%v", err)
+	}
+}
+
+// The refusals hang off the transfer entries, not off resolution: a push plan
+// built from such a store stops before it walks either tree.
+func TestPlanPush_RefusesARetiredDestination(t *testing.T) {
+	state := newIsolatedState(t)
+	writeStoreConfig(t, state.Modules.Gsync.LocalPath, "mirror_path: /legacy/mirror\n")
+	cfg, err := ResolveConfigReadOnly(state)
+	if err != nil {
+		t.Fatalf("ResolveConfigReadOnly: %v", err)
+	}
+
+	_, err = PlanPush(cfg)
+	if err == nil {
+		t.Fatal("PlanPush planned a push into a destination nobody chose")
+	}
+	if !strings.Contains(err.Error(), "dot sync target /legacy/mirror") {
+		t.Errorf("PlanPush refusal does not name the fix:\n%v", err)
+	}
+}
+
+// A store that sets `target` moved its destination deliberately: the retired
+// key is irrelevant, whatever it says.
+func TestRefuseRetiredDestinationChange_IgnoresAStoreWithTarget(t *testing.T) {
+	state := newIsolatedState(t)
+	writeStoreConfig(t, state.Modules.Gsync.LocalPath, "target: local:/chosen/mirror\nmirror_path: /legacy/mirror\n")
+
+	cfg, err := ResolveConfigReadOnly(state)
+	if err != nil {
+		t.Fatalf("ResolveConfigReadOnly: %v", err)
+	}
+	if err := refuseRetiredDestinationChange(cfg); err != nil {
+		t.Errorf("an explicit target must not be guarded: %v", err)
+	}
+}
+
 func TestResolveConfigReadOnlyForHome_UsesGivenHome(t *testing.T) {
 	// os.UserHomeDir() would resolve here — the --home override must not use it.
 	currentHome := t.TempDir()

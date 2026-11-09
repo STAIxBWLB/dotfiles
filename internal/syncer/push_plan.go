@@ -100,6 +100,9 @@ func PlanPush(cfg *Config) (*PushPlan, error) {
 	if err := refuseSharedDriveMirror(cfg); err != nil {
 		return nil, err
 	}
+	if err := refuseRetiredDestinationChange(cfg); err != nil {
+		return nil, err
+	}
 
 	local := strings.TrimRight(cfg.LocalPath, "/")
 	mirror := strings.TrimRight(cfg.MirrorPath, "/")
