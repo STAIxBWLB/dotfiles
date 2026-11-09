@@ -32,7 +32,7 @@ assert_dir_exists "$backup_root/profiles/$(hostname -s)" "host root created"
 assert_file_exists "$backup_root/profiles/$(hostname -s)/latest.txt" "latest pointer written"
 
 # 2. backup (with secrets)
-dot --home "$tmphome" profile backup --to "$backup_root" --tag "second" --include-secrets --yes
+dot --home "$tmphome" profile backup --to "$backup_root" --tag "second" --include-age-key --yes
 
 # 3. list shows 2 snapshots
 count=$(dot --home "$tmphome" profile list --from "$backup_root" | grep -c "2026\|20[0-9][0-9]-" || true)
@@ -46,7 +46,7 @@ fi
 echo 'name: mutated' > "$tmphome/.config/dotfiles/config.yaml"
 echo 'MUTATED' > "$tmphome/.ssh/age_key"
 
-dot --home "$tmphome" profile restore --from "$backup_root" --include-secrets --yes >/dev/null
+dot --home "$tmphome" profile restore --from "$backup_root" --include-age-key --yes >/dev/null
 if grep -q "Scenario Test" "$tmphome/.config/dotfiles/config.yaml"; then
   PASS=$((PASS + 1)); echo "  ✓ restore recovered state"
 else

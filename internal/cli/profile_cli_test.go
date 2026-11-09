@@ -29,7 +29,7 @@ func TestProfileCLIBackupRestoreRoundtrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, errOut, err := runDotForTest("profile", "backup", "--to", root, "--tag", "cli-test", "--include-secrets")
+	out, errOut, err := runDotForTest("profile", "backup", "--to", root, "--tag", "cli-test", "--include-age-key")
 	if err != nil {
 		t.Fatalf("backup: %v\nstdout=%s\nstderr=%s", err, out, errOut)
 	}
@@ -40,7 +40,7 @@ func TestProfileCLIBackupRestoreRoundtrip(t *testing.T) {
 	writeCLITestFile(t, statePath, "name: mutated\n")
 	writeCLITestFile(t, keyPath, "MUTATED-KEY")
 
-	out, errOut, err = runDotForTest("profile", "restore", "--from", root, "--include-secrets", "--yes")
+	out, errOut, err = runDotForTest("profile", "restore", "--from", root, "--include-age-key", "--yes")
 	if err != nil {
 		t.Fatalf("restore: %v\nstdout=%s\nstderr=%s", err, out, errOut)
 	}
@@ -63,7 +63,7 @@ func TestProfileCLIBackupRestoreRoundtrip(t *testing.T) {
 func TestProfileCLIBackupWarnsWhenNoSecretsFound(t *testing.T) {
 	_, root := newProfileCLIFixture(t)
 
-	out, errOut, err := runDotForTest("profile", "backup", "--to", root, "--include-secrets")
+	out, errOut, err := runDotForTest("profile", "backup", "--to", root, "--include-age-key")
 	if err != nil {
 		t.Fatalf("backup: %v\nstdout=%s\nstderr=%s", err, out, errOut)
 	}

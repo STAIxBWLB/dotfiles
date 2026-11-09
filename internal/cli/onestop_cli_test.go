@@ -438,7 +438,7 @@ func TestPlanAgeIdentity(t *testing.T) {
 		wantScopes:  []string{"profile", "secrets"},
 		wantInclude: true, wantForced: true,
 	}, {
-		name:           "explicit --include-secrets needs no forcing",
+		name:           "explicit --include-age-key needs no forcing",
 		scopes:         []string{"profile", "secrets"},
 		canBackup:      []string{"profile", "secrets"},
 		includeSecrets: true,
