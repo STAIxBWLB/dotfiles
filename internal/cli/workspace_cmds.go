@@ -233,19 +233,6 @@ func newLayoutsDoctorCmd() *cobra.Command {
 	}
 }
 
-// newDoctorCmd keeps the old top-level name working for one release.
-func newDoctorCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:    "doctor",
-		Short:  "Deprecated: use dot layouts doctor",
-		Hidden: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			warnRenamed(cmd, "dot doctor", "dot layouts doctor")
-			return runLayoutsDoctor(cmd, args)
-		},
-	}
-}
-
 func runLayoutsDoctor(cmd *cobra.Command, args []string) error {
 	runner := exec.NewRunner(false, slog.Default())
 	p := printerFrom(cmd)

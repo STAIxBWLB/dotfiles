@@ -48,11 +48,9 @@ Also available as 'dotfiles' for back-compat.`,
 
 	// Existing commands
 	root.AddCommand(newApplyCmd())
-	root.AddCommand(newCheckCmd())
 	root.AddCommand(newStatusCmd())
 	root.AddCommand(newInitCmd())
 	root.AddCommand(newDiffCmd())
-	root.AddCommand(newPreflightCmd())
 	root.AddCommand(newSecretsCmd())
 	root.AddCommand(newUpgradeCmd(version))
 	root.AddCommand(newRollbackCmd())
@@ -96,7 +94,6 @@ Also available as 'dotfiles' for back-compat.`,
 	root.AddCommand(newUnregisterCmd())
 	root.AddCommand(newLayoutsCmd())
 	scopeProfileFlags(root)
-	root.AddCommand(newDoctorCmd())
 
 	// macOS apps + settings backup/restore
 	root.AddCommand(newAppsCmd())
@@ -223,7 +220,7 @@ func executeWithSignals(cmd *cobra.Command) error {
 // they meant nothing (#380). init takes --profile as the profile to preselect.
 func scopeProfileFlags(root *cobra.Command) {
 	readers := map[string]bool{
-		"apply": true, "check": true, "diff": true, "config": true, "status": true, "init": true,
+		"apply": true, "diff": true, "config": true, "status": true, "init": true,
 		"watchdog setup": true, "watchdog notify": true, "container setup": true,
 	}
 	var walk func(c *cobra.Command, path string)
@@ -233,7 +230,7 @@ func scopeProfileFlags(root *cobra.Command) {
 			if readers[name] {
 				sub.Flags().String("profile", "", "Profile name (minimal, full, server)")
 				switch name {
-				case "apply", "check", "diff":
+				case "apply", "diff":
 					sub.Flags().StringSlice("module", nil, "Run specific modules only")
 				}
 			}

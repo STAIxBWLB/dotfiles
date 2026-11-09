@@ -24,8 +24,8 @@ dot apply --profile "$PROFILE" --yes
 
 # Check should pass after apply
 echo ""
-echo "--- check ---"
-dot check --profile "$PROFILE"
+echo "--- diff --summary ---"
+dot diff --summary --profile "$PROFILE"
 
 # Profile-specific assertions
 case "$PROFILE" in

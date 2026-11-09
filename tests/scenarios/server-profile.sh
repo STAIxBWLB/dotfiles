@@ -13,10 +13,10 @@ dot apply --profile server --yes --dry-run
 # Server profile should show these in dry-run output
 # (We verify the profile loads correctly and the right modules are selected)
 
-# Verify server profile selects correctly via check
+# Verify server profile selects correctly via diff --summary
 echo ""
-echo "--- check server ---"
-OUTPUT=$(dot check --profile server 2>&1 || true)
+echo "--- diff --summary server ---"
+OUTPUT=$(dot diff --summary --profile server 2>&1 || true)
 
 # Server enables: packages, shell, git, ssh, terminal, tmux, ai, conda
 # Server disables: workspace, fonts, gpg, secrets

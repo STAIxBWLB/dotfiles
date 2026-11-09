@@ -146,8 +146,9 @@ check "version not routed to open" $BIN version
 echo "--- backward compatibility ---"
 check "apply --dry-run flag accepted" bash -c "$BIN apply --dry-run 2>&1; true"
 check "diff --summary exists" bash -c "$BIN diff --help 2>&1 | grep -q -- '--summary'"
-check "check alias still runs" bash -c "$BIN check --help >/dev/null 2>&1"
-check "doctor alias names layouts doctor" bash -c "$BIN doctor 2>&1 >/dev/null | grep -q 'dot layouts doctor'"
+check "removed check alias fails" bash -c "! $BIN check >/dev/null 2>&1"
+check "removed doctor alias fails" bash -c "! $BIN doctor >/dev/null 2>&1"
+check "removed preflight alias fails" bash -c "! $BIN preflight >/dev/null 2>&1"
 check "diff command exists" bash -c "$BIN diff --help 2>&1 | grep -q 'Show'"
 
 # ── Cleanup ───────────────────────────────────────────────────────────────────

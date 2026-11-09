@@ -10,28 +10,6 @@ import (
 	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
-// newPreflightCmd keeps the old name working for one release; its two modes
-// are now `dot init --check-only` and `dot init --detect` (#378).
-func newPreflightCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:    "preflight",
-		Short:  "Deprecated: use dot init --check-only or dot init --detect",
-		Hidden: true,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			checkOnly, _ := cmd.Flags().GetBool("check-only")
-			if checkOnly {
-				warnRenamed(cmd, "dot preflight --check-only", "dot init --check-only")
-			} else {
-				warnRenamed(cmd, "dot preflight", "dot init --detect")
-			}
-			return runInitDetect(cmd, checkOnly)
-		},
-	}
-	cmd.Flags().Bool("check-only", false, "Only run checks, don't generate config")
-	cmd.Flags().Bool("force", false, "Overwrite existing config file")
-	return cmd
-}
-
 // runInitDetect scans the environment and, unless checkOnly, writes a config
 // generated from the detected system. An existing config is kept unless
 // --force is set.

@@ -22,30 +22,11 @@ func newDiffCmd() *cobra.Command {
 		Long: `Show what would change if 'dot apply' were run (dry-run with verbose change details).
 
 --summary lists each module's pending change descriptions without the
-commands, the report 'dot check' printed before it was folded into diff.`,
+commands.`,
 		RunE: runDiff,
 	}
 	cmd.Flags().Bool("summary", false, "List pending changes per module without the commands")
 	return cmd
-}
-
-// newCheckCmd keeps the old name working for one release.
-func newCheckCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:    "check",
-		Short:  "Deprecated: use dot diff --summary",
-		Hidden: true,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			warnRenamed(cmd, "dot check", "dot diff --summary")
-			return runModulePlan(cmd, true)
-		},
-	}
-}
-
-// warnRenamed prints the one-release compatibility notice on stderr, so
-// scripts that parse stdout see the same report under the old name.
-func warnRenamed(cmd *cobra.Command, oldName, newName string) {
-	fmt.Fprintf(cmd.ErrOrStderr(), "Warning: %s is deprecated; use '%s' instead. The old name will be removed after one release.\n", oldName, newName)
 }
 
 func runDiff(cmd *cobra.Command, _ []string) error {

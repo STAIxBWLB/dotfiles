@@ -7,7 +7,7 @@ Show pending changes without applying
 Show what would change if 'dot apply' were run (dry-run with verbose change details).
 
 --summary lists each module's pending change descriptions without the
-commands, the report 'dot check' printed before it was folded into diff.
+commands.
 
 ```
 dot diff [flags]
