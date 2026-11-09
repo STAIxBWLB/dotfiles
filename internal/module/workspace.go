@@ -2,7 +2,9 @@ package module
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -269,9 +271,20 @@ func (m *WorkspaceModule) targetReachable(rc *RunContext, path string) bool {
 // missing, so the Symlink call that follows can create the link Apply planned.
 // A real file or directory, and a symlink whose target exists, are left alone.
 // Removal goes through Runner.Remove, so a dry run removes nothing.
+//
+// Only a target confirmed missing (fs.ErrNotExist) counts as dangling. Any other
+// stat failure, such as a target behind an untraversable directory or an
+// unavailable mount, leaves the link in place and is returned as an error.
 func (m *WorkspaceModule) removeDanglingSymlink(rc *RunContext, path string) error {
-	if !rc.Runner.IsSymlink(path) || rc.Runner.FileExists(path) {
+	if !rc.Runner.IsSymlink(path) {
 		return nil
+	}
+	_, statErr := os.Stat(path)
+	if statErr == nil {
+		return nil
+	}
+	if !errors.Is(statErr, fs.ErrNotExist) {
+		return fmt.Errorf("cannot tell whether the target of symlink %s exists (%v); left it in place, check the link target's permissions or mount", path, statErr)
 	}
 	if err := rc.Runner.Remove(path); err != nil && !os.IsNotExist(err) {
 		return err

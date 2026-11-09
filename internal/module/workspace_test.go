@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/STAIxBWLB/dotfiles/internal/config"
@@ -75,6 +76,37 @@ func TestWorkspaceApplyReplacesDanglingGdriveLink(t *testing.T) {
 	}
 	if !check.Satisfied {
 		t.Errorf("Check after Apply is not satisfied: %+v", check.Changes)
+	}
+}
+
+// A link whose target cannot be stat'ed for a reason other than "missing"
+// (here an untraversable parent) is not dangling: it stays, and Apply errors.
+func TestWorkspaceApplyKeepsSymlinkWithUnreadableTarget(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root traverses a 0o000 directory")
+	}
+	rc, home := workspaceApplyFixture(t)
+	locked := filepath.Join(home, "locked")
+	target := filepath.Join(locked, "work")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(locked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	gdriveXref := filepath.Join(home, "workspace", "work", ".gdrive")
+	if err := os.Symlink(target, gdriveXref); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := (&WorkspaceModule{}).Apply(context.Background(), rc)
+	if err == nil || !strings.Contains(err.Error(), gdriveXref) || !strings.Contains(err.Error(), "permissions or mount") {
+		t.Fatalf("Apply error = %v, want one naming %s and the permissions/mount hint", err, gdriveXref)
+	}
+	got, lerr := os.Readlink(gdriveXref)
+	if lerr != nil || got != target {
+		t.Fatalf("link was changed: target=%q err=%v, want %q", got, lerr, target)
 	}
 }
 
