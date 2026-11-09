@@ -286,7 +286,7 @@ type AIConfig struct {
 // app; dot never writes them.
 type AISkillsConfig struct {
 	Enabled  bool     `yaml:"enabled,omitempty"`   // deprecated: ignored, kept so legacy configs still load
-	Provider string   `yaml:"provider,omitempty"`  // maru or path (anchor is a legacy alias for maru)
+	Provider string   `yaml:"provider,omitempty"`  // maru or path
 	SSOTPath string   `yaml:"ssot_path,omitempty"` // optional for provider=maru
 	Tools    []string `yaml:"tools,omitempty"`     // default tool targets for diagnostics
 }

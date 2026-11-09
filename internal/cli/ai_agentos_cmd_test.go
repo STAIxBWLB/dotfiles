@@ -244,17 +244,12 @@ func TestAISkillsStatusDefaultsWithNoFlags(t *testing.T) {
 	}
 }
 
-func TestAISkillsStatusAcceptsLegacyAnchorProvider(t *testing.T) {
+func TestAISkillsStatusRejectsRetiredAnchorProvider(t *testing.T) {
 	home := t.TempDir()
 	writeCLITestFile(t, filepath.Join(home, ".claude", "skills", ".keep"), "")
-	writeCLITestFile(t, filepath.Join(home, ".maru", "skills", "vault-extract", "SKILL.md"), "# Vault Extract\n")
 
-	out, errOut, err := runDotForTest("--home", home, "ai", "skills", "status", "--provider", "anchor", "--json")
-	if err != nil {
-		t.Fatalf("skills status with legacy anchor provider should succeed: %v\nstderr=%s", err, errOut)
-	}
-	if !strings.Contains(out, `"provider": "maru"`) {
-		t.Fatalf("legacy anchor provider should resolve to maru:\n%s", out)
+	if _, _, err := runDotForTest("--home", home, "ai", "skills", "status", "--provider", "anchor", "--json"); err == nil {
+		t.Fatal("skills status with retired anchor provider should fail")
 	}
 }
 

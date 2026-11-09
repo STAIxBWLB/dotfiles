@@ -24,12 +24,6 @@ var darwinOnlyFormulas = map[string]bool{
 	"maru-cli": true,
 }
 
-// legacyFormulaAliases renames formulas whose upstream was renamed, so stale
-// profiles/state still resolve to the current formula (Anchor -> Maru).
-var legacyFormulaAliases = map[string]string{
-	"anchor-cli": "maru-cli",
-}
-
 // NewBrew creates a new Brew wrapper.
 func NewBrew(runner *Runner) *Brew {
 	return &Brew{Runner: runner}
@@ -410,9 +404,6 @@ func formulaName(formula string) string {
 func installableFormulasForGOOS(formulas []string, goos string) []string {
 	out := make([]string, 0, len(formulas))
 	for _, formula := range formulas {
-		if alias := legacyFormulaAliases[formulaName(formula)]; alias != "" {
-			formula = alias
-		}
 		if darwinOnlyFormulas[formulaName(formula)] && goos != "darwin" {
 			continue
 		}

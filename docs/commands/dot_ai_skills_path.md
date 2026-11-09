@@ -10,7 +10,7 @@ dot ai skills path [flags]
 
 ```
   -h, --help              help for path
-      --provider string   Skills SSOT provider: maru or path (defaults to maru; anchor is a legacy alias)
+      --provider string   Skills SSOT provider: maru or path (defaults to maru)
       --ssot string       Skills SSOT root path (defaults to ~/.maru/skills for provider=maru)
       --tool string       Comma-separated managed targets (claude,codex); auto-detected when omitted
 ```

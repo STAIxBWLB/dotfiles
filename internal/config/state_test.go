@@ -420,9 +420,9 @@ func TestValidate_AISkillsConfig(t *testing.T) {
 	}{
 		{name: "empty"},
 		{name: "maru ok", skills: AISkillsConfig{Provider: "maru", Tools: []string{"claude"}}},
-		{name: "legacy anchor ok", skills: AISkillsConfig{Enabled: true, Provider: "anchor", Tools: []string{"claude"}}},
+		{name: "retired anchor names maru", skills: AISkillsConfig{Provider: "anchor", Tools: []string{"claude"}}, errSub: "use maru"},
 		{name: "path ok", skills: AISkillsConfig{Provider: "path", SSOTPath: "~/skills", Tools: []string{"codex"}}},
-		{name: "legacy inventory-only tool", skills: AISkillsConfig{Provider: "maru", Tools: []string{"agents", "gemini", "antigravity"}}},
+		{name: "retired inventory-only tool", skills: AISkillsConfig{Provider: "maru", Tools: []string{"gemini"}}, errSub: "tools entry"},
 		{name: "legacy enabled without tools ok", skills: AISkillsConfig{Enabled: true, Provider: "maru"}},
 		{name: "unknown provider", skills: AISkillsConfig{Provider: "bogus", Tools: []string{"claude"}}, errSub: "provider"},
 		{name: "path missing ssot", skills: AISkillsConfig{Provider: "path", Tools: []string{"claude"}}, errSub: "ssot_path"},

@@ -404,11 +404,8 @@ type UserSSHState struct {
 var validProfiles = []string{"minimal", "full", "server"}
 
 var validAISkillsTools = map[string]bool{
-	"claude":      true,
-	"codex":       true,
-	"agents":      true, // legacy inventory-only value, normalized by diagnostics
-	"gemini":      true, // legacy inventory-only value, normalized by diagnostics
-	"antigravity": true, // legacy inventory-only value, normalized by diagnostics
+	"claude": true,
+	"codex":  true,
 }
 
 // Validate performs lightweight sanity checks on critical fields.
@@ -551,7 +548,9 @@ func validateAISkillsConfig(skills AISkillsConfig) error {
 	}
 	provider := strings.ToLower(strings.TrimSpace(skills.Provider))
 	switch provider {
-	case "", "maru", "anchor", "path": // anchor is a legacy alias for maru; empty falls back to CLI defaults
+	case "", "maru", "path": // empty falls back to CLI defaults
+	case "anchor":
+		return fmt.Errorf("modules.ai.skills.provider %q was renamed: use maru", skills.Provider)
 	default:
 		return fmt.Errorf("modules.ai.skills.provider must be maru or path (got %q)", skills.Provider)
 	}
@@ -565,7 +564,7 @@ func validateAISkillsConfig(skills AISkillsConfig) error {
 			return fmt.Errorf("modules.ai.skills.tools may not contain empty entries")
 		}
 		if !validAISkillsTools[tool] {
-			return fmt.Errorf("modules.ai.skills.tools entry %q must be one of: agents, antigravity, claude, codex, gemini", raw)
+			return fmt.Errorf("modules.ai.skills.tools entry %q must be one of: claude, codex", raw)
 		}
 		if seen[tool] {
 			return fmt.Errorf("modules.ai.skills.tools contains duplicate entry %q", raw)
