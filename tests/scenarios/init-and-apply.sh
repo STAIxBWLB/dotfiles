@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Scenario: init → apply → check
+# Scenario: init → apply → diff --summary
 set -euo pipefail
 source "$(dirname "$0")/../assert.sh"
 
@@ -16,9 +16,9 @@ dot apply --yes
 assert_exit_code 0 dot apply --yes
 
 echo ""
-echo "--- check ---"
-dot check
-assert_exit_code 0 dot check
+echo "--- diff --summary ---"
+dot diff --summary
+assert_exit_code 0 dot diff --summary
 
 assert_dir_exists "$HOME/.config/dotfiles" "Config directory created"
 assert_file_exists "$HOME/.config/dotfiles/config.yaml" "Config file created"

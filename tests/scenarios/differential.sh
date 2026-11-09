@@ -120,7 +120,6 @@ MATRIX=(
   "--help"
   "version"
   "status"
-  "check"
   "diff"
   "sync status --json"
   "peer status --json"
