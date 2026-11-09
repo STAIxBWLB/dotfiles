@@ -122,7 +122,7 @@ func (s SchedulerState) StringForProfile(profile string) string {
 	if s != SchedulerSpawnFailed || profile == "" || profile == DefaultProfile {
 		return s.String()
 	}
-	command := "dot sync --profile=" + shellQuote(profile)
+	command := "dot sync --store=" + shellQuote(profile)
 	return "spawn failed; reload the job with `" + command + " pause && " + command + " resume`"
 }
 

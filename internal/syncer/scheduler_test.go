@@ -241,11 +241,11 @@ func TestResolveScheduler_ProfilePathAndRenderedUnitAgree(t *testing.T) {
 		if err != nil {
 			t.Fatalf("render %s systemd service: %v", kind.Action(), err)
 		}
-		if !strings.Contains(string(service), "--profile=research-2.v1 \"--home="+home) {
+		if !strings.Contains(string(service), "--store=research-2.v1 \"--home="+home) {
 			t.Errorf("%s systemd ExecStart does not carry the same profile before --home:\n%s", kind.Action(), service)
 		}
 		args := renderedPlistProgramArguments(t, data)
-		if !containsString(args, "--profile=research-2.v1") {
+		if !containsString(args, "--store=research-2.v1") {
 			t.Errorf("%s plist profile argument = %q, want research-2.v1", kind.Action(), args)
 		}
 	}
@@ -288,8 +288,8 @@ func TestResolveScheduler_ProfilePathAndRenderedUnitAgree(t *testing.T) {
 		if err != nil {
 			t.Fatalf("render default %s systemd service: %v", kind.Action(), err)
 		}
-		if strings.Contains(string(service), "--profile=") {
-			t.Errorf("default %s service unexpectedly renders --profile:\n%s", kind.Action(), service)
+		if strings.Contains(string(service), "--store=") {
+			t.Errorf("default %s service unexpectedly renders --store:\n%s", kind.Action(), service)
 		}
 	}
 }

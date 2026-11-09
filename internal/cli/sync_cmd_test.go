@@ -361,27 +361,21 @@ func TestSyncStatusSeparatesLiveConflictsFromBackups(t *testing.T) {
 	}
 }
 
-// --store names the sync store; --profile still works for one release, warns,
-// and is gone from every command that is not dot sync (#380).
-func TestSyncStoreFlagAndDeprecatedProfile(t *testing.T) {
+// --store names the sync store; the deprecated --profile alias is gone (#394).
+func TestSyncStoreFlag(t *testing.T) {
 	f := newSyncCLIFixture(t)
 	_ = f
-	out, errOut, err := runDotForTest("sync", "status", "--profile", "sync")
-	if err != nil || !strings.Contains(errOut, "use --store") || strings.Contains(out, "deprecated") {
-		t.Fatalf("deprecated --profile: err=%v stderr=%q stdout=%q", err, errOut, out)
-	}
 	if _, _, err := runDotForTest("sync", "status", "--store", "sync"); err != nil {
 		t.Fatalf("--store: %v", err)
+	}
+	if _, _, err := runDotForTest("sync", "status", "--profile", "sync"); err == nil || !strings.Contains(err.Error(), "unknown flag") {
+		t.Fatalf("sync status --profile: %v", err)
 	}
 	if _, _, err := runDotForTest("peer", "status", "--profile", "x"); err == nil || !strings.Contains(err.Error(), "unknown flag") {
 		t.Fatalf("peer status --profile: %v", err)
 	}
 	if _, _, err := runDotForTest("sync", "status", "--mode", "clean"); err == nil || !strings.Contains(err.Error(), "unknown flag") {
 		t.Fatalf("sync status --mode: %v", err)
-	}
-	// Two different stores through both names is refused, not silently resolved.
-	if _, _, err := runDotForTest("sync", "status", "--store", "sync", "--profile", "peer"); err == nil || !strings.Contains(err.Error(), "name different stores") {
-		t.Fatalf("conflicting --store/--profile: %v", err)
 	}
 	// Only the commands that read --profile take it.
 	for _, args := range [][]string{{"watchdog", "status", "--profile", "x"}, {"container", "status", "--profile", "x"}} {

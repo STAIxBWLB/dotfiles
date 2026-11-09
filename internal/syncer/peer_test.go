@@ -428,7 +428,7 @@ func TestSchedulerUnitsAreProfileScoped(t *testing.T) {
 		t.Errorf("peer label = %s, want it to name the profile", peer)
 	}
 	if got := profileArg(DefaultProfile); got != "" {
-		t.Errorf("default profile must render no --profile arg, got %q", got)
+		t.Errorf("default profile must render no --store arg, got %q", got)
 	}
 	if got := profileArg("peer"); got != "peer" {
 		t.Errorf("profileArg(peer) = %q", got)

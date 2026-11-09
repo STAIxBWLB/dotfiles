@@ -19,7 +19,7 @@ import (
 // the same struct without inventing a flag set.
 type BootstrapOptions struct {
 	// Profile names the sync store to resolve. Empty means the default
-	// profile, matching the `--profile` flag's own default.
+	// profile, matching the `--store` flag's own default.
 	Profile string
 
 	// ReadOnly resolves the profile without creating the local store,

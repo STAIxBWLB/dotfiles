@@ -67,7 +67,7 @@ func TestLaunchdLastExitCode(t *testing.T) {
 
 func TestSpawnFailedRecoveryUsesActiveProfile(t *testing.T) {
 	got := SchedulerSpawnFailed.StringForProfile("backup")
-	if !strings.Contains(got, "dot sync --profile='backup' pause && dot sync --profile='backup' resume") {
+	if !strings.Contains(got, "dot sync --store='backup' pause && dot sync --store='backup' resume") {
 		t.Fatalf("recovery = %q", got)
 	}
 	if got := SchedulerRunning.StringForProfile("backup"); got != "running" {

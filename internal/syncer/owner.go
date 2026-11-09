@@ -196,8 +196,8 @@ func (e *OwnerMismatchError) Error() string {
 		"profile %q is owned by %q but this machine answers to %q; refusing to write.\n"+
 			"  Two writers on one target corrupt it: each machine keeps its own baseline and\n"+
 			"  delete propagation would make the runs undo each other.\n"+
-			"  To move ownership here: dot sync owner --profile=%s --set-self\n"+
-			"  To read instead of write: dot sync pull --profile=%s",
+			"  To move ownership here: dot sync owner --store=%s --set-self\n"+
+			"  To read instead of write: dot sync pull --store=%s",
 		e.Profile, e.Owner, e.Host, e.Profile, e.Profile)
 }
 

@@ -390,7 +390,7 @@ func nfdPushRefusal(marked bool, renames int, profile string) error {
 		return nil
 	}
 	return fmt.Errorf(
-		"found %d selected filename(s) requiring NFD migration; run `dot sync names normalize --profile=%s --dry-run`, then rerun with `--yes`",
+		"found %d selected filename(s) requiring NFD migration; run `dot sync names normalize --store=%s --dry-run`, then rerun with `--yes`",
 		renames, profile)
 }
 

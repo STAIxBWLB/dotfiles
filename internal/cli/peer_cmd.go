@@ -81,9 +81,8 @@ the new owner and removes its scheduler, so two coordinators never run.`,
 }
 
 // peerBootstrapOptions translates the peer command tree's flags into the
-// engine's bootstrap options. The profile is fixed here, which is why
-// `--profile` is deliberately not read: `dot peer` only ever addresses the
-// peer store.
+// engine's bootstrap options. The profile is fixed here, which is why no
+// flag selects it: `dot peer` only ever addresses the peer store.
 func peerBootstrapOptions(cmd *cobra.Command) syncer.BootstrapOptions {
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	verbose, _ := cmd.Flags().GetBool("verbose")
@@ -331,7 +330,7 @@ on a laptop.`,
 				p.Line("%s %d deletion(s) from here under %s on the peer", verb, res.QuarantinedOnPeer, dir)
 			}
 			p.Line("Conflicting edits keep both versions; list them with:")
-			p.Line("  dot sync conflicts --profile=%s", PeerProfile)
+			p.Line("  dot sync conflicts --store=%s", PeerProfile)
 			return nil
 		},
 	}

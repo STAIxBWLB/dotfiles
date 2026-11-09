@@ -96,25 +96,9 @@ Run without a subcommand to print this help.`,
 			return cmd.Help()
 		},
 		SilenceUsage: true,
-		// --store and the deprecated --profile name the same thing; two
-		// different values must not silently pick one (#380).
-		PersistentPreRunE: func(c *cobra.Command, _ []string) error {
-			if c.Flags().Changed("store") && c.Flags().Changed("profile") {
-				store, _ := c.Flags().GetString("store")
-				profile, _ := c.Flags().GetString("profile")
-				if store != profile {
-					return fmt.Errorf("--store %q and --profile %q name different stores; drop --profile, which is the deprecated name of --store", store, profile)
-				}
-			}
-			return nil
-		},
 	}
 	cmd.PersistentFlags().String("store", syncer.DefaultProfile,
 		"sync store under <workspace>/.dotfiles/<store>/; \"sync\" is the cloud mirror, \"peer\" the other Mac")
-	cmd.PersistentFlags().String("profile", "", "Deprecated: use --store")
-	// Hidden, not MarkDeprecated: cobra writes that notice to stdout, which
-	// would corrupt --json output; syncStoreFrom warns on stderr instead.
-	_ = cmd.PersistentFlags().MarkHidden("profile")
 	cmd.PersistentFlags().BoolP("verbose", "V", false, "Show rsync progress output")
 	cmd.AddCommand(
 		newSyncPullCmd(),
@@ -153,28 +137,17 @@ Run without a subcommand to print this help.`,
 	return cmd
 }
 
-// syncStoreFrom is --store, or the deprecated --profile when that was given.
-func syncStoreFrom(cmd *cobra.Command) string {
-	if cmd.Flags().Changed("profile") {
-		fmt.Fprintln(cmd.ErrOrStderr(), "warning: dot sync --profile is deprecated; use --store (it will be removed after one release)")
-		v, _ := cmd.Flags().GetString("profile")
-		return v
-	}
-	v, _ := cmd.Flags().GetString("store")
-	return v
-}
-
 // syncBootstrapOptions translates the sync command tree's flags into the
 // engine's bootstrap options. Flag translation is cli's retained role; state
 // loading, profile resolution and runner construction are the engine's
 // (syncer.Bootstrap, D-07).
 func syncBootstrapOptions(cmd *cobra.Command, readOnly bool) syncer.BootstrapOptions {
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	profile := syncStoreFrom(cmd)
+	store, _ := cmd.Flags().GetString("store")
 	verbose, _ := cmd.Flags().GetBool("verbose")
 	filterMode, _ := cmd.Flags().GetString("filter-mode")
 	return syncer.BootstrapOptions{
-		Profile:       profile,
+		Profile:       store,
 		ReadOnly:      readOnly,
 		DryRun:        dryRun,
 		Verbose:       verbose,
