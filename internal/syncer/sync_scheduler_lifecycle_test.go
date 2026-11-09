@@ -173,7 +173,7 @@ func schedulerLifecycleCommands(paths *Paths, push, intake bool, operation strin
 		if !item.installed {
 			continue
 		}
-		commands = append(commands, schedulerLifecycleCommand(paths, item.kind, operation))
+		commands = append(commands, schedulerLifecycleCommand(paths, item.kind, operation)...)
 		if failFirst {
 			break
 		}
@@ -188,13 +188,24 @@ func schedulerStateCommand(paths *Paths, kind SchedulerKind) string {
 	return "--user is-active " + filepath.Base(paths.SystemdTimerFor(kind))
 }
 
-func schedulerLifecycleCommand(paths *Paths, kind SchedulerKind, operation string) string {
+// schedulerLifecycleCommand is the argv a pause or resume makes for the kind.
+// Resume is two commands on both platforms because starting a unit the
+// service manager already holds is not enough to make it read the unit file
+// again: launchd needs the unload, systemd needs the daemon-reload.
+func schedulerLifecycleCommand(paths *Paths, kind SchedulerKind, operation string) []string {
+	reload := operation == "resume"
 	if runtime.GOOS == "darwin" {
-		command := map[string]string{"pause": "unload", "resume": "load"}[operation]
-		return command + " " + paths.PlistFor(kind)
+		plist := paths.PlistFor(kind)
+		if reload {
+			return []string{"unload " + plist, "load " + plist}
+		}
+		return []string{"unload " + plist}
 	}
-	command := map[string]string{"pause": "stop", "resume": "start"}[operation]
-	return "--user " + command + " " + filepath.Base(paths.SystemdTimerFor(kind))
+	timer := filepath.Base(paths.SystemdTimerFor(kind))
+	if reload {
+		return []string{"--user daemon-reload", "--user start " + timer}
+	}
+	return []string{"--user stop " + timer}
 }
 
 func readSchedulerLifecycleCommands(t *testing.T, record string) []string {
@@ -304,12 +315,9 @@ func TestSyncResumeMigratesAUnitInstalledWithTheRetiredStoreFlag(t *testing.T) {
 		t.Fatalf("%s still runs the retired flag:\n%s", unit, body)
 	}
 	// The migration itself talks to no service manager: the only calls are the
-	// state query and the reload the resume already made.
+	// state query and the reload that makes the rewritten unit take effect.
 	got := readSchedulerLifecycleCommands(t, record)
-	want := []string{
-		schedulerStateCommand(paths, SchedulerKindPush),
-		schedulerLifecycleCommand(paths, SchedulerKindPush, "resume"),
-	}
+	want := append([]string{schedulerStateCommand(paths, SchedulerKindPush)}, schedulerLifecycleCommand(paths, SchedulerKindPush, "resume")...)
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("service-manager argv = %q, want %q", got, want)
 	}

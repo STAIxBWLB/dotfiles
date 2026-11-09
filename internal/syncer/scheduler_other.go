@@ -105,7 +105,11 @@ func (s *Scheduler) PauseKind(ctx context.Context, kind SchedulerKind) error {
 	return err
 }
 
-// ResumeKind starts the timer for the kind.
+// ResumeKind reloads the units and starts the timer for the kind.
+//
+// daemon-reload runs first because systemd keeps the ExecStart it read until
+// it is told to reload: a service unit rewritten on disk would otherwise start
+// with the old command line.
 func (s *Scheduler) ResumeKind(ctx context.Context, kind SchedulerKind) error {
 	if err := validateSchedulerMutationHome(s.Config.Home); err != nil {
 		return err
@@ -116,6 +120,9 @@ func (s *Scheduler) ResumeKind(ctx context.Context, kind SchedulerKind) error {
 	}
 	if s.requiresTargetUserServiceDomain() {
 		return &SchedulerTargetUserActionRequiredError{}
+	}
+	if _, err := s.Runner.Run(ctx, "systemctl", "--user", "daemon-reload"); err != nil {
+		return fmt.Errorf("daemon-reload: %w", err)
 	}
 	_, err := s.Runner.Run(ctx, "systemctl", "--user", "start", filepath.Base(timer))
 	return err
