@@ -1,6 +1,6 @@
 # Adaptive AI Work Policies
 
-Status: shipped in v2.70.19 (#155); Maru consumes the policies since maru#404 (closed). The native-runtime evaluation named below is tracked in #393.
+Status: shipped in v2.70.19 (#155); Maru consumes the policies since maru#404 (closed). Native-runtime evaluation done in #393: no change (see Native runtime evaluation).
 Date: 2026-09-27
 Issue: https://github.com/STAIxBWLB/dotfiles/issues/153
 Maru integration: https://github.com/STAIxBWLB/maru/issues/404
@@ -125,6 +125,46 @@ record actually executed checks; a compiled adapter is not runtime proof.
   Separate encoders prevent phantom quoted server/plugin names.
 - Workspace standing authorization for memory/vault lookup and recording was
   committed separately as ai-workspace 22f0a211. It adds no delete/move grants.
+
+## Native runtime evaluation (#393, 2026-11-09)
+
+Run on both Macs with dot 2.80.1: `dot ai policy status --json`, and
+`dot ai policy resolve --json` for the workloads routine, implementation,
+deep-analysis and independent-review, with the agent left to the resolver and
+with `--agent claude` and `--agent codex`. Native settings were read from
+`~/.claude/settings.json` and every Codex home's `config.toml`.
+
+No policy is configured on either Mac (`policy: null`), so every resolve call
+stops with "AI policy is disabled; configure and validate targets before
+enabling it". The effective settings are the native ones, the same for every
+workload.
+
+| Agent | Workload | Target effort | M5 (this Mac) effective | M3 (peer) effective |
+|---|---|---|---|---|
+| Claude 2.1.319 | routine, implementation | balanced | xhigh; no context or compaction override | xhigh; no context or compaction override |
+| Claude 2.1.319 | deep-analysis, independent-review | high | xhigh; same | xhigh; same |
+| Codex | routine, implementation | balanced | medium; context 1,000,000, auto-compact at 900,000 (0.146.0 on PATH, 0.167.0 in the Orca home) | not installed on PATH; `~/.codex/config.toml` sets medium, 1,000,000 and 900,000 |
+| Codex | deep-analysis, independent-review | high | medium; same context | not installed; same config |
+| grok, kimi, opencode, qwen, pi | all | no validated target | native defaults, no automatic review verified | grok only, native defaults |
+
+Findings:
+
+- Effort differs from the targets in both directions: Claude runs xhigh for
+  every workload, above the balanced target for routine and implementation.
+  Codex runs medium for every workload, below the high target for analysis and
+  review. The policy would close both gaps only once it is enabled with
+  validated targets. That is a rollout decision, not a design change.
+- Claude's subscription verifies on M5 but not on M3, so a policy enabled on M3
+  would resolve no Claude target until that is fixed.
+- Context and compaction are already set natively and identically on both Macs
+  for Codex (1,000,000 / 900,000). Claude has no override on either Mac.
+
+Decision: no change. Context-window and compaction tuning stays out of the
+policy. The only tunable values are user-owned native settings that already
+match on both Macs. The policy is disabled on both, so a policy knob would
+change nothing today. This spec also requires measured context usage on
+representative workloads before any tuning claim, and none exists. Revisit when
+the policy is enabled on a Mac and a workload shows compaction cost.
 
 ## Sources
 
