@@ -202,8 +202,8 @@ func TestSchedulerInstallKind_ProfiledPlist(t *testing.T) {
 			if label != paths.LaunchdLabelFor(kind) {
 				t.Fatalf("persisted Label = %q, want %q", label, paths.LaunchdLabelFor(kind))
 			}
-			if got := matchingProfileArguments(args); len(got) != 1 || got[0] != "--profile=research" {
-				t.Fatalf("profile arguments = %q, want exactly --profile=research", got)
+			if got := matchingProfileArguments(args); len(got) != 1 || got[0] != "--store=research" {
+				t.Fatalf("profile arguments = %q, want exactly --store=research", got)
 			}
 		})
 	}
@@ -651,7 +651,7 @@ func plistLabelAndProgramArguments(t *testing.T, body []byte) (string, []string)
 func matchingProfileArguments(args []string) []string {
 	var found []string
 	for _, arg := range args {
-		if strings.HasPrefix(arg, "--profile=") {
+		if strings.HasPrefix(arg, "--store=") {
 			found = append(found, arg)
 		}
 	}

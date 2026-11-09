@@ -13,7 +13,7 @@ import (
 const nfdCLIPlanLimit = 20
 
 // newSyncNamesCmd owns workspace filename maintenance below `dot sync names`.
-// The parent sync command supplies the inherited --profile, --dry-run, and
+// The parent sync command supplies the inherited --store, --dry-run, and
 // --yes flags; keeping those flags inherited avoids a second source of truth.
 func newSyncNamesCmd() *cobra.Command {
 	cmd := &cobra.Command{

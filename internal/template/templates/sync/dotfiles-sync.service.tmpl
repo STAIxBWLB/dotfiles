@@ -3,4 +3,4 @@ Description={{.Description}}
 
 [Service]
 Type=oneshot
-ExecStart={{.DotfilesPath}} sync {{.Action}} --mode={{.Mode}}{{if .Profile}} --profile={{.Profile}}{{end}}{{if .Home}} {{.SystemdHomeArg}}{{end}}
+ExecStart={{.DotfilesPath}} sync {{.Action}} --mode={{.Mode}}{{if .Profile}} --store={{.Profile}}{{end}}{{if .Home}} {{.SystemdHomeArg}}{{end}}

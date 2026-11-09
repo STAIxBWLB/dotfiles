@@ -249,10 +249,18 @@ func runSyncResume(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	if res.WasPaused {
 		p.Line("✓ sync resumed.")
 	} else {
 		p.Line("sync was not paused.")
+	}
+	for _, store := range res.MigratedStores {
+		if dryRun {
+			p.Line("  ~ would rewrite the installed scheduler unit to call `dot sync --store=%s`", store)
+			continue
+		}
+		p.Line("✓ rewrote the installed scheduler unit to call `dot sync --store=%s`", store)
 	}
 	if res.SchedulerOff {
 		p.Line("scheduler remains off — run `dot sync setup --push-interval=DUR` or `--pull-interval=DUR` to enable.")

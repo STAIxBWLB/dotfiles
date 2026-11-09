@@ -727,7 +727,11 @@ type ResumeResult struct {
 	WasPaused        bool
 	SchedulerOff     bool // no interval configured, so nothing to re-arm
 	SchedulerResumed bool
-	SchedulerErr     error
+	// MigratedStores names the stores whose installed unit still called
+	// `dot sync --profile=`, which this release rejects. The unit was rewritten
+	// to --store before it was re-armed (#394).
+	MigratedStores []string
+	SchedulerErr   error
 }
 
 // SyncResume clears the paused gate and reattaches an installed scheduler.
@@ -746,6 +750,20 @@ func SyncResume(ctx context.Context, cfg *Config, runner *exec.Runner) (*ResumeR
 	if err != nil {
 		// The state save succeeded; the scheduler is best-effort.
 		return res, nil
+	}
+	// A unit installed before #394 still runs `dot sync --profile=<store>`, and
+	// this release rejects that flag, so its scheduled runs fail until the unit
+	// is rewritten. Resuming is the command that re-arms installed units, so it
+	// is where the rewrite belongs: the load below then starts a working job.
+	for _, kind := range [2]SchedulerKind{SchedulerKindPush, SchedulerKindIntake} {
+		store, err := sched.MigrateStaleStoreUnit(kind)
+		if err != nil {
+			res.SchedulerErr = err
+			return res, nil
+		}
+		if store != "" {
+			res.MigratedStores = append(res.MigratedStores, store)
+		}
 	}
 	states := [2]SchedulerState{
 		sched.StateKind(ctx, SchedulerKindPush),

@@ -315,7 +315,7 @@ func answersTo(names []string, name string) bool {
 // its next preflight to refuse. TestDoctorNFDVerdictMatchesTheSync runs the
 // real syncs for each case.
 func nfdVerdict(s, o *PeerSideFacts, host, other string) (level, detail, fix string) {
-	fix = "on " + host + ": dot sync names normalize --profile=peer --yes"
+	fix = "on " + host + ": dot sync names normalize --store=peer --yes"
 	var quoted []string
 	for _, name := range s.NonNFDSample {
 		quoted = append(quoted, fmt.Sprintf("%q", name))
@@ -375,7 +375,7 @@ func topologyFix(local, peer *PeerSideFacts, here, there string) string {
 		if strings.ContainsAny(target, " \t'\"$\\`;&|()<>*?[]{}!#~") {
 			target = shellQuote(target)
 		}
-		fixes = append(fixes, fmt.Sprintf("on %s: dot sync target --profile=peer %s", s.host, target))
+		fixes = append(fixes, fmt.Sprintf("on %s: dot sync target --store=peer %s", s.host, target))
 	}
 	return strings.Join(fixes, "; ")
 }
@@ -610,7 +610,7 @@ func evaluatePeerSides(local, peer *PeerSideFacts, here, there string) []DoctorC
 		if peer.NFDMarked {
 			marked, other = there, here
 		}
-		add("nfd", DoctorWarn, "the NFD marker is set on "+marked+" only", "on "+other+": dot sync names normalize --profile=peer --yes")
+		add("nfd", DoctorWarn, "the NFD marker is set on "+marked+" only", "on "+other+": dot sync names normalize --store=peer --yes")
 	}
 
 	// The fence checks topology first, on whichever Mac syncs, and dot peer
