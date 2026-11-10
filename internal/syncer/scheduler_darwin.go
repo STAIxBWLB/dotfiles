@@ -90,6 +90,12 @@ func (s *Scheduler) PauseKind(ctx context.Context, kind SchedulerKind) error {
 }
 
 // ResumeKind re-loads the launchd job from its persisted plist.
+//
+// The unload comes first because `load` leaves a job launchd already holds
+// running the command line it cached: a plist rewritten on disk (the store
+// flag migration) or a job stuck in spawn failed would stay broken otherwise.
+// A job that is not loaded makes the unload fail, which is ignored the same
+// way InstallKind ignores it.
 func (s *Scheduler) ResumeKind(ctx context.Context, kind SchedulerKind) error {
 	if err := validateSchedulerMutationHome(s.Config.Home); err != nil {
 		return err
@@ -101,6 +107,7 @@ func (s *Scheduler) ResumeKind(ctx context.Context, kind SchedulerKind) error {
 	if s.requiresTargetUserServiceDomain() {
 		return &SchedulerTargetUserActionRequiredError{}
 	}
+	_, _ = s.Runner.Run(ctx, "launchctl", "unload", plist)
 	_, err := s.Runner.Run(ctx, "launchctl", "load", plist)
 	return err
 }

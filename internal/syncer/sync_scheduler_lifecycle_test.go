@@ -173,7 +173,14 @@ func schedulerLifecycleCommands(paths *Paths, push, intake bool, operation strin
 		if !item.installed {
 			continue
 		}
-		commands = append(commands, schedulerLifecycleCommand(paths, item.kind, operation))
+		cmds := schedulerLifecycleCommand(paths, item.kind, operation)
+		if failFirst && runtime.GOOS != "darwin" {
+			// The failing command is the last one that ran: launchd ignores
+			// the unload error and the load then fails, while a failed
+			// daemon-reload returns before the timer is started.
+			cmds = cmds[:1]
+		}
+		commands = append(commands, cmds...)
 		if failFirst {
 			break
 		}
@@ -188,13 +195,24 @@ func schedulerStateCommand(paths *Paths, kind SchedulerKind) string {
 	return "--user is-active " + filepath.Base(paths.SystemdTimerFor(kind))
 }
 
-func schedulerLifecycleCommand(paths *Paths, kind SchedulerKind, operation string) string {
+// schedulerLifecycleCommand is the argv a pause or resume makes for the kind.
+// Resume is two commands on both platforms because starting a unit the
+// service manager already holds is not enough to make it read the unit file
+// again: launchd needs the unload, systemd needs the daemon-reload.
+func schedulerLifecycleCommand(paths *Paths, kind SchedulerKind, operation string) []string {
+	reload := operation == "resume"
 	if runtime.GOOS == "darwin" {
-		command := map[string]string{"pause": "unload", "resume": "load"}[operation]
-		return command + " " + paths.PlistFor(kind)
+		plist := paths.PlistFor(kind)
+		if reload {
+			return []string{"unload " + plist, "load " + plist}
+		}
+		return []string{"unload " + plist}
 	}
-	command := map[string]string{"pause": "stop", "resume": "start"}[operation]
-	return "--user " + command + " " + filepath.Base(paths.SystemdTimerFor(kind))
+	timer := filepath.Base(paths.SystemdTimerFor(kind))
+	if reload {
+		return []string{"--user daemon-reload", "--user start " + timer}
+	}
+	return []string{"--user stop " + timer}
 }
 
 func readSchedulerLifecycleCommands(t *testing.T, record string) []string {
@@ -222,11 +240,38 @@ func schedulerStateQueryCount(commands []string) int {
 func schedulerLifecycleActionCount(commands []string) int {
 	count := 0
 	for _, command := range commands {
-		if strings.HasPrefix(command, "unload ") || strings.HasPrefix(command, "load ") || strings.HasPrefix(command, "--user stop ") || strings.HasPrefix(command, "--user start ") {
+		if strings.HasPrefix(command, "unload ") || strings.HasPrefix(command, "load ") || strings.HasPrefix(command, "--user stop ") || strings.HasPrefix(command, "--user start ") || strings.HasPrefix(command, "--user daemon-reload") {
 			count++
 		}
 	}
 	return count
+}
+
+// schedulerLifecycleActionCount is what keeps the installed-kind check from
+// passing vacuously, and a command it does not recognize drops out silently:
+// the Linux resume row runs `daemon-reload` alone under an injected failure,
+// which read as "made no lifecycle action". Pinned here so this platform
+// notices a missing prefix instead of the ubuntu unit job.
+func TestSchedulerLifecycleActionCount(t *testing.T) {
+	for _, command := range []string{
+		"unload /tmp/com.dotfiles.sync.plist",
+		"load /tmp/com.dotfiles.sync.plist",
+		"--user stop dotfiles-sync.timer",
+		"--user start dotfiles-sync.timer",
+		"--user daemon-reload",
+	} {
+		if got := schedulerLifecycleActionCount([]string{command}); got != 1 {
+			t.Errorf("schedulerLifecycleActionCount(%q) = %d, want 1", command, got)
+		}
+	}
+	for _, command := range []string{
+		"print gui/501/com.dotfiles.sync",
+		"--user is-active dotfiles-sync.timer",
+	} {
+		if got := schedulerLifecycleActionCount([]string{command}); got != 0 {
+			t.Errorf("schedulerLifecycleActionCount(%q) = %d, want 0: a state query is not an action", command, got)
+		}
+	}
 }
 
 // `dot sync resume` is the command that re-arms installed units, so it is where
@@ -304,12 +349,9 @@ func TestSyncResumeMigratesAUnitInstalledWithTheRetiredStoreFlag(t *testing.T) {
 		t.Fatalf("%s still runs the retired flag:\n%s", unit, body)
 	}
 	// The migration itself talks to no service manager: the only calls are the
-	// state query and the reload the resume already made.
+	// state query and the reload that makes the rewritten unit take effect.
 	got := readSchedulerLifecycleCommands(t, record)
-	want := []string{
-		schedulerStateCommand(paths, SchedulerKindPush),
-		schedulerLifecycleCommand(paths, SchedulerKindPush, "resume"),
-	}
+	want := append([]string{schedulerStateCommand(paths, SchedulerKindPush)}, schedulerLifecycleCommand(paths, SchedulerKindPush, "resume")...)
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("service-manager argv = %q, want %q", got, want)
 	}

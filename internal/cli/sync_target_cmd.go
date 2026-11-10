@@ -31,8 +31,9 @@ Accepted forms:
   ssh:user@host:~/work       rsync over SSH
   ~/Dropbox/work             bare path — shorthand for local:
 
-Local targets are also recorded in the global user state so future
-workspaces inherit them.`,
+The target belongs to this workspace: it is written only to that store's
+config.yaml, and another workspace keeps its own. A workspace with no
+target of its own syncs to the detected cloud folder.`,
 		Args:         cobra.MaximumNArgs(1),
 		RunE:         runSyncTarget,
 		SilenceUsage: true,
