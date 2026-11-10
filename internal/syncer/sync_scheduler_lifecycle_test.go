@@ -248,7 +248,7 @@ func schedulerLifecycleActionCount(commands []string) int {
 }
 
 // schedulerLifecycleActionCount is what keeps the installed-kind check from
-// passing vacuously, and a command it does not recognise drops out silently:
+// passing vacuously, and a command it does not recognize drops out silently:
 // the Linux resume row runs `daemon-reload` alone under an injected failure,
 // which read as "made no lifecycle action". Pinned here so this platform
 // notices a missing prefix instead of the ubuntu unit job.
