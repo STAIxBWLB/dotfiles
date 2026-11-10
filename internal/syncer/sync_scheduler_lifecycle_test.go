@@ -240,11 +240,38 @@ func schedulerStateQueryCount(commands []string) int {
 func schedulerLifecycleActionCount(commands []string) int {
 	count := 0
 	for _, command := range commands {
-		if strings.HasPrefix(command, "unload ") || strings.HasPrefix(command, "load ") || strings.HasPrefix(command, "--user stop ") || strings.HasPrefix(command, "--user start ") {
+		if strings.HasPrefix(command, "unload ") || strings.HasPrefix(command, "load ") || strings.HasPrefix(command, "--user stop ") || strings.HasPrefix(command, "--user start ") || strings.HasPrefix(command, "--user daemon-reload") {
 			count++
 		}
 	}
 	return count
+}
+
+// schedulerLifecycleActionCount is what keeps the installed-kind check from
+// passing vacuously, and a command it does not recognise drops out silently:
+// the Linux resume row runs `daemon-reload` alone under an injected failure,
+// which read as "made no lifecycle action". Pinned here so this platform
+// notices a missing prefix instead of the ubuntu unit job.
+func TestSchedulerLifecycleActionCount(t *testing.T) {
+	for _, command := range []string{
+		"unload /tmp/com.dotfiles.sync.plist",
+		"load /tmp/com.dotfiles.sync.plist",
+		"--user stop dotfiles-sync.timer",
+		"--user start dotfiles-sync.timer",
+		"--user daemon-reload",
+	} {
+		if got := schedulerLifecycleActionCount([]string{command}); got != 1 {
+			t.Errorf("schedulerLifecycleActionCount(%q) = %d, want 1", command, got)
+		}
+	}
+	for _, command := range []string{
+		"print gui/501/com.dotfiles.sync",
+		"--user is-active dotfiles-sync.timer",
+	} {
+		if got := schedulerLifecycleActionCount([]string{command}); got != 0 {
+			t.Errorf("schedulerLifecycleActionCount(%q) = %d, want 0: a state query is not an action", command, got)
+		}
+	}
 }
 
 // `dot sync resume` is the command that re-arms installed units, so it is where
