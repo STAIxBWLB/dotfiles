@@ -173,7 +173,14 @@ func schedulerLifecycleCommands(paths *Paths, push, intake bool, operation strin
 		if !item.installed {
 			continue
 		}
-		commands = append(commands, schedulerLifecycleCommand(paths, item.kind, operation)...)
+		cmds := schedulerLifecycleCommand(paths, item.kind, operation)
+		if failFirst && runtime.GOOS != "darwin" {
+			// The failing command is the last one that ran: launchd ignores
+			// the unload error and the load then fails, while a failed
+			// daemon-reload returns before the timer is started.
+			cmds = cmds[:1]
+		}
+		commands = append(commands, cmds...)
 		if failFirst {
 			break
 		}
