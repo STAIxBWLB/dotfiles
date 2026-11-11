@@ -134,6 +134,30 @@ func (d Duration) Std() time.Duration { return time.Duration(d) }
 // IsZero lets yaml.v3 omit an unset duration from rendered output.
 func (d Duration) IsZero() bool { return d == 0 }
 
+// OptionalDuration is Duration for a nullable admission key that has no IsZero
+// method on purpose. yaml.v3 omits a non-nil pointer whose pointee reports
+// zero, so a written `defer_sustain: 0` (a meaningful "defer at the first
+// over-threshold sample") vanished from every state save.
+type OptionalDuration Duration
+
+// UnmarshalYAML decodes a duration string or an integer count of seconds.
+func (d *OptionalDuration) UnmarshalYAML(value *yaml.Node) error {
+	var parsed Duration
+	if err := parsed.UnmarshalYAML(value); err != nil {
+		return err
+	}
+	*d = OptionalDuration(parsed)
+	return nil
+}
+
+// MarshalYAML emits the Go duration string, as Duration does.
+func (d OptionalDuration) MarshalYAML() (any, error) {
+	return time.Duration(d).String(), nil
+}
+
+// Std returns the value as a time.Duration.
+func (d OptionalDuration) Std() time.Duration { return time.Duration(d) }
+
 // WatchdogConfig configures the watchdog: runaway-process reaping (P1),
 // connectivity heal, power hardening, and external monitors (later phases).
 // The full profile ships it disabled; hosts opt in explicitly.
@@ -406,17 +430,18 @@ func (c UserAdmissionState) IsZero() bool {
 
 // UserAdmissionThresholds is one optional override of the host-pressure
 // policy. Pointers keep "unset" distinct from a meaningful zero such as
-// `defer_sustain: 0` (defer at the first over-threshold sample).
+// `defer_sustain: 0` (defer at the first over-threshold sample), and the
+// duration keys use OptionalDuration so that zero survives a save.
 type UserAdmissionThresholds struct {
-	IdleDeferBelow      *float64  `yaml:"idle_defer_below,omitempty"`
-	IdleRecoverAt       *float64  `yaml:"idle_recover_at,omitempty"`
-	LoadDeferFrac       *float64  `yaml:"load_defer_frac,omitempty"`
-	LoadRecoverFrac     *float64  `yaml:"load_recover_frac,omitempty"`
-	DeferSustain        *Duration `yaml:"defer_sustain,omitempty"`
-	RecoverSustain      *Duration `yaml:"recover_sustain,omitempty"`
-	WSGrace             *Duration `yaml:"ws_grace,omitempty"`
-	MemAvailWarnPct     *float64  `yaml:"mem_avail_warn_pct,omitempty"`
-	MemAvailCriticalPct *float64  `yaml:"mem_avail_critical_pct,omitempty"`
+	IdleDeferBelow      *float64          `yaml:"idle_defer_below,omitempty"`
+	IdleRecoverAt       *float64          `yaml:"idle_recover_at,omitempty"`
+	LoadDeferFrac       *float64          `yaml:"load_defer_frac,omitempty"`
+	LoadRecoverFrac     *float64          `yaml:"load_recover_frac,omitempty"`
+	DeferSustain        *OptionalDuration `yaml:"defer_sustain,omitempty"`
+	RecoverSustain      *OptionalDuration `yaml:"recover_sustain,omitempty"`
+	WSGrace             *OptionalDuration `yaml:"ws_grace,omitempty"`
+	MemAvailWarnPct     *float64          `yaml:"mem_avail_warn_pct,omitempty"`
+	MemAvailCriticalPct *float64          `yaml:"mem_avail_critical_pct,omitempty"`
 }
 
 // IsZero lets yaml.v3 omit an unset thresholds block from rendered output.
@@ -429,11 +454,11 @@ func (c UserAdmissionThresholds) IsZero() bool {
 
 // UserAdmissionPrebuilt is the verified prebuilt update profile's own block.
 type UserAdmissionPrebuilt struct {
-	IdleDeferBelow  *float64  `yaml:"idle_defer_below,omitempty"`
-	IdleRecoverAt   *float64  `yaml:"idle_recover_at,omitempty"`
-	LoadDeferFrac   *float64  `yaml:"load_defer_frac,omitempty"`
-	LoadRecoverFrac *float64  `yaml:"load_recover_frac,omitempty"`
-	SafetyWindow    *Duration `yaml:"safety_window,omitempty"`
+	IdleDeferBelow  *float64          `yaml:"idle_defer_below,omitempty"`
+	IdleRecoverAt   *float64          `yaml:"idle_recover_at,omitempty"`
+	LoadDeferFrac   *float64          `yaml:"load_defer_frac,omitempty"`
+	LoadRecoverFrac *float64          `yaml:"load_recover_frac,omitempty"`
+	SafetyWindow    *OptionalDuration `yaml:"safety_window,omitempty"`
 }
 
 // IsZero lets yaml.v3 omit an unset prebuilt block from rendered output.
