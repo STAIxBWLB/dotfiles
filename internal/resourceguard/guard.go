@@ -412,24 +412,21 @@ func hasLiveParentLease(ctx context.Context, runner *exec.Runner, store *admissi
 	if err != nil {
 		return false
 	}
-	var parent *admission.Lease
-	for i := range leases {
-		if leases[i].Scope == scope && leases[i].Class == class {
-			if parent != nil {
-				return false
-			}
-			parent = &leases[i]
+	var candidates []admission.Lease
+	for _, lease := range leases {
+		// A maintenance scope can hold several leases at once (a configured
+		// capacity above one, or an overflow slot a bypass took), so the parent
+		// is whichever candidate this child's process tree descends from, not
+		// "the only lease on the scope".
+		if lease.Scope == scope && lease.Class == class {
+			candidates = append(candidates, lease)
 		}
 	}
-	if parent == nil || parent.PID <= 0 || parent.PIDStart == "" || time.Now().After(parent.Deadline) {
+	if len(candidates) == 0 {
 		return false
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	match, err := watchdog.ProcessStartMatches(probeCtx, runner, parent.PID, parent.PIDStart)
-	if err != nil || !match {
-		return false
-	}
 	res, err := runner.RunQuery(probeCtx, "ps", "-Ao", watchdog.PSArgs)
 	if err != nil {
 		return false
@@ -442,14 +439,27 @@ func hasLiveParentLease(ctx context.Context, runner *exec.Runner, store *admissi
 	for _, process := range processes {
 		byPID[process.PID] = process
 	}
-	ancestor, ok := byPID[parent.PID]
-	if !ok || ancestor.Started != parent.PIDStart {
-		return false
+	now := time.Now()
+	for _, parent := range candidates {
+		if parent.PID <= 0 || parent.PIDStart == "" || now.After(parent.Deadline) {
+			continue
+		}
+		match, err := watchdog.ProcessStartMatches(probeCtx, runner, parent.PID, parent.PIDStart)
+		if err != nil || !match {
+			continue
+		}
+		ancestor, ok := byPID[parent.PID]
+		if !ok || ancestor.Started != parent.PIDStart {
+			continue
+		}
+		// `dot admit` may transfer the lease identity to its wrapped child after
+		// exec; processHasAncestor accepts a self match only after these identity
+		// checks have succeeded.
+		if processHasAncestor(childPID, parent.PID, byPID) {
+			return true
+		}
 	}
-	// `dot admit` may transfer the lease identity to its wrapped child after
-	// exec; processHasAncestor accepts a self match only after these identity
-	// checks have succeeded.
-	return processHasAncestor(childPID, parent.PID, byPID)
+	return false
 }
 
 func processHasAncestor(childPID, ancestorPID int, processes map[int]watchdog.Process) bool {

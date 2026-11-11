@@ -329,6 +329,62 @@ func TestAdapterConfigCapacityAndScanSettings(t *testing.T) {
 	}
 }
 
+// F3 (#412): a maintenance scope can hold more than one lease (a configured
+// capacity above one, or an overflow slot a bypass took), and the nested child
+// must find the lease its process tree descends from instead of deferring
+// against a scope that looks ambiguous.
+func TestAdapterNestedMaintenanceParentAmongSeveralLeases(t *testing.T) {
+	snap, none := healthySnapshot(), []string(nil)
+	a, store := testAdapter(t, &snap, &none)
+	cfg := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(cfg, []byte("admission:\n  slots:\n    maintenance: 2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.configPath = func() string { return cfg }
+	runner := exec.NewProbeRunner()
+	a.parentLease = func(ctx context.Context, got *admission.Store, scope, class string, childPID int) bool {
+		return hasLiveParentLease(ctx, runner, got, scope, class, childPID)
+	}
+	ctx := context.Background()
+	t.Setenv(admission.NestedEnv, admission.NestedEnvValue(admission.MaintenanceScope, admission.ClassMaintenance))
+
+	started, err := admission.ProcessStart(ctx, runner, os.Getpid())
+	if err != nil {
+		t.Fatalf("read self process start: %v", err)
+	}
+	// A peer holds index 0, so the parent's own lease sits at index 1.
+	peer, _, err := store.AcquireWithOptions(ctx, admission.MaintenanceScope, admission.ClassMaintenance, admission.Lease{
+		Owner: "peer@test", PID: os.Getpid(), PIDStart: "not-this-process-start",
+	}, admission.AcquireOptions{Capacity: 2})
+	if err != nil || peer == nil {
+		t.Fatalf("seeding the peer lease = %v, %v", peer, err)
+	}
+	defer func() { _ = peer.Release() }()
+	parent, _, err := store.AcquireWithOptions(ctx, admission.MaintenanceScope, admission.ClassMaintenance, admission.Lease{
+		Owner: "wrapped-admit@test", PID: os.Getpid(), PIDStart: started,
+	}, admission.AcquireOptions{Capacity: 2})
+	if err != nil || parent == nil {
+		t.Fatalf("seeding the parent lease = %v, %v", parent, err)
+	}
+	defer func() { _ = parent.Release() }()
+	if got := parent.Lease().Index; got != 1 {
+		t.Fatalf("parent lease index = %d, want 1", got)
+	}
+
+	release, err := a.acquire(ctx, Options{Purpose: "nested verified update", ScopeKey: "tooling"})
+	if err != nil {
+		t.Fatalf("nested maintenance acquire = %v, want the parent's lease reused", err)
+	}
+	release()
+	leases, err := store.ListLeases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(leases) != 2 {
+		t.Fatalf("leases = %d, want the two seeded leases and no new one", len(leases))
+	}
+}
+
 // An invalid admission block fails the acquire loudly instead of silently
 // falling back to the defaults.
 func TestAdapterRejectsInvalidThresholdConfig(t *testing.T) {
