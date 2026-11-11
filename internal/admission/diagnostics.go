@@ -56,6 +56,23 @@ func NoteOverflowSlot(w io.Writer, lease Lease, capacity int, source string) {
 	fmt.Fprintf(w, "admission: slot capacity %d exceeded (%s): holding overflow slot %d\n", capacity, source, lease.Index)
 }
 
+// SlotBusyReason names the limit a slot acquirer hit and who holds it. When the
+// caller had the slot bypass in play the limit is the capacity plus the overflow
+// allowance, because deferring with the bypass active means that headroom ran
+// out too: the person needs to see both numbers to judge what to do next.
+func SlotBusyReason(class string, holder *Lease, capacity int, overflow bool) string {
+	reason := fmt.Sprintf("slot busy: %s slot limit %d reached", class, capacity)
+	if overflow {
+		reason = fmt.Sprintf("slot busy: %s slot limit %d reached (capacity %d + %d overflow)",
+			class, capacity+MaxOverflowSlots, capacity, MaxOverflowSlots)
+	}
+	if holder == nil {
+		return reason
+	}
+	return fmt.Sprintf("%s, %s holds pid %d (since %s)",
+		reason, holder.Owner, holder.PID, holder.AcquiredAt.Format(time.RFC3339))
+}
+
 // DeferOutcome is the machine-readable record `dot admit` prints when it
 // defers (exit 75, EX_TEMPFAIL). RetryAfterSeconds is advisory.
 type DeferOutcome struct {
@@ -69,6 +86,10 @@ type DeferOutcome struct {
 	// but did not turn this defer into an admission (a busy slot under
 	// --ignore pressure, for example). Absent otherwise.
 	Ignored []string `json:"ignored,omitempty"`
+	// IgnoredReasons is what a bypassed rule would have held against this run:
+	// the pressure defer it stepped past before the slot or the uncovered-work
+	// scan deferred it instead. Absent unless something was bypassed.
+	IgnoredReasons []string `json:"ignored_reasons,omitempty"`
 }
 
 // Bundle is the bounded diagnostic record behind `dot admit status --json`:

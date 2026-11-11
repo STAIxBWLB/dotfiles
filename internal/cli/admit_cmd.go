@@ -246,12 +246,10 @@ func runAdmit(cmd *cobra.Command, args []string) error {
 		}
 		if wait == 0 || time.Now().Add(backoff).After(deadline) {
 			owner := ""
-			reason := "slot busy"
 			if holder != nil {
 				owner = holder.Owner
-				reason = fmt.Sprintf("slot busy: %d %s slot(s) held, %s holds pid %d (since %s)",
-					capacity, class, holder.Owner, holder.PID, holder.AcquiredAt.Format(time.RFC3339))
 			}
+			reason := admission.SlotBusyReason(class, holder, capacity, policy.Ignore.Slot)
 			d := admission.Decision{Admit: false, Reasons: []string{reason}, RetryAfter: backoff}
 			return deferExit(p, effective, class, owner, d, asJSON, bypassed)
 		}

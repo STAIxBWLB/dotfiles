@@ -206,3 +206,73 @@ func TestBackgroundClassUsesCapacityOne(t *testing.T) {
 		t.Errorf("maintenance capacity = %d, want %d", got, DefaultMaintenanceSlots)
 	}
 }
+
+// Capacity counts the live leases of the whole scope, not the indexes one
+// caller walks. The bypass can leave a lease past capacity, and a lowered
+// capacity or an expired relax override can strand one at a higher index: with
+// index 0 free and index 1 held, a capacity-1 caller used to take index 0 and
+// run a second heavyweight job beside the first.
+func TestCapacityCountsLeasesAtHigherIndexes(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+	scope := "/repo/a/.git"
+
+	a, _, err := store.AcquireWithOptions(ctx, scope, ClassHeavy, selfLease(t, store), AcquireOptions{Capacity: 1})
+	if err != nil || a == nil {
+		t.Fatalf("seeding index 0 = %v, %v", a, err)
+	}
+	b, _, err := store.AcquireWithOptions(ctx, scope, ClassHeavy, selfLease(t, store), AcquireOptions{Capacity: 1, Overflow: true})
+	if err != nil || b == nil {
+		t.Fatalf("overflow acquire = %v, %v", b, err)
+	}
+	defer func() { _ = b.Release() }()
+	if got := b.Lease().Index; got != 1 {
+		t.Fatalf("overflow index = %d, want 1", got)
+	}
+	if err := a.Release(); err != nil {
+		t.Fatalf("releasing index 0: %v", err)
+	}
+
+	slot, holder, err := store.AcquireWithOptions(ctx, scope, ClassHeavy, selfLease(t, store), AcquireOptions{Capacity: 1})
+	if err != nil {
+		t.Fatalf("acquire at capacity 1 = %v, %v", holder, err)
+	}
+	if slot != nil {
+		index := slot.Lease().Index
+		_ = slot.Release()
+		t.Fatalf("acquire took index %d while index 1 is live; want a defer at capacity 1", index)
+	}
+	if holder == nil || holder.Index != 1 {
+		t.Fatalf("defer holder = %+v, want the live lease at index 1", holder)
+	}
+	leases, err := store.ListLeases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(leases) != 1 {
+		t.Fatalf("leases = %d, want the single live lease", len(leases))
+	}
+
+	// The count is of live leases, not of held indexes: one lease at index 1 is
+	// within a capacity of 2, and the new job takes the lowest free index.
+	room, _, err := store.AcquireWithOptions(ctx, scope, ClassHeavy, selfLease(t, store), AcquireOptions{Capacity: 2})
+	if err != nil || room == nil {
+		t.Fatalf("acquire at capacity 2 = %v, %v", room, err)
+	}
+	if got := room.Lease().Index; got != 0 {
+		t.Errorf("capacity-2 acquire took index %d, want the lowest free index 0", got)
+	}
+	if err := room.Release(); err != nil {
+		t.Fatalf("releasing index 0: %v", err)
+	}
+
+	// A bypass still runs, next to the stranded lease, in the free index 0.
+	bypass, _, err := store.AcquireWithOptions(ctx, scope, ClassHeavy, selfLease(t, store), AcquireOptions{Capacity: 1, Overflow: true})
+	if err != nil || bypass == nil {
+		t.Fatalf("bypass acquire = %v, %v", bypass, err)
+	}
+	defer func() { _ = bypass.Release() }()
+	if got := bypass.Lease().Index; got != 0 {
+		t.Errorf("bypass index = %d, want the free index 0", got)
+	}
+}

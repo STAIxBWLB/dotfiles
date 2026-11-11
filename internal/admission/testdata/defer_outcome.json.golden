@@ -3,6 +3,12 @@
   "scope": "/Users/u/work/repo/.git",
   "class": "heavy",
   "owner": "builder@mac-mini",
-  "reason": "slot busy: heavy class held by builder@mac-mini (pid 4242, since 2026-09-27T11:30:00+09:00)",
-  "retry_after": 15
+  "reason": "slot busy: heavy slot limit 1 reached, builder@mac-mini holds pid 4242 (since 2026-09-27T11:30:00+09:00)",
+  "retry_after": 15,
+  "ignored": [
+    "slot"
+  ],
+  "ignored_reasons": [
+    "memory available 3% is below the 5% critical bound"
+  ]
 }

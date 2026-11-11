@@ -143,12 +143,13 @@ type Slot struct {
 // Lease returns a copy of the lease this slot holds.
 func (sl *Slot) Lease() Lease { return sl.lease }
 
-// Acquire takes the (scope, class) slot. The acquire is a single atomic
+// Acquire takes the (scope, class) slot. Taking an index is a single atomic
 // mkdir — there is deliberately no multi-lock ordering because there is only
-// ever one lock per admission. On success it returns a Slot. When the slot
-// is held it returns the holder's lease (for owner+reason visibility) and a
-// nil Slot. A stale slot is reclaimed only when its heartbeat deadline has
-// passed AND the owning process incarnation is verifiably gone; an
+// ever one lock per admission, and the capacity count that picks the index
+// never needs one (see AcquireWithOptions). On success it returns a Slot. When
+// the slot is held it returns the holder's lease (for owner+reason visibility)
+// and a nil Slot. A stale slot is reclaimed only when its heartbeat deadline
+// has passed AND the owning process incarnation is verifiably gone; an
 // unverifiable identity (ps failure) is busy, mirroring the watchdog rule
 // that an unverifiable identity answers on the safe side.
 //
@@ -165,8 +166,10 @@ func (s *Store) Acquire(ctx context.Context, scope, class string, lease Lease) (
 // AcquireOptions is the concurrency one caller's resolved policy allows for a
 // scope. A zero value is the policy default: one lease, no overflow.
 type AcquireOptions struct {
-	// Capacity is the number of concurrent leases for this scope. A bypassed
-	// capacity still starts at index 0, so a held slot keeps its identity.
+	// Capacity is the number of concurrent leases this scope allows. It is
+	// counted against the live leases across every index, so a lease a bypass
+	// left past capacity, or one stranded there by a lowered capacity or an
+	// expired relax override, still occupies the scope.
 	Capacity int
 	// Overflow keeps trying past Capacity, which is what the slot bypass does:
 	// the job still takes a lease, in the first free overflow slot, so it stays
@@ -175,10 +178,24 @@ type AcquireOptions struct {
 	Overflow bool
 }
 
+// slotAcquireAttempts bounds the count-take-recount loop: each retry follows a
+// lost index race, so a run of them means other jobs are acquiring this scope
+// faster than we can.
+const slotAcquireAttempts = 8
+
 // AcquireWithOptions takes a slot for (scope, class) within the caller's
-// capacity, trying indexes in order and reclaiming a stale lease per index.
-// It reports the holder of the first busy index when the scope is full, so the
-// defer reason names who holds it.
+// capacity, choosing the lowest free index and reclaiming a stale lease when it
+// lands on one. Capacity bounds the live leases of the whole scope, not the
+// indexes a single caller walks: a bypass can leave a lease past capacity, and
+// a lowered capacity or an expired relax override can strand one at a higher
+// index, so counting only the first `capacity` indexes would admit a second job
+// at capacity 1. It reports the lowest live holder when the scope is full, so
+// the defer reason names who holds it.
+//
+// The count and the take are not one atomic step and do not need to be: every
+// caller picks the lowest free index, so two callers racing for it collide on
+// that one directory (one loses the mkdir) instead of taking two different
+// indexes past the limit. The loser recounts and decides again.
 func (s *Store) AcquireWithOptions(ctx context.Context, scope, class string, lease Lease, opts AcquireOptions) (*Slot, *Lease, error) {
 	if err := os.MkdirAll(filepath.Join(s.Root, "slots"), 0o755); err != nil {
 		return nil, nil, fmt.Errorf("creating slots dir: %w", err)
@@ -190,12 +207,39 @@ func (s *Store) AcquireWithOptions(ctx context.Context, scope, class string, lea
 	if capacity > MaxSlotsPerScope {
 		capacity = MaxSlotsPerScope
 	}
-	limit := capacity
+	// reach is the highest index this caller may take: capacity itself, plus the
+	// overflow allowance when it bypasses.
+	reach := capacity
 	if opts.Overflow {
-		limit += MaxOverflowSlots
+		reach += MaxOverflowSlots
 	}
 	var firstHolder *Lease
-	for index := 0; index < limit; index++ {
+	for attempt := 0; attempt < slotAcquireAttempts; attempt++ {
+		live, err := s.liveSlots(ctx, scope, class)
+		if err != nil {
+			return nil, nil, err
+		}
+		if firstHolder == nil {
+			// The holder the defer reason names is the lowest live one, even when
+			// it sits past this caller's reach: that is the job holding the scope.
+			for index := 0; index < MaxSlotsPerScope+MaxOverflowSlots; index++ {
+				if holder := live[index]; holder != nil {
+					firstHolder = holder
+					break
+				}
+			}
+		}
+		if len(live) >= reach {
+			return nil, firstHolder, nil
+		}
+		// A free index below reach exists: liveSlots reports every live index of
+		// the scope, and the capacity check above returned once they all were.
+		index := 0
+		for ; index < reach; index++ {
+			if live[index] == nil {
+				break
+			}
+		}
 		slot, holder, err := s.acquireIndex(ctx, scope, class, lease, index)
 		if err != nil {
 			return nil, nil, err
@@ -203,11 +247,45 @@ func (s *Store) AcquireWithOptions(ctx context.Context, scope, class string, lea
 		if slot != nil {
 			return slot, nil, nil
 		}
-		if firstHolder == nil && holder != nil {
+		if holder != nil && firstHolder == nil {
 			firstHolder = holder
 		}
 	}
-	return nil, firstHolder, nil
+	if firstHolder != nil {
+		return nil, firstHolder, nil
+	}
+	return nil, nil, fmt.Errorf("a %s slot for scope %s changed hands while acquiring; retry", class, scope)
+}
+
+// liveSlots reports the live lease at each index of (scope, class). A stale or
+// corrupt-aged lease is not live: its index reads free, and acquireIndex
+// reclaims it under the slot's reclaim lock when a caller takes it. A lease
+// file that is unreadable in a directory younger than the stale bound counts as
+// held, because a holder may be between its mkdir and its first lease write.
+func (s *Store) liveSlots(ctx context.Context, scope, class string) (map[int]*Lease, error) {
+	live := make(map[int]*Lease, MaxSlotsPerScope+MaxOverflowSlots)
+	for index := 0; index < MaxSlotsPerScope+MaxOverflowSlots; index++ {
+		dir := s.slotDir(scope, class, index)
+		if _, err := os.Stat(dir); err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			return nil, fmt.Errorf("reading slot %s: %w", dir, err)
+		}
+		holder, stale, err := s.slotHolder(ctx, dir)
+		if err != nil {
+			return nil, err
+		}
+		if stale {
+			continue
+		}
+		if holder == nil {
+			holder = &Lease{Scope: scope, Class: class}
+		}
+		holder.Index = index // a lease file omits index 0
+		live[index] = holder
+	}
+	return live, nil
 }
 
 // acquireIndex takes the slot at one index, or reports its holder.

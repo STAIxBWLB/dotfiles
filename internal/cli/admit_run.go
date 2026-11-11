@@ -198,6 +198,7 @@ func deferExit(p *Printer, scope, class, owner string, d admission.Decision, asJ
 		Reason:            reason,
 		RetryAfterSeconds: int64(d.RetryAfter / time.Second),
 		Ignored:           bypassed.rules,
+		IgnoredReasons:    bypassed.reasons,
 	}
 	if asJSON {
 		data, err := json.MarshalIndent(outcome, "", "  ")
