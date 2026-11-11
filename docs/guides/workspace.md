@@ -128,8 +128,8 @@ export CLOUD_WORKSPACE="<cloud mirror path>"
 export CLOUD_WORK="$CLOUD_WORKSPACE/work"
 ```
 
-The last three give Maru and external AI CLIs one shared root for temporary
-artifacts.
+`MARU_SCRATCHPAD`, `MARU_TEMP` and `CLAUDE_CODE_TMPDIR` give Maru and external
+AI CLIs one shared root for temporary artifacts.
 
 It also defines these shortcuts:
 
