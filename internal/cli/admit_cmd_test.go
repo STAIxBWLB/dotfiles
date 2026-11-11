@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/dotfiles/internal/admission"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
@@ -785,7 +786,9 @@ func TestAdmitConfigPolicyReachesGateAndStatus(t *testing.T) {
 	}
 }
 
-// AC2: an invalid value fails loudly, naming the key, on both surfaces.
+// AC2: an invalid value fails loudly, naming the key, on both surfaces. Status
+// is the exception: it reports the bad key and still renders the diagnostic
+// view against the defaults, because that is when the person runs it.
 func TestAdmitInvalidConfigPolicyNamesKey(t *testing.T) {
 	home, _ := admitSandbox(t)
 	stubAdmitMonitor(t, healthyAdmitSnapshot())
@@ -799,8 +802,12 @@ func TestAdmitInvalidConfigPolicyNamesKey(t *testing.T) {
 	if errors.As(err, &exitErr) {
 		t.Errorf("err = %v, want a hard error, not a defer", err)
 	}
-	if _, _, err := runDotForTest("admit", "status"); err == nil || !strings.Contains(err.Error(), "admission.thresholds.idle_defer_below") {
-		t.Fatalf("status err = %v, want the key named", err)
+	_, statusErrOut, err := runDotForTest("admit", "status")
+	if err != nil {
+		t.Fatalf("status = %v, want the diagnostic view even with a blocked config", err)
+	}
+	if !strings.Contains(statusErrOut, "admission.thresholds.idle_defer_below") {
+		t.Errorf("status stderr = %q, want the offending key named", statusErrOut)
 	}
 	if _, _, err := runDotForTest("admit", "relax", "--set", "slots.heavy_per_repo=9"); err == nil ||
 		!strings.Contains(err.Error(), "admission.slots.heavy_per_repo") {
@@ -990,6 +997,24 @@ func TestAdmitRelaxRejectsBadInput(t *testing.T) {
 	}
 }
 
+// A config value that is only wrong next to this --set surfaces in the layered
+// check, the one place the file is not otherwise named: the person has to edit
+// config.yaml, so the refusal points at it.
+func TestAdmitRelaxNamesTheConfigFileOnCrossLayerError(t *testing.T) {
+	home, _ := admitSandbox(t)
+	writeAdmitUserConfig(t, home, "admission:\n  thresholds:\n    idle_recover_at: 5\n")
+	_, _, err := runDotForTest("admit", "relax", "--for", "1h", "--set", "thresholds.idle_defer_below=10")
+	if err == nil {
+		t.Fatal("relax accepted a layer that breaks the idle ordering")
+	}
+	if !strings.Contains(err.Error(), config.StatePath()) {
+		t.Errorf("err = %v, want the config file %s named", err, config.StatePath())
+	}
+	if !strings.Contains(err.Error(), "admission.thresholds.idle_recover_at") {
+		t.Errorf("err = %v, want the offending key named", err)
+	}
+}
+
 // Status reports an active relax with its expiry.
 func TestAdmitStatusShowsRelaxExpiry(t *testing.T) {
 	admitSandbox(t)
@@ -1039,5 +1064,38 @@ func TestAdmitIgnoreSlotTakesOverflowLease(t *testing.T) {
 	}
 	if !strings.Contains(errOut, "slot capacity 1 exceeded (--ignore slot): holding overflow slot 1") {
 		t.Errorf("stderr = %q, want the overflow-slot note", errOut)
+	}
+}
+
+// AC4: status lists every held index, so an overflow lease is visible next to
+// the index-0 lease it is running beside.
+func TestAdmitStatusListsOverflowSlot(t *testing.T) {
+	home, workdir := admitSandbox(t)
+	stubAdmitMonitor(t, healthyAdmitSnapshot())
+	runner := watchdogRunner(false)
+	store := admission.NewStore(admission.DefaultStateRoot(home), runner)
+	scope, err := admission.ResolveScope(context.Background(), runner, workdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease := admission.Lease{Owner: "holder@test", PID: 4242, PIDStart: "Mon Sep 28 00:00:00 2026"}
+	first, _, err := store.Acquire(context.Background(), scope, admission.ClassHeavy, lease)
+	if err != nil || first == nil {
+		t.Fatalf("seeding index 0 = %v, %v", first, err)
+	}
+	defer func() { _ = first.Release() }()
+	overflow, _, err := store.AcquireWithOptions(context.Background(), scope, admission.ClassHeavy, lease,
+		admission.AcquireOptions{Capacity: 1, Overflow: true})
+	if err != nil || overflow == nil {
+		t.Fatalf("seeding the overflow slot = %v, %v", overflow, err)
+	}
+	defer func() { _ = overflow.Release() }()
+
+	out, _, err := runDotForTest("admit", "status")
+	if err != nil {
+		t.Fatalf("status = %v", err)
+	}
+	if !strings.Contains(out, "slot 1") {
+		t.Errorf("status does not list the overflow slot:\n%s", out)
 	}
 }

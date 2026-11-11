@@ -165,6 +165,7 @@ func TestNativeUsesUserStateRoot(t *testing.T) {
 }
 
 func TestAdapterDefersOnPressure(t *testing.T) {
+	t.Setenv(admission.IgnoreEnv, "") // a shell with the bypass exported must not flip this
 	snap, none := healthySnapshot(), []string(nil)
 	snap.MemoryLevel = admission.MemoryCritical
 	a, _ := testAdapter(t, &snap, &none)
@@ -430,6 +431,7 @@ func TestAdapterNestedMarker(t *testing.T) {
 }
 
 func TestVerifiedPrebuiltPolicyDoesNotTrustNestedMarker(t *testing.T) {
+	t.Setenv(admission.IgnoreEnv, "") // a shell with the bypass exported must not flip this
 	snap, none := healthySnapshot(), []string(nil)
 	snap.VMActivityAvailable = true
 	snap.SwapInAvailable = true
@@ -500,6 +502,7 @@ func TestAdapterWaitEndingDuringGateDefers(t *testing.T) {
 
 // Pressure found by a gate that outlives the wait stays the reason given.
 func TestAdapterWaitEndKeepsPressureReason(t *testing.T) {
+	t.Setenv(admission.IgnoreEnv, "") // a shell with the bypass exported must not flip this
 	snap, none := healthySnapshot(), []string(nil)
 	snap.MemoryLevel = admission.MemoryCritical
 	a, _ := testAdapter(t, &snap, &none)

@@ -104,9 +104,33 @@ func (s *Store) LoadRelaxOverride(prune bool) (*RelaxOverride, error) {
 	if prune {
 		// Best-effort: contention with a live gate only leaves an expired
 		// file on disk for the next gate, and it is already ignored.
-		_ = s.ClearRelaxOverride()
+		s.pruneExpiredOverride()
 	}
 	return nil, nil
+}
+
+// pruneExpiredOverride removes the override only if it is still expired once
+// the root lock is held. Re-reading under the lock matters: a `dot admit relax`
+// that landed between the caller's read and this removal would otherwise be
+// deleted moments after it was set, silently returning the host to defaults.
+func (s *Store) pruneExpiredOverride() {
+	_ = s.withRootLock("pruning the expired admission relax override", func() error {
+		data, err := os.ReadFile(s.OverridePath())
+		if err != nil {
+			return nil // already gone
+		}
+		var current RelaxOverride
+		if err := json.Unmarshal(data, &current); err != nil {
+			return nil // unreadable: the loud parse error path owns this file
+		}
+		if current.ExpiresAt.IsZero() || !current.Expired(s.now()) {
+			return nil
+		}
+		if err := os.Remove(s.OverridePath()); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		return nil
+	})
 }
 
 // SaveRelaxOverride writes the override atomically under the admission root

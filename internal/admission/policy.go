@@ -3,6 +3,7 @@ package admission
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -189,6 +190,12 @@ func (o *PolicyOverrides) SetKey(key, value string) error {
 		parsed, err := strconv.ParseFloat(value, 64)
 		if err != nil {
 			return fail(fmt.Errorf("%q is not a number", value))
+		}
+		// ParseFloat accepts "NaN" and "Inf"; neither is a threshold, and NaN
+		// compares false against every bound, so it would slip past each range
+		// check and disable the rule it was meant to set.
+		if math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+			return fail(fmt.Errorf("%q is not a finite number", value))
 		}
 		*dst = &parsed
 		return nil

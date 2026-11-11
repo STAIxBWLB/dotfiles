@@ -48,10 +48,12 @@ func runAdmitStatus(cmd *cobra.Command, _ []string) error {
 	store := admission.NewStore(root, runner)
 	// Status is a read-only view: an expired relax override is displayed as
 	// inactive, never pruned from here, and no bypass is taken from a flag it
-	// does not have.
-	policy, err := resolveAdmissionPolicy(store, admission.IgnoreSet{}, true)
-	if err != nil {
-		return err
+	// does not have. A resolve failure is reported and the view continues on the
+	// defaults: a bad key blocks every gate, which is exactly when the person
+	// runs status, and losing the whole diagnostic view there helps nobody.
+	policy, resolveErr := resolveAdmissionPolicy(store, admission.IgnoreSet{}, true)
+	if resolveErr != nil {
+		policy = admission.DefaultPolicy()
 	}
 	monitor := admitNewMonitor(runner, home)
 	monitor.Thresholds = &policy.Thresholds
@@ -87,6 +89,9 @@ func runAdmitStatus(cmd *cobra.Command, _ []string) error {
 	}
 
 	p.Header("dot admit status")
+	if resolveErr != nil {
+		p.Warn("admission limits could not be resolved, showing defaults: %v", resolveErr)
+	}
 	if policy.Ignore.Any() {
 		p.KV("Bypassed rules", policy.Ignore.Label()+" ("+policy.IgnoreSource+")")
 		for _, reason := range d.IgnoredReasons {

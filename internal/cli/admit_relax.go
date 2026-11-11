@@ -101,7 +101,10 @@ func runAdmitRelax(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("refusing to save an override the controller would reject: %w", err)
 	}
 	if err := admission.ValidateLayered(configOverrides, overrides); err != nil {
-		return fmt.Errorf("refusing to save an override the controller would reject: %w", err)
+		// The layered check is where a config value that is only wrong next to
+		// this --set surfaces, so name the file: the person has to edit it.
+		return fmt.Errorf("refusing to save an override the controller would reject (config %s plus this --set): %w",
+			config.StatePath(), err)
 	}
 
 	now := time.Now()

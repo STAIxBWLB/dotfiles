@@ -177,6 +177,7 @@ func TestPrebuiltParentReentryDefersOnFreshMaintenanceInventory(t *testing.T) {
 }
 
 func TestPrebuiltForgedNestedMarkerCannotSkipGate(t *testing.T) {
+	t.Setenv(admission.IgnoreEnv, "") // a shell with the bypass exported must not flip this
 	snap, jobs := healthySnapshot(), []string(nil)
 	a, store := testAdapter(t, &snap, &jobs)
 	t.Setenv(admission.NestedEnv, admission.NestedEnvValue(admission.MaintenanceScope, admission.ClassMaintenance))
@@ -206,6 +207,7 @@ func TestPrebuiltForgedNestedMarkerCannotSkipGate(t *testing.T) {
 }
 
 func TestForgedNestedMaintenanceMarkerCannotSkipFullGate(t *testing.T) {
+	t.Setenv(admission.IgnoreEnv, "") // a shell with the bypass exported must not flip this
 	snap, jobs := healthySnapshot(), []string(nil)
 	a, store := testAdapter(t, &snap, &jobs)
 	t.Setenv(admission.NestedEnv, admission.NestedEnvValue(admission.MaintenanceScope, admission.ClassMaintenance))

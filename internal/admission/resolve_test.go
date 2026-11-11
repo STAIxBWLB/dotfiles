@@ -10,6 +10,14 @@ import (
 	"time"
 )
 
+// clearIgnoreEnv makes a test independent of the caller's shell. The one-off
+// bypass is read from the environment, so a developer with DOT_ADMISSION_IGNORE
+// exported would otherwise flip every default, precedence and expiry assertion.
+func clearIgnoreEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv(IgnoreEnv, "")
+}
+
 func writeAdmissionConfig(t *testing.T, body string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -23,6 +31,7 @@ func writeAdmissionConfig(t *testing.T, body string) string {
 // AC1: a host with no config, no override and no environment resolves to the
 // values the controller hard-coded, with no source recorded.
 func TestResolvePolicyMissingConfigIsDefaults(t *testing.T) {
+	clearIgnoreEnv(t)
 	store := NewStore(filepath.Join(t.TempDir(), "admission"), nil)
 	policy, err := store.ResolvePolicy(ResolveOptions{ConfigPath: filepath.Join(t.TempDir(), "absent.yaml")})
 	if err != nil {
@@ -48,6 +57,7 @@ func TestResolvePolicyMissingConfigIsDefaults(t *testing.T) {
 
 // AC2: each config key reaches its own rule, and an unset key keeps its default.
 func TestResolvePolicyConfigLayers(t *testing.T) {
+	clearIgnoreEnv(t)
 	configPath := writeAdmissionConfig(t, `name: test
 admission:
   thresholds:
@@ -99,6 +109,7 @@ admission:
 // AC2: an invalid value fails loudly, naming the key, and a typo is refused
 // rather than silently doing nothing.
 func TestResolvePolicyRejectsInvalidConfigNamingKey(t *testing.T) {
+	clearIgnoreEnv(t)
 	cases := []struct{ body, wantKey string }{
 		{"admission:\n  thresholds:\n    idle_defer_below: 150\n", KeyIdleDeferBelow},
 		{"admission:\n  slots:\n    heavy_per_repo: 9\n", KeyHeavyPerRepo},
@@ -125,6 +136,7 @@ func TestResolvePolicyRejectsInvalidConfigNamingKey(t *testing.T) {
 // A comparison can span two layers: the config may set one side and the
 // defaults the other, and the ordering error must still name the file.
 func TestResolvePolicyConfigOrderingAcrossLayers(t *testing.T) {
+	clearIgnoreEnv(t)
 	configPath := writeAdmissionConfig(t, "admission:\n  thresholds:\n    idle_defer_below: 50\n")
 	store := NewStore(filepath.Join(t.TempDir(), "admission"), nil)
 	_, err := store.ResolvePolicy(ResolveOptions{ConfigPath: configPath})
@@ -136,6 +148,7 @@ func TestResolvePolicyConfigOrderingAcrossLayers(t *testing.T) {
 // Precedence: relax layers over config, and a one-off bypass (flag, then
 // environment) beats the relax override without narrowing it.
 func TestResolvePolicyPrecedence(t *testing.T) {
+	clearIgnoreEnv(t)
 	base := time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC)
 	configPath := writeAdmissionConfig(t, "admission:\n  thresholds:\n    recover_sustain: 2m\n")
 	store := NewStore(filepath.Join(t.TempDir(), "admission"), nil)
@@ -214,6 +227,7 @@ func TestResolvePolicyPrecedence(t *testing.T) {
 // read-only view leaves it alone. A file the controller cannot honor fails
 // loudly instead of reading as "no override".
 func TestResolvePolicyExpiresRelaxOverride(t *testing.T) {
+	clearIgnoreEnv(t)
 	base := time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC)
 	store := NewStore(filepath.Join(t.TempDir(), "admission"), nil)
 	now := base
@@ -304,6 +318,7 @@ func TestResolvePolicyExpiresRelaxOverride(t *testing.T) {
 // AC3: a relax override admits a deferring gate; once it expires the gate
 // defers again and the file is gone.
 func TestRelaxIgnoreAdmitsThenExpires(t *testing.T) {
+	clearIgnoreEnv(t)
 	base := evalT0
 	store := NewStore(filepath.Join(t.TempDir(), "admission"), nil)
 	now := base
@@ -359,6 +374,7 @@ func TestRelaxIgnoreAdmitsThenExpires(t *testing.T) {
 // A bypassed pressure rule still samples and records, so recovery stays
 // continuous after the bypass ends; a busy slot is never treated as pressure.
 func TestGateIgnoreStillSamplesAndRecords(t *testing.T) {
+	clearIgnoreEnv(t)
 	fixed := evalT0
 	sampled := 0
 	snap := healthyDarwin()
@@ -421,5 +437,43 @@ func TestApplyIgnoreLeavesOtherRulesAndAdmissionsAlone(t *testing.T) {
 	admitted := Decision{Admit: true}
 	if got := ApplyIgnore(admitted, IgnoreSet{Pressure: true}, "--ignore pressure"); got.PressureIgnored {
 		t.Error("an already-admitting decision was marked bypassed")
+	}
+}
+
+// The prune re-reads the override under the root lock instead of deleting what
+// the gate read: a `dot admit relax` that landed in between must survive, or the
+// override the person just set disappears and the host silently returns to the
+// defaults it was bypassing.
+func TestPruneExpiredOverrideRereadsUnderTheLock(t *testing.T) {
+	clearIgnoreEnv(t)
+	store := NewStore(filepath.Join(t.TempDir(), "admission"), nil)
+	now := time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC)
+	store.Now = func() time.Time { return now }
+
+	expired := RelaxOverride{SetAt: now.Add(-time.Hour), ExpiresAt: now.Add(-time.Minute)}
+	if err := store.SaveRelaxOverride(expired); err != nil {
+		t.Fatalf("saving the expired override: %v", err)
+	}
+	// The gate read the expired file; by the time it prunes, this one replaced it.
+	fresh := RelaxOverride{SetAt: now, ExpiresAt: now.Add(10 * time.Minute), Ignore: []string{RulePressure}}
+	if err := store.SaveRelaxOverride(fresh); err != nil {
+		t.Fatalf("saving the fresh override: %v", err)
+	}
+	store.pruneExpiredOverride()
+	loaded, err := store.LoadRelaxOverride(false)
+	if err != nil {
+		t.Fatalf("reading back the override: %v", err)
+	}
+	if loaded == nil || !loaded.ExpiresAt.Equal(fresh.ExpiresAt) {
+		t.Fatalf("override = %+v, want the fresh one kept", loaded)
+	}
+
+	// The same call still removes an override that is expired at prune time.
+	if err := store.SaveRelaxOverride(expired); err != nil {
+		t.Fatalf("re-saving the expired override: %v", err)
+	}
+	store.pruneExpiredOverride()
+	if _, err := os.Stat(store.OverridePath()); !os.IsNotExist(err) {
+		t.Fatalf("prune left an expired override on disk: %v", err)
 	}
 }

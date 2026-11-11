@@ -144,6 +144,12 @@ func TestPolicyOverridesSetKeyRejectsUnknownAndMalformed(t *testing.T) {
 		{KeyHeavyPerRepo, "two", "whole number"},
 		{KeyUncoveredEnabled, "maybe", "true or false"},
 		{KeyIdleDeferBelow, "low", "not a number"},
+		// ParseFloat takes these, and NaN compares false against every bound, so
+		// without the finite check a threshold could be set to something no range
+		// test can catch.
+		{KeyIdleDeferBelow, "NaN", "not a finite number"},
+		{KeyMemAvailCriticalPct, "Inf", "not a finite number"},
+		{KeyUncoveredCPUPercent, "-Inf", "not a finite number"},
 	}
 	for _, tc := range malformed {
 		err := overrides.SetKey(tc.key, tc.value)
