@@ -237,30 +237,37 @@ func TestPrebuiltBlockIsIndependentOfThresholds(t *testing.T) {
 
 func TestIgnoreSetParse(t *testing.T) {
 	all, err := ParseIgnoreSet("all")
-	if err != nil || !all.Pressure || !all.Slot || !all.Uncovered {
+	if err != nil || !all.Pressure || !all.Slot || !all.Uncovered || !all.RemoteLoad {
 		t.Fatalf("ParseIgnoreSet(all) = %+v, %v", all, err)
 	}
 	partial, err := ParseIgnoreSet(" slot , pressure ")
-	if err != nil || !partial.Pressure || !partial.Slot || partial.Uncovered {
+	if err != nil || !partial.Pressure || !partial.Slot || partial.Uncovered || partial.RemoteLoad {
 		t.Fatalf("ParseIgnoreSet = %+v, %v, want pressure and slot", partial, err)
 	}
 	if got := partial.Label(); got != "pressure,slot" {
 		t.Errorf("label = %q, want the canonical order pressure,slot", got)
 	}
-	// "all" expands to the three rules and the scan continues, so an unknown name
+	// remote-load is its own rule, and the label a run reports can be pasted
+	// back into --ignore unchanged.
+	if load, err := ParseIgnoreSet("remote-load"); err != nil || !load.RemoteLoad ||
+		!load.Any() || load.Label() != RuleRemoteLoad {
+		t.Errorf("ParseIgnoreSet(remote-load) = %+v, %v", load, err)
+	}
+	// "all" expands to the four rules and the scan continues, so an unknown name
 	// is rejected wherever it sits; before the fix "all,slots" parsed clean while
 	// "slots,all" failed, so the same list meant different things by order.
-	for _, spec := range []string{"slots", "all,slots", "slots,all"} {
-		if _, err := ParseIgnoreSet(spec); err == nil || !strings.Contains(err.Error(), `"slots"`) {
-			t.Errorf("ParseIgnoreSet(%q) err = %v, want the unknown rule named", spec, err)
+	unknown := map[string]string{"slots": "slots", "all,slots": "slots", "slots,all": "slots", "all,remote_load": "remote_load"}
+	for spec, want := range unknown {
+		if _, err := ParseIgnoreSet(spec); err == nil || !strings.Contains(err.Error(), `"`+want+`"`) {
+			t.Errorf("ParseIgnoreSet(%q) err = %v, want the unknown rule %q named", spec, err, want)
 		}
 	}
-	// Naming "all" beside one of its own rules still means all three, and the
+	// Naming "all" beside one of its own rules still means every rule, and the
 	// value the rest of the run reads does not depend on which spelling was used.
-	for _, spec := range []string{"all", "all,pressure"} {
+	for _, spec := range []string{"all", "all,pressure", "all,remote-load"} {
 		got, err := ParseIgnoreSet(spec)
-		if err != nil || !got.Pressure || !got.Slot || !got.Uncovered {
-			t.Errorf("ParseIgnoreSet(%q) = %+v, %v, want all three rules", spec, got, err)
+		if err != nil || !got.Pressure || !got.Slot || !got.Uncovered || !got.RemoteLoad {
+			t.Errorf("ParseIgnoreSet(%q) = %+v, %v, want all four rules", spec, got, err)
 		}
 	}
 	if got := (IgnoreSet{Pressure: true}).Union(IgnoreSet{Uncovered: true}); got.Label() != "pressure,uncovered" {

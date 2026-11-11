@@ -909,7 +909,7 @@ func TestAdmitRelaxAdmitsThenClearRestoresGate(t *testing.T) {
 
 	if out, _, err := runDotForTest("admit", "relax", "--for", "10m", "--ignore", "all"); err != nil {
 		t.Fatalf("relax = %v", err)
-	} else if !strings.Contains(out, "until") || !strings.Contains(out, "pressure,slot,uncovered") {
+	} else if !strings.Contains(out, "until") || !strings.Contains(out, admission.IgnoreSet{Pressure: true, Slot: true, Uncovered: true, RemoteLoad: true}.Label()) {
 		t.Errorf("relax output = %q, want the expiry and the rules", out)
 	}
 	overridePath := filepath.Join(admission.DefaultStateRoot(home), admission.RelaxFileName)
@@ -921,8 +921,8 @@ func TestAdmitRelaxAdmitsThenClearRestoresGate(t *testing.T) {
 	if err := json.Unmarshal(data, &override); err != nil {
 		t.Fatal(err)
 	}
-	if len(override.Ignore) != 3 || override.ExpiresAt.IsZero() || override.SetAt.IsZero() {
-		t.Errorf("override = %+v, want all three rules with both timestamps", override)
+	if len(override.Ignore) != 4 || override.ExpiresAt.IsZero() || override.SetAt.IsZero() {
+		t.Errorf("override = %+v, want all four rules with both timestamps", override)
 	}
 
 	_, errOut, err := runDotForTest("admit", "--json", "--wait", "0", "--", "true")

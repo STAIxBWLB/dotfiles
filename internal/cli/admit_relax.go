@@ -17,7 +17,7 @@ import (
 // admission limits, stored outside the config so it expires on its own.
 func newAdmitRelaxCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "relax --for 1h [--ignore pressure,slot,uncovered|all] [--set <key>=<value> ...] | relax --clear",
+		Use:   "relax --for 1h [--ignore pressure,slot,uncovered,remote-load|all] [--set <key>=<value> ...] | relax --clear",
 		Short: "Set or clear a temporary override of the admission limits",
 		Long: `Override admission for a bounded time. --ignore steps past the named rules
 until the override expires; --set layers the same keys the admission block of
@@ -25,8 +25,9 @@ until the override expires; --set layers the same keys the admission block of
 Every evaluation still measures what it bypassed, so the limits come back
 correctly when the override ends: a bypassed pressure gate still samples and
 records history, a bypassed slot still takes a lease (in an overflow slot past
-the configured capacity), and a bypassed scan still runs and names what it
-found. An expired override is ignored and removed by the next evaluation.
+the configured capacity), a bypassed scan still runs and names what it found,
+and a bypassed remote-load probe still reads the remote host. An expired
+override is ignored and removed by the next evaluation.
 
 --set keys and examples:
   thresholds.recover_sustain=1m      thresholds.idle_defer_below=5
@@ -43,7 +44,7 @@ nothing.`,
 		SilenceUsage: true,
 	}
 	cmd.Flags().Duration("for", admission.RelaxDefaultFor, "how long the override lasts (maximum 24h)")
-	cmd.Flags().String("ignore", "", "rules to step past until the override expires: pressure, slot, uncovered, or all")
+	cmd.Flags().String("ignore", "", "rules to step past until the override expires: pressure, slot, uncovered, remote-load, or all")
 	cmd.Flags().StringArray("set", nil, "policy key to layer until the override expires, as <key>=<value> (repeatable)")
 	cmd.Flags().Bool("clear", false, "Remove the temporary override now")
 	return cmd
