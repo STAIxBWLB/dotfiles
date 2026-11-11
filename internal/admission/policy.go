@@ -668,7 +668,9 @@ type IgnoreSet struct {
 	Uncovered bool
 }
 
-// ParseIgnoreSet parses "pressure,slot,uncovered" (any order) or "all".
+// ParseIgnoreSet parses "pressure,slot,uncovered" (any order) or "all". Every
+// name is checked wherever it appears: "all" expands to the three rules and the
+// scan continues, so "all,slots" fails the same way "slots,all" does.
 func ParseIgnoreSet(spec string) (IgnoreSet, error) {
 	var set IgnoreSet
 	for _, part := range strings.Split(spec, ",") {
@@ -676,7 +678,7 @@ func ParseIgnoreSet(spec string) (IgnoreSet, error) {
 		case "":
 			continue
 		case "all":
-			return IgnoreSet{Pressure: true, Slot: true, Uncovered: true}, nil
+			set.Pressure, set.Slot, set.Uncovered = true, true, true
 		case RulePressure:
 			set.Pressure = true
 		case RuleSlot:
