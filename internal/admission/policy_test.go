@@ -247,8 +247,21 @@ func TestIgnoreSetParse(t *testing.T) {
 	if got := partial.Label(); got != "pressure,slot" {
 		t.Errorf("label = %q, want the canonical order pressure,slot", got)
 	}
-	if _, err := ParseIgnoreSet("slots"); err == nil || !strings.Contains(err.Error(), `"slots"`) {
-		t.Fatalf("unknown rule err = %v, want the rule named", err)
+	// "all" expands to the three rules and the scan continues, so an unknown name
+	// is rejected wherever it sits; before the fix "all,slots" parsed clean while
+	// "slots,all" failed, so the same list meant different things by order.
+	for _, spec := range []string{"slots", "all,slots", "slots,all"} {
+		if _, err := ParseIgnoreSet(spec); err == nil || !strings.Contains(err.Error(), `"slots"`) {
+			t.Errorf("ParseIgnoreSet(%q) err = %v, want the unknown rule named", spec, err)
+		}
+	}
+	// Naming "all" beside one of its own rules still means all three, and the
+	// value the rest of the run reads does not depend on which spelling was used.
+	for _, spec := range []string{"all", "all,pressure"} {
+		got, err := ParseIgnoreSet(spec)
+		if err != nil || !got.Pressure || !got.Slot || !got.Uncovered {
+			t.Errorf("ParseIgnoreSet(%q) = %+v, %v, want all three rules", spec, got, err)
+		}
 	}
 	if got := (IgnoreSet{Pressure: true}).Union(IgnoreSet{Uncovered: true}); got.Label() != "pressure,uncovered" {
 		t.Errorf("union = %q, want pressure,uncovered", got.Label())
