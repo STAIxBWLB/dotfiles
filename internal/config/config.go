@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -102,11 +103,32 @@ type ModuleToggle struct {
 // stays readable. yaml.v3 would otherwise demand integer nanoseconds.
 type Duration time.Duration
 
+// durationSecondsLimit is the largest integer count of seconds that still fits
+// in a time.Duration. The multiply by time.Second wraps beyond it, and a wrap
+// lands on a small positive duration: -18446744073 seconds becomes 709ms, which
+// passes every "not negative" check downstream and silently shortens a sustain
+// or safety window read from a state file.
+const durationSecondsLimit = int64(math.MaxInt64) / int64(time.Second)
+
+// secondsDuration converts an integer count of seconds, refusing the counts
+// whose multiply by time.Second would wrap. Both duration types decode their
+// integer form through it so the two paths cannot drift.
+func secondsDuration(seconds int64) (time.Duration, error) {
+	if seconds < -durationSecondsLimit || seconds > durationSecondsLimit {
+		return 0, fmt.Errorf("invalid duration %d seconds: outside the +/-%d seconds a duration can hold; pass a duration string like \"1m\"", seconds, durationSecondsLimit)
+	}
+	return time.Duration(seconds) * time.Second, nil
+}
+
 // UnmarshalYAML decodes a duration string or an integer count of seconds.
 func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind == yaml.ScalarNode {
 		if i, err := strconv.ParseInt(value.Value, 10, 64); err == nil {
-			*d = Duration(time.Duration(i) * time.Second)
+			converted, err := secondsDuration(i)
+			if err != nil {
+				return err
+			}
+			*d = Duration(converted)
 			return nil
 		}
 		parsed, err := time.ParseDuration(value.Value)

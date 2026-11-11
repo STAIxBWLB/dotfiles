@@ -3,7 +3,11 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestIsModuleEnabled(t *testing.T) {
@@ -397,5 +401,66 @@ func TestVaultCloneTarget_LegacyFallthrough(t *testing.T) {
 	cfg := &Config{Modules: ModulesConfig{Workspace: WorkConfig{Path: "~/workspace"}}}
 	if got := cfg.VaultCloneTarget(home); got != "" {
 		t.Errorf("VaultCloneTarget() with nothing on disk = %q, want empty (legacy <ws>/vault)", got)
+	}
+}
+
+// An integer count of seconds is multiplied by time.Second, and one past the
+// int64 boundary wraps: -18446744073 becomes a positive 709.551616ms, which
+// then passes every "not negative" check downstream. Both duration types
+// decode their integer form through the same bound and refuse it.
+func TestDurationRejectsSecondCountsThatWouldOverflow(t *testing.T) {
+	for _, text := range []string{"-18446744073", "18446744074"} {
+		var block struct {
+			Value OptionalDuration `yaml:"value"`
+		}
+		err := yaml.Unmarshal([]byte("value: "+text+"\n"), &block)
+		if err == nil {
+			t.Errorf("yaml %s decoded to %s, want a rejection naming the value", text, block.Value.Std())
+		} else if !strings.Contains(err.Error(), text) || !strings.Contains(err.Error(), "seconds") {
+			t.Errorf("yaml %s error = %q, want the value and the accepted form", text, err)
+		}
+		var plain Duration
+		if err := yaml.Unmarshal([]byte(text), &plain); err == nil {
+			t.Errorf("Duration %s decoded to %s, want a rejection", text, plain.Std())
+		}
+	}
+
+	// The boundary itself still decodes, in both spellings of the largest count.
+	for _, text := range []string{"9223372036", "-9223372036", "300"} {
+		var value Duration
+		if err := yaml.Unmarshal([]byte(text), &value); err != nil {
+			t.Errorf("yaml %s = %v, want it accepted", text, err)
+			continue
+		}
+		want, err := time.ParseDuration(text + "s")
+		if err != nil {
+			t.Fatalf("reference duration for %s: %v", text, err)
+		}
+		if value.Std() != want {
+			t.Errorf("yaml %s = %s, want %s", text, value.Std(), want)
+		}
+	}
+
+	// A duration string keeps its own path and its own error wording.
+	var value Duration
+	if err := yaml.Unmarshal([]byte("1m"), &value); err != nil || value.Std() != time.Minute {
+		t.Errorf("yaml 1m = %s, %v; want 1m0s", value.Std(), err)
+	}
+}
+
+// The admission block is the state file's consumer of the same decode: a state
+// carrying the wrapped value must fail to load instead of arriving as 709ms.
+func TestLoadStateRefusesAnOverflowingAdmissionDuration(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	body := "schema_version: 6\nadmission:\n  thresholds:\n    recover_sustain: -18446744073\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	state, err := loadStateAt(path)
+	if err == nil {
+		t.Fatalf("loadStateAt accepted the value: recover_sustain = %v", state.Admission.Thresholds.RecoverSustain)
+	}
+	if !strings.Contains(err.Error(), "-18446744073") {
+		t.Errorf("load error = %q, want the value named", err)
 	}
 }

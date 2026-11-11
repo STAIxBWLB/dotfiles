@@ -286,3 +286,168 @@ func TestCapacityCountsLeasesAtHigherIndexes(t *testing.T) {
 		t.Fatalf("leases = %d, want the stranded lease and the bypass", len(leases))
 	}
 }
+
+// interleaveOnRead installs a one-shot interleaving on the window between a
+// caller's live-slot read and its index take: the callback runs once, after the
+// reader has seen the scope but before it takes an index, and the slots it
+// creates are released by the caller's test.
+func interleaveOnRead(t *testing.T, store *Store, run func()) {
+	t.Helper()
+	store.afterSlotRead = func() {
+		store.afterSlotRead = nil
+		run()
+	}
+}
+
+// The count and the take are two steps. A reads an empty scope, B takes the
+// capacity index, a bypass takes index 1, B releases, and A takes index 0 on
+// its stale read: a plain job would then run beside the bypass lease with no
+// bypass of its own and no notice anywhere.
+func TestPlainAcquireDefersBesideABypassLease(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+	scope := "/repo/a/.git"
+
+	var bypass *Slot
+	interleaveOnRead(t, store, func() {
+		first, _, err := store.AcquireWithOptions(ctx, scope, ClassHeavy, selfLease(t, store), AcquireOptions{Capacity: 1})
+		if err != nil || first == nil {
+			t.Fatalf("seeding index 0 inside the read window = %v, %v", first, err)
+		}
+		bypass, _, err = store.AcquireWithOptions(ctx, scope, ClassHeavy, selfLease(t, store), AcquireOptions{Capacity: 1, Overflow: true})
+		if err != nil || bypass == nil {
+			t.Fatalf("bypass acquire inside the read window = %v, %v", bypass, err)
+		}
+		if err := first.Release(); err != nil {
+			t.Fatalf("releasing index 0 inside the read window: %v", err)
+		}
+	})
+	defer func() {
+		if bypass != nil {
+			_ = bypass.Release()
+		}
+	}()
+
+	slot, holder, err := store.AcquireWithOptions(ctx, scope, ClassHeavy, selfLease(t, store), AcquireOptions{Capacity: 1})
+	if err != nil {
+		t.Fatalf("acquire = %v, %v", holder, err)
+	}
+	if bypass == nil || bypass.Lease().Index != 1 {
+		t.Fatalf("bypass slot = %+v, want index 1: the fixture must interleave a live bypass", bypass)
+	}
+	if slot != nil {
+		index := slot.Lease().Index
+		_ = slot.Release()
+		t.Fatalf("acquire took index %d on its stale read; want a defer beside the live bypass at index 1", index)
+	}
+	if holder == nil || holder.Index != 1 {
+		t.Fatalf("defer holder = %+v, want the bypass lease the re-read found at index 1", holder)
+	}
+	if _, err := os.Stat(store.slotDir(scope, ClassHeavy, 0)); !os.IsNotExist(err) {
+		t.Fatalf("index 0 still exists after the defer (%v); the slot was not given back", err)
+	}
+	leases, err := store.ListLeases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(leases) != 1 {
+		t.Fatalf("leases = %d, want only the bypass", len(leases))
+	}
+}
+
+// The same interleaving with room below the capacity leaves the caller its
+// index: the re-read guard is a capacity check, not a rule that every acquire
+// after a pause defers.
+func TestPlainAcquireKeepsItsIndexWhenTheReReadShowsRoom(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+	scope := "/repo/a/.git"
+
+	var bypass *Slot
+	interleaveOnRead(t, store, func() {
+		first, _, err := store.AcquireWithOptions(ctx, scope, ClassHeavy, selfLease(t, store), AcquireOptions{Capacity: 2})
+		if err != nil || first == nil {
+			t.Fatalf("seeding index 0 inside the read window = %v, %v", first, err)
+		}
+		bypass, _, err = store.AcquireWithOptions(ctx, scope, ClassHeavy, selfLease(t, store), AcquireOptions{Capacity: 2})
+		if err != nil || bypass == nil {
+			t.Fatalf("second acquire inside the read window = %v, %v", bypass, err)
+		}
+		if err := first.Release(); err != nil {
+			t.Fatalf("releasing index 0 inside the read window: %v", err)
+		}
+	})
+	defer func() {
+		if bypass != nil {
+			_ = bypass.Release()
+		}
+	}()
+
+	slot, holder, err := store.AcquireWithOptions(ctx, scope, ClassHeavy, selfLease(t, store), AcquireOptions{Capacity: 2})
+	if err != nil || slot == nil {
+		t.Fatalf("acquire = %v, %v, %v; want a slot, one lease is within a capacity of 2", slot, holder, err)
+	}
+	defer func() { _ = slot.Release() }()
+	if got := slot.Lease().Index; got != 0 {
+		t.Errorf("index = %d, want the lowest free index 0", got)
+	}
+	leases, err := store.ListLeases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(leases) != 2 {
+		t.Fatalf("leases = %d, want the neighbor and this caller", len(leases))
+	}
+}
+
+// A bypass that read the scope as having room and found it spoken for on the
+// re-read gives the slot back and retakes it in the overflow range. The
+// overflow notice, the JSON "ignored" set and the resourceguard wrapper all key
+// on the index, so a bypass parked on a normal index reports nothing.
+func TestBypassRetakesAnOverflowIndexAfterAStaleRead(t *testing.T) {
+	store := testStore(t)
+	ctx := context.Background()
+	scope := "/repo/a/.git"
+
+	var bypass *Slot
+	interleaveOnRead(t, store, func() {
+		first, _, err := store.AcquireWithOptions(ctx, scope, ClassHeavy, selfLease(t, store), AcquireOptions{Capacity: 1})
+		if err != nil || first == nil {
+			t.Fatalf("seeding index 0 inside the read window = %v, %v", first, err)
+		}
+		bypass, _, err = store.AcquireWithOptions(ctx, scope, ClassHeavy, selfLease(t, store), AcquireOptions{Capacity: 1, Overflow: true})
+		if err != nil || bypass == nil {
+			t.Fatalf("bypass acquire inside the read window = %v, %v", bypass, err)
+		}
+		if err := first.Release(); err != nil {
+			t.Fatalf("releasing index 0 inside the read window: %v", err)
+		}
+	})
+	defer func() {
+		if bypass != nil {
+			_ = bypass.Release()
+		}
+	}()
+
+	slot, holder, err := store.AcquireWithOptions(ctx, scope, ClassHeavy, selfLease(t, store), AcquireOptions{Capacity: 1, Overflow: true})
+	if err != nil || slot == nil {
+		t.Fatalf("bypass acquire = %v, %v, %v", slot, holder, err)
+	}
+	defer func() { _ = slot.Release() }()
+	if bypass == nil || bypass.Lease().Index != 1 {
+		t.Fatalf("seed bypass slot = %+v, want index 1", bypass)
+	}
+	if got := slot.Lease().Index; got < 1 {
+		t.Errorf("bypass index = %d, want an overflow index: it took a normal index on its stale read", got)
+	}
+	if _, err := os.Stat(store.slotDir(scope, ClassHeavy, 0)); !os.IsNotExist(err) {
+		t.Fatalf("index 0 still exists after the bypass moved (%v)", err)
+	}
+	leases, err := store.ListLeases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(leases) != 2 {
+		t.Fatalf("leases = %d, want the seeded bypass and this one", len(leases))
+	}
+}

@@ -83,6 +83,10 @@ type Store struct {
 	Now    func() time.Time
 	// HeartbeatInterval defaults to DefaultHeartbeatInterval when zero.
 	HeartbeatInterval time.Duration
+	// afterSlotRead, when set, runs between the live-slot read and the index take.
+	// It is a test seam: a test sets it to interleave another caller in exactly
+	// that window, which is where the count and the take are not one step.
+	afterSlotRead func()
 }
 
 // DefaultStateRoot is the state root for the invoking user.
@@ -192,10 +196,14 @@ const slotAcquireAttempts = 8
 // at capacity 1. It reports the lowest live holder when the scope is full, so
 // the defer reason names who holds it.
 //
-// The count and the take are not one atomic step and do not need to be: every
-// caller picks the lowest free index, so two callers racing for it collide on
-// that one directory (one loses the mkdir) instead of taking two different
-// indexes past the limit. The loser recounts and decides again.
+// The count and the take are not one atomic step, so the scope can change
+// under a caller between them: every caller picking the lowest free index keeps
+// two racers on one directory (one loses the mkdir), but not one index being
+// released while another caller bypasses into the overflow range. The take is
+// therefore followed by a re-read of the scope, and a caller that finds more
+// leases than its own index allows gives the slot back and either retries into
+// an overflow index or defers: a plain caller never runs beside a bypass lease,
+// and a bypass never reports itself as an ordinary lease.
 func (s *Store) AcquireWithOptions(ctx context.Context, scope, class string, lease Lease, opts AcquireOptions) (*Slot, *Lease, error) {
 	if err := os.MkdirAll(filepath.Join(s.Root, "slots"), 0o755); err != nil {
 		return nil, nil, fmt.Errorf("creating slots dir: %w", err)
@@ -218,6 +226,9 @@ func (s *Store) AcquireWithOptions(ctx context.Context, scope, class string, lea
 		live, err := s.liveSlots(ctx, scope, class)
 		if err != nil {
 			return nil, nil, err
+		}
+		if s.afterSlotRead != nil {
+			s.afterSlotRead()
 		}
 		if firstHolder == nil {
 			// The holder the defer reason names is the lowest live one, even when
@@ -259,6 +270,52 @@ func (s *Store) AcquireWithOptions(ctx context.Context, scope, class string, lea
 			return nil, nil, err
 		}
 		if slot != nil {
+			// The count above and the take are two steps, and the scope can fill in
+			// between them: a caller that read an empty scope can pause while another
+			// takes the capacity index, a third bypasses into an overflow index and
+			// the middle one releases, and then it takes its index on the stale read
+			// and runs beside the bypasser without a bypass of its own. Re-read the
+			// scope now the index is ours and count the others, excluding our own
+			// lease, then give the slot back when holding it would leave this caller
+			// with more leases in the scope than it may have.
+			observed, err := s.liveSlots(ctx, scope, class)
+			if err != nil {
+				_ = slot.Release()
+				return nil, nil, err
+			}
+			others := 0
+			var lowest *Lease
+			for other := 0; other < MaxSlotsPerScope+MaxOverflowSlots; other++ {
+				if other == index || observed[other] == nil {
+					continue
+				}
+				others++
+				if lowest == nil {
+					lowest = observed[other]
+				}
+			}
+			if firstHolder == nil {
+				firstHolder = lowest
+			}
+			if others >= reach {
+				// Every index this caller may hold is taken: defer, naming the holder
+				// the re-read found when the first read saw none.
+				if err := slot.Release(); err != nil {
+					return nil, nil, err
+				}
+				return nil, firstHolder, nil
+			}
+			if index < capacity && others >= capacity {
+				// A plain caller's reach is the capacity and its index is always below
+				// it, so this is its bound and the re-read above already deferred it. A
+				// bypass that landed below capacity read the scope as having room that
+				// is gone now: it retries, finds the capacity spoken for, and takes an
+				// overflow index, because every bypass notice keys on the index.
+				if err := slot.Release(); err != nil {
+					return nil, nil, err
+				}
+				continue
+			}
 			return slot, nil, nil
 		}
 		if holder != nil && firstHolder == nil {
