@@ -35,11 +35,11 @@ func TestOneRunPerMirrorPath(t *testing.T) {
 	host := testHost()
 	path := "/Users/me/workspace/work/dev/one"
 
-	slot, err := AcquirePath(ctx, store, testLease(), host, path, 0, false)
+	slot, err := AcquirePath(ctx, store, testLease(), host, path, 0)
 	if err != nil || slot == nil {
 		t.Fatalf("first acquire = %v, %v", slot, err)
 	}
-	_, err = AcquirePath(ctx, store, testLease(), host, path, 0, false)
+	_, err = AcquirePath(ctx, store, testLease(), host, path, 0)
 	var deferred *Deferred
 	if !errors.As(err, &deferred) {
 		t.Fatalf("second acquire = %v, want a defer", err)
@@ -73,12 +73,12 @@ func TestWorktreesOfOneRepoRunSideBySide(t *testing.T) {
 	ctx := context.Background()
 	host := testHost()
 	main, worktree := "/Users/me/repo", "/Users/me/repo/.worktrees/feature"
-	first, err := AcquirePath(ctx, store, testLease(), host, main, 0, false)
+	first, err := AcquirePath(ctx, store, testLease(), host, main, 0)
 	if err != nil || first == nil {
 		t.Fatalf("main checkout acquire = %v", err)
 	}
 	defer func() { _ = first.Release() }()
-	second, err := AcquirePath(ctx, store, testLease(), host, worktree, 0, false)
+	second, err := AcquirePath(ctx, store, testLease(), host, worktree, 0)
 	if err != nil || second == nil {
 		t.Fatalf("worktree acquire = %v, %v, want it to run beside the main checkout", second, err)
 	}
@@ -121,22 +121,43 @@ func TestHostLeaseCountsMaxRunsAndRecordsTheHost(t *testing.T) {
 	}
 }
 
-func TestSlotBypassTakesAnOverflowLease(t *testing.T) {
+// `--ignore slot` relaxes the host's max_runs and nothing else: a second run of
+// one mirror would `rsync --delete` into a mirror that is in use, whatever the
+// ignore set says.
+func TestTheSlotBypassReachesTheHostLeaseOnly(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()
 	host := testHost()
+	host.MaxRuns = 1
 	path := "/Users/me/workspace/work/dev/one"
-	first, err := AcquirePath(ctx, store, testLease(), host, path, 0, false)
-	if err != nil || first == nil {
-		t.Fatalf("first acquire = %v", err)
+	firstPath, err := AcquirePath(ctx, store, testLease(), host, path, 0)
+	if err != nil || firstPath == nil {
+		t.Fatalf("first path acquire = %v", err)
 	}
-	defer func() { _ = first.Release() }()
-	second, err := AcquirePath(ctx, store, testLease(), host, path, 0, true)
-	if err != nil || second == nil {
-		t.Fatalf("bypassed acquire = %v, %v", second, err)
+	defer func() { _ = firstPath.Release() }()
+	firstHost, err := AcquireHost(ctx, store, testLease(), host, 0, false)
+	if err != nil || firstHost == nil {
+		t.Fatalf("first host acquire = %v", err)
 	}
-	defer func() { _ = second.Release() }()
-	if got := second.Lease().Index; got < 1 {
+	defer func() { _ = firstHost.Release() }()
+
+	// The path lease is held, and there is no way to take a second one.
+	if _, err := AcquirePath(ctx, store, testLease(), host, path, 0); err == nil {
+		t.Error("a second path lease was granted; the bypass must not reach this scope")
+	} else {
+		var deferred *Deferred
+		if !errors.As(err, &deferred) {
+			t.Errorf("second path acquire = %v, want a defer", err)
+		}
+	}
+	// The host lease is the one the bypass relaxes, and the extra lease says so
+	// by its index.
+	overflow, err := AcquireHost(ctx, store, testLease(), host, 0, true)
+	if err != nil || overflow == nil {
+		t.Fatalf("bypassed host acquire = %v, %v", overflow, err)
+	}
+	defer func() { _ = overflow.Release() }()
+	if got := overflow.Lease().Index; got < 1 {
 		t.Errorf("overflow index = %d, want the lease past capacity so the bypass is visible", got)
 	}
 }
@@ -146,7 +167,7 @@ func TestWaitDoesNotRetryPastItsBudget(t *testing.T) {
 	ctx := context.Background()
 	host := testHost()
 	path := "/Users/me/workspace/work/dev/one"
-	first, err := AcquirePath(ctx, store, testLease(), host, path, 0, false)
+	first, err := AcquirePath(ctx, store, testLease(), host, path, 0)
 	if err != nil || first == nil {
 		t.Fatalf("first acquire = %v", err)
 	}
@@ -154,7 +175,7 @@ func TestWaitDoesNotRetryPastItsBudget(t *testing.T) {
 	// The first backoff is longer than this wait, so the acquire answers at
 	// once instead of sleeping past its deadline.
 	started := time.Now()
-	_, err = AcquirePath(ctx, store, testLease(), host, path, 50*time.Millisecond, false)
+	_, err = AcquirePath(ctx, store, testLease(), host, path, 50*time.Millisecond)
 	var deferred *Deferred
 	if !errors.As(err, &deferred) {
 		t.Fatalf("acquire = %v, want a defer", err)
@@ -169,7 +190,7 @@ func TestLeasesReleaseBothAndStopTheHeartbeat(t *testing.T) {
 	ctx := context.Background()
 	host := testHost()
 	path := "/Users/me/workspace/work/dev/one"
-	pathSlot, err := AcquirePath(ctx, store, testLease(), host, path, 0, false)
+	pathSlot, err := AcquirePath(ctx, store, testLease(), host, path, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

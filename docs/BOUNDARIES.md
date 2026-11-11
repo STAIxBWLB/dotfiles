@@ -499,6 +499,10 @@ path is either anchored at the remote user's `$HOME` or carries the host's
 - `~/dot-remote` (`root`) — the mirrors: one directory per mirrored checkout, at
   `<root>/<path relative to remote.local_root>`, fed by rsync and never read
   back
+- `~/dot-remote/.dot-remote` — one record per mirror, named by the mirror key
+  and holding the mirror's relative path, so `dot remote status` can size a
+  mirror whose path is nested rather than guessing from the root's top-level
+  directories
 - `~/dot-remote-git` (`git_root`) — reserved for the bare repositories the
   `verify` command pushes commits into
 - `~/dot-remote-src` (`src_root`) — reserved for the third-party clones the
@@ -506,11 +510,13 @@ path is either anchored at the remote user's `$HOME` or carries the host's
 - the image, named `<prefix>:latest` for a Dockerfile the host builds or the
   configured `image.ref` for one it pulls
 - the cache volumes `<prefix>-<cache>`, one per `caches` entry, and the
-  containers `<prefix>-<path key>` a run creates and removes
+  containers `<prefix>-<mirror key>` a run creates and removes
 
 A run never copies anything back, and it removes the container it started on
 every exit path except a SIGKILL: after a kill the next run of that path
-removes the container left behind.
+removes the container left behind. The container name is derived from the
+mirror's relative path, so a run removes the container a killed run, an older
+dot, or another machine left under that mirror's name, before it syncs.
 
 ## dotfiles Must Not Write Directly
 

@@ -1,6 +1,8 @@
 package remote
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -290,17 +292,17 @@ func TestMirrorAndContainerNames(t *testing.T) {
 	if got := host.WorkDir("work/dev/one"); got != "/work/work/dev/one" {
 		t.Errorf("workdir = %q", got)
 	}
-	key := PathKey("/home/u/workspace/work/dev/one")
+	key := MirrorKey("work/dev/one")
 	if len(key) != 12 {
-		t.Errorf("path key = %q, want 12 hex characters", key)
+		t.Errorf("mirror key = %q, want 12 hex characters", key)
 	}
-	if key != PathKey("/home/u/workspace/work/dev/one/") {
-		t.Error("the path key changed with a trailing separator")
+	if key != MirrorKey("work/dev/one/") || key != MirrorKey("/work/dev/one") {
+		t.Error("the mirror key changed with a trailing separator or a leading slash")
 	}
-	if key == PathKey("/home/u/workspace/work/dev/two") {
-		t.Error("two paths shared a container name")
+	if key == MirrorKey("work/dev/two") {
+		t.Error("two mirrors shared a container name")
 	}
-	if got := host.ContainerName(key); got != host.Prefix+"-"+key {
+	if got := host.ContainerName("work/dev/one"); got != host.Prefix+"-"+key {
 		t.Errorf("container = %q", got)
 	}
 	if got := host.Volume("cargo"); got != host.Prefix+"-cargo" {
@@ -328,5 +330,100 @@ func TestEnvPairsDefaultToCPUsAndKeepOverrides(t *testing.T) {
 	}
 	if none := (Host{}).EnvPairs(); len(none) != 0 {
 		t.Errorf("a host with no cpus passed %+v, want nothing", none)
+	}
+}
+
+// A local_root that crosses a symlink is the ordinary macOS case (/tmp and
+// /var are symlinks) and the ordinary Linux one (/home). A run resolves the
+// path it is given, so the root has to be resolved too or every checkout below
+// it is refused as outside.
+func TestLocalRootAndProjectsAreSymlinkResolved(t *testing.T) {
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "linked")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+	// The checkout exists before the config is read, which is the order a real
+	// command has: every `dot remote` re-reads the config.
+	checkout := filepath.Join(real, "work", "one")
+	if err := os.MkdirAll(checkout, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	state := stateWith(validHost())
+	state.LocalRoot = link
+	state.Projects = map[string]config.UserRemoteProject{
+		link + "/work/one": {Host: "buildbox"},
+	}
+	cfg, err := Load(state, "/home/u")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	resolved, rerr := filepath.EvalSymlinks(real)
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	checkout = filepath.Join(resolved, "work", "one")
+	if cfg.LocalRoot != resolved {
+		t.Errorf("local_root = %q, want the resolved %q", cfg.LocalRoot, resolved)
+	}
+	// The resolved root accepts a resolved checkout, which is what a run passes.
+	if _, rerr := cfg.Rel(checkout); rerr != nil {
+		t.Errorf("Rel(%s) = %v, want it inside the resolved root", checkout, rerr)
+	}
+	if project, ok := cfg.Match(checkout); !ok || project.Host != "buildbox" {
+		t.Errorf("Match(%s) = %+v, %v, want the project entry", checkout, project, ok)
+	}
+}
+
+// An ssh destination beginning with '-' is an option, not a host, and ssh would
+// read it as one.
+func TestAnSSHDestinationCannotBeAnOption(t *testing.T) {
+	for _, dest := range []string{"-v", "--proxy-command=sh", "-oProxyCommand=sh"} {
+		host := validHost()
+		host.SSH = dest
+		_, err := Load(stateWith(host), "/home/u")
+		if err == nil {
+			t.Fatalf("Load accepted the ssh destination %q", dest)
+		}
+		if !strings.Contains(err.Error(), "must not start with '-'") {
+			t.Errorf("error %q does not explain the refusal", err)
+		}
+	}
+	host := validHost()
+	host.SSH = "build box"
+	if _, err := Load(stateWith(host), "/home/u"); err == nil {
+		t.Error("Load accepted an ssh destination with a space")
+	}
+}
+
+// The host a job uses is the --host value, then the matching project's host,
+// then remote.default: the project entry is what makes a checkout's own host
+// travel with the config.
+func TestHostForPrefersTheFlagThenTheProjectThenTheDefault(t *testing.T) {
+	state := config.UserRemoteState{
+		Default: "buildbox",
+		Hosts: map[string]config.UserRemoteHost{
+			"buildbox": validHost(),
+			"bigbox":   validHost(),
+		},
+		Projects: map[string]config.UserRemoteProject{
+			"/home/u/workspace/work/one": {Host: "bigbox"},
+		},
+	}
+	cfg, err := Load(state, "/home/u")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if host, err := cfg.HostFor("", "/home/u/workspace/work/one/sub"); err != nil || host.Name != "bigbox" {
+		t.Errorf("HostFor(project path) = %q, %v, want bigbox", host.Name, err)
+	}
+	if host, err := cfg.HostFor("buildbox", "/home/u/workspace/work/one"); err != nil || host.Name != "buildbox" {
+		t.Errorf("HostFor(--host) = %q, %v, want the flag to win", host.Name, err)
+	}
+	if host, err := cfg.HostFor("", "/home/u/workspace/other"); err != nil || host.Name != "buildbox" {
+		t.Errorf("HostFor(unmatched path) = %q, %v, want the default", host.Name, err)
+	}
+	if host, err := cfg.HostFor("", ""); err != nil || host.Name != "buildbox" {
+		t.Errorf("HostFor(host command) = %q, %v, want the default", host.Name, err)
 	}
 }

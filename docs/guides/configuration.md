@@ -197,16 +197,26 @@ Validation names the key it refuses: an unknown `default` or
 `projects.<path>.host`, both or neither of the image keys, `max_runs` outside
 1-8, `max_load_ratio` at or below zero, a `root` that is absolute or contains
 `..`, a `memory` that is not a size like `32g`, a `caches` target that is not an
-absolute path, an `env` key that is not a variable name, and a `runtime` other
-than `docker` or `podman`. `local_root` (default `$HOME`) sets the layout: a
-checkout maps to `<root>/<path relative to local_root>` on the host and to
-`/work/<the same>` in the container, and `dot remote run` refuses `local_root`
-itself and `$HOME`. `exclude_extra` adds to the built-in exclude list; no
-configured entry can remove a built-in one. `projects` keys are local paths, the
-longest matching prefix wins, and its `verify`, `base` and `host` travel with
-every checkout under it. The block is carried by `dot config export` like the
-rest of the state document. See [Remote hosts](servers.md#remote-hosts) for the
-workflow.
+absolute path, an `env` key that is not a variable name, a `runtime` other
+than `docker` or `podman`, and an `ssh` destination that starts with `-` (ssh
+reads it as an option) or contains whitespace. `local_root` (default `$HOME`)
+sets the layout: a checkout maps to `<root>/<path relative to local_root>` on
+the host and to `/work/<the same>` in the container, and `dot remote run`
+refuses `local_root` itself and `$HOME`. `exclude_extra` adds to the built-in
+exclude list; no configured entry can remove a built-in one. `projects` keys are
+local paths, the longest matching prefix wins, and its `verify`, `base` and
+`host` travel with every checkout under it; the host a run uses is `--host`,
+then that entry's `host`, then `remote.default`. The block is carried by `dot
+config export` like the rest of the state document. See [Remote
+hosts](servers.md#remote-hosts) for the workflow.
+
+A first run sends what `git ls-files` names (tracked files plus untracked ones
+no ignore rule covers) and then prunes the mirror of what the checkout no longer
+has. The prune honors the same ignore sources the listing did - `.gitignore`,
+`.git/info/exclude` and the global excludes file - so a build output the host
+made under any of them survives. A checkout git cannot list is an error rather
+than a fallback to the exclude list, because the exclude list is not a
+substitute for git's own view.
 
 ### Environment Variables
 

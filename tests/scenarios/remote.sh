@@ -59,7 +59,8 @@ cleanup() {
     sudo kill "$(sudo cat "$PIDFILE")" >/dev/null 2>&1 || true
   fi
   rm -rf "$tmpdir" "$HOME/remote-work" "$HOME/dot-remote" "$HOME/dot-remote-git" "$HOME/dot-remote-src" \
-    "$HOME/bin/docker" "$HOME/stub-hold" "$HOME/stub.log" "$HOME/.config/dotfiles/config.yaml"
+    "$HOME/bin/docker" "$HOME/stub-hold" "$HOME/stub.log" "$HOME/stub-containers" "$HOME/stub-running" \
+    "$HOME/.config/dotfiles/config.yaml"
 }
 trap 'cleanup' EXIT
 
@@ -87,27 +88,90 @@ fi
 
 # ── the runtime stub ─────────────────────────────────────────────────────────
 # Named docker, because the config may only name docker or podman. It runs on
-# the far side of ssh, so the log path is baked in: no environment crosses ssh
+# the far side of ssh, so the paths are baked in: no environment crosses ssh
 # without ServerAlivePermitUserEnvironment.
 STUB="$HOME/bin/docker"
 mkdir -p "$HOME/bin"
 cat >"$STUB" <<'STUB_SCRIPT'
 #!/usr/bin/env bash
-# Stands in for the container runtime: records the argv and reports success.
+# Stands in for the container runtime: records the argv, keeps the set of
+# containers that exist, and reports success. A run asks the host about its
+# mirror's container and its image's user before it sends anything, so `ps` and
+# `image inspect` answer from that set rather than from a daemon.
 log="__LOG__"
+containers="__CONTAINERS__"
+running="__RUNNING__"
 printf '%s\n' "$*" >>"$log"
+
+# filter_name strips "name=^" and the trailing "$" from a --filter value.
+filter_name() {
+  want=${1#name=^}
+  printf '%s' "${want%\$}"
+}
+
+forget() {
+  for file in "$containers" "$running"; do
+    grep -vx -- "$1" "$file" >"$file.next" || true
+    mv "$file.next" "$file"
+  done
+}
+
 case "$1" in
   --version) echo "Docker version e2e-stub, build 0" ;;
   run)
+    name=""
+    previous=""
+    for arg in "$@"; do
+      if [ "$previous" = "--name" ]; then name="$arg"; fi
+      previous="$arg"
+    done
+    if [ -n "$name" ]; then
+      printf '%s\n' "$name" >>"$containers"
+      printf '%s\n' "$name" >>"$running"
+    fi
     if [ -f "$HOME/stub-hold" ]; then
       sleep "$(cat "$HOME/stub-hold")"
     fi
     echo "stub-container-ran"
+    # --rm: nothing is left once the command returns.
+    if [ -n "$name" ]; then forget "$name"; fi
+    ;;
+  rm)
+    name=""
+    previous=""
+    for arg in "$@"; do
+      if [ "$previous" = "-f" ]; then name="$arg"; fi
+      previous="$arg"
+    done
+    if [ -n "$name" ]; then forget "$name"; fi
+    ;;
+  ps)
+    # -a lists stopped containers too; without it only running ones answer.
+    file="$running"
+    filter=""
+    previous=""
+    for arg in "$@"; do
+      if [ "$arg" = "-a" ]; then file="$containers"; fi
+      if [ "$previous" = "--filter" ]; then filter="$arg"; fi
+      previous="$arg"
+    done
+    name=$(filter_name "$filter")
+    if [ -n "$name" ] && [ -f "$file" ] && grep -qx -- "$name" "$file"; then
+      printf '%s\n' "$name"
+    fi
+    ;;
+  image)
+    if printf '%s' "$*" | grep -q 'Created'; then
+      echo '2026-01-01T00:00:00Z'
+    else
+      echo '1000:1000'
+    fi
     ;;
 esac
 exit 0
 STUB_SCRIPT
-sed -i "s|__LOG__|$HOME/stub.log|" "$STUB"
+sed -i -e "s|__LOG__|$HOME/stub.log|" -e "s|__CONTAINERS__|$HOME/stub-containers|" \
+  -e "s|__RUNNING__|$HOME/stub-running|" "$STUB"
 chmod +x "$STUB"
 
 # ── sshd on loopback ─────────────────────────────────────────────────────────
@@ -228,8 +292,29 @@ if "$BIN" remote setup >"$tmpdir/setup.out" 2>"$setup_err"; then
   else
     fail "setup did not report the host ready: $(cat "$tmpdir/setup.out")"
   fi
+  # A run gets the image's own user, so setup names it: an image without an
+  # unprivileged USER would leave root-owned files in the mirror.
+  if grep -q "runs as 1000:1000" "$tmpdir/setup.out"; then
+    pass "setup names the unprivileged user a run will be"
+  else
+    fail "setup did not name the image's user: $(cat "$tmpdir/setup.out")"
+  fi
 else
   fail "dot remote setup exited non-zero: $(cat "$setup_err")"
+fi
+
+# The same report as one machine-readable document, which is what a wrapper
+# around dot reads.
+if "$BIN" remote setup --json >"$tmpdir/setup.json" 2>/dev/null; then
+  if grep -q '"host": "remotehost"' "$tmpdir/setup.json" &&
+    grep -q '"image_user": "1000:1000"' "$tmpdir/setup.json" &&
+    grep -q '"built": false' "$tmpdir/setup.json"; then
+    pass "setup --json prints the report as one JSON document"
+  else
+    fail "setup --json is not the report: $(cat "$tmpdir/setup.json")"
+  fi
+else
+  fail "dot remote setup --json exited non-zero"
 fi
 
 # ── run ──────────────────────────────────────────────────────────────────────
@@ -300,8 +385,69 @@ else
   pass "the mirror carries no .git directory"
 fi
 
+# The record a run leaves so `status` can size a mirror whose path is nested:
+# the name is derived from the mirror's own relative path.
+if grep -qx "one" "$HOME/dot-remote/.dot-remote/"* 2>/dev/null; then
+  pass "the run recorded the mirror for status"
+else
+  fail "no record under $HOME/dot-remote/.dot-remote names one"
+fi
+
+# ── the container name is the host's, not this machine's ─────────────────────
+# Leases are per machine, so a container left by a killed run - or by another
+# machine mirroring the same checkout - is the one exclusion the host enforces.
+# The name comes from dot's own dry run, so this arm cannot drift from the
+# derivation it is checking.
+left_container=$("$BIN" remote run --dry-run "$HOME/remote-work/one" -- true 2>/dev/null |
+  sed -n 's/.*(container \([^)]*\)).*/\1/p')
+if [ -n "$left_container" ]; then
+  pass "a dry run names the container of a mirror: $left_container"
+else
+  fail "a dry run named no container: $(cat "$tmpdir/run.err")"
+fi
+
+printf '%s\n' "$left_container" >"$HOME/stub-containers"
+printf '%s\n' "$left_container" >"$HOME/stub-running"
+set +e
+"$BIN" remote run "$HOME/remote-work/one" -- true >"$tmpdir/running.out" 2>"$tmpdir/running.err"
+running_rc=$?
+set -e
+if [ "$running_rc" -eq 75 ]; then
+  pass "a container already running under the mirror's name defers with exit 75"
+else
+  fail "a running container under the mirror's name exited $running_rc, want 75: $(cat "$tmpdir/running.err")"
+fi
+if grep -q "another machine is running this checkout" "$tmpdir/running.out" "$tmpdir/running.err"; then
+  pass "the defer reason names the other machine's run"
+else
+  fail "the defer reason does not name the other run: $(cat "$tmpdir/running.err")"
+fi
+
+# The same container stopped: this run removes it before it syncs rather than
+# colliding with it, and says so.
+: >"$HOME/stub-running"
+: >"$HOME/stub.log"
+if "$BIN" remote run "$HOME/remote-work/one" -- true >"$tmpdir/left.out" 2>"$tmpdir/left.err"; then
+  pass "a run whose container name is held by a stopped container still runs"
+else
+  fail "a run with a stopped container under its name failed: $(cat "$tmpdir/left.err")"
+fi
+if grep -q "removed the stopped container $left_container left on remotehost" "$tmpdir/left.err"; then
+  pass "the run removed the stopped container and said so"
+else
+  fail "the run did not report removing the stopped container: $(cat "$tmpdir/left.err")"
+fi
+if grep -qx "rm -f $left_container" "$HOME/stub.log"; then
+  pass "the runtime was asked to remove it by name"
+else
+  fail "the runtime was not asked to remove it: $(cat "$HOME/stub.log")"
+fi
+
 # ── leases: one per path, one per host ───────────────────────────────────────
-# The stub holds the first run open, so the second one meets a held lease.
+# The stub holds the first run open, so the second one meets a held lease. The
+# log starts empty: the wait below looks for a `run --rm` line, and an earlier
+# arm's line would satisfy it before this run had started.
+: >"$HOME/stub.log"
 printf '6\n' >"$HOME/stub-hold"
 "$BIN" remote run "$HOME/remote-work/one" -- sleep 6 >"$tmpdir/hold.out" 2>"$tmpdir/hold.err" &
 hold_pid=$!
@@ -455,10 +601,10 @@ if "$BIN" remote status >"$tmpdir/status.out" 2>"$tmpdir/status.err"; then
   else
     fail "status rendered nothing useful: $(cat "$tmpdir/status.out")"
   fi
-  if grep -q 'Mirrors:.*1 (' "$tmpdir/status.out"; then
-    pass "status measured the mirrors"
+  if grep -q 'Mirrors:  *2 (' "$tmpdir/status.out"; then
+    pass "status sized both mirrors recorded under one root"
   else
-    fail "status did not measure the mirrors: $(cat "$tmpdir/status.out")"
+    fail "status did not size both mirrors: $(cat "$tmpdir/status.out")"
   fi
 else
   fail "status exited non-zero: $(cat "$tmpdir/status.err")"

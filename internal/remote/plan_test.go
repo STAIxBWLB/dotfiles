@@ -32,17 +32,22 @@ func TestSSHArgvIsBatchMode(t *testing.T) {
 func TestSyncPlanForAGitCheckout(t *testing.T) {
 	listing := []byte("main.go\x00docs/a.md\x00")
 	steps := SyncPlan("/usr/local/bin/rsync", "/home/u/repo", "buildbox:dot-remote/repo",
-		[]string{".git", "node_modules"}, listing)
+		[]string{".git", "node_modules"}, []string{"/home/u/repo/.git/info/exclude"}, listing)
 	if len(steps) != 2 {
 		t.Fatalf("steps = %d, want the ship pass and the delete pass", len(steps))
 	}
 	ship, prune := steps[0], steps[1]
-	for _, want := range []string{"-a", "--mkpath", "--files-from=-", "--from0", "--ignore-missing-args",
+	for _, want := range []string{"-a", "-s", "--mkpath", "--files-from=-", "--from0", "--ignore-missing-args",
 		"--exclude=.git", "--exclude=node_modules", "--include=.env.example",
 		"/home/u/repo/", "buildbox:dot-remote/repo/"} {
 		if !slices.Contains(ship.Argv, want) {
 			t.Errorf("ship pass is missing %q: %v", want, ship.Argv)
 		}
+	}
+	// -s keeps rsync from interpolating the paths into the remote shell's
+	// command line, where a space or a ';' in a mirror path would be parsed.
+	if !slices.Contains(prune.Argv, "-s") {
+		t.Errorf("delete pass is missing -s: %v", prune.Argv)
 	}
 	if string(ship.Stdin) != string(listing) {
 		t.Errorf("ship stdin = %q, want git's listing", ship.Stdin)
@@ -68,6 +73,14 @@ func TestSyncPlanForAGitCheckout(t *testing.T) {
 			t.Errorf("delete pass is missing %q: %v", want, prune.Argv)
 		}
 	}
+	// The ignore files git honored outside .gitignore reach the delete pass, so
+	// a build output they cover is not deleted from the mirror.
+	if !slices.Contains(prune.Argv, "--filter=.- /home/u/repo/.git/info/exclude") {
+		t.Errorf("delete pass does not merge git's other ignore files: %v", prune.Argv)
+	}
+	if slices.Contains(ship.Argv, "--filter=.- /home/u/repo/.git/info/exclude") {
+		t.Error("the ship pass was given a delete-only filter file")
+	}
 	if prune.Stdin != nil {
 		t.Error("the delete pass must transfer nothing, but it was given stdin")
 	}
@@ -77,7 +90,7 @@ func TestSyncPlanForAGitCheckout(t *testing.T) {
 }
 
 func TestSyncPlanForAPathThatIsNotAGitCheckout(t *testing.T) {
-	steps := SyncPlan("rsync", "/home/u/plain", "buildbox:dot-remote/plain", []string{".git"}, nil)
+	steps := SyncPlan("rsync", "/home/u/plain", "buildbox:dot-remote/plain", []string{".git"}, nil, nil)
 	if len(steps) != 1 {
 		t.Fatalf("steps = %d, want one plain mirroring pass", len(steps))
 	}

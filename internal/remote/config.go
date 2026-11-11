@@ -120,6 +120,10 @@ func Load(state config.UserRemoteState, home string) (Config, error) {
 	if localRoot == "" {
 		localRoot = home
 	}
+	// Resolved, because a run resolves the path it is given: a local_root that
+	// crosses a symlink (/tmp on macOS, /home on some Linux hosts) would
+	// otherwise refuse every checkout below it as outside.
+	localRoot = resolveExisting(localRoot)
 	cfg := Config{
 		LocalRoot:    localRoot,
 		Hosts:        make(map[string]Host, len(state.Hosts)),
@@ -193,6 +197,22 @@ func (c Config) Match(path string) (Project, bool) {
 	return Project{}, false
 }
 
+// HostFor resolves the host one job uses: the --host value, then the host of
+// the project entry covering path, then remote.default. The project entry is the
+// whole reason it exists: a checkout whose builds belong on a particular host
+// says so once in the config.
+func (c Config) HostFor(flagName, path string) (Host, error) {
+	if flagName != "" {
+		return c.Host(flagName)
+	}
+	if path != "" {
+		if project, ok := c.Match(path); ok && project.Host != "" {
+			return c.Host(project.Host)
+		}
+	}
+	return c.Host("")
+}
+
 // Rel returns path's location under LocalRoot as a slash path, which is what
 // names the mirror directory and the container's working directory.
 func (c Config) Rel(path string) (string, error) {
@@ -227,11 +247,14 @@ func (c Config) RefuseRoots(path, home string) error {
 	return nil
 }
 
-// PathKey is the short hash naming one mirror path's container. It is derived
-// from the path so the runtime itself refuses a second concurrent run of the
-// same path, even one started from another machine.
-func PathKey(absolute string) string {
-	sum := sha1.Sum([]byte(filepath.Clean(absolute)))
+// MirrorKey is the short hash naming one mirror's container. It is derived from
+// the mirror's own path - the checkout's location relative to local_root - and
+// not from the local absolute path, so two machines that mirror the same
+// relative checkout to one host ask the runtime for the same container name and
+// the second run is refused by the host rather than the lease store.
+func MirrorKey(rel string) string {
+	// Leading slash first, so "a/b" and "/a/b" are one key rather than two.
+	sum := sha1.Sum([]byte(path.Clean("/" + rel)))
 	return hex.EncodeToString(sum[:])[:12]
 }
 
@@ -241,8 +264,8 @@ func (h Host) MirrorDir(rel string) string { return path.Join(h.Root, rel) }
 // WorkDir is where the mirror is mounted inside the container.
 func (h Host) WorkDir(rel string) string { return path.Join(mirrorMountRoot, rel) }
 
-// ContainerName is the container one mirror path runs in.
-func (h Host) ContainerName(key string) string { return h.Prefix + "-" + key }
+// ContainerName is the container one mirror runs in.
+func (h Host) ContainerName(rel string) string { return h.Prefix + "-" + MirrorKey(rel) }
 
 // Image is the image a run uses: the prebuilt ref, or the one the host built
 // from the Dockerfile.
@@ -294,6 +317,16 @@ func resolveHost(name string, in config.UserRemoteHost, home string) (Host, erro
 	key := "remote.hosts." + name
 	if host.SSH == "" {
 		host.SSH = name
+	}
+	// A destination beginning with '-' would be read as an ssh option: the one
+	// word this package passes to ssh unquoted is the destination, and
+	// `ssh -oBatchMode=yes -v ...` is not a host. Whitespace is refused too,
+	// because ssh would split it into separate arguments.
+	if strings.HasPrefix(host.SSH, "-") {
+		return Host{}, fmt.Errorf("%s.ssh: %q must not start with '-', which ssh reads as an option", key, host.SSH)
+	}
+	if strings.ContainsAny(host.SSH, " \t\n") {
+		return Host{}, fmt.Errorf("%s.ssh: %q must be one ssh destination or alias with no spaces", key, host.SSH)
 	}
 	if host.Runtime == "" {
 		host.Runtime = DefaultRuntime
@@ -389,7 +422,7 @@ func resolveProject(key string, in config.UserRemoteProject, home string, hosts 
 		return Project{}, fmt.Errorf("remote.projects: the entry %q is not a path", key)
 	}
 	project := Project{
-		Path:   absolute,
+		Path:   resolveExisting(absolute),
 		Verify: strings.TrimSpace(in.Verify),
 		Base:   strings.TrimSpace(in.Base),
 		Host:   strings.TrimSpace(in.Host),
@@ -430,6 +463,21 @@ func localPath(value, home, key string) (string, error) {
 		return "", fmt.Errorf("%s: %q must be an absolute path or start with ~/", key, value)
 	}
 	return filepath.Clean(expanded), nil
+}
+
+// resolveExisting resolves a path's symlinks when it exists, and otherwise
+// keeps it cleaned. Running the resolution over a path that does not exist would
+// resolve whatever ancestor happens to be a symlink (/home on macOS is one) and
+// spell a made-up path differently, so absence simply leaves it alone: the
+// config is read again on the next command, by which time the checkout exists.
+func resolveExisting(value string) string {
+	if value == "" {
+		return ""
+	}
+	if resolved, err := filepath.EvalSymlinks(value); err == nil {
+		return resolved
+	}
+	return filepath.Clean(value)
 }
 
 // localUserName is the invoking user, whose name defaults the host prefix. Any

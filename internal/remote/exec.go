@@ -10,6 +10,7 @@ import (
 	osexec "os/exec"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -25,13 +26,16 @@ type Execer func(ctx context.Context, argv []string, stdin io.Reader, stdout, st
 // commands run, and where output goes. The zero value works for everything
 // except the lease store, so a caller that only reads config needs no wiring.
 type Deps struct {
-	Store  *admission.Store
-	Runner *exec.Runner
-	Exec   Execer
-	Now    func() time.Time
-	In     io.Reader
-	Out    io.Writer
-	Err    io.Writer
+	Store *admission.Store
+	// StoreErr is why the store could not be opened, when it could not. It is
+	// carried rather than logged so a run can say what to fix.
+	StoreErr error
+	Runner   *exec.Runner
+	Exec     Execer
+	Now      func() time.Time
+	In       io.Reader
+	Out      io.Writer
+	Err      io.Writer
 	// LocalRsync is the rsync 3.x client every transfer uses. It is resolved
 	// before a run, never guessed here: a non-login shell puts openrsync first
 	// on macOS, and openrsync cannot serve --files-from --from0.
@@ -44,9 +48,12 @@ type Deps struct {
 // state root.
 func DefaultDeps(runner *exec.Runner) Deps {
 	deps := Deps{Runner: runner}
-	if root, err := admission.UserStateRoot(); err == nil {
-		deps.Store = admission.NewStore(root, runner)
+	root, err := admission.UserStateRoot()
+	if err != nil {
+		deps.StoreErr = err
+		return deps
 	}
+	deps.Store = admission.NewStore(root, runner)
 	return deps
 }
 
@@ -125,6 +132,13 @@ func (d Deps) capture(ctx context.Context, argv []string, stdin []byte) (string,
 // execAttached runs argv with attached stdio and forwards SIGINT, SIGTERM and
 // SIGHUP to its process group, so a Ctrl-C reaches the runtime client and the
 // ssh under it rather than only this process.
+//
+// The signal this process received is returned as well, even when the child
+// exited normally. OpenSSH handles SIGINT and SIGTERM itself and exits 255
+// instead of dying by the signal, and a dropped connection also exits 255; in
+// both cases the caller has to know the run was interrupted, because a
+// container may be left running on the host and "255" is not an answer a person
+// can act on.
 func execAttached(ctx context.Context, argv []string, stdin io.Reader, stdout, stderr io.Writer) (int, syscall.Signal, error) {
 	if len(argv) == 0 {
 		return 0, 0, errors.New("no command to run")
@@ -138,12 +152,14 @@ func execAttached(ctx context.Context, argv []string, stdin io.Reader, stdout, s
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer signal.Stop(sigCh)
+	var forwarded signalMemory
 	done := make(chan struct{})
 	go func() {
 		for {
 			select {
 			case sig := <-sigCh:
 				if s, ok := sig.(syscall.Signal); ok {
+					forwarded.remember(s)
 					_ = syscall.Kill(-cmd.Process.Pid, s)
 				}
 			case <-done:
@@ -166,16 +182,36 @@ func execAttached(ctx context.Context, argv []string, stdin io.Reader, stdout, s
 	err = cmd.Wait()
 	close(done)
 	if err == nil {
-		return 0, 0, nil
+		return 0, forwarded.signal(), nil
 	}
 	var exitErr *osexec.ExitError
 	if errors.As(err, &exitErr) {
 		if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() {
 			return 128 + int(status.Signal()), status.Signal(), nil
 		}
-		return exitErr.ExitCode(), 0, nil
+		return exitErr.ExitCode(), forwarded.signal(), nil
 	}
 	return 0, 0, err
+}
+
+// signalMemory is the last signal this process received and forwarded, written
+// from the notifier goroutine and read after the child exits.
+type signalMemory struct {
+	mu   sync.Mutex
+	last syscall.Signal
+}
+
+func (s *signalMemory) remember(sig syscall.Signal) {
+	s.mu.Lock()
+	s.last = sig
+	s.mu.Unlock()
+}
+
+// signal is the remembered signal, or 0 when the notifier has none yet.
+func (s *signalMemory) signal() syscall.Signal {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.last
 }
 
 // tail keeps the last line of a command's stderr, which is where rsync and the

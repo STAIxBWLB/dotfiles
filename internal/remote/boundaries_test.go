@@ -26,8 +26,8 @@ func TestRemoteWritesAreInBoundaries(t *testing.T) {
 	host.Dockerfile = "/home/u/images/dev.Dockerfile"
 
 	writes := RemoteWrites(host)
-	if len(writes) != 6 {
-		t.Fatalf("RemoteWrites = %v, want the three trees, the image, a volume and a container", writes)
+	if len(writes) != 7 {
+		t.Fatalf("RemoteWrites = %v, want the three trees, the record directory, the image, a volume and a container", writes)
 	}
 	for _, write := range writes {
 		underHome := strings.HasPrefix(write, "$HOME/")
@@ -35,7 +35,7 @@ func TestRemoteWritesAreInBoundaries(t *testing.T) {
 		if !underHome && !underPrefix {
 			t.Errorf("%q is neither under the remote $HOME nor under the prefix", write)
 		}
-		// The three trees are named with the ~ form the document uses.
+		// The trees are named with the ~ form the document uses.
 		if underHome {
 			tilde := "~/" + strings.TrimPrefix(write, "$HOME/")
 			if !strings.Contains(doc, "`"+tilde+"`") {
@@ -47,7 +47,7 @@ func TestRemoteWritesAreInBoundaries(t *testing.T) {
 		"`<prefix>:latest`",
 		"`image.ref`",
 		"`<prefix>-<cache>`",
-		"`<prefix>-<path key>`",
+		"`<prefix>-<mirror key>`",
 	} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("docs/BOUNDARIES.md does not name %s", want)

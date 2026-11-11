@@ -95,10 +95,17 @@ WORKDIR /home/dev
 user in the image matches you and can read and write the mirror. Add the
 toolchains the work needs to this file; the image is the only place they live.
 
+The `USER` line is not optional: a run passes no `--user`, so the job runs as
+whatever the image says, and an image without an unprivileged `USER` would write
+root-owned files into the mirror that you cannot clean up on the host. `dot
+remote setup` inspects the image and refuses one whose user is root (empty,
+`root` or `0`), naming this section.
+
 ### Use it
 
 ```bash
 dot remote setup                     # check the host, build or pull the image
+dot remote setup --json              # the same report as one JSON document
 dot remote run -- make test          # mirror the current checkout, run there
 dot remote run ~/workspace/work/dev/one -- go test ./...
 dot remote status                    # load, active runs, mirror sizes, image age
@@ -123,22 +130,32 @@ unreadable host defers too: missing telemetry is not health.
 - `DOT_ADMISSION_IGNORE=remote-load` (or a `dot admit relax --ignore
   remote-load` override) steps past the load check for one run. It still reads
   the host and prints the load it found. `slot` in the same list takes a lease
-  past capacity, the way `dot admit` treats it.
+  past capacity, the way `dot admit` treats it; it relaxes the host's
+  `max_runs` only, never the one-run-per-path lease, because a second run would
+  delete files inside a mirror another run is using.
 - `--dry-run` prints the mirror, the container and the run command without
   sending anything.
 
-Interrupting a run removes its container. A SIGKILL cannot, so the next run of
-that path removes the container left behind before it starts.
+Interrupting a run removes its container, and so does an ssh connection that
+drops (OpenSSH's own status 255): the container may still be running there. A
+SIGKILL cannot clean up, so every run checks for its mirror's container before
+it syncs. One still running means another machine is running that mirror, and
+the run defers with exit 75 rather than sharing it; one left stopped is removed
+and the run goes ahead.
 
 Cross-machine `max_runs` is not enforced: two machines pointing at one host can
-each start `max_runs` jobs. See the ceiling in [CEILINGS](../CEILINGS.md).
+each start `max_runs` jobs. The one run per mirror is, because the container
+name comes from the mirror's path on that host rather than from your local
+path. See the ceiling in [CEILINGS](../CEILINGS.md).
 
 ### Where it writes, and cleanup
 
 Mirrors live under `~/dot-remote` on the host (configurable), one directory per
-checkout. Images, cache volumes and containers carry the host's `prefix`, so
-two people can share one host without colliding. Nothing else on the host is
-written, and this machine only gains admission leases.
+checkout, and `<root>/.dot-remote` holds one small record per mirror so `dot
+remote status` can size a mirror whose path is nested. Images, cache volumes and
+containers carry the host's `prefix`, so two people can share one host without
+colliding. Nothing else on the host is written, and this machine only gains
+admission leases.
 
 To reclaim space, delete the mirror directory of a checkout you no longer use;
 the next run of that path recreates it, and the caches stay warm in their

@@ -21,19 +21,20 @@ printf 'cpus=%%s\n' "$(nproc 2>/dev/null || echo 0)"`
 // SetupReport is what setup verified on the host, and which image it left
 // there.
 type SetupReport struct {
-	Host           string
-	SSH            string
-	User           string
-	Git            string
-	Rsync          string
-	RsyncVersion   string
-	Runtime        string
-	RuntimeVersion string
-	CPUs           int
-	Image          string
+	Host           string `json:"host"`
+	SSH            string `json:"ssh"`
+	User           string `json:"user,omitempty"`
+	Git            string `json:"git,omitempty"`
+	Rsync          string `json:"rsync,omitempty"`
+	RsyncVersion   string `json:"rsync_version,omitempty"`
+	Runtime        string `json:"runtime"`
+	RuntimeVersion string `json:"runtime_version,omitempty"`
+	CPUs           int    `json:"cpus,omitempty"`
+	Image          string `json:"image"`
+	ImageUser      string `json:"image_user,omitempty"`
 	// Built says whether the image was built from a Dockerfile (true) or
 	// pulled (false).
-	Built bool
+	Built bool `json:"built"`
 }
 
 // SetupOptions carries the shared flags setup honors.
@@ -47,11 +48,13 @@ func (d Deps) Setup(ctx context.Context, h Host, opts SetupOptions) (SetupReport
 	report := SetupReport{Host: h.Name, SSH: h.SSH, Runtime: h.Runtime, Image: h.Image(), Built: h.Dockerfile != ""}
 	script := fmt.Sprintf(setupCheckScriptTemplate, h.Runtime)
 	if opts.DryRun {
-		fmt.Fprintf(d.out(), "would check %s over ssh:\n  %s\n", h.SSH, script)
+		// stderr, because stdout carries the report: `--json` has to stay one
+		// document whether or not the run was a dry one.
+		fmt.Fprintf(d.errOut(), "would check %s over ssh:\n  %s\n", h.SSH, script)
 		if h.Dockerfile != "" {
-			fmt.Fprintf(d.out(), "would build %s from %s on %s\n", h.Image(), h.Dockerfile, h.Name)
+			fmt.Fprintf(d.errOut(), "would build %s from %s on %s\n", h.Image(), h.Dockerfile, h.Name)
 		} else {
-			fmt.Fprintf(d.out(), "would pull %s on %s\n", h.Ref, h.Name)
+			fmt.Fprintf(d.errOut(), "would pull %s on %s\n", h.Ref, h.Name)
 		}
 		return report, nil
 	}
@@ -86,7 +89,28 @@ func (d Deps) Setup(ctx context.Context, h Host, opts SetupOptions) (SetupReport
 	} else if err := d.pullImage(ctx, h); err != nil {
 		return report, err
 	}
+	user, err := d.checkImageUser(ctx, h)
+	if err != nil {
+		return report, err
+	}
+	report.ImageUser = user
 	return report, nil
+}
+
+// checkImageUser refuses an image whose user is root. A run passes no --user:
+// the job runs as the image's own unprivileged user, so an image without a USER
+// would write root-owned files into the mirror that the host user cannot clean
+// up. This is the one place a person can still fix it cheaply, right after the
+// build.
+func (d Deps) checkImageUser(ctx context.Context, h Host) (string, error) {
+	out, err := d.capture(ctx, SSHArgv(h.SSH, h.Runtime+" image inspect -f '{{.Config.User}}' "+ShellQuote(h.Image())), nil)
+	if err != nil {
+		return "", fmt.Errorf("%s cannot inspect %s (%w): check that the image was built or pulled there, then run `dot remote setup` again", h.Name, h.Image(), err)
+	}
+	if imageRunsAsRoot(out) {
+		return "", fmt.Errorf("%s left %s without an unprivileged USER, so a run would write root-owned files into the mirror: add one to the image (ARG UID/GID, then USER dev - docs/guides/servers.md carries a starter Dockerfile) and re-run `dot remote setup`", h.Name, h.Image())
+	}
+	return strings.TrimSpace(out), nil
 }
 
 // buildImage builds the host's image from the local Dockerfile over stdin.
@@ -105,10 +129,10 @@ func (d Deps) buildImage(ctx context.Context, h Host) error {
 		return err
 	}
 	if sig != 0 {
-		return fmt.Errorf("building %s on %s was interrupted by signal %d", h.Image(), h.Name, int(sig))
+		return fmt.Errorf("building %s on %s was interrupted by signal %d: run `dot remote setup` again once the build is no longer running there", h.Image(), h.Name, int(sig))
 	}
 	if exit != 0 {
-		return fmt.Errorf("building %s on %s failed with status %d", h.Image(), h.Name, exit)
+		return fmt.Errorf("building %s on %s failed with status %d: read the build output above, fix %s and run `dot remote setup` again", h.Image(), h.Name, exit, h.Dockerfile)
 	}
 	return nil
 }
@@ -121,10 +145,11 @@ func (d Deps) pullImage(ctx context.Context, h Host) error {
 		return err
 	}
 	if sig != 0 {
-		return fmt.Errorf("pulling %s on %s was interrupted by signal %d", h.Ref, h.Name, int(sig))
+		return fmt.Errorf("pulling %s on %s was interrupted by signal %d: run `dot remote setup` again", h.Ref, h.Name, int(sig))
 	}
 	if exit != 0 {
-		return fmt.Errorf("pulling %s on %s failed with status %d", h.Ref, h.Name, exit)
+		return fmt.Errorf("pulling %s on %s failed with status %d: check the ref in remote.hosts.%s.image.ref and that %s can reach the registry, then run `dot remote setup` again",
+			h.Ref, h.Name, exit, h.Name, h.Name)
 	}
 	return nil
 }

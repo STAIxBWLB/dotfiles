@@ -334,12 +334,19 @@ constant and replace the ordered scan with an index bitmap.
 (`HostScope`, one scope per host name) against `remote.hosts.<name>.max_runs`,
 and the store lives in this machine's state root. Two machines pointing at one
 host therefore hold two independent counts and can each start `max_runs` jobs;
-nothing on the host enforces the total. What the host does enforce is one run
-per checkout path, because the container name is derived from the local path
-(`PathKey`), so the runtime refuses a second container of the same name even
-when it was started from another machine.
+nothing on the host enforces the total.
+
+What the host does enforce is one run per mirror, because the container name is
+derived from the mirror's path relative to `remote.local_root` (`MirrorKey`) and
+not from this machine's absolute path: two machines that mirror the same
+relative checkout to one host ask the runtime for the same container name, and
+a run looks for that container before it syncs. Finding one running, it defers
+rather than sharing a mirror another machine is using; finding one stopped, it
+removes it. The mirror path is the identifier, so two different local checkouts
+that land on the same relative path are one mirror on that host, by design.
 
 One operator on a shared host is the ordinary case, and this machine is the
 only place that holds the leases. Revisit this when two machines sharing one
 host regularly collide: move the count to the host as lease files under
-`<root>`, which also gives the load probe a place to record what it saw.
+`<root>`, which also gives the load probe a place to record what it saw, and
+extend the container check from "is one running" to a holder record.

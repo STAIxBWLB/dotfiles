@@ -41,7 +41,7 @@ Interrupting a run removes its container. After a kill the next run of the
 same path removes the one left behind.`,
 		SilenceUsage: true,
 	}
-	cmd.PersistentFlags().String("host", "", "remote host to use (default: remote.default)")
+	cmd.PersistentFlags().String("host", "", "remote host to use (default: the matching project's host, then remote.default)")
 	cmd.PersistentFlags().Duration("wait", 0, "retry a held lease for this long before deferring (default 0: defer at once)")
 	cmd.AddCommand(newRemoteSetupCmd())
 	cmd.AddCommand(newRemoteRunCmd())
@@ -50,8 +50,10 @@ same path removes the one left behind.`,
 }
 
 // remoteSession loads the config, resolves the host and wires the seams every
-// 'dot remote' subcommand needs.
-func remoteSession(cmd *cobra.Command) (remote.Config, remote.Host, remote.Deps, error) {
+// 'dot remote' subcommand needs. checkout is the resolved path a job targets,
+// which decides the host when --host is not given; it is empty for a command
+// that addresses the host itself.
+func remoteSession(cmd *cobra.Command, checkout string) (remote.Config, remote.Host, remote.Deps, error) {
 	home := homeFor(cmd)
 	var state *config.UserState
 	var err error
@@ -68,7 +70,7 @@ func remoteSession(cmd *cobra.Command) (remote.Config, remote.Host, remote.Deps,
 		return remote.Config{}, remote.Host{}, remote.Deps{}, err
 	}
 	name, _ := cmd.Flags().GetString("host")
-	host, err := cfg.Host(name)
+	host, err := cfg.HostFor(name, checkout)
 	if err != nil {
 		return remote.Config{}, remote.Host{}, remote.Deps{}, err
 	}
@@ -124,19 +126,29 @@ image. dot ships no image of its own; the servers guide carries a starter.`,
 		RunE:         runRemoteSetup,
 		SilenceUsage: true,
 	}
+	cmd.Flags().Bool("json", false, "print the report as JSON")
 	return cmd
 }
 
 func runRemoteSetup(cmd *cobra.Command, _ []string) error {
-	_, host, deps, err := remoteSession(cmd)
+	_, host, deps, err := remoteSession(cmd, "")
 	if err != nil {
 		return err
 	}
 	p := printerFrom(cmd)
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	asJSON, _ := cmd.Flags().GetBool("json")
 	report, err := deps.Setup(cmd.Context(), host, remote.SetupOptions{DryRun: dryRun})
 	if err != nil {
 		return err
+	}
+	if asJSON {
+		data, merr := json.MarshalIndent(report, "", "  ")
+		if merr != nil {
+			return merr
+		}
+		p.Line("%s", data)
+		return nil
 	}
 	if dryRun {
 		return nil
@@ -152,7 +164,7 @@ func runRemoteSetup(cmd *cobra.Command, _ []string) error {
 	if report.Built {
 		action = "built"
 	}
-	p.KV("Image", report.Image+" ("+action+")")
+	p.KV("Image", report.Image+" ("+action+", runs as "+report.ImageUser+")")
 	p.Success("%s is ready for `dot remote run`", report.Host)
 	return nil
 }
@@ -183,7 +195,17 @@ func runRemoteRun(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	cfg, host, deps, err := remoteSession(cmd)
+	checkout := ""
+	if path != "" {
+		// Resolved here as well as in the run, because the config's project
+		// match compares resolved paths: a project entry has to cover the same
+		// checkout the run mirrors.
+		checkout, err = remote.ResolvePath(path)
+		if err != nil {
+			return err
+		}
+	}
+	cfg, _, deps, err := remoteSession(cmd, checkout)
 	if err != nil {
 		return err
 	}
@@ -193,11 +215,13 @@ func runRemoteRun(cmd *cobra.Command, _ []string) error {
 	}
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	wait, _ := cmd.Flags().GetDuration("wait")
+	hostName, _ := cmd.Flags().GetString("host")
 	if wait < 0 {
 		return fmt.Errorf("--wait must not be negative")
 	}
-	err = deps.Run(cmd.Context(), cfg, host, remote.RunOptions{
-		Path:      path,
+	err = deps.Run(cmd.Context(), cfg, remote.RunOptions{
+		Path:      checkout,
+		HostName:  hostName,
 		Command:   command,
 		Wait:      wait,
 		Ignore:    ignore,
@@ -271,11 +295,11 @@ to confirm.`,
 
 func runRemoteStatus(cmd *cobra.Command, _ []string) error {
 	p := printerFrom(cmd)
-	_, host, deps, err := remoteSession(cmd)
+	cfg, host, deps, err := remoteSession(cmd, "")
 	if err != nil {
 		return err
 	}
-	status, err := deps.Status(cmd.Context(), host)
+	status, err := deps.Status(cmd.Context(), cfg, host)
 	if err != nil {
 		return err
 	}

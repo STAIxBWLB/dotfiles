@@ -16,11 +16,17 @@ const statusReply = "mirror\t1024\twork/dev/one\n" +
 	"bare\t512\tone.git\n" +
 	"created\t2026-01-01T10:00:00.000000000Z\n"
 
+// statusConfig is the config a status uses to map a lease's local path back to
+// the mirror path its container is named after.
+func statusConfig(localRoot string) Config {
+	return Config{LocalRoot: localRoot, Hosts: map[string]Host{"buildbox": testHost()}}
+}
+
 func TestStatusReadsSizesAndTheImageAge(t *testing.T) {
 	fake := &fakeExec{t: t, loads: "1.00 0.50 0.25 1/100 42\n8\n", output: statusReply}
 	now := time.Date(2026, 1, 3, 10, 0, 0, 0, time.UTC)
 	deps := Deps{Exec: fake.execute, Now: func() time.Time { return now }}
-	status, err := deps.Status(context.Background(), testHost())
+	status, err := deps.Status(context.Background(), statusConfig("/home/u/workspace"), testHost())
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}
@@ -56,7 +62,7 @@ func TestStatusKeepsTheLocalLeasesWhenTheHostIsUnreachable(t *testing.T) {
 	self := selfLease(t, root)
 	host := testHost()
 	path := "/home/u/workspace/one"
-	slot, err := AcquirePath(context.Background(), store, self, host, path, 0, false)
+	slot, err := AcquirePath(context.Background(), store, self, host, path, 0)
 	if err != nil {
 		t.Fatalf("holding a lease: %v", err)
 	}
@@ -64,7 +70,7 @@ func TestStatusKeepsTheLocalLeasesWhenTheHostIsUnreachable(t *testing.T) {
 
 	fake := &fakeExec{t: t, loads: "1.00 0.50 0.25 1/100 42\n8\n", exit: 1}
 	deps := Deps{Exec: fake.execute, Store: store}
-	status, err := deps.Status(context.Background(), host)
+	status, err := deps.Status(context.Background(), statusConfig("/home/u/workspace"), host)
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}
@@ -77,7 +83,7 @@ func TestStatusKeepsTheLocalLeasesWhenTheHostIsUnreachable(t *testing.T) {
 	if len(status.Active) != 1 || status.Active[0].Scope != PathScope(path) {
 		t.Fatalf("active runs = %+v, want the lease this machine holds", status.Active)
 	}
-	if status.Active[0].Kind != "path" || status.Active[0].Container != host.ContainerName(PathKey(path)) {
+	if status.Active[0].Kind != "path" || status.Active[0].Container != host.ContainerName("one") {
 		t.Errorf("active run = %+v, want a path lease naming its container", status.Active[0])
 	}
 }
@@ -91,11 +97,11 @@ func TestActiveRunsSelectsThisHostsRemoteLeases(t *testing.T) {
 		{Class: admission.ClassRemote, Scope: "/home/u/two", Host: "otherbox", Owner: "me@mac", PID: 12},
 		{Class: admission.ClassHeavy, Scope: "/home/u/.git", Host: host.Name, Owner: "me@mac", PID: 13},
 	}
-	runs := activeRuns(host, leases, now)
+	runs := activeRuns(statusConfig("/home/u"), host, leases, now)
 	if len(runs) != 2 {
 		t.Fatalf("runs = %+v, want only this host's remote leases", runs)
 	}
-	if runs[0].Kind != "path" || runs[0].Container != host.ContainerName(PathKey("/home/u/one")) {
+	if runs[0].Kind != "path" || runs[0].Container != host.ContainerName("one") {
 		t.Errorf("path lease = %+v", runs[0])
 	}
 	if runs[0].Session != "dot remote" || runs[0].PID != 10 {
@@ -106,7 +112,7 @@ func TestActiveRunsSelectsThisHostsRemoteLeases(t *testing.T) {
 	}
 	// A lease with no recorded time still shows an age rather than the zero
 	// time, which would read as ancient.
-	undated := activeRuns(host, []admission.Lease{{Class: admission.ClassRemote, Scope: "/home/u/three", Host: host.Name}}, now)
+	undated := activeRuns(statusConfig("/home/u"), host, []admission.Lease{{Class: admission.ClassRemote, Scope: "/home/u/three", Host: host.Name}}, now)
 	if len(undated) != 1 || !undated[0].Since.Equal(now) {
 		t.Errorf("undated lease = %+v, want the reference time", undated)
 	}
@@ -118,11 +124,49 @@ func TestStatusVerdictUsesTheHostsOwnLimit(t *testing.T) {
 	host.MaxLoadRatio = 0.5
 	fake := &fakeExec{t: t, loads: "6.00 3.00 1.00 1/100 42\n8\n", output: statusReply}
 	deps := Deps{Exec: fake.execute}
-	status, err := deps.Status(context.Background(), host)
+	status, err := deps.Status(context.Background(), statusConfig("/home/u/workspace"), host)
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}
 	if !strings.Contains(status.Verdict, "at or over 0.5 x its CPUs") {
 		t.Errorf("verdict = %q", status.Verdict)
+	}
+}
+
+// A mirror is not a top-level directory: a checkout at local_root/work/dev/one
+// is mirrored to <root>/work/dev/one, so the script sizes the paths the runs
+// recorded rather than `du -sk *` at the root.
+func TestTheStatusScriptSizesTheRecordedMirrors(t *testing.T) {
+	fake := &fakeExec{t: t, loads: "1.00 0.50 0.25 1/100 42\n8\n", output: statusReply}
+	deps := Deps{Exec: fake.execute}
+	if _, err := deps.Status(context.Background(), statusConfig("/home/u/workspace"), testHost()); err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	script := fake.calls[len(fake.calls)-1][len(fake.calls[len(fake.calls)-1])-1]
+	for _, want := range []string{".dot-remote", `du -sk "$HOME"/'dot-remote'/"$rel"`, "$rel"} {
+		if !strings.Contains(script, want) {
+			t.Errorf("the status script does not carry %q:\n%s", want, script)
+		}
+	}
+	if strings.Contains(script, "du -sk *") {
+		t.Errorf("the status script still sizes the root's top-level directories:\n%s", script)
+	}
+}
+
+// A host that cannot measure a mirror says so instead of reporting an empty
+// list, which would read as "nothing there".
+func TestASizeFailureIsReportedNotSwallowed(t *testing.T) {
+	fake := &fakeExec{t: t, loads: "1.00 0.50 0.25 1/100 42\n8\n",
+		output: "error\tcannot measure the mirror of work/dev/one\ncreated\t2026-01-01T10:00:00Z\n"}
+	deps := Deps{Exec: fake.execute}
+	status, err := deps.Status(context.Background(), statusConfig("/home/u/workspace"), testHost())
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if !strings.Contains(status.SizesUnavailable, "cannot measure the mirror of work/dev/one") {
+		t.Errorf("sizes_unavailable = %q, want the host's own reason", status.SizesUnavailable)
+	}
+	if len(status.Mirrors) != 0 {
+		t.Errorf("mirrors = %+v, want the unmeasurable one left out", status.Mirrors)
 	}
 }

@@ -27,7 +27,7 @@ same path removes the one left behind.
 
 ```
   -h, --help            help for remote
-      --host string     remote host to use (default: remote.default)
+      --host string     remote host to use (default: the matching project's host, then remote.default)
       --wait duration   retry a held lease for this long before deferring (default 0: defer at once)
 ```
 

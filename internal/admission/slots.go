@@ -152,19 +152,10 @@ type Slot struct {
 	store *Store
 	dir   string
 	lease Lease
-	// reclaimed records that taking this slot removed a stale lease, which
-	// means its owner died rather than released it. A caller that leaves
-	// something running outside the lease (the remote class leaves a container
-	// on the host) uses it to clean up what the dead owner left behind.
-	reclaimed bool
 }
 
 // Lease returns a copy of the lease this slot holds.
 func (sl *Slot) Lease() Lease { return sl.lease }
-
-// Reclaimed reports whether taking this slot removed a stale lease left by a
-// dead owner.
-func (sl *Slot) Reclaimed() bool { return sl.reclaimed }
 
 // Acquire takes the (scope, class) slot. Taking an index is a single atomic
 // mkdir — there is deliberately no multi-lock ordering because there is only
@@ -495,7 +486,7 @@ func (s *Store) reclaimAndAcquire(ctx context.Context, dir string, judged *Lease
 		return nil, false, err
 	}
 	release()
-	return &Slot{store: s, dir: dir, lease: lease, reclaimed: true}, false, nil
+	return &Slot{store: s, dir: dir, lease: lease}, false, nil
 }
 
 // reverifyStale re-checks, under the reclaim lock, that the slot is still

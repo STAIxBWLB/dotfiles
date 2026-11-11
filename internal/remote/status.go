@@ -50,15 +50,51 @@ type Status struct {
 	SizesUnavailable string `json:"sizes_unavailable,omitempty"`
 }
 
-// statusScript reads the sizes and the image age in one ssh round trip.
-const statusScriptTemplate = `cd "$HOME"/%s 2>/dev/null && du -sk * 2>/dev/null | while read -r kb name; do printf 'mirror\t%%s\t%%s\n' "$kb" "$name"; done
-cd "$HOME"/%s 2>/dev/null && du -sk * 2>/dev/null | while read -r kb name; do printf 'bare\t%%s\t%%s\n' "$kb" "$name"; done
-printf 'created\t%%s\n' "$(%s image inspect -f '{{.Created}}' %s 2>/dev/null)"`
+// statusScript reads the mirrors, the bare repos and the image age in one ssh
+// round trip.
+//
+// Mirrors are not top-level directories: a checkout at local_root/work/dev/one
+// is mirrored to <root>/work/dev/one, so `du -sk *` at the root would report
+// "work" rather than that checkout. Every run records its mirror's own path
+// under <root>/.dot-remote, and this script sizes each recorded mirror. A
+// failure is printed as an `error` line rather than swallowed, so an empty list
+// is never read as "nothing there".
+const statusScriptTemplate = `records="$HOME"/%s/.dot-remote
+if [ -d "$records" ]; then
+  for record in "$records"/*; do
+    [ -f "$record" ] || continue
+    rel=$(cat "$record" 2>/dev/null)
+    [ -n "$rel" ] || continue
+    size=$(du -sk "$HOME"/%s/"$rel" 2>/dev/null | cut -f1)
+    if [ -n "$size" ]; then
+      printf 'mirror\t%%s\t%%s\n' "$size" "$rel"
+    else
+      printf 'error\tcannot measure the mirror of %%s\n' "$rel"
+    fi
+  done
+elif [ -d "$HOME"/%s ]; then
+  printf 'error\tthe mirror tree holds mirrors but no per-mirror record: a run of this version writes one\n'
+fi
+if [ -d "$HOME"/%s ]; then
+  for entry in "$HOME"/%s/*; do
+    [ -d "$entry" ] || continue
+    name=${entry##*/}
+    size=$(du -sk "$entry" 2>/dev/null | cut -f1)
+    if [ -n "$size" ]; then
+      printf 'bare\t%%s\t%%s\n' "$size" "$name"
+    else
+      printf 'error\tcannot measure the bare repo %%s\n' "$name"
+    fi
+  done
+fi
+if created=$(%s image inspect -f '{{.Created}}' %s 2>/dev/null); then
+  printf 'created\t%%s\n' "$created"
+fi`
 
 // Status reads the host's state. A host that cannot answer still yields the
 // local half of the view: the leases this machine holds are facts the host does
 // not have to confirm.
-func (d Deps) Status(ctx context.Context, h Host) (Status, error) {
+func (d Deps) Status(ctx context.Context, cfg Config, h Host) (Status, error) {
 	status := Status{
 		Host:         h.Name,
 		SSH:          h.SSH,
@@ -75,17 +111,20 @@ func (d Deps) Status(ctx context.Context, h Host) (Status, error) {
 		if err != nil {
 			return status, err
 		}
-		status.Active = activeRuns(h, leases, d.now())
+		status.Active = activeRuns(cfg, h, leases, d.now())
 	}
 	status.Load = d.ProbeLoad(ctx, h)
 	status.Verdict = h.LoadDefer(status.Load, false)
 
-	script := fmt.Sprintf(statusScriptTemplate, ShellQuote(h.Root), ShellQuote(h.GitRoot), h.Runtime, ShellQuote(h.Image()))
+	script := fmt.Sprintf(statusScriptTemplate,
+		ShellQuote(h.Root), ShellQuote(h.Root), ShellQuote(h.Root),
+		ShellQuote(h.GitRoot), ShellQuote(h.GitRoot), h.Runtime, ShellQuote(h.Image()))
 	out, err := d.capture(ctx, SSHArgv(h.SSH, script), nil)
 	if err != nil {
 		status.SizesUnavailable = err.Error()
 		return status, nil
 	}
+	var problems []string
 	for _, line := range strings.Split(out, "\n") {
 		fields := strings.Split(strings.TrimSpace(line), "\t")
 		if len(fields) == 0 {
@@ -106,6 +145,10 @@ func (d Deps) Status(ctx context.Context, h Host) (Status, error) {
 			} else {
 				status.BareRepos = append(status.BareRepos, size)
 			}
+		case "error":
+			if len(fields) >= 2 && fields[1] != "" {
+				problems = append(problems, fields[1])
+			}
 		case "created":
 			if len(fields) < 2 {
 				continue
@@ -116,11 +159,16 @@ func (d Deps) Status(ctx context.Context, h Host) (Status, error) {
 			}
 		}
 	}
+	if len(problems) > 0 {
+		status.SizesUnavailable = strings.Join(problems, "; ")
+	}
 	return status, nil
 }
 
 // activeRuns selects this host's remote leases and names each one's container.
-func activeRuns(h Host, leases []admission.Lease, now time.Time) []ActiveRun {
+// The container name comes from the mirror's path, so it is derived the same way
+// a run derives it: from the lease's local path mapped back through the config.
+func activeRuns(cfg Config, h Host, leases []admission.Lease, now time.Time) []ActiveRun {
 	runs := []ActiveRun{}
 	for _, lease := range leases {
 		if lease.Class != admission.ClassRemote || lease.Host != h.Name {
@@ -136,8 +184,8 @@ func activeRuns(h Host, leases []admission.Lease, now time.Time) []ActiveRun {
 		}
 		if strings.HasPrefix(lease.Scope, "remote-host:") {
 			run.Kind = "host"
-		} else {
-			run.Container = h.ContainerName(PathKey(lease.Scope))
+		} else if rel, err := cfg.Rel(lease.Scope); err == nil {
+			run.Container = h.ContainerName(rel)
 		}
 		if run.Since.IsZero() {
 			run.Since = now

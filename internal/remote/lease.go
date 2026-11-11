@@ -23,8 +23,8 @@ func PathScope(absolute string) string { return filepath.Clean(absolute) }
 //
 // The scope lives in this machine's state root, so max_runs is a per-machine
 // count: two machines pointing at one host can each start max_runs jobs. What
-// the host enforces by itself is one run per checkout path, through the
-// container name PathKey derives from that path.
+// the host enforces by itself is one run per mirror, through the container name
+// MirrorKey derives from the mirror's path.
 // ponytail: known ceiling. See docs/CEILINGS.md (cross-machine remote runs per host).
 func HostScope(host string) string { return "remote-host:" + host }
 
@@ -64,19 +64,17 @@ func (l *Leases) Release() {
 	}
 }
 
-// ReclaimedPath reports whether taking the path lease removed a stale one,
-// which means the run that held it died without cleaning up after itself.
-func (l *Leases) ReclaimedPath() bool { return l != nil && l.Path != nil && l.Path.Reclaimed() }
-
 // AcquirePath takes the one-run-per-mirror-path lease. The whole sync and run
 // hold it, so a second job for the same path defers instead of sharing a
-// mirror with the first one.
-func AcquirePath(ctx context.Context, store *admission.Store, self admission.Lease, host Host, path string, wait time.Duration, bypass bool) (*admission.Slot, error) {
+// mirror with the first one. There is no bypass: `--ignore slot` relaxes the
+// host's max_runs, and a second run would delete files inside a mirror that is
+// in use.
+func AcquirePath(ctx context.Context, store *admission.Store, self admission.Lease, host Host, path string, wait time.Duration) (*admission.Slot, error) {
 	self.Host = host.Name
 	if self.Session == "" {
 		self.Session = "dot remote"
 	}
-	return acquire(ctx, store, PathScope(path), self, 1, wait, bypass, func(holder *admission.Lease) string {
+	return acquire(ctx, store, PathScope(path), self, 1, wait, false, func(holder *admission.Lease) string {
 		return pathBusyReason(path, holder)
 	})
 }

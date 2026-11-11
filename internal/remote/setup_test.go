@@ -3,6 +3,7 @@ package remote
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -125,7 +126,7 @@ func TestSetupNamesEveryGapInTheHost(t *testing.T) {
 }
 
 func TestSetupDryRunSendsNothing(t *testing.T) {
-	deps, fake, out, _ := setupDeps(t, "")
+	deps, fake, _, errOut := setupDeps(t, "")
 	host := testHost()
 	report, err := deps.Setup(context.Background(), host, SetupOptions{DryRun: true})
 	if err != nil {
@@ -134,12 +135,13 @@ func TestSetupDryRunSendsNothing(t *testing.T) {
 	if len(fake.calls) != 0 {
 		t.Errorf("a dry run sent %d commands", len(fake.calls))
 	}
-	stdout := out.String()
-	if !strings.Contains(stdout, "would check buildbox over ssh") {
-		t.Errorf("stdout does not describe the check:\n%s", stdout)
+	// The plan goes to stderr so stdout stays one document for --json.
+	stderr := errOut.String()
+	if !strings.Contains(stderr, "would check buildbox over ssh") {
+		t.Errorf("stderr does not describe the check:\n%s", stderr)
 	}
-	if !strings.Contains(stdout, "would pull ghcr.io/org/dev:1 on buildbox") {
-		t.Errorf("stdout does not describe the image step:\n%s", stdout)
+	if !strings.Contains(stderr, "would pull ghcr.io/org/dev:1 on buildbox") {
+		t.Errorf("stderr does not describe the image step:\n%s", stderr)
 	}
 	if report.Image != host.Image() {
 		t.Errorf("report image = %q", report.Image)
@@ -159,5 +161,55 @@ func TestParseKeyValues(t *testing.T) {
 	}
 	if got, ok := values["runtime"]; !ok || got != "" {
 		t.Errorf("runtime = %q, %v, want an empty value recorded", got, ok)
+	}
+}
+
+// The image's own user is the one a run gets, so setup refuses an image whose
+// user is root: everything that image writes into the mirror would belong to
+// root, and the host user could not clean it up.
+func TestSetupRefusesAnImageWhoseUserIsRoot(t *testing.T) {
+	cases := map[string]string{"no USER": "0", "root": "root", "uid 0 with a group": "0:0"}
+	for name, user := range cases {
+		t.Run(name, func(t *testing.T) {
+			deps, fake, _, _ := setupDeps(t, setupReply)
+			fake.imageUser = user
+			_, err := deps.Setup(context.Background(), testHost(), SetupOptions{})
+			if err == nil {
+				t.Fatalf("setup accepted an image with %s (user %q)", name, user)
+			}
+			for _, want := range []string{"without an unprivileged USER", "USER dev", "dot remote setup"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not name %q", err, want)
+				}
+			}
+		})
+	}
+}
+
+// An image that could not be inspected names the next step rather than
+// reporting an unnamed failure.
+func TestSetupNamesAnUnreadableImage(t *testing.T) {
+	deps, fake, _, _ := setupDeps(t, setupReply)
+	fake.imageErr = errors.New("no such image")
+	_, err := deps.Setup(context.Background(), testHost(), SetupOptions{})
+	if err == nil {
+		t.Fatal("setup accepted an image it could not inspect")
+	}
+	if !strings.Contains(err.Error(), "dot remote setup") {
+		t.Errorf("error %q does not name the next step", err)
+	}
+}
+
+// A report carries the user a run will be, which is what the human half of
+// setup prints.
+func TestSetupReportsTheImageUser(t *testing.T) {
+	deps, fake, _, _ := setupDeps(t, setupReply)
+	fake.imageUser = "1000:1000"
+	report, err := deps.Setup(context.Background(), testHost(), SetupOptions{})
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	if report.ImageUser != "1000:1000" {
+		t.Errorf("image user = %q", report.ImageUser)
 	}
 }

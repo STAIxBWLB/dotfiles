@@ -30,7 +30,7 @@ dot remote run [PATH] -- COMMAND [ARG...] [flags]
       --config string   Path to custom config YAML
       --dry-run         Show what would be done without executing
       --home string     Override home directory (for admin setup of other users)
-      --host string     remote host to use (default: remote.default)
+      --host string     remote host to use (default: the matching project's host, then remote.default)
       --wait duration   retry a held lease for this long before deferring (default 0: defer at once)
       --yes             Unattended mode (skip all prompts)
 ```

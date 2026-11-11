@@ -32,18 +32,31 @@ type Step struct {
 // .gitignore read as an exclude file, which is what keeps the build outputs
 // that live only on the mirror.
 //
+// ignoreFiles are the other ignore files git honored when it built the listing
+// (.git/info/exclude and the global excludes file). The delete pass merges each
+// of them into its filter list, so both passes agree on what "ignored" means: a
+// build output excluded by a rule outside .gitignore is protected from deletion
+// exactly as it was kept out of the ship pass.
+//
 // A path that is not a git checkout (listing is nil) gets one plain mirroring
 // pass with the same exclude list and --delete.
-func SyncPlan(rsyncPath, src, dst string, excludes []string, listing []byte) []Step {
-	base := append([]string{"-a", "--mkpath"}, ExcludeArgs(excludes)...)
+func SyncPlan(rsyncPath, src, dst string, excludes, ignoreFiles []string, listing []byte) []Step {
+	// -s (--secluded-args) sends the paths over rsync's own channel instead of
+	// interpolating them into the remote shell's command line. Without it a
+	// destination holding a space, ';' or '$(...)' is parsed by the shell on the
+	// far side, because ssh joins its arguments with spaces.
+	base := append([]string{"-a", "-s", "--mkpath"}, ExcludeArgs(excludes)...)
 	if listing == nil {
 		argv := append(append([]string{}, base...), "--delete", src+"/", dst+"/")
 		return []Step{{Argv: append([]string{rsyncPath}, argv...)}}
 	}
 	ship := append(append([]string{}, base...),
 		"--files-from=-", "--from0", "--ignore-missing-args", src+"/", dst+"/")
-	prune := append(append([]string{}, base...),
-		"--delete", "--filter=:- .gitignore", "--existing", "--ignore-existing", src+"/", dst+"/")
+	prune := append(append([]string{}, base...), "--delete", "--filter=:- .gitignore")
+	for _, file := range ignoreFiles {
+		prune = append(prune, "--filter=.- "+file)
+	}
+	prune = append(prune, "--existing", "--ignore-existing", src+"/", dst+"/")
 	return []Step{
 		{Argv: append([]string{rsyncPath}, ship...), Stdin: listing},
 		{Argv: append([]string{rsyncPath}, prune...)},

@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -125,7 +126,13 @@ func (f *syncFixture) gitListing() []byte {
 // stdin attached, and a failure reported with the rsync output.
 func (f *syncFixture) sync(excludes []string, listing []byte) {
 	f.t.Helper()
-	steps := SyncPlan(f.rsync, f.source, f.dest, excludes, listing)
+	f.syncWith(excludes, nil, listing)
+}
+
+// syncWith runs the plan with extra ignore files merged into the delete pass.
+func (f *syncFixture) syncWith(excludes, ignoreFiles []string, listing []byte) {
+	f.t.Helper()
+	steps := SyncPlan(f.rsync, f.source, f.dest, excludes, ignoreFiles, listing)
 	if len(steps) == 0 {
 		f.t.Fatal("the plan is empty")
 	}
@@ -203,7 +210,7 @@ func TestTheShipPassAloneDeletesNothing(t *testing.T) {
 	f := newSyncFixture(t)
 	f.sourceFile("main.go", "package main\n")
 	f.destFile("stale.txt", "deleted locally\n")
-	steps := SyncPlan(f.rsync, f.source, f.dest, (Config{}).Excludes(), []byte("main.go\x00"))
+	steps := SyncPlan(f.rsync, f.source, f.dest, (Config{}).Excludes(), nil, []byte("main.go\x00"))
 	runSyncStep(t, steps[0])
 	want := []string{"main.go", "stale.txt"}
 	if got := f.present(); !slices.Equal(got, want) {
@@ -252,5 +259,106 @@ func TestExtraExcludesReachRsync(t *testing.T) {
 	f.sync((Config{ExcludeExtra: []string{"datasets"}}).Excludes(), nil)
 	if got := f.present(); !slices.Equal(got, []string{"notes.md"}) {
 		t.Errorf("mirror holds %v, want the extra exclude to keep datasets out", got)
+	}
+}
+
+// A mirror path can hold a space, a semicolon or a '$(' - a checkout named
+// "notes; v2" is enough. rsync has to move the tree into such a path intact.
+//
+// The plan passes -s (--secluded-args), which sends the paths over rsync's own
+// channel instead of letting the far side's shell parse them. rsync 3.2.3 is the
+// accepted floor here and it does not protect by default (3.2.4 and later do),
+// which is why the flag is explicit; this test is what proves the transfer still
+// works with the flag on a path that would otherwise need quoting. The flag's
+// presence in the argv is pinned separately in the plan test.
+func TestAPathWithShellCharactersMirrorsIntact(t *testing.T) {
+	f := newSyncFixture(t)
+	f.sourceFile("main.go", "package main\n")
+	f.dest = filepath.Join(f.root, "home", "dot-remote", "weird name; $(echo hi)")
+	if err := os.MkdirAll(f.dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f.sync((Config{}).Excludes(), nil)
+	if got := f.present(); !slices.Equal(got, []string{"main.go"}) {
+		t.Errorf("mirror holds %v, want the tree intact under the odd path", got)
+	}
+	if got := f.read("main.go"); got != "package main\n" {
+		t.Errorf("main.go = %q", got)
+	}
+	// Nothing the shell would have run made it to the filesystem.
+	if entries, err := os.ReadDir(f.root); err != nil {
+		t.Fatal(err)
+	} else {
+		for _, entry := range entries {
+			if strings.HasPrefix(entry.Name(), "hi") || strings.Contains(entry.Name(), "echo") {
+				t.Errorf("the path was evaluated by a shell: %s", entry.Name())
+			}
+		}
+	}
+}
+
+// gitignore is not git's only ignore source: a rule in .git/info/exclude or in
+// the global excludes file keeps a file out of the ship pass, so the delete pass
+// has to honor the same rules or it removes what the host built under them.
+func TestTheDeletePassProtectsWhatTheOtherIgnoreFilesCover(t *testing.T) {
+	f := newSyncFixture(t)
+	f.sourceFile(".gitignore", "build/\n")
+	f.sourceFile("main.go", "package main\n")
+	listing := f.gitListing()
+
+	// A locally-ignored directory that only exists on the mirror, this time
+	// covered by .git/info/exclude rather than .gitignore.
+	exclude := filepath.Join(f.source, ".git", "info", "exclude")
+	if err := os.MkdirAll(filepath.Dir(exclude), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(exclude, []byte("artifacts/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.destFile("main.go", "package main\n")
+	f.destFile("artifacts/out.tar", "built on the host\n")
+
+	ignoreFiles := Deps{}.gitIgnoreFiles(context.Background(), f.source)
+	if !slices.Contains(ignoreFiles, exclude) {
+		t.Fatalf("gitIgnoreFiles = %v, want it to name %s", ignoreFiles, exclude)
+	}
+	steps := SyncPlan(f.rsync, f.source, f.dest, (Config{}).Excludes(), ignoreFiles, listing)
+	for _, step := range steps {
+		runSyncStep(t, step)
+	}
+	if got := f.read("artifacts/out.tar"); got != "built on the host\n" {
+		t.Errorf("the delete pass removed a file .git/info/exclude covers: %q", got)
+	}
+}
+
+// The global excludes file is the third source, and it is honored the same way.
+func TestTheDeletePassProtectsTheGlobalExcludesFile(t *testing.T) {
+	f := newSyncFixture(t)
+	f.sourceFile("main.go", "package main\n")
+	listing := f.gitListing()
+
+	globalIgnore := filepath.Join(f.root, "gitignore-global")
+	if err := os.WriteFile(globalIgnore, []byte("vendor/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	globalConfig := filepath.Join(f.root, "gitconfig")
+	if err := os.WriteFile(globalConfig, []byte("[core]\n\texcludesFile = "+globalIgnore+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", globalConfig)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(f.root, "xdg"))
+
+	ignoreFiles := Deps{}.gitIgnoreFiles(context.Background(), f.source)
+	if !slices.Contains(ignoreFiles, globalIgnore) {
+		t.Fatalf("gitIgnoreFiles = %v, want it to name the global excludes file %s", ignoreFiles, globalIgnore)
+	}
+	f.destFile("main.go", "package main\n")
+	f.destFile("vendor/lib.a", "vendored on the host\n")
+	for _, step := range SyncPlan(f.rsync, f.source, f.dest, (Config{}).Excludes(), ignoreFiles, listing) {
+		runSyncStep(t, step)
+	}
+	if got := f.read("vendor/lib.a"); got != "vendored on the host\n" {
+		t.Errorf("the delete pass removed a globally ignored file: %q", got)
 	}
 }
