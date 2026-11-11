@@ -127,7 +127,7 @@ One controller admits heavy work: builds, full test runs, indexing, bulk copies,
 - CPU idle below 15%, or load1 at or above the CPU count, sustained for 60 seconds
 - a WindowServer watchdog termination in the last 30 minutes
 
-The probes read the memory pressure level, the thermal state, load1 and CPU idle (`/proc` on Linux), plus the WindowServer reports in the system and user `DiagnosticReports` folders and their `Retired/` subfolders. Reports from before the last boot are ignored. A standard (non-admin) account cannot read the system folders, so the scan stays incomplete and the gate defers.
+On macOS the probes read the memory pressure level, the thermal state, load1 and CPU idle, plus the WindowServer reports in the system and user `DiagnosticReports` folders and their `Retired/` subfolders. On Linux they read load, `MemAvailable` and boot time from `/proc`; the thermal, CPU-idle and WindowServer checks apply to macOS only. Reports from before the last boot are ignored. A standard (non-admin) account cannot read the system folders, so the scan stays incomplete and the gate defers.
 
 After a pressure episode, admission resumes only after five continuous minutes of normal memory, CPU idle at or above 30% and load1 below 70% of the CPU count. Both windows count only completed samples taken no more than 45 seconds apart. A missing or stale sample, a timestamp rollback or a larger gap resets the streak, and an active defer stays active until a fresh sequence completes. Missing or failed telemetry always defers: the gate never reports a machine it cannot measure as healthy.
 
@@ -137,6 +137,7 @@ After a pressure episode, admission resumes only after five continuous minutes o
 
 - On defer, `dot admit` exits 75 (`EX_TEMPFAIL`), and `--json` prints `scope`, `owner`, `reason`, `retry_after`, plus `ignored` and `ignored_reasons` when a rule was stepped past.
 - The alert goes through the watchdog notifier at most once per defer episode per scope.
+- A scope's capacity counts every live lease it holds, whatever its index, so a lease left past capacity (an overflow bypass, or a lowered capacity or expired relax) still occupies it, and a slot defer names the limit it hit.
 - A lease carries the owner's pid, start time and a 30-second heartbeat. A crashed owner's slot is reclaimed only after its heartbeat expires and its process is verifiably gone, so PID reuse cannot steal a slot.
 - `dot admit status` shows:
   - the owners of each slot

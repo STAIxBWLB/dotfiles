@@ -13,8 +13,9 @@ workspaces, AI agent tooling, secrets and machine-to-machine sync.
 brew install staixbwlb/cask/dotfiles   # macOS or Linuxbrew
 ```
 
-Without Homebrew, the installer sets up Homebrew (Linuxbrew on Linux), downloads
-the `dot` binary and puts it on `PATH`:
+Without Homebrew, the installer sets up Homebrew (with the Xcode Command Line
+Tools on macOS, Linuxbrew on Linux), downloads the `dot` binary and puts it on
+`PATH`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/STAIxBWLB/dotfiles/main/scripts/install.sh | bash
@@ -64,14 +65,14 @@ enables the module.
 |---|---|---|
 | packages | minimal | Homebrew formulae |
 | shell | minimal | zsh, Oh My Zsh, plugins, shell config |
-| node | minimal | pnpm store outside cloud-synced workspace trees |
+| node | minimal | pnpm store outside cloud-synced workspace trees (`~/.config/pnpm/npmrc`) |
 | git | minimal | git config, aliases, global ignore |
 | ssh | minimal | SSH config and `config.d` includes |
 | terminal | minimal | starship prompt, Orca (macOS/Arch), Warp theme |
 | container | opt-in | one `container` command: apple/container on macOS, docker or podman on Linux |
-| tmux | full | tmux.conf (C-a prefix, vim keys) |
+| tmux | full | tmux.conf (256 colors, C-a prefix, vim keys) |
 | workspace | full | work and vault repos, `gh` auth, links to the cloud mirror, vault and inbox, the `ws` jumper |
-| ai | full | AI CLIs, their settings and backups, optional HUD |
+| ai | full | AI CLIs and config helpers, settings backup for Claude, Codex, Copilot, Kiro, Kimi, Qwen, pi, Antigravity, Aider and Maru, optional HUD |
 | fonts | full | Nerd Fonts from GitHub Releases |
 | macapps | full (macOS) | selected casks from the embedded catalog |
 | conda | full | `.condarc` defaults (its shell hooks live in the managed shell init) |
@@ -101,6 +102,7 @@ make test      # go test ./... -race
 make lint      # golangci-lint
 make docs      # regenerate docs/commands; CI fails when it drifts
 make install   # ~/.local/bin/dot plus the dotfiles link
+make clean     # remove bin/
 ```
 
 Work on a branch and open a PR; `AGENTS.md` holds the contribution rules. The
@@ -120,7 +122,7 @@ The Test workflow runs on pull requests and main pushes:
 | integration | ubuntu-24.04 × minimal, full, server, plus the server image | Docker-based profile tests |
 | linux | three shards on the ubuntu-22.04 image | module and end-to-end scenarios |
 | apps-install-macos | macOS | cask install and the macapps scenario |
-| ci-ok | ubuntu | fails when any job above did not succeed; the only required check |
+| ci-ok | ubuntu | fails when any job above did not succeed, except heavy jobs the decision job skipped; the only required check |
 
 A Homebrew or download failure inside the test containers is retried once and
 labeled `Infrastructure (network)`. The Vulnerability workflow runs govulncheck

@@ -117,11 +117,15 @@ inbox.
 The rendered shell init exports:
 
 ```bash
-WORKSPACE, WORK="$WORKSPACE/work", VAULT
-CLOUD_WORKSPACE, CLOUD_WORK="$CLOUD_WORKSPACE/work"   # when a cloud mirror is set (formerly GDRIVE_*)
-MARU_SCRATCHPAD="$WORK/scratchpad"
-MARU_TEMP="$MARU_SCRATCHPAD/temp"
-CLAUDE_CODE_TMPDIR="$MARU_TEMP/runtime/claude"
+export WORKSPACE="<workspace path>"
+export WORK="$WORKSPACE/work"
+export VAULT="<vault path>"
+export MARU_SCRATCHPAD="$WORK/scratchpad"
+export MARU_TEMP="$MARU_SCRATCHPAD/temp"
+export CLAUDE_CODE_TMPDIR="$MARU_TEMP/runtime/claude"
+# only when a cloud mirror is set (formerly GDRIVE_*):
+export CLOUD_WORKSPACE="<cloud mirror path>"
+export CLOUD_WORK="$CLOUD_WORKSPACE/work"
 ```
 
 The last three give Maru and external AI CLIs one shared root for temporary
