@@ -75,6 +75,8 @@ app and does not register an operating-system terminal command handler.
 **full** adds (+11 unique):
 `maru-cli`, `btop`, `lazygit`, `yazi`, `glow`, `csvlens`, `chafa`, `uv`, `pipx`, `tmux`, `gnupg`
 
+plus the `maru-workspace` cask.
+
 **server** adds (+4):
 `btop`, `tmux`, `uv`, `pipx`
 
@@ -140,8 +142,8 @@ secrets:
     - "age1..."
 admission:              # optional resource-admission overrides (dot admit)
   thresholds:           # host-pressure gate
-    idle_defer_below: 10        # percent; unset keys keep the policy default
-    idle_recover_at: 25
+    idle_defer_below: 15        # percent; the values shown are the defaults
+    idle_recover_at: 30
     load_defer_frac: 1.0        # load1 at this multiple of the CPU count
     load_recover_frac: 0.7
     defer_sustain: 60s
@@ -164,7 +166,7 @@ admission:              # optional resource-admission overrides (dot admit)
     ignore_names: []            # exact process basenames never counted
 ```
 
-Every `admission` key is optional and independent; an unset key keeps the policy default. A duration of `0s` is a real value (`defer_sustain: 0` defers at the first over-threshold sample), distinct from leaving the key out, and it survives a state save. Values are validated when the policy resolves: percentages must stay within 0-100 and be finite, load fractions must be above zero, durations must be at or above zero, the recovery side must be no stricter than the defer side (`idle_recover_at >= idle_defer_below`, `load_recover_frac <= load_defer_frac`, `mem_avail_critical_pct <= mem_avail_warn_pct`), slot counts must be between 1 and 8, and `uncovered.cpu_percent` at or above zero. An invalid value fails `dot admit` and `dot admit relax` with a message naming the key and the config file; `dot admit status` reports the same error and still renders its sections against the defaults, because a blocked config is exactly when that view is wanted. For a temporary change use `dot admit relax --set <key>=<value>` or `--ignore <rules>` (see [Resource admission](maintenance.md#resource-admission-dot-admit)) rather than editing this file.
+Every `admission` key is optional and independent; an unset key keeps the policy default. A duration written as a plain number is a count of seconds, and one too large to fit a duration is refused instead of wrapping. A duration of `0s` is a real value (`defer_sustain: 0` defers at the first over-threshold sample), distinct from leaving the key out, and it survives a state save. Values are validated when the policy resolves: percentages must stay within 0-100 and be finite, load fractions must be above zero, durations must be at or above zero, the recovery side must be no stricter than the defer side (`idle_recover_at >= idle_defer_below`, `load_recover_frac <= load_defer_frac`, `mem_avail_critical_pct <= mem_avail_warn_pct`), slot counts must be between 1 and 8, and `uncovered.cpu_percent` at or above zero. An invalid value fails `dot admit` and `dot admit relax` with a message naming the key and the config file; `dot admit status` reports the same error and still renders its sections against the defaults, because a blocked config is exactly when that view is wanted. For a temporary change use `dot admit relax --set <key>=<value>` or `--ignore <rules>` (see [Resource admission](maintenance.md#resource-admission-dot-admit)) rather than editing this file.
 
 ### Environment Variables
 
@@ -175,9 +177,8 @@ Every `admission` key is optional and independent; an unset key keeps the policy
 | `DOTFILES_NAME` | Override user name |
 | `DOTFILES_EMAIL` | Override email |
 | `DOTFILES_WORKSPACE_PATH` | Override workspace path |
-| `DOTFILES_REPO_DIR` | Dotfiles repo directory |
 | `DOTFILES_HOME` | Override home directory |
-| `GITHUB_TOKEN` | GitHub API token for `update` |
+| `GITHUB_TOKEN` | GitHub API token for `dot update`; avoids the unauthenticated API rate limit (HTTP 403) |
 | `DOT_CONTAINER_TRACE` | Set to `1` to print the backend argv the `container` shim runs |
 | `DOT_ADMISSION_IGNORE` | Rules to step past for one admitted run: `pressure`, `slot`, `uncovered`, or `all` (comma-separated); honored by every wrapped caller |
 | `DOT_SCHEMA_FORCE` | Set to `1` to overwrite a state file written by a newer `dot`, dropping any keys this binary does not know |

@@ -244,8 +244,9 @@ See [the policy configuration example](../examples/ai-policy.yaml) and
 `--config` is authoritative, including omission of a policy block; saved state
 cannot silently restore it. `--persist` saves the selected policy only after
 usable overlays are applied. Enabled policies also participate in `dot
-apply/check/diff`. User-state schema version 3 prevents older binaries from
-silently rewriting away the policy.
+apply/check/diff`. The user-state schema (version 3 brought the policy; 6 is
+current) makes an older binary warn and refuse to save, so it cannot silently
+rewrite the policy away.
 
 Automatic review is distinct from YOLO bypass. Managed launches support the
 Claude adapter from 2.1.283 up to 3.0.0 and the Codex adapter from 0.157.1 up
@@ -312,7 +313,7 @@ dot ai handoff record --project . --agent codex --kind validation --summary-file
 Kinds are `plan`, `progress`, `review`, `validation` and `learning`; results are
 `unverified`, `passed` or `failed` (default `unverified`); kind defaults to
 `progress`. Repeat `--artifact` for repository-relative evidence (at most 16
-regular files; 32 MiB combined hash budget). Summaries are UTF-8 and at most
+regular files of up to 10 MiB each; 32 MiB combined hash budget). Summaries are UTF-8 and at most
 32 KiB; show returns at most 128 recent records and storage stops at 8 MiB
 rather than deleting producer history silently.
 Records retain immutable producer claims with UTC time, HEAD, worktree and

@@ -3,105 +3,43 @@
 [![Test](https://github.com/STAIxBWLB/dotfiles/actions/workflows/test.yaml/badge.svg)](https://github.com/STAIxBWLB/dotfiles/actions/workflows/test.yaml)
 [![Release](https://github.com/STAIxBWLB/dotfiles/actions/workflows/release.yaml/badge.svg)](https://github.com/STAIxBWLB/dotfiles/actions/workflows/release.yaml)
 
-Declarative user environment management + AI-powered tmux workspace manager.
-A single Go binary. macOS + Linux + GPU servers. Modular, profile-based, AI-ready.
+`dot` is one Go binary that sets up and maintains a user environment on macOS,
+Linux workstations and GPU servers: packages, shell, git, terminal, tmux
+workspaces, AI agent tooling, secrets and machine-to-machine sync.
 
----
-
-## Quick Start
-
-### Install via Homebrew (recommended on macOS / Linuxbrew)
+## Install
 
 ```bash
-brew install staixbwlb/cask/dotfiles
+brew install staixbwlb/cask/dotfiles   # macOS or Linuxbrew
 ```
 
-Installs the `dotfiles` cask: the `dot` binary and the `dotfiles` back-compat
-link, on macOS and on Linuxbrew. An install from the earlier `dotfiles`
-formula moves to the cask on the next `brew update` or `dot update`.
-
-The cask moved to `staixbwlb/cask` in October 2026. On an existing install,
-`brew update` follows the old tap's migration entry; if `brew info dotfiles`
-names any other tap, run `brew trust staixbwlb/cask` and then
-`brew reinstall staixbwlb/cask/dotfiles`.
-
-The full name taps `staixbwlb/cask` and trusts the cask as it installs.
-Homebrew 6 and later refuse a short name from an untrusted tap, so
-`brew tap staixbwlb/cask && brew install dotfiles` stops with `Refusing to load
-cask staixbwlb/cask/dotfiles from untrusted tap`; run
-`brew trust staixbwlb/cask` first if you prefer the short name.
-
-A new release reaches the tap a few minutes after GitHub, once the tap's audit
-passes. Until then `dot update` on a Homebrew install says the tap does not
-offer the new version yet; run it again shortly.
-
-Taps that `dot apply` adds for you (`staixbwlb/cask`, `manaflow-ai/cmux`,
-`stablyai/orca`) are trusted automatically as part of the run, so this is only
-needed for the bootstrap tap that installs `dot` itself.
-
-### Install via curl (fallback)
+Without Homebrew, the installer sets up Homebrew (with the Xcode Command Line
+Tools on macOS, Linuxbrew on Linux), downloads the `dot` binary and puts it on
+`PATH`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/STAIxBWLB/dotfiles/main/scripts/install.sh | bash
 ```
 
-Use this when Homebrew isn't available or you want the bootstrap to install it for you. The installer handles prerequisites automatically:
-- **macOS**: Installs Homebrew (which includes Xcode Command Line Tools)
-- **Linux**: Installs Linuxbrew for consistent package management
-- Downloads the `dot` binary and configures PATH
+Use the full cask name: Homebrew 6 and later refuse the short name from an
+untrusted tap (run `brew trust staixbwlb/cask` first if you want
+`brew install dotfiles`). Updates, rollback and moving an older install to the
+cask: [Updating dot](docs/guides/maintenance.md#updating-dot).
 
-Standalone installs support `dot update --version 2.71.5` (or `v2.71.5`) to select an exact stable release, including a downgrade. The archive checksum, native architecture and exact runtime version are verified before activation. Binaries live in `~/.local/share/dotfiles/tools/dot/<version>/bin/dot`; `current` and `previous` are relative links, and `~/.local/bin/dot` points through `current`. The first update preserves the existing standalone binary (development builds use a content-hashed `snapshot-*` directory) and keeps its old path working through `current`. `dot rollback` activates the previous binary without downloading; another rollback switches back when that release also supports `rollback` (for an older release, run the saved newer binary at `<version>/bin/dot rollback`). Activation keeps current, previous and any version a running process uses; older idle versions are pruned with the family-tool retention rule. If a process uses an unresolved PATH/current entry or process inspection fails, versions are kept conservatively until a later activation. `--home X` writes the version tree and PATH entry only under X and leaves the invoking user's standalone executable in place. Guard hooks use a stable `current` or Homebrew `opt` path, so they follow explicit activation and rollback without rewriting settings. Homebrew owns its versions: `dot update --version` and `dot rollback` refuse there and name the brew commands to use instead.
-
-On a Homebrew install (the resolved executable sits in the Cellar for the formula, or in the Caskroom for the cask), `dot update` upgrades through the brew that owns it and never writes the Cellar or Caskroom itself. For a verified native release with the exact trusted tap recipe (`Formula/dotfiles.rb` or `Casks/dotfiles.rb`), it uses the bounded prebuilt path described under [Resource admission](docs/guides/maintenance.md#resource-admission-dot-admit). A stale or changed recipe falls back to the full maintenance gate, runs `brew update` only when the tap lags the GitHub release, then runs `brew upgrade --formula <tap>/dotfiles` (`--cask` for the cask) and checks the new version. When that `brew update` moves a formula install to the cask (the tap's `tap_migrations.json`), `dot update` carries on as the cask and lists what still runs the formula's opt link (guard hooks, the noindex agent, the container shim) before you remove the old keg; when brew could not move it, for example on a Linuxbrew prefix without a `Caskroom`, it names `brew uninstall --formula --force dotfiles && brew install --cask staixbwlb/cask/dotfiles`. A pinned formula is left alone with a `brew unpin` hint; `--dry-run` prints the full-gate brew commands; `--check` reports the latest version and which path an update would take, naming the check that keeps it off the verified-prebuilt path; `--wait 30m` waits for a busy maintenance slot instead of deferring at once. A standalone `dot` can target an existing managed Homebrew install with `dot update --homebrew`.
-
-After a Homebrew upgrade, launchd fails the next spawn of a dot LaunchAgent (`spawn failed`, `needs LWCR update`): its managed launch constraint did not follow the replaced binary. `dot update` therefore reloads (bootout, then bootstrap) every loaded `com.dotfiles.*` agent that runs the upgraded binary; an unloaded one, such as a paused sync, stays unloaded. After a manual `brew upgrade`, `dot sync status` and `dot peer status` name that state with the reload command: `dot sync pause && dot sync resume` for `com.dotfiles.sync*`, `dot peer setup` for `com.dotfiles.peer`.
-
-### Setup
+## First run
 
 ```bash
-dot            # welcome screen with next-step guidance
-dot init       # interactive TUI — name, email, profile, modules
-dot apply      # apply all enabled modules
-dot usecase    # detailed workflow examples
+dot              # welcome screen with next steps
+dot init         # name, email, profile and modules (interactive)
+dot apply        # apply the enabled modules
+dot update       # update dot itself
+dot open myproj  # launch or resume a tmux workspace
 ```
 
-### Migrate from another machine
+Moving from another machine: run `dot backup` there and `dot restore` here
+([details](docs/guides/maintenance.md#migrate-from-another-machine)).
 
-Run `dot backup` on the old machine and, after installing dot, `dot restore` on the new one. Scopes, unattended runs and the manual sequence are in the [maintenance guide](docs/guides/maintenance.md#migrate-from-another-machine).
-
-### Workspace
-
-```bash
-dot open myproject   # launch or resume a multi-panel tmux workspace
-dot open myproject   # SSH dropped? just run it again — resumes exactly
-dot open myproject --layout ahub   # agent-hub console beside two peer slots
-dot hub myproject    # jump to the project's ahub console
-```
-
-When the workspace module is enabled, the rendered shell environment also
-exports the shared AI scratch contract:
-
-```bash
-MARU_SCRATCHPAD="$WORK/scratchpad"
-MARU_TEMP="$MARU_SCRATCHPAD/temp"
-CLAUDE_CODE_TMPDIR="$MARU_TEMP/runtime/claude"
-```
-
-Maru and external AI CLIs therefore resolve the same temporary-artifact root.
-
-### Build from source
-
-```bash
-git clone https://github.com/STAIxBWLB/dotfiles.git && cd dotfiles
-make build          # → bin/dot
-make install        # → ~/.local/bin/dot + ~/.local/bin/dotfiles (symlink)
-```
-
----
-
-For the full command reference, see [docs/commands](docs/commands/). Configuration ownership is documented in [boundaries](docs/BOUNDARIES.md).
-
-## Guides
+## Documentation
 
 | Guide | Covers |
 |---|---|
@@ -109,112 +47,101 @@ For the full command reference, see [docs/commands](docs/commands/). Configurati
 | [Sync and peer](docs/guides/sync.md) | `dot sync` to a mirror, secret policy, conflicts, `dot peer` between two machines |
 | [Workspaces and tmux](docs/guides/workspace.md) | `dot open`, layouts, `dot hub`, key bindings, themes, `dot ws` |
 | [Configuration](docs/guides/configuration.md) | The config file, environment variables, prompt styles, terminal apps, packages |
-| [Maintenance](docs/guides/maintenance.md) | Backup and migration, updates, `dot admit`, resource-safe maintenance, watchdog |
+| [Maintenance](docs/guides/maintenance.md) | Updates, backup and migration, `dot admit`, watchdog |
 | [Servers and containers](docs/guides/servers.md) | GPU server provisioning, `dot container`, Cloudflare Tunnel |
 | [Architecture](docs/guides/architecture.md) | Package map and data flow |
 
+Also: the [command reference](docs/commands/) (generated from `--help`), the
+files `dot` may write ([BOUNDARIES](docs/BOUNDARIES.md)), accepted design
+limits ([CEILINGS](docs/CEILINGS.md)), design specs ([docs/specs](docs/specs/))
+and [release notes](docs/releases/).
+
 ## Modules
 
-### Execution Order
+Applied in this order. The profile column names the smallest profile that
+enables the module.
 
-```
-packages → shell → node → git → ssh → terminal → container → tmux →
-workspace → ai → fonts → macapps → conda → gpg → secrets
-```
-
-### Module Details
-
-| Module | Profile | Description |
-|--------|---------|-------------|
-| **packages** | minimal | Homebrew formula installation |
-| **shell** | minimal | zsh, Oh My Zsh, plugins, config files |
-| **node** | full | pnpm store relocation outside cloud-synced workspace trees (~/.config/pnpm/npmrc) |
-| **git** | minimal | git config, aliases, global ignore |
-| **ssh** | minimal | SSH config, config.d includes |
-| **terminal** | minimal | starship prompt, Orca auto-install (macOS/Arch), Warp theme |
-| **container** | opt-in | One `container` command with Apple syntax: apple/container on macOS, docker or podman on Linux (see [Container](docs/guides/servers.md#container)) |
-| **tmux** | full | tmux.conf (256color, vim keys, C-a prefix) |
-| **workspace** | full | Dual-workspace: git repo clone, gh auth, symlink federation (cloud mirror, vault, inbox). Vault location is selectable at init and auto-detected from existing `<workspace>/work/vault` or `<workspace>/vault`; the separate vault repo entry is skipped when the vault lives inside work (e.g. as a submodule). Cloud mirror is selected at init from detected mounts (Dropbox preferred, Google Drive accounts are listed); shell exports `CLOUD_WORKSPACE`/`CLOUD_WORK`, alias `cwork`, and the `ws()` jumper (formerly `GDRIVE_*`/`gwork`) |
-| **ai** | full | AI CLI/config helpers, Claude/Codex/Copilot/Kiro/Kimi/Qwen/pi/Antigravity/Aider/Maru settings backup, optional HUD |
-| **fonts** | full | Nerd Font download from GitHub Releases |
-| **macapps** | full (darwin) | Install selected Homebrew casks from the embedded catalog |
-| **conda** | full | Conda/Mamba `.condarc` defaults; shell hooks live in managed shell init |
-| **gpg** | full | GPG agent + git commit signing |
-| **secrets** | full | Age-encrypted SSH keys and shell secrets |
-
+| Module | Profile | What it manages |
+|---|---|---|
+| packages | minimal | Homebrew formulae |
+| shell | minimal | zsh, Oh My Zsh, plugins, shell config |
+| node | minimal | pnpm store outside cloud-synced workspace trees (`~/.config/pnpm/npmrc`) |
+| git | minimal | git config, aliases, global ignore |
+| ssh | minimal | SSH config and `config.d` includes |
+| terminal | minimal | starship prompt, Orca (macOS/Arch), Warp theme |
+| container | opt-in | one `container` command: apple/container on macOS, docker or podman on Linux |
+| tmux | full | tmux.conf (256 colors, C-a prefix, vim keys) |
+| workspace | full | work and vault repos, `gh` auth, links to the cloud mirror, vault and inbox, the `ws` jumper |
+| ai | full | AI CLIs and config helpers, settings backup for Claude, Codex, Copilot, Kiro, Kimi, Qwen, pi, Antigravity, Aider and Maru, optional HUD |
+| fonts | full | Nerd Fonts from GitHub Releases |
+| macapps | full (macOS) | selected casks from the embedded catalog |
+| conda | full | `.condarc` defaults (its shell hooks live in the managed shell init) |
+| gpg | full | GPG agent and commit signing |
+| secrets | full | age-encrypted SSH keys and shell secrets |
 
 ## Profiles
 
-Profiles use YAML inheritance. `full` extends `minimal`.
+`full` and `server` extend `minimal`.
 
-| Profile | Modules | Packages | Use Case |
-|---------|---------|----------|----------|
-| **minimal** | 5 | 17 | Lightweight dev setup |
-| **full** | 14 | 28 | Complete workstation (macapps enabled on darwin) |
-| **server** | 8 | 21 | GPU/DGX server |
+| Profile | Modules | Packages | For |
+|---|---|---|---|
+| minimal | 6 | 17 | a lightweight dev setup |
+| full | 14 | 28 | a complete workstation |
+| server | 9 | 21 | a GPU server: minimal plus tmux, ai and conda |
 
-**server**: Extends `minimal` + tmux, ai, conda. Disables workspace, fonts, macapps, gpg, secrets. Auto-suggested when NVIDIA GPU or CUDA is detected.
-
----
-
-## Architecture
-
-Same modular Go architecture as [rootfiles](https://github.com/STAIxBWLB/rootfiles).
-
-Package map and data flow: [docs/guides/architecture.md](docs/guides/architecture.md).
-
-```
-rootfiles (root, server)        dotfiles (user, workstation)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Packages (APT), users, SSH       Packages (Homebrew), shell, git
-Docker, GPUs, tunnels            Terminal, fonts, AI
-Locale, firewall, storage        Workspace, secrets, sync, tmux
-```
-
-## CI/CD
-
-### Test Pipeline
-
-| Job | Matrix | Description |
-|-----|--------|-------------|
-| **decision** | ubuntu-latest | Skips the jobs below when only non-test files changed, or when a main push carries a tree its PR already validated (`scripts/ci-decision.sh`) |
-| **release-notes** | ubuntu-latest | Format check of every `docs/releases/v*.md` (`scripts/check-release-notes.sh`); always runs, in seconds |
-| **lint** | ubuntu-latest | golangci-lint |
-| **unit** | ubuntu-latest, macos-latest | Go unit tests + coverage |
-| **integration** | ubuntu-24.04 × {minimal,full,server} + server image | Docker-based profile tests |
-| **linux** | shards `apply`, `idempotency`, `rest` on the ubuntu-22.04 image | Module and E2E scenario suite, split from one full list |
-| **apps-install-macos** | macos-latest | macOS cask install plus macapps scenario |
-| **ci-ok** | ubuntu-latest | Fails when any job above did not succeed; heavy jobs may be skipped only by the decision job. The only check branch protection requires |
-
-Test runs on pull requests and main pushes, not on tags. A Homebrew or download failure inside the integration and module containers is marked `Infrastructure (network)` and retried once (`scripts/ci-net-retry.sh`).
-
-**Vulnerability scan** (`vuln.yaml`): govulncheck through `scripts/govulncheck-gate.sh`, daily and on changes to `go.mod`, `go.sum` or the allowlist, so a new upstream advisory does not block unrelated PRs. Dependabot raises Go modules and actions weekly.
-
-**Release**: Triggered by a `v*` tag push. It waits for the tagged commit's main-push Test run and publishes only when that run succeeded, so the tag is not tested again. It runs the govulncheck gate before publishing. Uses GoReleaser for cross-platform builds (darwin/linux × amd64/arm64), pushes the cask to the tap's `publish/dotfiles-<version>` branch (the tap audits and merges it), and attests build provenance for every archive in `checksums.txt` (`gh attestation verify <archive> -R STAIxBWLB/dotfiles`).
-
-### Creating a Release
-
-Add `docs/releases/vX.Y.Z.md` (format: `AGENTS.md`, Release notes) and merge it first; the Release workflow publishes it as the release body and stops when it is missing or breaks the format. Check it locally with `bash scripts/check-release-notes.sh docs/releases/vX.Y.Z.md`: plain first line, only the `### New` / `### Improved` / `### Fixed` / `### Action needed` sections in that order, every bullet ending with its PR number, no commit SHAs or conventional-commit prefixes, and the compare link to the previous release as the last line.
-
-```bash
-git tag vX.Y.Z
-git push origin vX.Y.Z
-# Release waits for the main-push Test run of that commit, then publishes
-```
-
----
+`dot init` suggests `server` when it detects an NVIDIA GPU or CUDA. `container`
+is off in every profile until `dot container setup` enables it.
 
 ## Development
 
-Source builds require Go 1.25.8 or newer.
+Go 1.26.11 or newer (`go.mod`).
 
 ```bash
-make build      # build binary
-make test       # run tests
-make lint       # lint
-make clean      # clean artifacts
-make install    # install to ~/.local/bin/
+make build     # bin/dot
+make test      # go test ./... -race
+make lint      # golangci-lint
+make docs      # regenerate docs/commands; CI fails when it drifts
+make install   # ~/.local/bin/dot plus the dotfiles link
+make clean     # remove bin/
 ```
+
+Work on a branch and open a PR; `AGENTS.md` holds the contribution rules. The
+system-level counterpart for root and servers is
+[rootfiles](https://github.com/STAIxBWLB/rootfiles).
+
+## CI and release
+
+The Test workflow runs on pull requests and main pushes:
+
+| Job | Runs on | Checks |
+|---|---|---|
+| decision | ubuntu | skips the heavy jobs when only non-test files changed, or when a main push carries a tree its PR already validated |
+| release-notes | ubuntu | the format of every `docs/releases/v*.md` |
+| lint | ubuntu | golangci-lint |
+| unit | ubuntu, macOS | Go unit tests with coverage |
+| integration | ubuntu-24.04 × minimal, full, server, plus the server image | Docker-based profile tests |
+| linux | three shards on the ubuntu-22.04 image | module and end-to-end scenarios |
+| apps-install-macos | macOS | cask install and the macapps scenario |
+| ci-ok | ubuntu | fails when any job above did not succeed, except heavy jobs the decision job skipped; the only required check |
+
+A Homebrew or download failure inside the test containers is retried once and
+labeled `Infrastructure (network)`. The Vulnerability workflow runs govulncheck
+daily and when `go.mod`, `go.sum` or the allowlist change; Dependabot raises Go
+modules and actions weekly.
+
+To release, merge `docs/releases/vX.Y.Z.md` (format in `AGENTS.md`, checked by
+`bash scripts/check-release-notes.sh`), then tag the merge commit:
+
+```bash
+git tag vX.Y.Z && git push origin vX.Y.Z
+```
+
+The Release workflow waits for that commit's main-push Test run, runs the
+govulncheck gate, builds darwin and linux for amd64 and arm64 with GoReleaser,
+publishes the notes as the release body, attests every archive
+(`gh attestation verify <archive> -R STAIxBWLB/dotfiles`) and pushes the cask to
+the tap's `publish/dotfiles-<version>` branch, which the tap merges after its
+audit, usually a few minutes later.
 
 ## License
 

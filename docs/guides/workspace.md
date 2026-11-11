@@ -97,6 +97,42 @@ Session-scoped — multiple workspaces can use different themes simultaneously.
 
 ## Workspace commands
 
-`dot open` requires an explicit subcommand, so `dot aply` cannot accidentally create a project. `dot layouts` offers `dev`, `claude`, and `monitor`; `dot layouts doctor` reports tool paths and optional-tool availability.
+Opening a project takes the explicit `dot open <project>`, so a typo such as `dot aply` cannot create a project. `dot layouts` lists `dev` (the default), `claude`, `monitor`, `ahub` and `ahub-compact`; `dot layouts doctor` reports tool paths and optional-tool availability.
 
 For dev builds (no ldflags), `dot version` falls back to Go's embedded VCS info with a `-dirty` suffix if the working tree has uncommitted changes.
+
+## Workspace module
+
+The `workspace` module (full profile) clones the work and vault repos, runs
+`gh` authentication and links the workspace to the cloud mirror, vault and
+inbox.
+
+- **Vault:** `dot init` lets you pick the vault location, and it is
+  auto-detected from an existing `<workspace>/work/vault` or
+  `<workspace>/vault`. When the vault lives inside work, for example as a
+  submodule, the separate vault repo entry is skipped.
+- **Cloud mirror:** `dot init` picks it from the mounts it detects. Dropbox is
+  preferred, and Google Drive accounts are listed.
+
+The rendered shell init exports:
+
+```bash
+export WORKSPACE="<workspace path>"
+export WORK="$WORKSPACE/work"
+export VAULT="<vault path>"
+export MARU_SCRATCHPAD="$WORK/scratchpad"
+export MARU_TEMP="$MARU_SCRATCHPAD/temp"
+export CLAUDE_CODE_TMPDIR="$MARU_TEMP/runtime/claude"
+# only when a cloud mirror is set (formerly GDRIVE_*):
+export CLOUD_WORKSPACE="<cloud mirror path>"
+export CLOUD_WORK="$CLOUD_WORKSPACE/work"
+```
+
+`MARU_SCRATCHPAD`, `MARU_TEMP` and `CLAUDE_CODE_TMPDIR` give Maru and external
+AI CLIs one shared root for temporary artifacts.
+
+It also defines these shortcuts:
+
+- `work`, `vault` and `cwork` (formerly `gwork`) change to those roots.
+- `ws` switches between a folder under `$WORK` and the matching folder under
+  `$CLOUD_WORK`, in either direction.

@@ -2,9 +2,7 @@
 
 This document records deliberate limits in dotfiles that are acceptable at
 today's operating scale. Each section names the code boundary, why the limit is
-accepted, and the concrete event that would require a different design. There
-are five required ceilings for DEBT-06 and two additional ceilings minted by
-Phase 07's schema-version and per-profile scheduler work.
+accepted, and the concrete event that would require a different design.
 
 ## Process-wide manifest serialization
 
@@ -45,9 +43,8 @@ enrollment flow that works before scheduling.
 memory and commits them with `atomicWrite`; it does not stream records to disk.
 
 The simpler all-at-once write is not worth changing below six figures of files.
-The named upgrade trigger is CONC-02 (a planning requirement): replace
-it with an incremental index or directory-mtime pruning when the workspace tree
-reaches six figures of files.
+The upgrade trigger: replace it with an incremental index or directory-mtime
+pruning when the workspace tree reaches six figures of files.
 
 ## Preview cannot prove an openrsync transfer
 
