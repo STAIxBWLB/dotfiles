@@ -65,13 +65,22 @@ func resolveAdmissionPolicy(store *admission.Store, ignore admission.IgnoreSet, 
 // countdown only completes when samples arrive within the 45s gap, so a
 // one-shot caller retrying minutes later could never close the episode.
 // Pressure defers return immediately.
-func gateWithBusyRetry(ctx context.Context, store *admission.Store, monitor *admission.Monitor, policy admission.Policy, deadline time.Time) (admission.Decision, error) {
-	gate := admission.GatePolicy{
-		Thresholds:   policy.Thresholds,
-		Ignore:       policy.Ignore,
-		IgnoreSource: policy.IgnoreSource,
-	}
+//
+// The limits are resolved again before every sample: the countdown can last the
+// whole --wait, and an override that expires or is cleared during it must not
+// keep closing the episode on a relaxed recover_sustain. Each evaluation
+// persists the episode state, so a stale layer would end it for good.
+func gateWithBusyRetry(ctx context.Context, store *admission.Store, monitor *admission.Monitor, resolveNow func() (admission.Policy, error), deadline time.Time) (admission.Decision, error) {
 	for {
+		policy, err := resolveNow()
+		if err != nil {
+			return admission.Decision{}, err
+		}
+		gate := admission.GatePolicy{
+			Thresholds:   policy.Thresholds,
+			Ignore:       policy.Ignore,
+			IgnoreSource: policy.IgnoreSource,
+		}
 		d, err := admitGate(ctx, store, monitor, gate)
 		if err != nil || d.Admit || (!admission.IsGateBusy(d) && !d.Recovering) {
 			return d, err
@@ -222,13 +231,10 @@ func runAdmit(cmd *cobra.Command, args []string) error {
 		monitor.Thresholds = &fresh.Thresholds
 		return fresh, nil
 	}
-	policy, err := resolveNow()
-	if err != nil {
-		return err
-	}
+	var policy admission.Policy
 	var bypassed bypass
 	deadline := time.Now().Add(wait)
-	decision, err := gateWithBusyRetry(ctx, store, monitor, policy, deadline)
+	decision, err := gateWithBusyRetry(ctx, store, monitor, resolveNow, deadline)
 	if err != nil {
 		return err
 	}
@@ -281,13 +287,10 @@ func runAdmit(cmd *cobra.Command, args []string) error {
 		bypassed.rules = admissionIgnoreRules(bypassed.rules, admission.RuleSlot)
 	}
 
-	// The wait may have been long; resolve the current limits and re-gate before
-	// spending the slot on work that pressure would now defer anyway.
+	// The wait may have been long, so gate again before spending the slot on work
+	// that pressure would now defer anyway; the gate re-resolves the limits itself.
 	if wait > 0 {
-		if policy, err = resolveNow(); err != nil {
-			return err
-		}
-		decision, err = gateWithBusyRetry(ctx, store, monitor, policy, deadline)
+		decision, err = gateWithBusyRetry(ctx, store, monitor, resolveNow, deadline)
 		if err != nil {
 			return err
 		}

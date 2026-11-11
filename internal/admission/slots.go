@@ -232,13 +232,27 @@ func (s *Store) AcquireWithOptions(ctx context.Context, scope, class string, lea
 		if len(live) >= reach {
 			return nil, firstHolder, nil
 		}
-		// A free index below reach exists: liveSlots reports every live index of
-		// the scope, and the capacity check above returned once they all were.
+		// A free index below reach exists. Start the search at capacity when the
+		// capacity is already spoken for: only a bypassing caller gets here then
+		// (a plain caller's reach is the capacity, so it returned above), and the
+		// overflow notice, the JSON "ignored" set and the resourceguard wrapper all
+		// key on the index, so a bypass that quietly took a normal index would
+		// report nothing. By pigeonhole a plain caller with fewer live leases than
+		// its capacity always has a free index below it, so this offset only ever
+		// moves a bypass into the overflow range.
 		index := 0
+		if len(live) >= capacity {
+			index = capacity
+		}
 		for ; index < reach; index++ {
 			if live[index] == nil {
 				break
 			}
+		}
+		if index >= reach {
+			// Every index this caller may take is live: the overflow allowance is
+			// spent even though the scope holds fewer leases than reach.
+			return nil, firstHolder, nil
 		}
 		slot, holder, err := s.acquireIndex(ctx, scope, class, lease, index)
 		if err != nil {

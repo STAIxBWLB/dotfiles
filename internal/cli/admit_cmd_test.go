@@ -1228,3 +1228,101 @@ func TestAdmitStatusJSONCarriesErrorAndLimits(t *testing.T) {
 		t.Errorf("bundle does not show the limits it fell back to:\n%s", out)
 	}
 }
+
+// stubAdmitLiveClock pins the pressure evidence but keeps the real clock, for a
+// test whose subject is a window elapsing while the gate retries.
+func stubAdmitLiveClock(t *testing.T, snap admission.PressureSnapshot) {
+	t.Helper()
+	old := admitNewMonitor
+	admitNewMonitor = func(*exec.Runner, string) *admission.Monitor {
+		return &admission.Monitor{
+			GOOS: "darwin",
+			SnapshotFunc: func(context.Context, *admission.Monitor) admission.PressureSnapshot {
+				return snap
+			},
+		}
+	}
+	t.Cleanup(func() { admitNewMonitor = old })
+}
+
+// The recovery countdown can run for the whole --wait, so the gate resolves the
+// limits again before every sample. An override that expires during the
+// countdown must not close the episode on its relaxed recover_sustain: the
+// evaluation persists its verdict, so the default window would never run.
+func TestAdmitRelaxExpiringDuringRecoveryDoesNotCloseTheEpisode(t *testing.T) {
+	home, _ := admitSandbox(t)
+	stubAdmitLiveClock(t, healthyAdmitSnapshot())
+	runner := watchdogRunner(false)
+	store := admission.NewStore(admission.DefaultStateRoot(home), runner)
+	// A defer episode one second old: under the relaxed five-second sustain it
+	// closes after four more seconds of normal telemetry, under the default five
+	// minutes it does not.
+	start := time.Now()
+	seeded := admission.History{
+		DeferActive:  true,
+		DeferSince:   start.Add(-time.Minute),
+		RecoverSince: start.Add(-time.Second),
+		LastSampleAt: start.Add(-time.Second),
+	}
+	if err := admission.SaveHistory(store.HistoryPath(), seeded); err != nil {
+		t.Fatalf("seeding the history: %v", err)
+	}
+	if _, _, err := runDotForTest("admit", "relax", "--for", "2s", "--set", "thresholds.recover_sustain=5s"); err != nil {
+		t.Fatalf("relax = %v", err)
+	}
+
+	out, _, err := runDotForTest("admit", "--json", "--wait", "10s", "--", "true")
+	var exitErr *ExitCodeError
+	if !errors.As(err, &exitErr) || exitErr.Code != ExitDeferred {
+		t.Fatalf("err = %v (out %s), want the recovery defer: the override expired, so the default sustain applies", err, out)
+	}
+	after, err := admission.LoadHistory(store.HistoryPath())
+	if err != nil {
+		t.Fatalf("reading the history: %v", err)
+	}
+	if !after.DeferActive {
+		t.Error("the episode closed on the relaxed sustain the override no longer provided")
+	}
+}
+
+// A slot bypass takes an overflow index even when a normal index is free: the
+// stderr notice, the JSON "ignored" set and the resourceguard adapter all key
+// on the index, so a bypass that quietly took index 0 would report nothing
+// while two heavyweight jobs ran.
+func TestAdmitIgnoreSlotLandsInAnOverflowIndex(t *testing.T) {
+	home, workdir := admitSandbox(t)
+	stubAdmitMonitor(t, healthyAdmitSnapshot())
+	runner := watchdogRunner(false)
+	store := admission.NewStore(admission.DefaultStateRoot(home), runner)
+	scope, err := admission.ResolveScope(context.Background(), runner, workdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Capacity 2 fills indexes 0 and 1; releasing index 0 strands the lease at 1
+	// with a free normal index, which is what a lowered capacity or an expired
+	// relax override leaves behind.
+	lease := admission.Lease{Owner: "holder@test", PID: 4242, PIDStart: "Mon Sep 28 00:00:00 2026"}
+	first, _, err := store.AcquireWithOptions(context.Background(), scope, admission.ClassHeavy, lease, admission.AcquireOptions{Capacity: 2})
+	if err != nil || first == nil {
+		t.Fatalf("seeding index 0 = %v, %v", first, err)
+	}
+	stranded, _, err := store.AcquireWithOptions(context.Background(), scope, admission.ClassHeavy, lease, admission.AcquireOptions{Capacity: 2})
+	if err != nil || stranded == nil {
+		t.Fatalf("seeding index 1 = %v, %v", stranded, err)
+	}
+	defer func() { _ = stranded.Release() }()
+	if err := first.Release(); err != nil {
+		t.Fatalf("releasing index 0: %v", err)
+	}
+
+	_, errOut, err := runDotForTest("admit", "--ignore", "slot", "--json", "--wait", "0", "--", "true")
+	if err != nil {
+		t.Fatalf("admit under --ignore slot = %v\nstderr=%s", err, errOut)
+	}
+	if !strings.Contains(errOut, "slot capacity 1 exceeded (--ignore slot): holding overflow slot") {
+		t.Errorf("stderr = %q, want the overflow-slot note", errOut)
+	}
+	if !strings.Contains(errOut, `"ignored"`) || !strings.Contains(errOut, `"slot"`) {
+		t.Errorf("stderr = %q, want the bypassed rule in the JSON record", errOut)
+	}
+}

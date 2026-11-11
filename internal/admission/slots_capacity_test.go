@@ -266,13 +266,23 @@ func TestCapacityCountsLeasesAtHigherIndexes(t *testing.T) {
 		t.Fatalf("releasing index 0: %v", err)
 	}
 
-	// A bypass still runs, next to the stranded lease, in the free index 0.
+	// A bypass still runs, next to the stranded lease, and it lands in an overflow
+	// index: the notice, the JSON "ignored" set and the resourceguard adapter key
+	// on the index, so a bypass that quietly took the free index 0 would report
+	// nothing while two jobs ran.
 	bypass, _, err := store.AcquireWithOptions(ctx, scope, ClassHeavy, selfLease(t, store), AcquireOptions{Capacity: 1, Overflow: true})
 	if err != nil || bypass == nil {
 		t.Fatalf("bypass acquire = %v, %v", bypass, err)
 	}
 	defer func() { _ = bypass.Release() }()
-	if got := bypass.Lease().Index; got != 0 {
-		t.Errorf("bypass index = %d, want the free index 0", got)
+	if got := bypass.Lease().Index; got < 1 {
+		t.Errorf("bypass index = %d, want an overflow index at or past the capacity of 1", got)
+	}
+	leases, err = store.ListLeases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(leases) != 2 {
+		t.Fatalf("leases = %d, want the stranded lease and the bypass", len(leases))
 	}
 }
