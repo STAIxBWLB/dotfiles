@@ -36,8 +36,12 @@ import (
 // completion record goes to STDERR: the wrapped command's stdout is the
 // payload, and mixing the JSON object into it would corrupt the stream for
 // downstream consumers (the process exit code is the machine-readable
-// result). Defer outcomes never run a child, so they stay on stdout.
-func runAdmittedChild(cmd *cobra.Command, runner *exec.Runner, args []string, scope, class string, slot *admission.Slot, asJSON bool) error {
+// result). Defer outcomes never run a child, so they stay on stdout. ignored
+// marks a run the pressure gate admitted only because a one-off ignore or a
+// relax override bypassed it; the completion record then carries
+// pressure_ignored, and the key is absent otherwise so an ordinary run's
+// record is unchanged.
+func runAdmittedChild(cmd *cobra.Command, runner *exec.Runner, args []string, scope, class string, slot *admission.Slot, asJSON, ignored bool) error {
 	ctx := cmd.Context()
 	p := printerFrom(cmd)
 	child := osexec.Command(args[0], args[1:]...) // #nosec G204 -- the command is the user's own invocation
@@ -118,12 +122,16 @@ func runAdmittedChild(cmd *cobra.Command, runner *exec.Runner, args []string, sc
 		}
 	}
 	if asJSON {
-		data, err := json.MarshalIndent(map[string]any{
+		record := map[string]any{
 			"outcome":   "completed",
 			"scope":     scope,
 			"class":     class,
 			"exit_code": exitCode,
-		}, "", "  ")
+		}
+		if ignored {
+			record["pressure_ignored"] = true
+		}
+		data, err := json.MarshalIndent(record, "", "  ")
 		if err != nil {
 			return err
 		}

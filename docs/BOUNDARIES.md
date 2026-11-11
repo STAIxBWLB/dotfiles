@@ -317,7 +317,11 @@ tool):
   each holding a `lease.json` with the owner pid/start, heartbeat and
   deadline), the heavy-work pressure history (`history.json`), the verified
   native dot-update pressure and quiet-swap history (`history-prebuilt.json`),
-  and the per-scope notify dedup marks (`notify/`). `history.json` is written
+  the temporary pressure-gate override (`override.json`, written only by
+  `dot admit relax` with `set_at` and `expires_at`, read by every gate
+  evaluation and by status, and removed by `dot admit relax --clear` or by the
+  gate that first sees it expired), and the per-scope notify dedup marks
+  (`notify/`). `history.json` is written
   by `dot admit` gate evaluations and tooling updates
   through the same controller; slot acquire/heartbeat/release and defer
   notification also update this state. A completed `dot update` prebuilt-gate

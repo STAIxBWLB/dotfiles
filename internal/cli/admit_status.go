@@ -15,14 +15,16 @@ import (
 func newAdmitStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Show admission owners, pressure evidence, and hysteresis state",
+		Short: "Show admission owners, pressure evidence, effective thresholds and hysteresis state",
 		Long: `Report the resource-admission controller's view: active slot owners
-(scope, class, owner, pid, cwd, since), the host-pressure evidence with
-per-probe availability, the last WindowServer watchdog evidence, and the
-hysteresis countdown when a defer episode is recovering. The evaluation is
-read-only: status never advances or resets the recovery window. Jobs
-launched outside admission wrappers hold no lease and are caught
-only by the admit-time process scan.`,
+(scope, class, owner, pid, cwd, since), the effective pressure thresholds with
+the layer each value came from (default, config or relax), an active relax
+override with its expiry, the host-pressure evidence with per-probe
+availability, the last WindowServer watchdog evidence, and the hysteresis
+countdown when a defer episode is recovering. The evaluation is
+read-only: status never advances or resets the recovery window and never
+removes an expired override. Jobs launched outside admission wrappers hold no
+lease and are caught only by the admit-time process scan.`,
 		Args:         cobra.NoArgs,
 		RunE:         runAdmitStatus,
 		SilenceUsage: true,
@@ -42,7 +44,14 @@ func runAdmitStatus(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	store := admission.NewStore(root, runner)
+	// Status is a read-only view: an expired relax override is displayed as
+	// inactive, never pruned from here.
+	resolved, err := resolveAdmissionThresholds(store, false, true)
+	if err != nil {
+		return err
+	}
 	monitor := admitNewMonitor(runner, home)
+	monitor.Thresholds = &resolved.Thresholds
 	snap := monitor.SnapshotPressure(ctx)
 	// Status samples are read-only, but the timestamp is still taken after
 	// probing so slow probes cannot make a stale recovery countdown look fresh.
@@ -54,11 +63,14 @@ func runAdmitStatus(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	th := admission.DefaultThresholds()
+	th := resolved.Thresholds
 	hist = admission.PrepareHistorySample(hist, th, snap, now)
 	// Read-only evaluation: status shows the hysteresis countdown but never
 	// advances or resets it — only real gate runs move the streak.
 	d := admission.EvaluatePressure(snap, th, hist, now)
+	if resolved.IgnorePressure {
+		d = admission.ApplyIgnore(d, resolved.IgnoreSource)
+	}
 	owners, err := store.ListLeases()
 	if err != nil {
 		return err
@@ -74,6 +86,12 @@ func runAdmitStatus(cmd *cobra.Command, _ []string) error {
 	}
 
 	p.Header("dot admit status")
+	if resolved.IgnorePressure {
+		p.KV("Pressure gate", "ignored ("+resolved.IgnoreSource+")")
+		for _, reason := range d.IgnoredReasons {
+			p.Bullet(ui.MarkWarn, "would defer: "+reason)
+		}
+	}
 	if d.Admit {
 		p.KV("Gate", "admitting")
 	} else {
@@ -84,6 +102,13 @@ func runAdmitStatus(cmd *cobra.Command, _ []string) error {
 		if d.RetryAfter > 0 {
 			p.KV("Retry after", d.RetryAfter.Round(time.Second).String())
 		}
+	}
+	p.Section("Effective thresholds")
+	for _, row := range resolved.Rows() {
+		p.KV(row.Key, fmt.Sprintf("%s (%s)", row.Value, row.Source))
+	}
+	if resolved.Relax != nil {
+		p.KV("Relax override", "active until "+resolved.Relax.ExpiresAt.Format(time.RFC3339))
 	}
 	p.Section("Pressure evidence")
 	p.KV("Memory", probeRow(snap.MemoryAvailable, snap.MemoryLevel))
@@ -110,7 +135,7 @@ func runAdmitStatus(cmd *cobra.Command, _ []string) error {
 		if hist.RecoverSince.IsZero() {
 			p.KV("Recovery", "waiting for normal telemetry")
 		} else {
-			remaining := admission.DefaultRecoverSustain - now.Sub(hist.RecoverSince)
+			remaining := th.RecoverSustain - now.Sub(hist.RecoverSince)
 			if remaining < 0 {
 				remaining = 0
 			}

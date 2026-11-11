@@ -384,6 +384,40 @@ type BackupRecord struct {
 	Files int       `yaml:"files"`
 }
 
+// UserAdmissionState holds the admission controller knobs a person sets in
+// config.yaml. The block is optional and every key is independent: an unset
+// key keeps the policy default, and the gate validates the values itself so an
+// invalid one fails loudly instead of silently falling back.
+type UserAdmissionState struct {
+	Thresholds UserAdmissionThresholds `yaml:"thresholds,omitempty"`
+}
+
+// IsZero lets yaml.v3 omit an unset admission block from rendered output.
+func (c UserAdmissionState) IsZero() bool { return c.Thresholds.IsZero() }
+
+// UserAdmissionThresholds is one optional override of the host-pressure
+// policy. Pointers keep "unset" distinct from a meaningful zero such as
+// `defer_sustain: 0` (defer at the first over-threshold sample).
+type UserAdmissionThresholds struct {
+	IdleDeferBelow      *float64  `yaml:"idle_defer_below,omitempty"`
+	IdleRecoverAt       *float64  `yaml:"idle_recover_at,omitempty"`
+	LoadDeferFrac       *float64  `yaml:"load_defer_frac,omitempty"`
+	LoadRecoverFrac     *float64  `yaml:"load_recover_frac,omitempty"`
+	DeferSustain        *Duration `yaml:"defer_sustain,omitempty"`
+	RecoverSustain      *Duration `yaml:"recover_sustain,omitempty"`
+	WSGrace             *Duration `yaml:"ws_grace,omitempty"`
+	MemAvailWarnPct     *float64  `yaml:"mem_avail_warn_pct,omitempty"`
+	MemAvailCriticalPct *float64  `yaml:"mem_avail_critical_pct,omitempty"`
+}
+
+// IsZero lets yaml.v3 omit an unset thresholds block from rendered output.
+func (c UserAdmissionThresholds) IsZero() bool {
+	return c.IdleDeferBelow == nil && c.IdleRecoverAt == nil &&
+		c.LoadDeferFrac == nil && c.LoadRecoverFrac == nil &&
+		c.DeferSustain == nil && c.RecoverSustain == nil && c.WSGrace == nil &&
+		c.MemAvailWarnPct == nil && c.MemAvailCriticalPct == nil
+}
+
 // IsModuleEnabled returns whether a given module name is enabled in this config.
 func (c *Config) IsModuleEnabled(name string) bool {
 	switch name {

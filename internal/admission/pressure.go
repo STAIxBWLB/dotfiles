@@ -156,7 +156,13 @@ type Decision struct {
 	// Recovering marks the recovery countdown: telemetry is normal and only
 	// more continuous samples are needed, so waiting callers should resample.
 	Recovering bool
-	Next       History
+	// PressureIgnored marks a pressure defer that a one-off ignore or a relax
+	// override admitted anyway. IgnoredReasons keeps what was bypassed, and
+	// IgnoreSource names the source for the one-line stderr note.
+	PressureIgnored bool
+	IgnoredReasons  []string
+	IgnoreSource    string
+	Next            History
 }
 
 // EvaluatePressure decides admission from one snapshot. Pure: same inputs,
@@ -407,6 +413,9 @@ type Monitor struct {
 	Home   string
 	GOOS   string // empty means runtime.GOOS
 	Now    func() time.Time
+	// Thresholds, when set, is the resolved knob set the Linux MemAvailable
+	// mapping uses. Nil means the policy defaults.
+	Thresholds *Thresholds
 	// SnapshotFunc, when set, replaces live probing entirely.
 	SnapshotFunc func(ctx context.Context, m *Monitor) PressureSnapshot
 }
@@ -509,7 +518,11 @@ func (m *Monitor) snapshotLinux(ctx context.Context) PressureSnapshot {
 	if data, err := os.ReadFile("/proc/meminfo"); err == nil {
 		if pct, ok := ParseProcMemInfo(string(data)); ok {
 			snap.MemoryFreePct = pct
-			snap.MemoryLevel = MemoryLevelFromAvailPct(pct, DefaultThresholds())
+			th := DefaultThresholds()
+			if m.Thresholds != nil {
+				th = *m.Thresholds
+			}
+			snap.MemoryLevel = MemoryLevelFromAvailPct(pct, th)
 			snap.MemoryAvailable = true
 		}
 	}

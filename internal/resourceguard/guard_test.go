@@ -174,6 +174,54 @@ func TestAdapterDefersOnPressure(t *testing.T) {
 	}
 }
 
+// AC4 (#412): DOT_ADMISSION_IGNORE_PRESSURE=1 lets a resourceguard caller step
+// past the pressure deferral for one run, but never past a busy slot.
+func TestAdapterIgnorePressurePassesPressureNotBusySlot(t *testing.T) {
+	t.Setenv(admission.IgnorePressureEnv, "1")
+	snap, none := healthySnapshot(), []string(nil)
+	snap.MemoryLevel = admission.MemoryCritical
+	a, store := testAdapter(t, &snap, &none)
+	ctx := context.Background()
+
+	release, err := a.acquire(ctx, Options{ProjectDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("ignored pressure did not admit: %v", err)
+	}
+	release()
+
+	held, _, err := store.Acquire(ctx, "repo-a", admission.ClassHeavy, admission.Lease{Owner: "admit@test", PID: 4242, PIDStart: "x"})
+	if err != nil || held == nil {
+		t.Fatalf("seeding the slot = %v, %v", held, err)
+	}
+	defer func() { _ = held.Release() }()
+	if r, err := a.acquire(ctx, Options{ProjectDir: t.TempDir()}); !deferred(err) || !strings.Contains(err.Error(), "admit@test") {
+		if r != nil {
+			r()
+		}
+		t.Fatalf("ignore-pressure bypassed slot exclusivity: %v", err)
+	}
+}
+
+// An invalid admission.thresholds block fails the acquire loudly instead of
+// silently falling back to the defaults.
+func TestAdapterRejectsInvalidThresholdConfig(t *testing.T) {
+	snap, none := healthySnapshot(), []string(nil)
+	a, _ := testAdapter(t, &snap, &none)
+	cfg := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(cfg, []byte("admission:\n  thresholds:\n    recover_sustain: -1m\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.configPath = func() string { return cfg }
+	if r, err := a.acquire(context.Background(), Options{ProjectDir: t.TempDir()}); err == nil || deferred(err) {
+		if r != nil {
+			r()
+		}
+		t.Fatalf("invalid config err = %v, want a hard error", err)
+	} else if !strings.Contains(err.Error(), "admission.thresholds.recover_sustain") {
+		t.Fatalf("err = %v, want the key named", err)
+	}
+}
+
 // A job's children see the nested marker, so a nested acquire runs inside
 // the held slot; release restores the environment.
 func TestAdapterNestedMarker(t *testing.T) {

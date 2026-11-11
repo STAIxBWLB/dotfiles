@@ -506,14 +506,29 @@ func (s *Store) Gate(ctx context.Context, m *Monitor, th Thresholds) (Decision, 
 	return s.GateWithPolicy(ctx, m, GatePolicy{Thresholds: th})
 }
 
+// GateResolved runs the standard policy with a resolved knob set: the
+// thresholds, and the ignore an active one-off or relax sets. The evaluation
+// still samples and records history when pressure is ignored.
+func (s *Store) GateResolved(ctx context.Context, m *Monitor, resolved ResolvedThresholds) (Decision, error) {
+	return s.GateWithPolicy(ctx, m, GatePolicy{
+		Thresholds:     resolved.Thresholds,
+		IgnorePressure: resolved.IgnorePressure,
+		IgnoreSource:   resolved.IgnoreSource,
+	})
+}
+
 // GatePolicy supplies an isolated history and optional pressure evaluator for
 // a narrowly-scoped admission policy. HistoryFile must be a basename under
-// Store.Root; the default policy uses history.json.
+// Store.Root; the default policy uses history.json. IgnorePressure admits past
+// a pressure defer while still sampling and recording history; IgnoreSource
+// labels the bypass in IgnoredReasons's companion note.
 type GatePolicy struct {
-	HistoryFile string
-	Thresholds  Thresholds
-	Snapshot    func(context.Context) PressureSnapshot
-	Evaluate    func(PressureSnapshot, Thresholds, History, time.Time) Decision
+	HistoryFile    string
+	Thresholds     Thresholds
+	Snapshot       func(context.Context) PressureSnapshot
+	Evaluate       func(PressureSnapshot, Thresholds, History, time.Time) Decision
+	IgnorePressure bool
+	IgnoreSource   string
 }
 
 // GateWithPolicy runs one locked pressure evaluation and persists its result.
@@ -564,6 +579,12 @@ func (s *Store) GateWithPolicy(ctx context.Context, m *Monitor, policy GatePolic
 		evaluate = EvaluatePressure
 	}
 	d := evaluate(snap, policy.Thresholds, hist, now)
+	// The snapshot is taken and d.Next persisted either way: an ignored
+	// pressure defer must leave the recovery streak exactly as continuous as a
+	// real one, or the gate would never recover after the bypass ends.
+	if policy.IgnorePressure {
+		d = ApplyIgnore(d, policy.IgnoreSource)
+	}
 	d.Next.LastSampleAt = now
 	if err := SaveHistory(historyPath, d.Next); err != nil {
 		return Decision{}, err

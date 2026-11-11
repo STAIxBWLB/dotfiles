@@ -263,15 +263,16 @@ func warnForwardSchema(path string, version int) {
 
 // UserState holds user-configured settings persisted to disk.
 type UserState struct {
-	SchemaVersion int               `yaml:"schema_version"`
-	Name          string            `yaml:"name"`
-	Email         string            `yaml:"email"`
-	GithubUser    string            `yaml:"github_user"`
-	Timezone      string            `yaml:"timezone"`
-	Profile       string            `yaml:"profile"`
-	Modules       UserModulesState  `yaml:"modules,omitempty"`
-	SSH           UserSSHState      `yaml:"ssh,omitempty"`
-	Secrets       SecretsUserConfig `yaml:"secrets,omitempty"`
+	SchemaVersion int                `yaml:"schema_version"`
+	Name          string             `yaml:"name"`
+	Email         string             `yaml:"email"`
+	GithubUser    string             `yaml:"github_user"`
+	Timezone      string             `yaml:"timezone"`
+	Profile       string             `yaml:"profile"`
+	Modules       UserModulesState   `yaml:"modules,omitempty"`
+	SSH           UserSSHState       `yaml:"ssh,omitempty"`
+	Secrets       SecretsUserConfig  `yaml:"secrets,omitempty"`
+	Admission     UserAdmissionState `yaml:"admission,omitempty"`
 
 	// carriedLegacy names the legacy keys the file this state was read from
 	// still used, in the order applyLegacyKeys applies them. It is unexported,

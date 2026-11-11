@@ -138,7 +138,20 @@ secrets:
   age_identity: "~/.ssh/age_key"
   age_recipients:
     - "age1..."
+admission:              # optional host-pressure gate overrides (dot admit)
+  thresholds:
+    idle_defer_below: 10        # percent; unset keys keep the policy default
+    idle_recover_at: 25
+    load_defer_frac: 1.0        # load1 at this multiple of the CPU count
+    load_recover_frac: 0.7
+    defer_sustain: 60s
+    recover_sustain: 5m
+    ws_grace: 30m
+    mem_avail_warn_pct: 10      # Linux MemAvailable percent
+    mem_avail_critical_pct: 5
 ```
+
+Each `admission.thresholds` key is optional and independent. Values are validated when the gate runs: percentages must stay within 0-100, load fractions must be above zero, and the recovery side must be no stricter than the defer side (`idle_recover_at >= idle_defer_below`, `load_recover_frac <= load_defer_frac`, `mem_avail_critical_pct <= mem_avail_warn_pct`). An invalid value fails `dot admit` and `dot admit status` with a message naming the key. For a temporary change use `dot admit relax` (see [Resource admission](maintenance.md#resource-admission-dot-admit)) rather than editing this file.
 
 ### Environment Variables
 

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/dotfiles/internal/admission"
+	"github.com/STAIxBWLB/dotfiles/internal/config"
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
 	"github.com/STAIxBWLB/dotfiles/internal/watchdog"
 )
@@ -49,6 +50,10 @@ type adapter struct {
 	resolve     func(ctx context.Context, runner *exec.Runner, dir string) (string, error)
 	parentLease func(ctx context.Context, store *admission.Store, scope, class string, childPID int) bool
 	heartbeat   time.Duration
+	// configPath names the user config file the thresholds and the relax
+	// override are read from. Nil means no config layer, which keeps tests
+	// deterministic on any host.
+	configPath func() string
 }
 
 func native() *adapter {
@@ -66,7 +71,8 @@ func native() *adapter {
 		parentLease: func(ctx context.Context, store *admission.Store, scope, class string, childPID int) bool {
 			return hasLiveParentLease(ctx, runner, store, scope, class, childPID)
 		},
-		heartbeat: admission.DefaultHeartbeatInterval,
+		heartbeat:  admission.DefaultHeartbeatInterval,
+		configPath: config.StatePath,
 	}
 }
 
@@ -183,16 +189,35 @@ func (a *adapter) acquirePolicy(ctx context.Context, opts Options, policy admiss
 	if selectedMonitor != nil {
 		monitor = selectedMonitor
 	}
+	configPath := ""
+	if a.configPath != nil {
+		configPath = a.configPath()
+	}
+	resolved, err := store.ResolveThresholds(admission.ResolveOptions{ConfigPath: configPath})
+	if err != nil {
+		return nil, err
+	}
 	// The probes are bounded on their own; a caller canceling mid-probe must
 	// not record failed telemetry into the shared history.
 	var d admission.Decision
 	if policy.HistoryFile == "" {
-		d, err = store.Gate(context.WithoutCancel(ctx), monitor, admission.DefaultThresholds())
+		// The standard policy takes the resolved thresholds (config, then the
+		// active relax override) and the one-off ignore. The verified prebuilt
+		// policy below keeps its own thresholds, but a one-off ignore still
+		// applies: `dot update` can step past the pressure gate for one run
+		// when the person asks it to.
+		monitor.Thresholds = &resolved.Thresholds
+		d, err = store.GateResolved(context.WithoutCancel(ctx), monitor, resolved)
 	} else {
+		policy.IgnorePressure = resolved.IgnorePressure
+		policy.IgnoreSource = resolved.IgnoreSource
 		d, err = store.GateWithPolicy(context.WithoutCancel(ctx), monitor, policy)
 	}
 	if err != nil {
 		return nil, err
+	}
+	if d.PressureIgnored {
+		admission.NoteIgnoredPressure(os.Stderr, d)
 	}
 	if !d.Admit {
 		return nil, &DeferredError{Reason: strings.Join(d.Reasons, "; "), prebuiltSampleRetry: d.ProfileRetry}

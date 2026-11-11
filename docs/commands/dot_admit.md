@@ -10,7 +10,9 @@ host shows memory pressure warning/critical, verifiable thermal pressure, a
 WindowServer watchdog termination inside its grace window, or CPU/load
 saturation sustained past the policy thresholds; recovery requires five
 continuous minutes of normal telemetry, and admit keeps sampling through
-that countdown within --wait. One heavy slot is held per project
+that countdown within --wait. Thresholds come from policy defaults, then the
+admission.thresholds block of ~/.config/dotfiles/config.yaml, then an active
+'dot admit relax' override. One heavy slot is held per project
 repo (shared across its worktrees, branches, and sessions); different repos
 run in parallel. --class maintenance takes the single host-wide maintenance
 slot instead. On defer the exit code is 75 (EX_TEMPFAIL) with a
@@ -24,6 +26,11 @@ process-table scan defers when such work runs in this repo or its repo is
 unknown. Use '--' before commands that collide with
 subcommand names.
 
+--ignore-pressure (or DOT_ADMISSION_IGNORE_PRESSURE=1) bypasses the pressure
+gate for this run only: the snapshot is still taken and recorded, one stderr
+line names what was bypassed, and slot exclusivity and the uncovered-work scan
+are unchanged.
+
 The child receives CARGO_BUILD_JOBS=2, RUST_TEST_THREADS=2 and GOMAXPROCS=2,
 replacing inherited values unless --no-limit-threads is set. Tool-specific
 flags (Go -p 2 -parallel 2; browser workers=1) remain the caller's choice.
@@ -31,7 +38,7 @@ flags (Go -p 2 -parallel 2; browser workers=1) remain the caller's choice.
 --dry-run previews the command without probes or state writes.
 
 ```
-dot admit [--class heavy|maintenance] [--wait 30m] [--json] -- <command> [args...] [flags]
+dot admit [--class heavy|maintenance] [--wait 30m] [--json] [--ignore-pressure] -- <command> [args...] [flags]
 ```
 
 ### Options
@@ -39,6 +46,7 @@ dot admit [--class heavy|maintenance] [--wait 30m] [--json] -- <command> [args..
 ```
       --class string       slot class: heavy (per-repo) or maintenance (host-wide) (default "heavy")
   -h, --help               help for admit
+      --ignore-pressure    Admit despite host pressure for this run (still samples and records history)
       --json               print the outcome as JSON
       --no-limit-threads   Keep inherited worker settings instead of limiting Cargo, Rust tests and Go to 2
       --project string     Checkout whose slot and working directory to use (defaults to current directory)
@@ -57,5 +65,6 @@ dot admit [--class heavy|maintenance] [--wait 30m] [--json] -- <command> [args..
 ### SEE ALSO
 
 * [dot](dot.md)	 - User environment & workspace management tool
-* [dot admit status](dot_admit_status.md)	 - Show admission owners, pressure evidence, and hysteresis state
+* [dot admit relax](dot_admit_relax.md)	 - Set or clear a temporary override of the host-pressure gate
+* [dot admit status](dot_admit_status.md)	 - Show admission owners, pressure evidence, effective thresholds and hysteresis state
 
