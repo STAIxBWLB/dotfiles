@@ -488,6 +488,30 @@ tool):
 - `<workspace>/.dotfiles/peer/hooks-disabled.txt`: the launchd labels the
   role hooks disabled, one per line, so `on_activate` re-enables only those.
 
+### Remote hosts
+
+`dot remote` writes on the host it is pointed at, never on that host's system
+paths, and it writes nothing on this machine except the admission leases under
+the existing state root (one per mirror path and one per host). Every remote
+path is either anchored at the remote user's `$HOME` or carries the host's
+`prefix`, and all of the names below are configurable in the `remote:` block:
+
+- `~/dot-remote` (`root`) — the mirrors: one directory per mirrored checkout, at
+  `<root>/<path relative to remote.local_root>`, fed by rsync and never read
+  back
+- `~/dot-remote-git` (`git_root`) — reserved for the bare repositories the
+  `verify` command pushes commits into
+- `~/dot-remote-src` (`src_root`) — reserved for the third-party clones the
+  `src` command analyzes
+- the image, named `<prefix>:latest` for a Dockerfile the host builds or the
+  configured `image.ref` for one it pulls
+- the cache volumes `<prefix>-<cache>`, one per `caches` entry, and the
+  containers `<prefix>-<path key>` a run creates and removes
+
+A run never copies anything back, and it removes the container it started on
+every exit path except a SIGKILL: after a kill the next run of that path
+removes the container left behind.
+
 ## dotfiles Must Not Write Directly
 
 - anything under any tool skill root outside the explicit peer filesystem

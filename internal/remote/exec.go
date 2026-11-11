@@ -1,0 +1,189 @@
+package remote
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	osexec "os/exec"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/STAIxBWLB/dotfiles/internal/admission"
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
+)
+
+// Execer runs one argv to completion with the given stdin, returning its exit
+// code and, when a signal ended it, that signal.
+type Execer func(ctx context.Context, argv []string, stdin io.Reader, stdout, stderr io.Writer) (int, syscall.Signal, error)
+
+// Deps are the seams one remote command runs on: where leases live, how
+// commands run, and where output goes. The zero value works for everything
+// except the lease store, so a caller that only reads config needs no wiring.
+type Deps struct {
+	Store  *admission.Store
+	Runner *exec.Runner
+	Exec   Execer
+	Now    func() time.Time
+	In     io.Reader
+	Out    io.Writer
+	Err    io.Writer
+	// LocalRsync is the rsync 3.x client every transfer uses. It is resolved
+	// before a run, never guessed here: a non-login shell puts openrsync first
+	// on macOS, and openrsync cannot serve --files-from --from0.
+	LocalRsync string
+	// Git runs one read-only git query in a local checkout and returns stdout.
+	Git func(ctx context.Context, dir string, args ...string) ([]byte, error)
+}
+
+// DefaultDeps wires the real terminal, git and the invoking user's admission
+// state root.
+func DefaultDeps(runner *exec.Runner) Deps {
+	deps := Deps{Runner: runner}
+	if root, err := admission.UserStateRoot(); err == nil {
+		deps.Store = admission.NewStore(root, runner)
+	}
+	return deps
+}
+
+func (d Deps) ex() Execer {
+	if d.Exec != nil {
+		return d.Exec
+	}
+	return execAttached
+}
+
+func (d Deps) now() time.Time {
+	if d.Now != nil {
+		return d.Now()
+	}
+	return time.Now()
+}
+
+func (d Deps) out() io.Writer {
+	if d.Out != nil {
+		return d.Out
+	}
+	return os.Stdout
+}
+
+func (d Deps) errOut() io.Writer {
+	if d.Err != nil {
+		return d.Err
+	}
+	return os.Stderr
+}
+
+func (d Deps) in() io.Reader {
+	if d.In != nil {
+		return d.In
+	}
+	return os.Stdin
+}
+
+func (d Deps) git(ctx context.Context, dir string, args ...string) ([]byte, error) {
+	if d.Git != nil {
+		return d.Git(ctx, dir, args...)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	cmd := osexec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git %s in %s: %w: %s", strings.Join(args, " "), dir, err, strings.TrimSpace(stderr.String()))
+	}
+	return out, nil
+}
+
+// capture runs one argv whose output is not the payload and returns its
+// stdout. A non-zero exit is an error carrying the stderr tail.
+func (d Deps) capture(ctx context.Context, argv []string, stdin []byte) (string, error) {
+	var stdout, stderr bytes.Buffer
+	var reader io.Reader
+	if stdin != nil {
+		reader = bytes.NewReader(stdin)
+	}
+	exit, sig, err := d.ex()(ctx, argv, reader, &stdout, &stderr)
+	if err != nil {
+		return stdout.String(), err
+	}
+	if sig != 0 {
+		return stdout.String(), fmt.Errorf("%s was interrupted by signal %d", strings.Join(argv[:1], " "), sig)
+	}
+	if exit != 0 {
+		return stdout.String(), fmt.Errorf("%s exited %d: %s", strings.Join(argv[:1], " "), exit, tail(stderr.String()))
+	}
+	return stdout.String(), nil
+}
+
+// execAttached runs argv with attached stdio and forwards SIGINT, SIGTERM and
+// SIGHUP to its process group, so a Ctrl-C reaches the runtime client and the
+// ssh under it rather than only this process.
+func execAttached(ctx context.Context, argv []string, stdin io.Reader, stdout, stderr io.Writer) (int, syscall.Signal, error) {
+	if len(argv) == 0 {
+		return 0, 0, errors.New("no command to run")
+	}
+	cmd := osexec.Command(argv[0], argv[1:]...) // #nosec G204 -- argv is this package's own construction
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, stderr
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		return 0, 0, fmt.Errorf("starting %s: %w", argv[0], err)
+	}
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	defer signal.Stop(sigCh)
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case sig := <-sigCh:
+				if s, ok := sig.(syscall.Signal); ok {
+					_ = syscall.Kill(-cmd.Process.Pid, s)
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+	var err error
+	if ctx != nil {
+		stop := make(chan struct{})
+		defer close(stop)
+		go func() {
+			select {
+			case <-ctx.Done():
+				_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+			case <-stop:
+			}
+		}()
+	}
+	err = cmd.Wait()
+	close(done)
+	if err == nil {
+		return 0, 0, nil
+	}
+	var exitErr *osexec.ExitError
+	if errors.As(err, &exitErr) {
+		if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+			return 128 + int(status.Signal()), status.Signal(), nil
+		}
+		return exitErr.ExitCode(), 0, nil
+	}
+	return 0, 0, err
+}
+
+// tail keeps the last line of a command's stderr, which is where rsync and the
+// runtimes put the sentence worth reading.
+func tail(s string) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	if len(lines) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(lines[len(lines)-1])
+}

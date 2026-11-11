@@ -164,9 +164,49 @@ admission:              # optional resource-admission overrides (dot admit)
     enabled: true
     cpu_percent: 100            # CPU-only rule; 0 turns it off
     ignore_names: []            # exact process basenames never counted
+remote:                 # optional; heavy work on another host (dot remote)
+  default: buildbox
+  hosts:
+    buildbox:
+      ssh: buildbox             # ssh destination or alias; default: the host name
+      cpus: 16                  # also the default for CARGO_BUILD_JOBS and GOMAXPROCS
+      memory: 32g
+      max_runs: 3               # concurrent runs from this machine, 1-8
+      max_load_ratio: 0.7       # defer at load1 >= ratio x CPUs; unset = no check
+      image:
+        dockerfile: ~/images/dev.Dockerfile   # built on the host from stdin
+        # ref: ghcr.io/org/dev:tag             # or pull a prebuilt image instead
+      caches:
+        cargo-registry: /usr/local/cargo/registry
+  local_root: ~/workspace       # mirror layout; default $HOME
+  exclude_extra: []             # added to the built-in excludes, never removes
 ```
 
 Every `admission` key is optional and independent; an unset key keeps the policy default. A duration written as a plain number is a count of seconds, and one too large to fit a duration is refused instead of wrapping. A duration of `0s` is a real value (`defer_sustain: 0` defers at the first over-threshold sample), distinct from leaving the key out, and it survives a state save. Values are validated when the policy resolves: percentages must stay within 0-100 and be finite, load fractions must be above zero, durations must be at or above zero, the recovery side must be no stricter than the defer side (`idle_recover_at >= idle_defer_below`, `load_recover_frac <= load_defer_frac`, `mem_avail_critical_pct <= mem_avail_warn_pct`), slot counts must be between 1 and 8, and `uncovered.cpu_percent` at or above zero. An invalid value fails `dot admit` and `dot admit relax` with a message naming the key and the config file; `dot admit status` reports the same error and still renders its sections against the defaults, because a blocked config is exactly when that view is wanted. For a temporary change use `dot admit relax --set <key>=<value>` or `--ignore <rules>` (see [Resource admission](maintenance.md#resource-admission-dot-admit)) rather than editing this file.
+
+### Remote hosts
+
+Every `remote` key is optional and nothing is enabled without a host. Each host
+needs exactly one of `image.dockerfile` (built on the host from stdin, with your
+UID and GID as build arguments) and `image.ref` (pulled). `prefix` (default
+`<user>-rdev`) is prepended to the image, volume and container names, so two
+people can share one host; `root`, `git_root` and `src_root` are relative to the
+remote `$HOME`, which is where every mirror lives.
+
+Validation names the key it refuses: an unknown `default` or
+`projects.<path>.host`, both or neither of the image keys, `max_runs` outside
+1-8, `max_load_ratio` at or below zero, a `root` that is absolute or contains
+`..`, a `memory` that is not a size like `32g`, a `caches` target that is not an
+absolute path, an `env` key that is not a variable name, and a `runtime` other
+than `docker` or `podman`. `local_root` (default `$HOME`) sets the layout: a
+checkout maps to `<root>/<path relative to local_root>` on the host and to
+`/work/<the same>` in the container, and `dot remote run` refuses `local_root`
+itself and `$HOME`. `exclude_extra` adds to the built-in exclude list; no
+configured entry can remove a built-in one. `projects` keys are local paths, the
+longest matching prefix wins, and its `verify`, `base` and `host` travel with
+every checkout under it. The block is carried by `dot config export` like the
+rest of the state document. See [Remote hosts](servers.md#remote-hosts) for the
+workflow.
 
 ### Environment Variables
 
@@ -180,7 +220,7 @@ Every `admission` key is optional and independent; an unset key keeps the policy
 | `DOTFILES_HOME` | Override home directory |
 | `GITHUB_TOKEN` | GitHub API token for `dot update`; avoids the unauthenticated API rate limit (HTTP 403) |
 | `DOT_CONTAINER_TRACE` | Set to `1` to print the backend argv the `container` shim runs |
-| `DOT_ADMISSION_IGNORE` | Rules to step past for one admitted run: `pressure`, `slot`, `uncovered`, or `all` (comma-separated); honored by every wrapped caller |
+| `DOT_ADMISSION_IGNORE` | Rules to step past for one admitted run: `pressure`, `slot`, `uncovered`, `remote-load`, or `all` (comma-separated); honored by every wrapped caller |
 | `DOT_SCHEMA_FORCE` | Set to `1` to overwrite a state file written by a newer `dot`, dropping any keys this binary does not know |
 
 ## Global flags

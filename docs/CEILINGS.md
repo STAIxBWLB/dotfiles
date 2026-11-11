@@ -327,3 +327,19 @@ concurrent heavy leases is far past any real build and test mix on a workstation
 or a GPU host, and the pressure gate defers new work long before that many are
 useful. Revisit this if a shared host needs more concurrent leases: raise the
 constant and replace the ordered scan with an index bitmap.
+
+## Cross-machine remote runs per host
+
+`internal/remote` counts a host's runs in the admission store's per-host scope
+(`HostScope`, one scope per host name) against `remote.hosts.<name>.max_runs`,
+and the store lives in this machine's state root. Two machines pointing at one
+host therefore hold two independent counts and can each start `max_runs` jobs;
+nothing on the host enforces the total. What the host does enforce is one run
+per checkout path, because the container name is derived from the local path
+(`PathKey`), so the runtime refuses a second container of the same name even
+when it was started from another machine.
+
+One operator on a shared host is the ordinary case, and this machine is the
+only place that holds the leases. Revisit this when two machines sharing one
+host regularly collide: move the count to the host as lease files under
+`<root>`, which also gives the load probe a place to record what it saw.
