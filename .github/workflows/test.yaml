@@ -393,7 +393,7 @@ jobs:
     env:
       TAG: dotfiles-test:linux
       ALL_MODULES: "packages shell node git ssh terminal tmux ai conda"
-      ALL_SCENARIOS: "dry-run-all-profiles init-and-apply idempotency server-profile upgrade-check home-override workspace profile-snapshot sync install-script install-security guard dry-run-empty-home differential secrets noindex ssh-loopback"
+      ALL_SCENARIOS: "dry-run-all-profiles init-and-apply idempotency server-profile upgrade-check home-override workspace profile-snapshot sync install-script install-security guard dry-run-empty-home differential secrets noindex ssh-loopback remote"
     steps:
       - uses: actions/checkout@v7
       # Shards are carved out of the full lists, so a module or scenario added
