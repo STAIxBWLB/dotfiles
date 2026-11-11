@@ -42,6 +42,12 @@ var admitNewMonitor = func(runner *exec.Runner, home string) *admission.Monitor 
 // fixed inventory instead of the real process table.
 var admitFindUncovered = admission.FindUncovered
 
+// admitScanClock is the clock read once the uncovered scan returns. The scan is
+// the slowest step between a policy resolve and the decision it feeds (ps plus
+// lsof on a busy host), so a test sets this to put an override's expiry inside
+// that window.
+var admitScanClock = time.Now
+
 // admitGate is the seam for gate evaluation: tests substitute scripted
 // decisions instead of probing the host.
 var admitGate = func(ctx context.Context, store *admission.Store, m *admission.Monitor, policy admission.GatePolicy) (admission.Decision, error) {
@@ -290,6 +296,7 @@ func runAdmit(cmd *cobra.Command, args []string) error {
 	admission.NoteOverflowSlot(p.Err, slot.Lease(), capacity, policy.IgnoreSource)
 	if slot.Lease().Index >= capacity {
 		bypassed.rules = admissionIgnoreRules(bypassed.rules, admission.RuleSlot)
+		bypassed.slot(admission.OverflowSlotReason(capacity, slot.Lease().Index, policy.IgnoreSource))
 	}
 
 	// The wait may have been long, so gate again before spending the slot on work
@@ -320,10 +327,21 @@ func runAdmit(cmd *cobra.Command, args []string) error {
 	}
 	jobs, scanErr := admitFindUncovered(ctx, cwd, class == admission.ClassMaintenance, admission.LeasedPIDs(store), policy.Uncovered)
 	if scanErr == nil && len(jobs) > 0 && policy.Ignore.Uncovered {
-		admission.NoteIgnoredUncovered(p.Err, jobs, policy.IgnoreSource)
-		bypassed.rules = admissionIgnoreRules(bypassed.rules, admission.RuleUncovered)
-		bypassed.uncovered(jobs)
-		jobs = nil
+		// The scan outlasts the settings it ran under by seconds, so an override that
+		// ended inside that window must not let its findings through: read the policy
+		// in force now and decide the bypass on it, keeping the jobs as found.
+		now := admitScanClock()
+		if policy.OverrideExpired(now) {
+			if policy, err = resolveNow(); err != nil {
+				return err
+			}
+		}
+		if policy.Ignore.Uncovered && !policy.OverrideExpired(now) {
+			admission.NoteIgnoredUncovered(p.Err, jobs, policy.IgnoreSource)
+			bypassed.rules = admissionIgnoreRules(bypassed.rules, admission.RuleUncovered)
+			bypassed.uncovered(jobs)
+			jobs = nil
+		}
 	}
 	if scanErr != nil || len(jobs) > 0 {
 		reason := "uncovered heavyweight work: " + strings.Join(jobs, ", ")

@@ -385,3 +385,22 @@ func TestUncoveredSettingsIgnoredAndCoverage(t *testing.T) {
 		t.Errorf("coverage = %q, want the disabled wording", got)
 	}
 }
+
+// A policy resolved from no override has nothing that can expire, so a config or
+// one-off bypass stays in force; a policy resolved from an override expires on
+// that override's clock.
+func TestPolicyOverrideExpired(t *testing.T) {
+	base := time.Date(2026, 11, 12, 9, 0, 0, 0, time.UTC)
+	plain := DefaultPolicy()
+	if plain.OverrideExpired(base.Add(1000 * time.Hour)) {
+		t.Error("a policy with no override reported an expiry")
+	}
+	live := plain
+	live.Relax = &RelaxOverride{SetAt: base, ExpiresAt: base.Add(time.Minute)}
+	if live.OverrideExpired(base.Add(time.Minute - time.Second)) {
+		t.Error("a live override reported an expiry")
+	}
+	if !live.OverrideExpired(base.Add(time.Minute)) {
+		t.Error("an override at its expiry still applied")
+	}
+}

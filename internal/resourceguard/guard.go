@@ -71,6 +71,10 @@ type adapter struct {
 	// are read from. Nil means no config layer, which keeps tests deterministic
 	// on any host.
 	configPath func() string
+	// now is the clock a slow step's post-check reads: the uncovered scan
+	// outlasts the policy it ran under, so a test sets this to put an override's
+	// expiry inside the scan window. Nil is the real clock.
+	now func() time.Time
 }
 
 func native() *adapter {
@@ -360,11 +364,29 @@ func (a *adapter) scanUncovered(ctx context.Context, dir string, maintenance boo
 	if err != nil || len(jobs) == 0 {
 		return jobs, err
 	}
-	if policy.Ignore.Uncovered {
-		admission.NoteIgnoredUncovered(os.Stderr, jobs, policy.IgnoreSource)
-		return nil, nil
+	if !policy.Ignore.Uncovered {
+		return jobs, nil
 	}
-	return jobs, nil
+	// The scan is the slowest step between the resolve above and this decision, so
+	// an override that ended inside it must not let its findings through: resolve
+	// again and judge the bypass on the policy in force now, keeping the jobs as
+	// found. The clock is read here rather than taken from the fresh resolve,
+	// because the resolver prunes on its own clock and can still see the override
+	// as live when the scan outlasted it.
+	now := time.Now()
+	if a.now != nil {
+		now = a.now()
+	}
+	if policy.OverrideExpired(now) {
+		if policy, err = a.policy(); err != nil {
+			return nil, err
+		}
+	}
+	if !policy.Ignore.Uncovered || policy.OverrideExpired(now) {
+		return jobs, nil
+	}
+	admission.NoteIgnoredUncovered(os.Stderr, jobs, policy.IgnoreSource)
+	return nil, nil
 }
 
 // keepAlive heartbeats slot until the returned func is called.

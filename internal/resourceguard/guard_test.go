@@ -299,6 +299,48 @@ func TestAdapterIgnoreUncoveredPassesScan(t *testing.T) {
 	release()
 }
 
+// The uncovered bypass is read from the policy resolved before the scan, and the
+// scan is the slowest step in an acquire. An override that ends inside it must
+// not let the jobs it found through, so the bypass is judged on the policy in
+// force when the scan returns.
+func TestAdapterUncoveredOverrideExpiringDuringTheScanDefers(t *testing.T) {
+	snap := healthySnapshot()
+	jobs := []string{"make(pid=4242,parent=1,repo=repo-a)"}
+	a, store := testAdapter(t, &snap, &jobs)
+	if err := store.SaveRelaxOverride(admission.RelaxOverride{
+		SetAt:     time.Now(),
+		ExpiresAt: time.Now().Add(time.Minute),
+		Ignore:    []string{"uncovered"},
+	}); err != nil {
+		t.Fatalf("seeding the override: %v", err)
+	}
+	// The scan outlasts the override: the gate and the pre-scan resolve saw it live,
+	// and the clock read after the scan is past its expiry.
+	a.now = func() time.Time { return time.Now().Add(2 * time.Minute) }
+
+	ctx := context.Background()
+	release, err := a.acquire(ctx, Options{ProjectDir: t.TempDir()})
+	if !deferred(err) || !strings.Contains(err.Error(), "make(pid=4242") {
+		if release != nil {
+			release()
+		}
+		t.Fatalf("err = %v, want the uncovered defer after the override expired during the scan", err)
+	}
+	if leases, _ := store.ListLeases(); len(leases) != 0 {
+		t.Errorf("leases = %d after the defer, want the slot released", len(leases))
+	}
+
+	// Non-vacuity arm: with the clock inside the override's life the same scan is
+	// bypassed and the acquire succeeds, so the row above is not green merely because
+	// the fixture never had a bypass to lose.
+	a.now = nil
+	release, err = a.acquire(ctx, Options{ProjectDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("acquire with the override still live = %v", err)
+	}
+	release()
+}
+
 // AC2 (#412): the config's slot capacity admits a second concurrent job without
 // any bypass, and the scan settings reach the seam.
 func TestAdapterConfigCapacityAndScanSettings(t *testing.T) {

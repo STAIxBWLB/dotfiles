@@ -1325,4 +1325,76 @@ func TestAdmitIgnoreSlotLandsInAnOverflowIndex(t *testing.T) {
 	if !strings.Contains(errOut, `"ignored"`) || !strings.Contains(errOut, `"slot"`) {
 		t.Errorf("stderr = %q, want the bypassed rule in the JSON record", errOut)
 	}
+	// The rule name says which limit gave way; the reason says what the bypass cost,
+	// which is the overflow slot this job now occupies (§4). The notice above carries
+	// the same sentence, so read the record rather than the raw stderr.
+	reasons := admitRecord(t, errOut)["ignored_reasons"]
+	found := false
+	if list, ok := reasons.([]any); ok {
+		for _, entry := range list {
+			if text, _ := entry.(string); strings.Contains(text, "slot capacity 1 exceeded") &&
+				strings.Contains(text, "holding overflow slot") {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Errorf("ignored_reasons = %v, want the overflow-slot sentence the notice prints", reasons)
+	}
+}
+
+// admitRecord decodes the completion JSON record a --json run writes: the record
+// is indented and sits after any notices, so it is read from its first brace.
+func admitRecord(t *testing.T, output string) map[string]any {
+	t.Helper()
+	start := strings.Index(output, "{")
+	if start < 0 {
+		t.Fatalf("no JSON record in %q", output)
+	}
+	var record map[string]any
+	if err := json.Unmarshal([]byte(output[start:]), &record); err != nil {
+		t.Fatalf("decoding the JSON record: %v\noutput=%s", err, output)
+	}
+	return record
+}
+
+// The uncovered settings come from the policy resolved before the scan, and the
+// scan is the slowest step in the run (ps plus lsof). An override that ends
+// inside it must not let the jobs it found through, so the bypass is decided on
+// the policy in force when the scan returns.
+func TestAdmitRelaxIgnoreUncoveredExpiringDuringTheScanDefers(t *testing.T) {
+	admitSandbox(t)
+	stubAdmitMonitor(t, healthyAdmitSnapshot())
+	stubAdmitScan(t, []string{"make(pid=4242,parent=1,repo=repo-a)"}, nil)
+	if _, _, err := runDotForTest("admit", "relax", "--for", "10m", "--ignore", "uncovered"); err != nil {
+		t.Fatalf("setting the override: %v", err)
+	}
+
+	// The scan outlasts the override: the gate and the pre-scan resolve saw it live,
+	// and the clock read after the scan is past its expiry.
+	old := admitScanClock
+	admitScanClock = func() time.Time { return time.Now().Add(11 * time.Minute) }
+	t.Cleanup(func() { admitScanClock = old })
+
+	out, errOut, err := runDotForTest("admit", "--json", "--wait", "0", "--", "true")
+	var exitErr *ExitCodeError
+	if !errors.As(err, &exitErr) || exitErr.Code != ExitDeferred {
+		t.Fatalf("err = %v (stderr=%s), want the uncovered defer after the override expired during the scan", err, errOut)
+	}
+	// A defer runs no child, so its JSON record stays on stdout.
+	if !strings.Contains(out+errOut, "uncovered heavyweight work: make(pid=4242,parent=1,repo=repo-a)") {
+		t.Errorf("out = %q\nstderr=%s, want the jobs the scan found as the reason", out, errOut)
+	}
+
+	// Non-vacuity arm: with the clock still inside the override's life the same scan
+	// is bypassed and the run proceeds, so the row above is not green merely because
+	// the fixture never had a bypass to lose.
+	admitScanClock = old
+	_, errOut, err = runDotForTest("admit", "--json", "--wait", "0", "--", "true")
+	if err != nil {
+		t.Fatalf("admit with the override still live = %v\nstderr=%s", err, errOut)
+	}
+	if !strings.Contains(errOut, "uncovered heavy work ignored") {
+		t.Errorf("stderr = %q, want the ignored findings", errOut)
+	}
 }

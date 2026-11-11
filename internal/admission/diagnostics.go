@@ -43,17 +43,24 @@ func NoteIgnoredUncovered(w io.Writer, jobs []string, source string) {
 	fmt.Fprintf(w, "admission: uncovered heavy work ignored (%s): %s\n", source, strings.Join(jobs, ", "))
 }
 
+// OverflowSlotReason is the sentence a slot bypass reports: the job is not
+// leaseless, and the person should know it is running next to the work the
+// limit was protecting. The stderr notice and the JSON bypass reason share it,
+// so the two cannot drift.
+func OverflowSlotReason(capacity, index int, source string) string {
+	if source == "" {
+		source = "ignore"
+	}
+	return fmt.Sprintf("slot capacity %d exceeded (%s): holding overflow slot %d", capacity, source, index)
+}
+
 // NoteOverflowSlot writes the line a slot bypass prints when it holds a lease
-// past the configured capacity: the job is not leaseless, and the person should
-// know it is running next to the work the limit was protecting.
+// past the configured capacity.
 func NoteOverflowSlot(w io.Writer, lease Lease, capacity int, source string) {
 	if lease.Index < capacity || w == nil {
 		return
 	}
-	if source == "" {
-		source = "ignore"
-	}
-	fmt.Fprintf(w, "admission: slot capacity %d exceeded (%s): holding overflow slot %d\n", capacity, source, lease.Index)
+	fmt.Fprintln(w, "admission: "+OverflowSlotReason(capacity, lease.Index, source))
 }
 
 // SlotBusyReason names the limit a slot acquirer hit and who holds it. When the

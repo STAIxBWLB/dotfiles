@@ -1,6 +1,7 @@
 package admission
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -124,5 +125,22 @@ func TestBuildBundleAlwaysCarriesTheNote(t *testing.T) {
 	}
 	if b.Owners == nil {
 		t.Error("owners must serialize as [], not null")
+	}
+}
+
+// The stderr notice and the JSON bypass reason must be one sentence: the notice a
+// person reads and the machine record a script reads describe the same lease.
+func TestOverflowSlotReasonIsTheNoticeSentence(t *testing.T) {
+	var buf bytes.Buffer
+	NoteOverflowSlot(&buf, Lease{Index: 2}, 1, "")
+	want := "admission: " + OverflowSlotReason(1, 2, "") + "\n"
+	if buf.String() != want {
+		t.Errorf("notice = %q, want %q", buf.String(), want)
+	}
+	if got := OverflowSlotReason(1, 2, ""); got != "slot capacity 1 exceeded (ignore): holding overflow slot 2" {
+		t.Errorf("reason = %q, want the sentence naming the capacity, source and index", got)
+	}
+	if got := OverflowSlotReason(2, 3, SourceRelax); !strings.Contains(got, "("+SourceRelax+")") {
+		t.Errorf("reason = %q, want the relax source named", got)
 	}
 }

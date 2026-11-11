@@ -61,6 +61,16 @@ func (b *bypass) uncovered(jobs []string) {
 	}
 }
 
+// slot records a capacity bypass: the run holds a lease past the capacity, and
+// the JSON record carries the sentence the stderr notice prints. A rule name
+// alone would tell a reader which limit was stepped past but not what it cost,
+// which is the overflow slot the job now occupies.
+func (b *bypass) slot(reason string) {
+	if !slices.Contains(b.reasons, reason) {
+		b.reasons = append(b.reasons, reason)
+	}
+}
+
 // annotate adds the bypass keys to a JSON record when anything was bypassed.
 func (b bypass) annotate(record map[string]any) {
 	if len(b.rules) > 0 {

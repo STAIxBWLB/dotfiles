@@ -34,6 +34,18 @@ type RelaxOverride struct {
 // Expired reports whether the override no longer applies at now.
 func (r RelaxOverride) Expired(now time.Time) bool { return !now.Before(r.ExpiresAt) }
 
+// OverrideExpired reports whether the relax override this policy was resolved
+// from has ended by now. A policy with no override never expires, so a bypass
+// that came from the config or a one-off flag stays in force.
+//
+// It exists because a caller that resolved early and acts after a slow step (a
+// probe, a slot wait, the uncovered scan) must judge its bypass on the clock,
+// not only on the fresh resolve: the resolver's own clock can still see the
+// override as live when the step outlasted it.
+func (p Policy) OverrideExpired(now time.Time) bool {
+	return p.Relax != nil && p.Relax.Expired(now)
+}
+
 // IgnoreSet parses the stored rule names.
 func (r RelaxOverride) IgnoreSet() (IgnoreSet, error) {
 	set, err := ParseIgnoreSet(joinRules(r.Ignore))
