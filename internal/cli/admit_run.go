@@ -9,6 +9,7 @@ import (
 	osexec "os/exec"
 	"os/signal"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -22,6 +23,63 @@ import (
 
 // The run side of `dot admit`: lease identity, process launch, heartbeat,
 // signal forwarding. The gate and slot acquisition live in admit_cmd.go.
+
+// bypass records what one run stepped past, for the stderr notes and the JSON
+// records: the rules, and the pressure reasons a bypassed defer held. The zero
+// value means nothing was bypassed, and then no key is added at all, so an
+// ordinary run's record and outcome stay byte-identical.
+type bypass struct {
+	rules   []string
+	reasons []string
+}
+
+// pressure records a gate decision that admitted past a pressure defer. A run
+// gates twice when it waits for a slot, so the rules and reasons accumulate
+// without repeating: the record names everything the run stepped past, once.
+func (b *bypass) pressure(p *Printer, d admission.Decision) {
+	if !d.PressureIgnored {
+		return
+	}
+	admission.NoteIgnoredPressure(p.Err, d)
+	for _, rule := range d.Ignored {
+		b.rules = admissionIgnoreRules(b.rules, rule)
+	}
+	for _, reason := range d.IgnoredReasons {
+		if !slices.Contains(b.reasons, reason) {
+			b.reasons = append(b.reasons, reason)
+		}
+	}
+}
+
+// uncovered records what a bypassed scan found. The findings are what the rule
+// would have deferred on, so the JSON record names them instead of only printing
+// them on stderr.
+func (b *bypass) uncovered(jobs []string) {
+	reason := "uncovered heavyweight work: " + strings.Join(jobs, ", ")
+	if !slices.Contains(b.reasons, reason) {
+		b.reasons = append(b.reasons, reason)
+	}
+}
+
+// slot records a capacity bypass: the run holds a lease past the capacity, and
+// the JSON record carries the sentence the stderr notice prints. A rule name
+// alone would tell a reader which limit was stepped past but not what it cost,
+// which is the overflow slot the job now occupies.
+func (b *bypass) slot(reason string) {
+	if !slices.Contains(b.reasons, reason) {
+		b.reasons = append(b.reasons, reason)
+	}
+}
+
+// annotate adds the bypass keys to a JSON record when anything was bypassed.
+func (b bypass) annotate(record map[string]any) {
+	if len(b.rules) > 0 {
+		record["ignored"] = b.rules
+	}
+	if len(b.reasons) > 0 {
+		record["ignored_reasons"] = b.reasons
+	}
+}
 
 // runAdmittedChild executes the wrapped command with stdio and signal
 // forwarding, a heartbeat goroutine while a slot is held, and the nested-run
@@ -37,7 +95,7 @@ import (
 // payload, and mixing the JSON object into it would corrupt the stream for
 // downstream consumers (the process exit code is the machine-readable
 // result). Defer outcomes never run a child, so they stay on stdout.
-func runAdmittedChild(cmd *cobra.Command, runner *exec.Runner, args []string, scope, class string, slot *admission.Slot, asJSON bool) error {
+func runAdmittedChild(cmd *cobra.Command, runner *exec.Runner, args []string, scope, class string, slot *admission.Slot, asJSON bool, bypassed bypass) error {
 	ctx := cmd.Context()
 	p := printerFrom(cmd)
 	child := osexec.Command(args[0], args[1:]...) // #nosec G204 -- the command is the user's own invocation
@@ -118,12 +176,14 @@ func runAdmittedChild(cmd *cobra.Command, runner *exec.Runner, args []string, sc
 		}
 	}
 	if asJSON {
-		data, err := json.MarshalIndent(map[string]any{
+		record := map[string]any{
 			"outcome":   "completed",
 			"scope":     scope,
 			"class":     class,
 			"exit_code": exitCode,
-		}, "", "  ")
+		}
+		bypassed.annotate(record)
+		data, err := json.MarshalIndent(record, "", "  ")
 		if err != nil {
 			return err
 		}
@@ -148,7 +208,7 @@ func minDuration(a, b time.Duration) time.Duration {
 
 // deferExit prints the defer outcome (JSON when asked) and returns the
 // EX_TEMPFAIL error main turns into exit 75.
-func deferExit(p *Printer, scope, class, owner string, d admission.Decision, asJSON bool) error {
+func deferExit(p *Printer, scope, class, owner string, d admission.Decision, asJSON bool, bypassed bypass) error {
 	reason := strings.Join(d.Reasons, "; ")
 	outcome := admission.DeferOutcome{
 		Outcome:           "deferred",
@@ -157,6 +217,8 @@ func deferExit(p *Printer, scope, class, owner string, d admission.Decision, asJ
 		Owner:             owner,
 		Reason:            reason,
 		RetryAfterSeconds: int64(d.RetryAfter / time.Second),
+		Ignored:           bypassed.rules,
+		IgnoredReasons:    bypassed.reasons,
 	}
 	if asJSON {
 		data, err := json.MarshalIndent(outcome, "", "  ")

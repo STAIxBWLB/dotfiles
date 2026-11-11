@@ -1,9 +1,11 @@
 package admission
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -31,19 +33,53 @@ func writeOrCompareGolden(t *testing.T, name string, got []byte) {
 }
 
 func TestDeferOutcomeJSON_Golden(t *testing.T) {
+	// The reason comes from the producer, not from a literal: the golden is the
+	// contract `dot admit --json` prints, so a reworded defer reason must show up
+	// here instead of drifting away from the record.
+	holder := &Lease{
+		Owner:      "builder@mac-mini",
+		PID:        4242,
+		AcquiredAt: time.Date(2026, 9, 27, 11, 30, 0, 0, time.FixedZone("KST", 9*3600)),
+	}
 	outcome := DeferOutcome{
 		Outcome:           "deferred",
 		Scope:             "/Users/u/work/repo/.git",
 		Class:             ClassHeavy,
 		Owner:             "builder@mac-mini",
-		Reason:            "slot busy: heavy class held by builder@mac-mini (pid 4242, since 2026-09-27T11:30:00+09:00)",
+		Reason:            SlotBusyReason(ClassHeavy, holder, 1, false),
 		RetryAfterSeconds: 15,
+		Ignored:           []string{RuleSlot},
+		IgnoredReasons:    []string{"memory available 3% is below the 5% critical bound"},
 	}
 	data, err := json.MarshalIndent(outcome, "", "  ")
 	if err != nil {
 		t.Fatal(err)
 	}
 	writeOrCompareGolden(t, "defer_outcome.json.golden", append(data, '\n'))
+}
+
+// A defer with the slot bypass in play means the overflow headroom ran out too,
+// so the reason names the combined limit: capacity alone would tell the person
+// the wrong number to raise.
+func TestSlotBusyReasonNamesTheOverflowAllowance(t *testing.T) {
+	holder := &Lease{Owner: "builder@mac-mini", PID: 4242, AcquiredAt: diagT0}
+	plain := SlotBusyReason(ClassHeavy, holder, 2, false)
+	if !strings.Contains(plain, "slot limit 2 reached") {
+		t.Errorf("plain reason = %q, want the capacity named", plain)
+	}
+	if strings.Contains(plain, "overflow") {
+		t.Errorf("plain reason = %q, want no overflow wording without the bypass", plain)
+	}
+	if !strings.Contains(plain, "builder@mac-mini holds pid 4242") {
+		t.Errorf("plain reason = %q, want the holder named", plain)
+	}
+	bypass := SlotBusyReason(ClassHeavy, holder, 2, true)
+	if !strings.Contains(bypass, "slot limit 10 reached (capacity 2 + 8 overflow)") {
+		t.Errorf("bypass reason = %q, want capacity 2 plus the 8 overflow slots", bypass)
+	}
+	if leaked := SlotBusyReason(ClassHeavy, nil, 1, false); leaked != "slot busy: heavy slot limit 1 reached" {
+		t.Errorf("holder-less reason = %q", leaked)
+	}
 }
 
 func TestBuildBundleJSON_Golden(t *testing.T) {
@@ -89,5 +125,22 @@ func TestBuildBundleAlwaysCarriesTheNote(t *testing.T) {
 	}
 	if b.Owners == nil {
 		t.Error("owners must serialize as [], not null")
+	}
+}
+
+// The stderr notice and the JSON bypass reason must be one sentence: the notice a
+// person reads and the machine record a script reads describe the same lease.
+func TestOverflowSlotReasonIsTheNoticeSentence(t *testing.T) {
+	var buf bytes.Buffer
+	NoteOverflowSlot(&buf, Lease{Index: 2}, 1, "")
+	want := "admission: " + OverflowSlotReason(1, 2, "") + "\n"
+	if buf.String() != want {
+		t.Errorf("notice = %q, want %q", buf.String(), want)
+	}
+	if got := OverflowSlotReason(1, 2, ""); got != "slot capacity 1 exceeded (ignore): holding overflow slot 2" {
+		t.Errorf("reason = %q, want the sentence naming the capacity, source and index", got)
+	}
+	if got := OverflowSlotReason(2, 3, SourceRelax); !strings.Contains(got, "("+SourceRelax+")") {
+		t.Errorf("reason = %q, want the relax source named", got)
 	}
 }

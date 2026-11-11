@@ -9,7 +9,8 @@ import (
 )
 
 // PrebuiltSafetyWindow is the minimum observed interval required before a
-// verified native prebuilt update may use the warning-tolerant profile.
+// verified native prebuilt update may use the warning-tolerant profile. It is
+// the default of the configurable prebuilt.safety_window.
 const PrebuiltSafetyWindow = 30 * time.Second
 
 // PrebuiltHistoryFile separates short update decisions from heavy-work
@@ -17,7 +18,7 @@ const PrebuiltSafetyWindow = 30 * time.Second
 const PrebuiltHistoryFile = "history-prebuilt.json"
 
 // PrebuiltThresholds uses immediate hard blockers and lets the independent
-// 30-second swap-quiet window provide continuous recovery for this operation.
+// safety window provide continuous recovery for this operation.
 func PrebuiltThresholds() Thresholds {
 	th := DefaultThresholds()
 	th.IdleDeferBelow = 30
@@ -27,6 +28,21 @@ func PrebuiltThresholds() Thresholds {
 	th.DeferSustain = 0
 	th.RecoverSustain = 0
 	return th
+}
+
+// PrebuiltPolicy is the verified prebuilt update profile: its own thresholds
+// and its own quiet window. A config change to one profile never leaks into the
+// other, which is why this is a block of its own rather than a multiplied view
+// of the pressure threshold set.
+type PrebuiltPolicy struct {
+	Thresholds   Thresholds
+	SafetyWindow time.Duration
+}
+
+// DefaultPrebuiltPolicy is the profile as it shipped: hardened thresholds and a
+// 30-second swap-quiet window.
+func DefaultPrebuiltPolicy() PrebuiltPolicy {
+	return PrebuiltPolicy{Thresholds: PrebuiltThresholds(), SafetyWindow: PrebuiltSafetyWindow}
 }
 
 // SnapshotPrebuilt gathers the ordinary pressure probes and cumulative VM
@@ -62,6 +78,12 @@ func SnapshotPrebuilt(ctx context.Context, m *Monitor) PressureSnapshot {
 // critical thermal state, recent WindowServer events, CPU limits, and any
 // swap activity remain hard deferrals.
 func EvaluatePrebuiltPressure(snap PressureSnapshot, th Thresholds, hist History, now time.Time) Decision {
+	return EvaluatePrebuiltPressureWithWindow(snap, th, hist, now, PrebuiltSafetyWindow)
+}
+
+// EvaluatePrebuiltPressureWithWindow is EvaluatePrebuiltPressure with the
+// quiet window the caller's resolved policy asks for (prebuilt.safety_window).
+func EvaluatePrebuiltPressureWithWindow(snap PressureSnapshot, th Thresholds, hist History, now time.Time, window time.Duration) Decision {
 	th.DeferSustain = 0
 	th.RecoverSustain = 0
 	check := snap
@@ -116,7 +138,7 @@ func EvaluatePrebuiltPressure(snap PressureSnapshot, th Thresholds, hist History
 		d.Next.PrebuiltSwapAt = now
 		d.Admit = false
 		d.ProfileRetry = true
-		d.Reasons = []string{"prebuilt safety window needs 30 seconds without swap activity"}
+		d.Reasons = []string{"prebuilt safety window needs " + safetyWindowText(window) + " without swap activity"}
 		d.RetryAfter = 15 * time.Second
 		return d
 	}
@@ -126,15 +148,15 @@ func EvaluatePrebuiltPressure(snap PressureSnapshot, th Thresholds, hist History
 		d.Next.PrebuiltSwapAt = now
 		d.Admit = false
 		d.ProfileRetry = true
-		d.Reasons = []string{"swap activity; restarting the 30-second safety window"}
-		d.RetryAfter = PrebuiltSafetyWindow
+		d.Reasons = []string{"swap activity; restarting the " + safetyWindowLabel(window) + " safety window"}
+		d.RetryAfter = window
 		return d
 	}
-	remaining := PrebuiltSafetyWindow - now.Sub(hist.PrebuiltSwapAt)
+	remaining := window - now.Sub(hist.PrebuiltSwapAt)
 	if remaining > 0 {
 		d.Admit = false
 		d.ProfileRetry = true
-		d.Reasons = []string{"prebuilt safety window needs 30 seconds without swap activity"}
+		d.Reasons = []string{"prebuilt safety window needs " + safetyWindowText(window) + " without swap activity"}
 		d.RetryAfter = remaining
 		return d
 	}
@@ -145,6 +167,23 @@ func EvaluatePrebuiltPressure(snap PressureSnapshot, th Thresholds, hist History
 		d.Reasons = append(d.Reasons, "allowed memory warning under verified prebuilt policy")
 	}
 	return d
+}
+
+// safetyWindowText spells the window in a reason line: the default keeps the
+// wording this profile has always used, so an unconfigured host reads exactly
+// as before.
+func safetyWindowText(window time.Duration) string {
+	if window == PrebuiltSafetyWindow {
+		return "30 seconds"
+	}
+	return window.String()
+}
+
+func safetyWindowLabel(window time.Duration) string {
+	if window == PrebuiltSafetyWindow {
+		return "30-second"
+	}
+	return window.String()
 }
 
 func parseDarwinSwapStats(output string) (swapInBytes, swapOutBytes uint64, ok bool) {

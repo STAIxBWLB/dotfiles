@@ -38,7 +38,9 @@ func testAdapterScan(t *testing.T, snap *admission.PressureSnapshot, uncovered *
 		monitor: func() *admission.Monitor {
 			return &admission.Monitor{GOOS: "darwin", SnapshotFunc: func(context.Context, *admission.Monitor) admission.PressureSnapshot { return *snap }}
 		},
-		uncovered: func(context.Context, string, bool, []int) ([]string, error) { return *uncovered, *scanErr },
+		uncovered: func(context.Context, string, bool, []int, admission.UncoveredSettings) ([]string, error) {
+			return *uncovered, *scanErr
+		},
 		lease: func(_ context.Context, _ *exec.Runner, dir string) (admission.Lease, error) {
 			return admission.Lease{Owner: "adapter@test", PID: os.Getpid(), PIDStart: "Mon Sep 28 01:00:00 2026", CWD: dir}, nil
 		},
@@ -163,6 +165,7 @@ func TestNativeUsesUserStateRoot(t *testing.T) {
 }
 
 func TestAdapterDefersOnPressure(t *testing.T) {
+	t.Setenv(admission.IgnoreEnv, "") // a shell with the bypass exported must not flip this
 	snap, none := healthySnapshot(), []string(nil)
 	snap.MemoryLevel = admission.MemoryCritical
 	a, _ := testAdapter(t, &snap, &none)
@@ -171,6 +174,302 @@ func TestAdapterDefersOnPressure(t *testing.T) {
 			r()
 		}
 		t.Fatalf("memory pressure did not defer: %v", err)
+	}
+}
+
+// AC4 (#412): DOT_ADMISSION_IGNORE=pressure lets a resourceguard caller step
+// past the pressure deferral for one run, but never past a busy slot, and the
+// variable reaches the verified prebuilt profile too.
+func TestAdapterIgnorePressurePassesPressureNotBusySlot(t *testing.T) {
+	t.Setenv(admission.IgnoreEnv, "pressure")
+	snap, none := healthySnapshot(), []string(nil)
+	snap.MemoryLevel = admission.MemoryCritical
+	a, store := testAdapter(t, &snap, &none)
+	ctx := context.Background()
+
+	release, err := a.acquire(ctx, Options{ProjectDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("ignored pressure did not admit: %v", err)
+	}
+	release()
+
+	held, _, err := store.Acquire(ctx, "repo-a", admission.ClassHeavy, admission.Lease{Owner: "admit@test", PID: 4242, PIDStart: "x"})
+	if err != nil || held == nil {
+		t.Fatalf("seeding the slot = %v, %v", held, err)
+	}
+	defer func() { _ = held.Release() }()
+	if r, err := a.acquire(ctx, Options{ProjectDir: t.TempDir()}); !deferred(err) || !strings.Contains(err.Error(), "admit@test") {
+		if r != nil {
+			r()
+		}
+		t.Fatalf("a pressure-only ignore bypassed slot exclusivity: %v", err)
+	}
+}
+
+// AC4 (#412): the same bypass reaches the verified prebuilt profile's gate, so
+// `dot update` can step past it for one run.
+func TestAdapterIgnorePressurePassesPrebuiltGate(t *testing.T) {
+	t.Setenv(admission.IgnoreEnv, "pressure")
+	snap, none := healthySnapshot(), []string(nil)
+	snap.MemoryLevel = admission.MemoryCritical
+	a, _ := testAdapter(t, &snap, &none)
+	seams := prebuiltSeams{
+		Snapshot: func(context.Context) admission.PressureSnapshot { return snap },
+		Evaluate: func(snap admission.PressureSnapshot, th admission.Thresholds, hist admission.History, now time.Time) admission.Decision {
+			return admission.EvaluatePrebuiltPressureWithWindow(snap, th, hist, now, time.Second)
+		},
+	}
+	release, err := a.acquireProfile(context.Background(),
+		Options{Purpose: "verified prebuilt dot update", ScopeKey: "tooling"}, profilePrebuilt, seams, nil)
+	if err != nil {
+		t.Fatalf("ignored pressure did not admit the prebuilt profile: %v", err)
+	}
+	release()
+}
+
+// AC4 (#412): DOT_ADMISSION_IGNORE=slot admits a second job in a busy repo, in
+// an overflow slot that status lists, never without a lease.
+func TestAdapterIgnoreSlotTakesOverflowLease(t *testing.T) {
+	snap, none := healthySnapshot(), []string(nil)
+	a, store := testAdapter(t, &snap, &none)
+	ctx := context.Background()
+	// The slot is seeded directly: two acquires through the adapter in one
+	// process look like a nested child and skip the slot by design.
+	seedSlot(t, store, "repo-a")
+
+	if r, err := a.acquire(ctx, Options{ProjectDir: t.TempDir()}); !deferred(err) || !strings.Contains(err.Error(), "another heavyweight job") {
+		if r != nil {
+			r()
+		}
+		t.Fatalf("err = %v, want the busy-slot defer without the bypass", err)
+	}
+
+	t.Setenv(admission.IgnoreEnv, "slot")
+	second, err := a.acquire(ctx, Options{ProjectDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("overflow acquire = %v", err)
+	}
+	defer second()
+	indexes := map[int]bool{}
+	for _, lease := range repoLeases(t, store) {
+		indexes[lease.Index] = true
+	}
+	if !indexes[0] || !indexes[1] {
+		t.Fatalf("held indexes = %v, want 0 and the overflow slot 1", indexes)
+	}
+}
+
+// seedSlot holds index 0 of (scope, heavy) for the whole test.
+func seedSlot(t *testing.T, store *admission.Store, scope string) {
+	t.Helper()
+	slot, _, err := store.Acquire(context.Background(), scope, admission.ClassHeavy, admission.Lease{
+		Owner: "holder@test", PID: 4242, PIDStart: "Mon Sep 28 00:00:00 2026",
+	})
+	if err != nil || slot == nil {
+		t.Fatalf("seeding the slot = %v, %v", slot, err)
+	}
+	t.Cleanup(func() { _ = slot.Release() })
+}
+
+func repoLeases(t *testing.T, store *admission.Store) []admission.Lease {
+	t.Helper()
+	leases, err := store.ListLeases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []admission.Lease
+	for _, lease := range leases {
+		if lease.Scope == "repo-a" {
+			out = append(out, lease)
+		}
+	}
+	return out
+}
+
+// AC4 (#412): DOT_ADMISSION_IGNORE=uncovered passes an uncovered-work deferral.
+func TestAdapterIgnoreUncoveredPassesScan(t *testing.T) {
+	t.Setenv(admission.IgnoreEnv, "uncovered")
+	snap := healthySnapshot()
+	jobs := []string{"make(pid=4242,parent=1,repo=repo-a)"}
+	a, _ := testAdapter(t, &snap, &jobs)
+	release, err := a.acquire(context.Background(), Options{ProjectDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("ignored uncovered did not admit: %v", err)
+	}
+	release()
+}
+
+// The gate, the slot take and the scan each act on the policy resolved at the
+// top, so an override that ends between them must not admit the job. The commit
+// point catches it whatever step it landed in: an empty scan here, because the
+// defect this replaced needed found jobs, and a raised capacity, because the slot
+// take read it before the gate.
+func TestAdapterOverrideEndingBeforeTheCommitDefers(t *testing.T) {
+	snap, none := healthySnapshot(), []string(nil)
+	a, store := testAdapter(t, &snap, &none)
+	if err := store.SaveRelaxOverride(admission.RelaxOverride{
+		SetAt:     time.Now(),
+		ExpiresAt: time.Now().Add(time.Minute),
+		Set:       map[string]string{"slots.heavy_per_repo": "2"},
+	}); err != nil {
+		t.Fatalf("seeding the override: %v", err)
+	}
+	// The acquire outlasts the override: the gate and the slot take saw it live, and
+	// the clock read at the commit point is past its expiry.
+	a.now = func() time.Time { return time.Now().Add(2 * time.Minute) }
+
+	ctx := context.Background()
+	release, err := a.acquire(ctx, Options{ProjectDir: t.TempDir()})
+	if !deferred(err) || !strings.Contains(err.Error(), "ended during admission") {
+		if release != nil {
+			release()
+		}
+		t.Fatalf("err = %v, want the defer because the override ended before the commit", err)
+	}
+	if leases, _ := store.ListLeases(); len(leases) != 0 {
+		t.Errorf("leases = %d after the defer, want the slot released", len(leases))
+	}
+
+	// Non-vacuity arm: with the clock inside the override's life the same acquire
+	// succeeds, under the capacity the override raised.
+	a.now = nil
+	release, err = a.acquire(ctx, Options{ProjectDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("acquire with the override still live = %v", err)
+	}
+	release()
+}
+
+// An ended override also frees a nested maintenance reuse that found nothing,
+// because the parent lease and the scan were both judged on the same policy the
+// commit point re-reads.
+func TestAdapterNestedReuseOverrideEndingBeforeTheCommitDefers(t *testing.T) {
+	snap, none := healthySnapshot(), []string(nil)
+	a, store := testAdapter(t, &snap, &none)
+	a.parentLease = func(context.Context, *admission.Store, string, string, int) bool { return true }
+	t.Setenv(admission.NestedEnv, admission.NestedEnvValue(admission.MaintenanceScope, admission.ClassMaintenance))
+	if err := store.SaveRelaxOverride(admission.RelaxOverride{
+		SetAt:     time.Now(),
+		ExpiresAt: time.Now().Add(time.Minute),
+		Ignore:    []string{"uncovered"},
+	}); err != nil {
+		t.Fatalf("seeding the override: %v", err)
+	}
+	a.now = func() time.Time { return time.Now().Add(2 * time.Minute) }
+
+	release, err := a.acquire(context.Background(), Options{ScopeKey: "tooling", ProjectDir: t.TempDir()})
+	if !deferred(err) || !strings.Contains(err.Error(), "ended during admission") {
+		if release != nil {
+			release()
+		}
+		t.Fatalf("err = %v, want the defer because the override ended before the reuse", err)
+	}
+}
+
+// AC2 (#412): the config's slot capacity admits a second concurrent job without
+// any bypass, and the scan settings reach the seam.
+func TestAdapterConfigCapacityAndScanSettings(t *testing.T) {
+	snap, none := healthySnapshot(), []string(nil)
+	a, store := testAdapter(t, &snap, &none)
+	cfg := filepath.Join(t.TempDir(), "config.yaml")
+	body := "admission:\n  slots:\n    heavy_per_repo: 2\n  uncovered:\n    cpu_percent: 50\n    ignore_names: [node]\n"
+	if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.configPath = func() string { return cfg }
+	var got admission.UncoveredSettings
+	a.uncovered = func(_ context.Context, _ string, _ bool, _ []int, settings admission.UncoveredSettings) ([]string, error) {
+		got = settings
+		return nil, nil
+	}
+	ctx := context.Background()
+	seedSlot(t, store, "repo-a")
+	second, err := a.acquire(ctx, Options{ProjectDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("second acquire under heavy_per_repo: 2 = %v", err)
+	}
+	defer second()
+	if !got.Enabled || got.CPUPercent != 50 || len(got.IgnoreNames) != 1 || got.IgnoreNames[0] != "node" {
+		t.Errorf("scan settings = %+v, want the configured values", got)
+	}
+	if leases, _ := store.ListLeases(); len(leases) != 2 {
+		t.Errorf("leases = %d, want 2 under heavy_per_repo: 2", len(leases))
+	}
+}
+
+// F3 (#412): a maintenance scope can hold more than one lease (a configured
+// capacity above one, or an overflow slot a bypass took), and the nested child
+// must find the lease its process tree descends from instead of deferring
+// against a scope that looks ambiguous.
+func TestAdapterNestedMaintenanceParentAmongSeveralLeases(t *testing.T) {
+	snap, none := healthySnapshot(), []string(nil)
+	a, store := testAdapter(t, &snap, &none)
+	cfg := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(cfg, []byte("admission:\n  slots:\n    maintenance: 2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.configPath = func() string { return cfg }
+	runner := exec.NewProbeRunner()
+	a.parentLease = func(ctx context.Context, got *admission.Store, scope, class string, childPID int) bool {
+		return hasLiveParentLease(ctx, runner, got, scope, class, childPID)
+	}
+	ctx := context.Background()
+	t.Setenv(admission.NestedEnv, admission.NestedEnvValue(admission.MaintenanceScope, admission.ClassMaintenance))
+
+	started, err := admission.ProcessStart(ctx, runner, os.Getpid())
+	if err != nil {
+		t.Fatalf("read self process start: %v", err)
+	}
+	// A peer holds index 0, so the parent's own lease sits at index 1.
+	peer, _, err := store.AcquireWithOptions(ctx, admission.MaintenanceScope, admission.ClassMaintenance, admission.Lease{
+		Owner: "peer@test", PID: os.Getpid(), PIDStart: "not-this-process-start",
+	}, admission.AcquireOptions{Capacity: 2})
+	if err != nil || peer == nil {
+		t.Fatalf("seeding the peer lease = %v, %v", peer, err)
+	}
+	defer func() { _ = peer.Release() }()
+	parent, _, err := store.AcquireWithOptions(ctx, admission.MaintenanceScope, admission.ClassMaintenance, admission.Lease{
+		Owner: "wrapped-admit@test", PID: os.Getpid(), PIDStart: started,
+	}, admission.AcquireOptions{Capacity: 2})
+	if err != nil || parent == nil {
+		t.Fatalf("seeding the parent lease = %v, %v", parent, err)
+	}
+	defer func() { _ = parent.Release() }()
+	if got := parent.Lease().Index; got != 1 {
+		t.Fatalf("parent lease index = %d, want 1", got)
+	}
+
+	release, err := a.acquire(ctx, Options{Purpose: "nested verified update", ScopeKey: "tooling"})
+	if err != nil {
+		t.Fatalf("nested maintenance acquire = %v, want the parent's lease reused", err)
+	}
+	release()
+	leases, err := store.ListLeases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(leases) != 2 {
+		t.Fatalf("leases = %d, want the two seeded leases and no new one", len(leases))
+	}
+}
+
+// An invalid admission block fails the acquire loudly instead of silently
+// falling back to the defaults.
+func TestAdapterRejectsInvalidThresholdConfig(t *testing.T) {
+	snap, none := healthySnapshot(), []string(nil)
+	a, _ := testAdapter(t, &snap, &none)
+	cfg := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(cfg, []byte("admission:\n  thresholds:\n    recover_sustain: -1m\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.configPath = func() string { return cfg }
+	if r, err := a.acquire(context.Background(), Options{ProjectDir: t.TempDir()}); err == nil || deferred(err) {
+		if r != nil {
+			r()
+		}
+		t.Fatalf("invalid config err = %v, want a hard error", err)
+	} else if !strings.Contains(err.Error(), "admission.thresholds.recover_sustain") {
+		t.Fatalf("err = %v, want the key named", err)
 	}
 }
 
@@ -199,6 +498,7 @@ func TestAdapterNestedMarker(t *testing.T) {
 }
 
 func TestVerifiedPrebuiltPolicyDoesNotTrustNestedMarker(t *testing.T) {
+	t.Setenv(admission.IgnoreEnv, "") // a shell with the bypass exported must not flip this
 	snap, none := healthySnapshot(), []string(nil)
 	snap.VMActivityAvailable = true
 	snap.SwapInAvailable = true
@@ -207,12 +507,8 @@ func TestVerifiedPrebuiltPolicyDoesNotTrustNestedMarker(t *testing.T) {
 	snap.SwapOutBytes = 8192
 	a, store := testAdapter(t, &snap, &none)
 	t.Setenv(admission.NestedEnv, admission.NestedEnvValue(admission.MaintenanceScope, admission.ClassMaintenance))
-	policy := admission.GatePolicy{
-		HistoryFile: admission.PrebuiltHistoryFile,
-		Thresholds:  admission.PrebuiltThresholds(),
-		Evaluate:    admission.EvaluatePrebuiltPressure,
-	}
-	_, err := a.acquirePolicy(context.Background(), Options{Purpose: "verified prebuilt dot update", ScopeKey: "tooling"}, policy, nil)
+	seams := prebuiltSeams{Snapshot: func(context.Context) admission.PressureSnapshot { return snap }}
+	_, err := a.acquireProfile(context.Background(), Options{Purpose: "verified prebuilt dot update", ScopeKey: "tooling"}, profilePrebuilt, seams, nil)
 	if !deferred(err) || !strings.Contains(err.Error(), "prebuilt safety window") {
 		t.Fatalf("nested marker bypassed the verified prebuilt gate: %v", err)
 	}
@@ -273,6 +569,7 @@ func TestAdapterWaitEndingDuringGateDefers(t *testing.T) {
 
 // Pressure found by a gate that outlives the wait stays the reason given.
 func TestAdapterWaitEndKeepsPressureReason(t *testing.T) {
+	t.Setenv(admission.IgnoreEnv, "") // a shell with the bypass exported must not flip this
 	snap, none := healthySnapshot(), []string(nil)
 	snap.MemoryLevel = admission.MemoryCritical
 	a, _ := testAdapter(t, &snap, &none)
@@ -298,7 +595,7 @@ func TestAdapterPassesLeasesToScan(t *testing.T) {
 	}
 	defer func() { _ = held.Release() }()
 	var got []int
-	a.uncovered = func(_ context.Context, _ string, _ bool, leased []int) ([]string, error) {
+	a.uncovered = func(_ context.Context, _ string, _ bool, leased []int, _ admission.UncoveredSettings) ([]string, error) {
 		got = leased
 		return nil, nil
 	}

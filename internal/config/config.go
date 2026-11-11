@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -102,11 +103,32 @@ type ModuleToggle struct {
 // stays readable. yaml.v3 would otherwise demand integer nanoseconds.
 type Duration time.Duration
 
+// durationSecondsLimit is the largest integer count of seconds that still fits
+// in a time.Duration. The multiply by time.Second wraps beyond it, and a wrap
+// lands on a small positive duration: -18446744073 seconds becomes 709ms, which
+// passes every "not negative" check downstream and silently shortens a sustain
+// or safety window read from a state file.
+const durationSecondsLimit = int64(math.MaxInt64) / int64(time.Second)
+
+// secondsDuration converts an integer count of seconds, refusing the counts
+// whose multiply by time.Second would wrap. Both duration types decode their
+// integer form through it so the two paths cannot drift.
+func secondsDuration(seconds int64) (time.Duration, error) {
+	if seconds < -durationSecondsLimit || seconds > durationSecondsLimit {
+		return 0, fmt.Errorf("invalid duration %d seconds: outside the +/-%d seconds a duration can hold; pass a duration string like \"1m\"", seconds, durationSecondsLimit)
+	}
+	return time.Duration(seconds) * time.Second, nil
+}
+
 // UnmarshalYAML decodes a duration string or an integer count of seconds.
 func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind == yaml.ScalarNode {
 		if i, err := strconv.ParseInt(value.Value, 10, 64); err == nil {
-			*d = Duration(time.Duration(i) * time.Second)
+			converted, err := secondsDuration(i)
+			if err != nil {
+				return err
+			}
+			*d = Duration(converted)
 			return nil
 		}
 		parsed, err := time.ParseDuration(value.Value)
@@ -133,6 +155,30 @@ func (d Duration) Std() time.Duration { return time.Duration(d) }
 
 // IsZero lets yaml.v3 omit an unset duration from rendered output.
 func (d Duration) IsZero() bool { return d == 0 }
+
+// OptionalDuration is Duration for a nullable admission key that has no IsZero
+// method on purpose. yaml.v3 omits a non-nil pointer whose pointee reports
+// zero, so a written `defer_sustain: 0` (a meaningful "defer at the first
+// over-threshold sample") vanished from every state save.
+type OptionalDuration Duration
+
+// UnmarshalYAML decodes a duration string or an integer count of seconds.
+func (d *OptionalDuration) UnmarshalYAML(value *yaml.Node) error {
+	var parsed Duration
+	if err := parsed.UnmarshalYAML(value); err != nil {
+		return err
+	}
+	*d = OptionalDuration(parsed)
+	return nil
+}
+
+// MarshalYAML emits the Go duration string, as Duration does.
+func (d OptionalDuration) MarshalYAML() (any, error) {
+	return time.Duration(d).String(), nil
+}
+
+// Std returns the value as a time.Duration.
+func (d OptionalDuration) Std() time.Duration { return time.Duration(d) }
 
 // WatchdogConfig configures the watchdog: runaway-process reaping (P1),
 // connectivity heal, power hardening, and external monitors (later phases).
@@ -382,6 +428,88 @@ type BackupRecord struct {
 	Path  string    `yaml:"path"`
 	Time  time.Time `yaml:"time"`
 	Files int       `yaml:"files"`
+}
+
+// UserAdmissionState holds the admission controller knobs a person sets in
+// config.yaml. The block is optional and every key is independent: an unset
+// key keeps the policy default, and the controller validates the values itself
+// so an invalid one fails loudly instead of silently falling back.
+//
+// These structs exist so a save never drops the block; internal/admission parses
+// the same YAML with its own key table, and a round-trip test pins the two
+// against each other.
+type UserAdmissionState struct {
+	Thresholds UserAdmissionThresholds `yaml:"thresholds,omitempty"`
+	Prebuilt   UserAdmissionPrebuilt   `yaml:"prebuilt,omitempty"`
+	Slots      UserAdmissionSlots      `yaml:"slots,omitempty"`
+	Uncovered  UserAdmissionUncovered  `yaml:"uncovered,omitempty"`
+}
+
+// IsZero lets yaml.v3 omit an unset admission block from rendered output.
+func (c UserAdmissionState) IsZero() bool {
+	return c.Thresholds.IsZero() && c.Prebuilt.IsZero() && c.Slots.IsZero() && c.Uncovered.IsZero()
+}
+
+// UserAdmissionThresholds is one optional override of the host-pressure
+// policy. Pointers keep "unset" distinct from a meaningful zero such as
+// `defer_sustain: 0` (defer at the first over-threshold sample), and the
+// duration keys use OptionalDuration so that zero survives a save.
+type UserAdmissionThresholds struct {
+	IdleDeferBelow      *float64          `yaml:"idle_defer_below,omitempty"`
+	IdleRecoverAt       *float64          `yaml:"idle_recover_at,omitempty"`
+	LoadDeferFrac       *float64          `yaml:"load_defer_frac,omitempty"`
+	LoadRecoverFrac     *float64          `yaml:"load_recover_frac,omitempty"`
+	DeferSustain        *OptionalDuration `yaml:"defer_sustain,omitempty"`
+	RecoverSustain      *OptionalDuration `yaml:"recover_sustain,omitempty"`
+	WSGrace             *OptionalDuration `yaml:"ws_grace,omitempty"`
+	MemAvailWarnPct     *float64          `yaml:"mem_avail_warn_pct,omitempty"`
+	MemAvailCriticalPct *float64          `yaml:"mem_avail_critical_pct,omitempty"`
+}
+
+// IsZero lets yaml.v3 omit an unset thresholds block from rendered output.
+func (c UserAdmissionThresholds) IsZero() bool {
+	return c.IdleDeferBelow == nil && c.IdleRecoverAt == nil &&
+		c.LoadDeferFrac == nil && c.LoadRecoverFrac == nil &&
+		c.DeferSustain == nil && c.RecoverSustain == nil && c.WSGrace == nil &&
+		c.MemAvailWarnPct == nil && c.MemAvailCriticalPct == nil
+}
+
+// UserAdmissionPrebuilt is the verified prebuilt update profile's own block.
+type UserAdmissionPrebuilt struct {
+	IdleDeferBelow  *float64          `yaml:"idle_defer_below,omitempty"`
+	IdleRecoverAt   *float64          `yaml:"idle_recover_at,omitempty"`
+	LoadDeferFrac   *float64          `yaml:"load_defer_frac,omitempty"`
+	LoadRecoverFrac *float64          `yaml:"load_recover_frac,omitempty"`
+	SafetyWindow    *OptionalDuration `yaml:"safety_window,omitempty"`
+}
+
+// IsZero lets yaml.v3 omit an unset prebuilt block from rendered output.
+func (c UserAdmissionPrebuilt) IsZero() bool {
+	return c.IdleDeferBelow == nil && c.IdleRecoverAt == nil &&
+		c.LoadDeferFrac == nil && c.LoadRecoverFrac == nil && c.SafetyWindow == nil
+}
+
+// UserAdmissionSlots is how many concurrent leases each scope allows.
+type UserAdmissionSlots struct {
+	HeavyPerRepo *int `yaml:"heavy_per_repo,omitempty"`
+	Maintenance  *int `yaml:"maintenance,omitempty"`
+}
+
+// IsZero lets yaml.v3 omit an unset slots block from rendered output.
+func (c UserAdmissionSlots) IsZero() bool {
+	return c.HeavyPerRepo == nil && c.Maintenance == nil
+}
+
+// UserAdmissionUncovered is the uncovered heavy-work scan's block.
+type UserAdmissionUncovered struct {
+	Enabled     *bool    `yaml:"enabled,omitempty"`
+	CPUPercent  *float64 `yaml:"cpu_percent,omitempty"`
+	IgnoreNames []string `yaml:"ignore_names,omitempty"`
+}
+
+// IsZero lets yaml.v3 omit an unset uncovered block from rendered output.
+func (c UserAdmissionUncovered) IsZero() bool {
+	return c.Enabled == nil && c.CPUPercent == nil && len(c.IgnoreNames) == 0
 }
 
 // IsModuleEnabled returns whether a given module name is enabled in this config.

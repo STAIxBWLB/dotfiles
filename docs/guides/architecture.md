@@ -8,7 +8,7 @@
 2. **Apply**: `dot apply` hands the resolved config to the modules in `internal/module`, in a fixed order. Each module checks what differs, then applies it through `internal/exec`, which honors `--dry-run`. Templates come from `internal/template`. A file is backed up before it is overwritten (`internal/fileutil`).
 3. **AI agents**: `internal/aisettings` writes the shared agent instructions and MCP entries and hands skill sharing to Maru, which owns skill sources and links; `internal/aitooling` installs the selected agents and the agent-hub family. `internal/aipolicy` resolves work policies, and `internal/aimemory` audits the agents' own memory.
 4. **Sync**: `internal/syncer` drives rsync for `dot sync` (workspace to a local or SSH mirror) and `dot peer` (two machines). Each store lives under `<workspace>/.dotfiles/<store>/` with its own filters, baseline and scheduler.
-5. **Heavy work**: `internal/admission` and `internal/resourceguard` give each repository one heavy-job slot. Builds and tests started through `dot admit` wait for it; heavy work started outside it holds no slot and is only caught by a process scan that defers new admissions.
+5. **Heavy work**: `internal/admission` and `internal/resourceguard` give each repository one heavy-job slot by default (`admission.slots` raises the count up to eight). Builds and tests started through `dot admit` wait for it; heavy work started outside it holds no slot and is only caught by a process scan that defers new admissions.
 
 The files `dot` may write are listed in [BOUNDARIES.md](../BOUNDARIES.md), and accepted design limits in [CEILINGS.md](../CEILINGS.md).
 

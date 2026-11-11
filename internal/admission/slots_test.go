@@ -103,7 +103,7 @@ func TestStaleOwnerCrashRecovery(t *testing.T) {
 	dead := deadPIDLease(t, store)
 
 	// Occupy the slot as the dead owner.
-	dir := store.slotDir("/repo/a/.git", ClassHeavy)
+	dir := store.slotDir("/repo/a/.git", ClassHeavy, 0)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestPIDReuseNotForceFreed(t *testing.T) {
 	dead.Deadline = store.now().Add(time.Minute) // fresh heartbeat
 	dead.HeartbeatAt = store.now()
 
-	dir := store.slotDir("/repo/a/.git", ClassHeavy)
+	dir := store.slotDir("/repo/a/.git", ClassHeavy, 0)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestLiveOwnerStalledHeartbeatNotReclaimed(t *testing.T) {
 	lease.Deadline = past
 	lease.AcquiredAt = past
 
-	dir := store.slotDir("/repo/a/.git", ClassHeavy)
+	dir := store.slotDir("/repo/a/.git", ClassHeavy, 0)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestHeartbeatAndReleaseOwnershipGuard(t *testing.T) {
 	if err := slot.Heartbeat(); err != nil {
 		t.Fatalf("heartbeat: %v", err)
 	}
-	current, err := readLease(store.slotDir("/repo/a/.git", ClassHeavy))
+	current, err := readLease(store.slotDir("/repo/a/.git", ClassHeavy, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestHeartbeatAndReleaseOwnershipGuard(t *testing.T) {
 	foreign := lease
 	foreign.PID = lease.PID + 1000
 	foreign.AcquiredAt = store.now().Add(time.Second)
-	if err := writeLease(store.slotDir("/repo/a/.git", ClassHeavy), foreign); err != nil {
+	if err := writeLease(store.slotDir("/repo/a/.git", ClassHeavy, 0), foreign); err != nil {
 		t.Fatal(err)
 	}
 	if err := slot.Heartbeat(); err == nil {
@@ -204,14 +204,14 @@ func TestHeartbeatAndReleaseOwnershipGuard(t *testing.T) {
 	if err := slot.Release(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(store.slotDir("/repo/a/.git", ClassHeavy)); err != nil {
+	if _, err := os.Stat(store.slotDir("/repo/a/.git", ClassHeavy, 0)); err != nil {
 		t.Error("release after slot changed hands must not remove the new owner's slot")
 	}
 }
 
 func TestCorruptLeaseReclaimBound(t *testing.T) {
 	store := testStore(t)
-	dir := store.slotDir("/repo/a/.git", ClassHeavy)
+	dir := store.slotDir("/repo/a/.git", ClassHeavy, 0)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -342,6 +342,75 @@ func TestGateWithPolicyUsesCompletedSnapshotTimeAndOwnHistory(t *testing.T) {
 	}
 }
 
+// A probe can outlive the override that set the limits it is judged against. That
+// sample is dropped instead of persisted: a verdict recorded under limits the
+// controller no longer holds closes the episode for good, because the next
+// iteration only ever reads what this one saved.
+func TestGateDiscardsASampleWhoseOverrideExpiredDuringTheProbe(t *testing.T) {
+	store := testStore(t)
+	th := DefaultThresholds()
+	th.RecoverSustain = time.Minute
+	probeEnd := evalT0.Add(90 * time.Second)
+	monitor := &Monitor{Now: func() time.Time { return probeEnd }}
+	// An open episode whose recovery window the relaxed one-minute sustain has
+	// already covered: this sample would close it. The previous sample sits one
+	// second back so its own gap cannot restart the window.
+	episode := History{
+		DeferActive:  true,
+		DeferSince:   evalT0.Add(-time.Hour),
+		RecoverSince: evalT0.Add(-3 * time.Minute),
+		LastSampleAt: probeEnd.Add(-time.Second),
+	}
+	if err := SaveHistory(store.HistoryPath(), episode); err != nil {
+		t.Fatalf("seeding the episode: %v", err)
+	}
+
+	// The override that relaxed the sustain ended while the probe ran.
+	dropped, err := store.GateWithPolicy(context.Background(), monitor, GatePolicy{
+		Thresholds: th,
+		Snapshot:   func(context.Context) PressureSnapshot { return healthyDarwin() },
+		ValidUntil: evalT0,
+	})
+	if err != nil {
+		t.Fatalf("gate = %v", err)
+	}
+	if dropped.Admit {
+		t.Fatalf("admitted on limits the override no longer set: %+v", dropped)
+	}
+	if !dropped.Recovering || dropped.RetryAfter <= 0 {
+		t.Errorf("decision = %+v, want a resample (Recovering, short RetryAfter)", dropped)
+	}
+	if !strings.Contains(strings.Join(dropped.Reasons, " "), "override expired") {
+		t.Errorf("reasons = %v, want the expired override named", dropped.Reasons)
+	}
+	untouched, err := LoadHistory(store.HistoryPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !untouched.DeferActive || !untouched.RecoverSince.Equal(episode.RecoverSince) ||
+		!untouched.LastSampleAt.Equal(episode.LastSampleAt) {
+		t.Errorf("history = %+v, want the episode and its sample time untouched", untouched)
+	}
+
+	// Non-vacuity: the same sample under an override that is still in force
+	// admits and closes the episode, which is what the expiry check prevents.
+	admitted, err := store.GateWithPolicy(context.Background(), monitor, GatePolicy{
+		Thresholds: th,
+		Snapshot:   func(context.Context) PressureSnapshot { return healthyDarwin() },
+		ValidUntil: probeEnd.Add(time.Minute),
+	})
+	if err != nil || !admitted.Admit {
+		t.Fatalf("gate with a live override = %+v, %v; want the episode to close", admitted, err)
+	}
+	closed, err := LoadHistory(store.HistoryPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if closed.DeferActive {
+		t.Error("a live override did not close the episode; the expiry check proves nothing")
+	}
+}
+
 // TestClaimNotifyConcurrent pins the atomic claim: any number of
 // concurrent defer handlers for the same episode produce exactly one
 // notification winner.
@@ -417,7 +486,7 @@ func TestConcurrentReclaimExactlyOneWinner(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()
 	dead := deadPIDLease(t, store)
-	dir := store.slotDir("/repo/a/.git", ClassHeavy)
+	dir := store.slotDir("/repo/a/.git", ClassHeavy, 0)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -473,7 +542,7 @@ func TestReverifyStaleAbortsOnFreshLease(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()
 	dead := deadPIDLease(t, store)
-	dir := store.slotDir("/repo/a/.git", ClassHeavy)
+	dir := store.slotDir("/repo/a/.git", ClassHeavy, 0)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -526,7 +595,7 @@ func TestUpdateIdentityBindsChild(t *testing.T) {
 	if err := slot.UpdateIdentity(child.Process.Pid, childStart); err != nil {
 		t.Fatalf("UpdateIdentity: %v", err)
 	}
-	current, err := readLease(store.slotDir("/repo/a/.git", ClassHeavy))
+	current, err := readLease(store.slotDir("/repo/a/.git", ClassHeavy, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -538,7 +607,7 @@ func TestUpdateIdentityBindsChild(t *testing.T) {
 	// because the child incarnation is alive.
 	current.HeartbeatAt = store.now().Add(-2 * store.HeartbeatStaleAfter())
 	current.Deadline = current.HeartbeatAt
-	if err := writeLease(store.slotDir("/repo/a/.git", ClassHeavy), current); err != nil {
+	if err := writeLease(store.slotDir("/repo/a/.git", ClassHeavy, 0), current); err != nil {
 		t.Fatal(err)
 	}
 	// Slot's in-memory lease no longer matches the expired one on disk, so

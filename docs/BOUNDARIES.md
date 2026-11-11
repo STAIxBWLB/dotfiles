@@ -312,12 +312,20 @@ tool):
   alert reporting across overlapping runs (the sync run lock is already
   released by the time the outcome is reported)
 - `~/.local/state/dot/admission/` — the resource-admission controller state:
-  the slot directories (`slots/`, one per repo plus the shared maintenance
-  slot and a background slot per running `dot peer sync` or `dot sync push`,
-  each holding a `lease.json` with the owner pid/start, heartbeat and
-  deadline), the heavy-work pressure history (`history.json`), the verified
+  the slot directories (`slots/`, one per repo and slot index plus the shared
+  maintenance slots and a background slot per running `dot peer sync` or
+  `dot sync push`, each holding a `lease.json` with the owner pid/start,
+  heartbeat and deadline; index 0 uses the unsuffixed class-hash name and
+  higher indexes add a `-N` suffix, for the configured capacity up to eight and
+  the overflow slots a `slot` bypass takes past it), the heavy-work pressure
+  history (`history.json`), the verified
   native dot-update pressure and quiet-swap history (`history-prebuilt.json`),
-  and the per-scope notify dedup marks (`notify/`). `history.json` is written
+  the temporary override (`override.json`, written atomically under the root
+  lock only by `dot admit relax` with `set_at`, `expires_at`, `ignore` and
+  `set`, read by every gate
+  evaluation and by status, and removed by `dot admit relax --clear` or by the
+  gate that first sees it expired), and the per-scope notify dedup marks
+  (`notify/`). `history.json` is written
   by `dot admit` gate evaluations and tooling updates
   through the same controller; slot acquire/heartbeat/release and defer
   notification also update this state. A completed `dot update` prebuilt-gate

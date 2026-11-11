@@ -68,6 +68,10 @@ type Lease struct {
 	AcquiredAt  time.Time `json:"acquired_at"`
 	HeartbeatAt time.Time `json:"heartbeat_at"`
 	Deadline    time.Time `json:"deadline"`
+	// Index is the slot within its (scope, class): 0 is the original slot,
+	// higher indexes are the configured extra capacity and an overflow slot a
+	// bypass took. It is omitted at 0 so an existing lease file is unchanged.
+	Index int `json:"index,omitempty"`
 }
 
 // Store owns the admission state root (~/.local/state/dot/admission/): the
@@ -79,6 +83,10 @@ type Store struct {
 	Now    func() time.Time
 	// HeartbeatInterval defaults to DefaultHeartbeatInterval when zero.
 	HeartbeatInterval time.Duration
+	// afterSlotRead, when set, runs between the live-slot read and the index take.
+	// It is a test seam: a test sets it to interleave another caller in exactly
+	// that window, which is where the count and the take are not one step.
+	afterSlotRead func()
 }
 
 // DefaultStateRoot is the state root for the invoking user.
@@ -110,12 +118,18 @@ func (s *Store) HeartbeatStaleAfter() time.Duration {
 	return heartbeatStaleFactor * s.heartbeatInterval()
 }
 
-// slotDir names a slot by class plus a hash of the scope: the hash keeps
-// slashes and length out of the directory name, and the scope itself is
-// recorded inside the lease for status.
-func (s *Store) slotDir(scope, class string) string {
+// slotDir names a slot by class, a hash of the scope and its index: the hash
+// keeps slashes and length out of the directory name, and the scope itself is
+// recorded inside the lease for status. Index 0 keeps the original name, so a
+// state root written before slots became configurable reads unchanged in both
+// directions; a higher index appends its number.
+func (s *Store) slotDir(scope, class string, index int) string {
 	sum := sha256.Sum256([]byte(scope))
-	return filepath.Join(s.Root, "slots", fmt.Sprintf("%s-%s", class, hex.EncodeToString(sum[:])[:16]))
+	name := fmt.Sprintf("%s-%s", class, hex.EncodeToString(sum[:])[:16])
+	if index > 0 {
+		name = fmt.Sprintf("%s-%d", name, index)
+	}
+	return filepath.Join(s.Root, "slots", name)
 }
 
 // HistoryPath is the cross-invocation pressure history.
@@ -133,12 +147,13 @@ type Slot struct {
 // Lease returns a copy of the lease this slot holds.
 func (sl *Slot) Lease() Lease { return sl.lease }
 
-// Acquire takes the (scope, class) slot. The acquire is a single atomic
+// Acquire takes the (scope, class) slot. Taking an index is a single atomic
 // mkdir — there is deliberately no multi-lock ordering because there is only
-// ever one lock per admission. On success it returns a Slot. When the slot
-// is held it returns the holder's lease (for owner+reason visibility) and a
-// nil Slot. A stale slot is reclaimed only when its heartbeat deadline has
-// passed AND the owning process incarnation is verifiably gone; an
+// ever one lock per admission, and the capacity count that picks the index
+// never needs one (see AcquireWithOptions). On success it returns a Slot. When
+// the slot is held it returns the holder's lease (for owner+reason visibility)
+// and a nil Slot. A stale slot is reclaimed only when its heartbeat deadline
+// has passed AND the owning process incarnation is verifiably gone; an
 // unverifiable identity (ps failure) is busy, mirroring the watchdog rule
 // that an unverifiable identity answers on the safe side.
 //
@@ -149,10 +164,205 @@ func (sl *Slot) Lease() Lease { return sl.lease }
 // by a waiter that holds NO slot — so no deadlock is possible by
 // construction.
 func (s *Store) Acquire(ctx context.Context, scope, class string, lease Lease) (*Slot, *Lease, error) {
+	return s.AcquireWithOptions(ctx, scope, class, lease, AcquireOptions{})
+}
+
+// AcquireOptions is the concurrency one caller's resolved policy allows for a
+// scope. A zero value is the policy default: one lease, no overflow.
+type AcquireOptions struct {
+	// Capacity is the number of concurrent leases this scope allows. It is
+	// counted against the live leases across every index, so a lease a bypass
+	// left past capacity, or one stranded there by a lowered capacity or an
+	// expired relax override, still occupies the scope.
+	Capacity int
+	// Overflow keeps trying past Capacity, which is what the slot bypass does:
+	// the job still takes a lease, in the first free overflow slot, so it stays
+	// visible in `dot admit status` and its process tree stays covered for
+	// every other caller's scan. It is never run without a lease.
+	Overflow bool
+}
+
+// slotAcquireAttempts bounds the count-take-recount loop: each retry follows a
+// lost index race, so a run of them means other jobs are acquiring this scope
+// faster than we can.
+const slotAcquireAttempts = 8
+
+// AcquireWithOptions takes a slot for (scope, class) within the caller's
+// capacity, choosing the lowest free index and reclaiming a stale lease when it
+// lands on one. Capacity bounds the live leases of the whole scope, not the
+// indexes a single caller walks: a bypass can leave a lease past capacity, and
+// a lowered capacity or an expired relax override can strand one at a higher
+// index, so counting only the first `capacity` indexes would admit a second job
+// at capacity 1. It reports the lowest live holder when the scope is full, so
+// the defer reason names who holds it.
+//
+// The count and the take are not one atomic step, so the scope can change
+// under a caller between them: every caller picking the lowest free index keeps
+// two racers on one directory (one loses the mkdir), but not one index being
+// released while another caller bypasses into the overflow range. The take is
+// therefore followed by a re-read of the scope, and a caller that finds more
+// leases than its own index allows gives the slot back and either retries into
+// an overflow index or defers: a plain caller never runs beside a bypass lease,
+// and a bypass never reports itself as an ordinary lease.
+func (s *Store) AcquireWithOptions(ctx context.Context, scope, class string, lease Lease, opts AcquireOptions) (*Slot, *Lease, error) {
 	if err := os.MkdirAll(filepath.Join(s.Root, "slots"), 0o755); err != nil {
 		return nil, nil, fmt.Errorf("creating slots dir: %w", err)
 	}
-	dir := s.slotDir(scope, class)
+	capacity := opts.Capacity
+	if capacity < 1 {
+		capacity = 1
+	}
+	if capacity > MaxSlotsPerScope {
+		capacity = MaxSlotsPerScope
+	}
+	// reach is the highest index this caller may take: capacity itself, plus the
+	// overflow allowance when it bypasses.
+	reach := capacity
+	if opts.Overflow {
+		reach += MaxOverflowSlots
+	}
+	var firstHolder *Lease
+	for attempt := 0; attempt < slotAcquireAttempts; attempt++ {
+		live, err := s.liveSlots(ctx, scope, class)
+		if err != nil {
+			return nil, nil, err
+		}
+		if s.afterSlotRead != nil {
+			s.afterSlotRead()
+		}
+		if firstHolder == nil {
+			// The holder the defer reason names is the lowest live one, even when
+			// it sits past this caller's reach: that is the job holding the scope.
+			for index := 0; index < MaxSlotsPerScope+MaxOverflowSlots; index++ {
+				if holder := live[index]; holder != nil {
+					firstHolder = holder
+					break
+				}
+			}
+		}
+		if len(live) >= reach {
+			return nil, firstHolder, nil
+		}
+		// A free index below reach exists. Start the search at capacity when the
+		// capacity is already spoken for: only a bypassing caller gets here then
+		// (a plain caller's reach is the capacity, so it returned above), and the
+		// overflow notice, the JSON "ignored" set and the resourceguard wrapper all
+		// key on the index, so a bypass that quietly took a normal index would
+		// report nothing. By pigeonhole a plain caller with fewer live leases than
+		// its capacity always has a free index below it, so this offset only ever
+		// moves a bypass into the overflow range.
+		index := 0
+		if len(live) >= capacity {
+			index = capacity
+		}
+		for ; index < reach; index++ {
+			if live[index] == nil {
+				break
+			}
+		}
+		if index >= reach {
+			// Every index this caller may take is live: the overflow allowance is
+			// spent even though the scope holds fewer leases than reach.
+			return nil, firstHolder, nil
+		}
+		slot, holder, err := s.acquireIndex(ctx, scope, class, lease, index)
+		if err != nil {
+			return nil, nil, err
+		}
+		if slot != nil {
+			// The count above and the take are two steps, and the scope can fill in
+			// between them: a caller that read an empty scope can pause while another
+			// takes the capacity index, a third bypasses into an overflow index and
+			// the middle one releases, and then it takes its index on the stale read
+			// and runs beside the bypasser without a bypass of its own. Re-read the
+			// scope now the index is ours and count the others, excluding our own
+			// lease, then give the slot back when holding it would leave this caller
+			// with more leases in the scope than it may have.
+			observed, err := s.liveSlots(ctx, scope, class)
+			if err != nil {
+				_ = slot.Release()
+				return nil, nil, err
+			}
+			others := 0
+			var lowest *Lease
+			for other := 0; other < MaxSlotsPerScope+MaxOverflowSlots; other++ {
+				if other == index || observed[other] == nil {
+					continue
+				}
+				others++
+				if lowest == nil {
+					lowest = observed[other]
+				}
+			}
+			if firstHolder == nil {
+				firstHolder = lowest
+			}
+			if others >= reach {
+				// Every index this caller may hold is taken: defer, naming the holder
+				// the re-read found when the first read saw none.
+				if err := slot.Release(); err != nil {
+					return nil, nil, err
+				}
+				return nil, firstHolder, nil
+			}
+			if index < capacity && others >= capacity {
+				// A plain caller's reach is the capacity and its index is always below
+				// it, so this is its bound and the re-read above already deferred it. A
+				// bypass that landed below capacity read the scope as having room that
+				// is gone now: it retries, finds the capacity spoken for, and takes an
+				// overflow index, because every bypass notice keys on the index.
+				if err := slot.Release(); err != nil {
+					return nil, nil, err
+				}
+				continue
+			}
+			return slot, nil, nil
+		}
+		if holder != nil && firstHolder == nil {
+			firstHolder = holder
+		}
+	}
+	if firstHolder != nil {
+		return nil, firstHolder, nil
+	}
+	return nil, nil, fmt.Errorf("a %s slot for scope %s changed hands while acquiring; retry", class, scope)
+}
+
+// liveSlots reports the live lease at each index of (scope, class). A stale or
+// corrupt-aged lease is not live: its index reads free, and acquireIndex
+// reclaims it under the slot's reclaim lock when a caller takes it. A lease
+// file that is unreadable in a directory younger than the stale bound counts as
+// held, because a holder may be between its mkdir and its first lease write.
+func (s *Store) liveSlots(ctx context.Context, scope, class string) (map[int]*Lease, error) {
+	live := make(map[int]*Lease, MaxSlotsPerScope+MaxOverflowSlots)
+	for index := 0; index < MaxSlotsPerScope+MaxOverflowSlots; index++ {
+		dir := s.slotDir(scope, class, index)
+		if _, err := os.Stat(dir); err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			return nil, fmt.Errorf("reading slot %s: %w", dir, err)
+		}
+		holder, stale, err := s.slotHolder(ctx, dir)
+		if err != nil {
+			return nil, err
+		}
+		if stale {
+			continue
+		}
+		if holder == nil {
+			holder = &Lease{Scope: scope, Class: class}
+		}
+		holder.Index = index // a lease file omits index 0
+		live[index] = holder
+	}
+	return live, nil
+}
+
+// acquireIndex takes the slot at one index, or reports its holder.
+func (s *Store) acquireIndex(ctx context.Context, scope, class string, lease Lease, index int) (*Slot, *Lease, error) {
+	dir := s.slotDir(scope, class, index)
+	lease.Index = index
 	for attempt := 0; attempt < 3; attempt++ {
 		err := os.Mkdir(dir, 0o755)
 		if err == nil {
@@ -506,14 +716,47 @@ func (s *Store) Gate(ctx context.Context, m *Monitor, th Thresholds) (Decision, 
 	return s.GateWithPolicy(ctx, m, GatePolicy{Thresholds: th})
 }
 
-// GatePolicy supplies an isolated history and optional pressure evaluator for
-// a narrowly-scoped admission policy. HistoryFile must be a basename under
-// Store.Root; the default policy uses history.json.
+// GateResolved runs the standard policy with a resolved policy's thresholds and
+// bypasses. The evaluation still samples and records history when pressure is
+// bypassed.
+func (s *Store) GateResolved(ctx context.Context, m *Monitor, policy Policy) (Decision, error) {
+	return s.GateWithPolicy(ctx, m, GatePolicy{
+		Thresholds:   policy.Thresholds,
+		Ignore:       policy.Ignore,
+		IgnoreSource: policy.IgnoreSource,
+	})
+}
+
+// PrebuiltGate builds the verified-prebuilt profile from a resolved policy: its
+// own thresholds, its own history file and its own safety window, so a change
+// to one profile never leaks into the other.
+func PrebuiltGate(policy Policy) GatePolicy {
+	window := policy.Prebuilt.SafetyWindow
+	return GatePolicy{
+		HistoryFile: PrebuiltHistoryFile,
+		Thresholds:  policy.Prebuilt.Thresholds,
+		Evaluate: func(snap PressureSnapshot, th Thresholds, hist History, now time.Time) Decision {
+			return EvaluatePrebuiltPressureWithWindow(snap, th, hist, now, window)
+		},
+	}
+}
+
+// GatePolicy selects one gate profile's history, thresholds and evaluator for a
+// narrowly-scoped admission policy. HistoryFile must be a basename under
+// Store.Root; the default policy uses history.json. A bypassed pressure rule
+// admits past a defer while still sampling and recording history; IgnoreSource
+// labels the bypass in the note and in the JSON record.
 type GatePolicy struct {
-	HistoryFile string
-	Thresholds  Thresholds
-	Snapshot    func(context.Context) PressureSnapshot
-	Evaluate    func(PressureSnapshot, Thresholds, History, time.Time) Decision
+	HistoryFile  string
+	Thresholds   Thresholds
+	Snapshot     func(context.Context) PressureSnapshot
+	Evaluate     func(PressureSnapshot, Thresholds, History, time.Time) Decision
+	Ignore       IgnoreSet
+	IgnoreSource string
+	// ValidUntil is the expiry of the override the limits above came from, and
+	// zero when no override is in play. A probe can outlive it, so a sample
+	// judged after it is discarded instead of persisted: see GateWithPolicy.
+	ValidUntil time.Time
 }
 
 // GateWithPolicy runs one locked pressure evaluation and persists its result.
@@ -554,6 +797,21 @@ func (s *Store) GateWithPolicy(ctx context.Context, m *Monitor, policy GatePolic
 	if m.Now != nil {
 		now = m.Now()
 	}
+	// The limits were resolved before the probe, and a Darwin pass can spend most
+	// of a minute in it. Judging this sample against an override that expired in
+	// the meantime would persist a verdict under limits the controller no longer
+	// holds — and a closed episode cannot be reopened by the next iteration, so
+	// the sample is dropped and the caller asked to resample: nothing is saved,
+	// not even the sample time.
+	if !policy.ValidUntil.IsZero() && now.After(policy.ValidUntil) {
+		return Decision{
+			Admit:        false,
+			Reasons:      []string{"admission override expired during the probe; resample to use the current limits"},
+			RetryAfter:   time.Second,
+			Recovering:   true, // makes `dot admit` resample inside its --wait budget
+			ProfileRetry: true, // and the verified prebuilt path inside its own budget
+		}, nil
+	}
 	hist = PrepareHistorySample(hist, policy.Thresholds, snap, now)
 	// The snapshot can run for most of a minute on a loaded host (probe
 	// timeouts); refresh the lock so a concurrent invocation never reads
@@ -564,6 +822,12 @@ func (s *Store) GateWithPolicy(ctx context.Context, m *Monitor, policy GatePolic
 		evaluate = EvaluatePressure
 	}
 	d := evaluate(snap, policy.Thresholds, hist, now)
+	// The snapshot is taken and d.Next persisted either way: a bypassed
+	// pressure rule must leave the recovery streak exactly as continuous as a
+	// real defer, or the gate would never recover after the bypass ends.
+	if policy.Ignore.Pressure {
+		d = ApplyIgnore(d, policy.Ignore, policy.IgnoreSource)
+	}
 	d.Next.LastSampleAt = now
 	if err := SaveHistory(historyPath, d.Next); err != nil {
 		return Decision{}, err

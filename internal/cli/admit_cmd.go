@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -43,43 +42,16 @@ var admitFindUncovered = admission.FindUncovered
 
 // admitGate is the seam for gate evaluation: tests substitute scripted
 // decisions instead of probing the host.
-var admitGate = func(ctx context.Context, store *admission.Store, m *admission.Monitor, th admission.Thresholds) (admission.Decision, error) {
-	return store.Gate(ctx, m, th)
+var admitGate = func(ctx context.Context, store *admission.Store, m *admission.Monitor, policy admission.GatePolicy) (admission.Decision, error) {
+	return store.GateWithPolicy(ctx, m, policy)
 }
 
-// gateWithBusyRetry re-evaluates history-lock contention and the recovery
-// countdown inside the wait budget. Neither is current host pressure, and the
-// countdown only completes when samples arrive within the 45s gap, so a
-// one-shot caller retrying minutes later could never close the episode.
-// Pressure defers return immediately.
-func gateWithBusyRetry(ctx context.Context, store *admission.Store, monitor *admission.Monitor, deadline time.Time) (admission.Decision, error) {
-	for {
-		d, err := admitGate(ctx, store, monitor, admission.DefaultThresholds())
-		if err != nil || d.Admit || (!admission.IsGateBusy(d) && !d.Recovering) {
-			return d, err
-		}
-		backoff := d.RetryAfter
-		if backoff <= 0 {
-			backoff = 2 * time.Second
-		}
-		if time.Now().Add(backoff).After(deadline) {
-			return d, nil
-		}
-		select {
-		case <-ctx.Done():
-			return d, ctx.Err()
-		case <-time.After(backoff):
-		}
-		// The timer can wake late; never admit past the wait budget.
-		if time.Now().After(deadline) {
-			return d, nil
-		}
-	}
-}
+// resolveAdmissionPolicy and the gate it feeds live in admit_cycle.go, with the
+// rest of the sequence that turns a resolved policy into a held slot.
 
 func newAdmitCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "admit [--class heavy|maintenance] [--wait 30m] [--json] -- <command> [args...]",
+		Use:   "admit [--class heavy|maintenance] [--wait 30m] [--json] [--ignore pressure,slot,uncovered|all] -- <command> [args...]",
 		Short: "Run one heavy job per repo behind the host-pressure gate",
 		Long: `Admit a heavy job (build, full test run, indexing, bulk copy, dependency
 update) through the resource-admission controller. The gate defers while the
@@ -87,19 +59,28 @@ host shows memory pressure warning/critical, verifiable thermal pressure, a
 WindowServer watchdog termination inside its grace window, or CPU/load
 saturation sustained past the policy thresholds; recovery requires five
 continuous minutes of normal telemetry, and admit keeps sampling through
-that countdown within --wait. One heavy slot is held per project
-repo (shared across its worktrees, branches, and sessions); different repos
-run in parallel. --class maintenance takes the single host-wide maintenance
-slot instead. On defer the exit code is 75 (EX_TEMPFAIL) with a
-machine-readable outcome on stdout when --json is set. When a command runs,
-its own stdout is the payload and the --json completion record goes to
-stderr, so the exit code is the machine-readable result. Selected-tooling
-updates share these slots. 'dot peer sync' and 'dot sync push'
-hold a background lease while they run, so their rsync never defers other
-work. Heavy work launched outside all of these holds no lease; a bounded
-process-table scan defers when such work runs in this repo or its repo is
-unknown. Use '--' before commands that collide with
+that countdown within --wait. Thresholds come from policy defaults, then the
+admission block of ~/.config/dotfiles/config.yaml, then an active
+'dot admit relax' override. One heavy slot is held per project repo (shared
+across its worktrees, branches, and sessions); different repos run in
+parallel, and admission.slots can raise that count. --class maintenance takes
+the host-wide maintenance slot instead. On defer the exit code is 75
+(EX_TEMPFAIL) with a machine-readable outcome on stdout when --json is set.
+When a command runs, its own stdout is the payload and the --json completion
+record goes to stderr, so the exit code is the machine-readable result.
+Selected-tooling updates share these slots. 'dot peer sync' and 'dot sync
+push' hold a background lease while they run, so their rsync never defers
+other work. Heavy work launched outside all of these holds no lease; a
+bounded process-table scan defers when such work runs in this repo or its
+repo is unknown. Use '--' before commands that collide with
 subcommand names.
+
+--ignore pressure,slot,uncovered (or DOT_ADMISSION_IGNORE=pressure,slot,uncovered,
+or 'all') steps past those rules for this run only. Nothing is skipped
+silently: a bypassed pressure gate still samples and records history and names
+what it bypassed on stderr, a bypassed slot still takes a lease in an overflow
+slot past the configured capacity, and a bypassed scan still runs and prints
+what it found. Slot scans and leases stay honest; --json adds "ignored".
 
 The child receives CARGO_BUILD_JOBS=2, RUST_TEST_THREADS=2 and GOMAXPROCS=2,
 replacing inherited values unless --no-limit-threads is set. Tool-specific
@@ -113,9 +94,11 @@ flags (Go -p 2 -parallel 2; browser workers=1) remain the caller's choice.
 	cmd.Flags().String("class", admission.ClassHeavy, "slot class: heavy (per-repo) or maintenance (host-wide)")
 	cmd.Flags().Duration("wait", 30*time.Minute, "maximum time to wait for the slot before deferring")
 	cmd.Flags().Bool("json", false, "print the outcome as JSON")
+	cmd.Flags().String("ignore", "", "rules to step past for this run: pressure, slot, uncovered, or all")
 	cmd.Flags().Bool("no-limit-threads", false, "Keep inherited worker settings instead of limiting Cargo, Rust tests and Go to 2")
 	cmd.Flags().String("project", "", "Checkout whose slot and working directory to use (defaults to current directory)")
 	cmd.AddCommand(newAdmitStatusCmd())
+	cmd.AddCommand(newAdmitRelaxCmd())
 	return cmd
 }
 
@@ -125,6 +108,11 @@ func runAdmit(cmd *cobra.Command, args []string) error {
 	class, _ := cmd.Flags().GetString("class")
 	wait, _ := cmd.Flags().GetDuration("wait")
 	asJSON, _ := cmd.Flags().GetBool("json")
+	ignoreSpec, _ := cmd.Flags().GetString("ignore")
+	ignoreFlag, err := admission.ParseIgnoreSet(ignoreSpec)
+	if err != nil {
+		return fmt.Errorf("--ignore %q: %w", ignoreSpec, err)
+	}
 	if class != admission.ClassHeavy && class != admission.ClassMaintenance {
 		return fmt.Errorf("--class must be %q or %q, got %q", admission.ClassHeavy, admission.ClassMaintenance, class)
 	}
@@ -171,76 +159,62 @@ func runAdmit(cmd *cobra.Command, args []string) error {
 	// A child of an admitted job for the same scope and class runs without
 	// re-acquiring the slot its parent already holds.
 	if admission.NestedScope(os.Getenv(admission.NestedEnv), effective, class) {
-		return runAdmittedChild(cmd, runner, args, effective, class, nil, asJSON)
+		return runAdmittedChild(cmd, runner, args, effective, class, nil, asJSON, bypass{})
 	}
 
 	monitor := admitNewMonitor(runner, home)
+	// resolveNow re-reads the config and the active relax override. A wait of up
+	// to --wait is long enough for an override to expire or be cleared, so every
+	// gate and every slot attempt resolves again instead of reusing the policy
+	// read at launch, and monitor.Thresholds follows the layer in use (the Linux
+	// memory mapping reads it).
+	resolveNow := func() (admission.Policy, error) {
+		fresh, rerr := resolveAdmissionPolicy(store, ignoreFlag, false)
+		if rerr != nil {
+			return fresh, rerr
+		}
+		monitor.Thresholds = &fresh.Thresholds
+		return fresh, nil
+	}
 	deadline := time.Now().Add(wait)
-	decision, err := gateWithBusyRetry(ctx, store, monitor, deadline)
-	if err != nil {
-		return err
+	in := admitInput{
+		p:          p,
+		store:      store,
+		monitor:    monitor,
+		runner:     runner,
+		resolveNow: resolveNow,
+		scope:      effective,
+		class:      class,
+		cwd:        cwd,
+		wait:       wait,
+		deadline:   deadline,
 	}
-	if !decision.Admit {
-		notifyDefer(ctx, cmd, store, effective, class, decision)
-		return deferExit(p, effective, class, "", decision, asJSON)
-	}
-	lease, err := admission.SelfLease(ctx, runner, cwd)
-	if err != nil {
-		return err
-	}
-	backoff := 2 * time.Second
-	var slot *admission.Slot
 	for {
-		got, holder, aerr := store.Acquire(ctx, effective, class, lease)
-		if aerr != nil {
-			return aerr
-		}
-		if got != nil {
-			slot = got
-			break
-		}
-		if wait == 0 || time.Now().Add(backoff).After(deadline) {
-			owner := ""
-			reason := "slot busy"
-			if holder != nil {
-				owner = holder.Owner
-				reason = fmt.Sprintf("slot busy: %s class held by %s (pid %d, since %s)",
-					class, holder.Owner, holder.PID, holder.AcquiredAt.Format(time.RFC3339))
-			}
-			d := admission.Decision{Admit: false, Reasons: []string{reason}, RetryAfter: backoff}
-			return deferExit(p, effective, class, owner, d, asJSON)
-		}
-		time.Sleep(backoff)
-		backoff = minDuration(backoff*3/2, 15*time.Second)
-	}
-	defer func() { _ = slot.Release() }()
-
-	// The wait may have been long; re-gate before spending the slot on work
-	// that pressure would now defer anyway.
-	if wait > 0 {
-		decision, err = gateWithBusyRetry(ctx, store, monitor, deadline)
+		out, err := admitCycle(ctx, in)
 		if err != nil {
 			return err
 		}
-		if !decision.Admit {
-			notifyDefer(ctx, cmd, store, effective, class, decision)
-			return deferExit(p, effective, class, "", decision, asJSON)
+		if out.restart && time.Now().Before(deadline) {
+			// The override that set this cycle's limits ended or changed before the
+			// launch, so nothing was started and the slot is back. A restart re-gates
+			// and re-acquires on the limits now in force.
+			continue
+		}
+		if !out.decision.Admit {
+			notifyDefer(ctx, cmd, store, effective, class, out.decision)
+			return deferExit(p, effective, class, out.owner, out.decision, asJSON, out.bypassed)
+		}
+		defer func() { _ = out.slot.Release() }()
+		return runAdmittedChild(cmd, runner, args, effective, class, out.slot, asJSON, out.bypassed)
+	}
+}
+
+// admissionIgnoreRules adds a rule to a bypass record without duplicating it.
+func admissionIgnoreRules(rules []string, rule string) []string {
+	for _, have := range rules {
+		if have == rule {
+			return rules
 		}
 	}
-
-	// Heavy work that holds no slot is invisible to the leases. The scan runs
-	// with the slot held, so the job that owned it is never mistaken for
-	// uncovered work, and it sees anything that started while we waited. A
-	// failed scan or work in this repository (or of unknown ownership) defers;
-	// the deferred Release above frees the slot.
-	if jobs, uerr := admitFindUncovered(ctx, cwd, class == admission.ClassMaintenance, admission.LeasedPIDs(store)); uerr != nil || len(jobs) > 0 {
-		reason := "uncovered heavyweight work: " + strings.Join(jobs, ", ")
-		if uerr != nil {
-			reason = "heavy-work inventory unavailable: " + uerr.Error()
-		}
-		d := admission.Decision{Admit: false, Reasons: []string{reason}, RetryAfter: 30 * time.Second}
-		return deferExit(p, effective, class, "", d, asJSON)
-	}
-
-	return runAdmittedChild(cmd, runner, args, effective, class, slot, asJSON)
+	return append(rules, rule)
 }
