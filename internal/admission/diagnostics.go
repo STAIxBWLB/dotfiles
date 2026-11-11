@@ -113,6 +113,39 @@ type Bundle struct {
 	History           History          `json:"history"`
 	Owners            []Lease          `json:"owners"`
 	Note              string           `json:"note"`
+	// ResolveError is set when the config or the override could not be resolved,
+	// which means the verdict above was evaluated against the defaults. Without
+	// it a blocked config reads as a healthy "admit": true.
+	ResolveError string `json:"resolve_error,omitempty"`
+	// Limits is the effective value of every admission key with the layer it came
+	// from, and RelaxUntil the expiry of an active override. AddLimits fills them
+	// only when a layer is in play, so a default host's bundle is unchanged.
+	Limits     []BundleLimit `json:"limits,omitempty"`
+	RelaxUntil string        `json:"relax_until,omitempty"`
+}
+
+// BundleLimit is one effective admission key and the layer that set it.
+type BundleLimit struct {
+	Key    string `json:"key"`
+	Value  string `json:"value"`
+	Source string `json:"source"`
+}
+
+// AddLimits puts the effective limits and their sources in the bundle, plus an
+// active relax expiry. A host with no config, no override and no resolve error
+// gets nothing: its bundle stays byte-identical to the one before this record
+// grew these keys.
+func (b *Bundle) AddLimits(p Policy) {
+	if len(p.Sources) == 0 && p.Relax == nil && b.ResolveError == "" {
+		return
+	}
+	b.Limits = make([]BundleLimit, 0, len(p.Rows()))
+	for _, row := range p.Rows() {
+		b.Limits = append(b.Limits, BundleLimit(row))
+	}
+	if p.Relax != nil {
+		b.RelaxUntil = p.Relax.ExpiresAt.Format(time.RFC3339)
+	}
 }
 
 // BuildBundle assembles the diagnostic record from already-gathered inputs.

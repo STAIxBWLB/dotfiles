@@ -29,7 +29,8 @@ import (
 // Version 3 adds portable AI policy; older writers must not drop it.
 // Version 4 adds modules.container, for the same reason.
 // Version 5 adds modules.conda.
-const currentSchemaVersion = 5
+// Version 6 adds the admission block, for the same reason.
+const currentSchemaVersion = 6
 
 // peekSchemaVersion recovers the top-level schema_version from raw state bytes
 // with a second decode into a one-field struct.

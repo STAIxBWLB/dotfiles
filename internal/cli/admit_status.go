@@ -80,6 +80,12 @@ func runAdmitStatus(cmd *cobra.Command, _ []string) error {
 	}
 	if asJSON {
 		bundle := admission.BuildBundle(snap, d, hist, owners, now)
+		if resolveErr != nil {
+			// The verdict above came from the defaults, so say why: a blocked
+			// config would otherwise read as a healthy "admit": true in JSON.
+			bundle.ResolveError = resolveErr.Error()
+		}
+		bundle.AddLimits(policy)
 		data, err := json.MarshalIndent(bundle, "", "  ")
 		if err != nil {
 			return err

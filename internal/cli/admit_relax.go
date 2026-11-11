@@ -35,7 +35,9 @@ found. An expired override is ignored and removed by the next evaluation.
   uncovered.enabled=false            uncovered.cpu_percent=0
   uncovered.ignore_names=node,rustc
 
-The override is stored in ~/.local/state/dot/admission/override.json.`,
+The override is stored in ~/.local/state/dot/admission/override.json.
+--dry-run prints the override that would be written (or cleared) and writes
+nothing.`,
 		Args:         cobra.NoArgs,
 		RunE:         runAdmitRelax,
 		SilenceUsage: true,
@@ -49,6 +51,7 @@ The override is stored in ~/.local/state/dot/admission/override.json.`,
 
 func runAdmitRelax(cmd *cobra.Command, _ []string) error {
 	p := printerFrom(cmd)
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	root, err := admission.UserStateRoot()
 	if err != nil {
 		return err
@@ -58,12 +61,17 @@ func runAdmitRelax(cmd *cobra.Command, _ []string) error {
 	if clear, _ := cmd.Flags().GetBool("clear"); clear {
 		other := ""
 		cmd.Flags().Visit(func(f *pflag.Flag) {
-			if f.Name != "clear" && other == "" {
+			// --dry-run is the root's persistent flag, not an option of --clear.
+			if f.Name != "clear" && f.Name != "dry-run" && other == "" {
 				other = f.Name
 			}
 		})
 		if other != "" {
 			return fmt.Errorf("--clear takes no other options (got --%s)", other)
+		}
+		if dryRun {
+			p.Line("dry-run: would clear the temporary admission override (%s).", store.OverridePath())
+			return nil
 		}
 		if err := store.ClearRelaxOverride(); err != nil {
 			return err
@@ -113,6 +121,17 @@ func runAdmitRelax(cmd *cobra.Command, _ []string) error {
 		ExpiresAt: now.Add(window),
 		Ignore:    ignore.Strings(),
 		Set:       setValues,
+	}
+	if dryRun {
+		p.Line("dry-run: would set a temporary admission override until %s in %s; nothing written.",
+			override.ExpiresAt.Format(time.RFC3339), store.OverridePath())
+		if len(override.Ignore) > 0 {
+			p.Line("  --ignore %s", ignore.Label())
+		}
+		for _, key := range sortedKeys(setValues) {
+			p.Line("  --set admission.%s=%s", key, setValues[key])
+		}
+		return nil
 	}
 	if err := store.SaveRelaxOverride(override); err != nil {
 		return err

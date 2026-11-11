@@ -21,6 +21,8 @@ found. An expired override is ignored and removed by the next evaluation.
   uncovered.ignore_names=node,rustc
 
 The override is stored in ~/.local/state/dot/admission/override.json.
+--dry-run prints the override that would be written (or cleared) and writes
+nothing.
 
 ```
 dot admit relax --for 1h [--ignore pressure,slot,uncovered|all] [--set <key>=<value> ...] | relax --clear [flags]

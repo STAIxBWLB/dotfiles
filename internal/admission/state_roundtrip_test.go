@@ -1,7 +1,9 @@
 package admission_test
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -63,6 +65,16 @@ func TestUserStateAdmissionBlockRoundTrips(t *testing.T) {
 	}
 	if err := config.SaveStateForHome(home, state); err != nil {
 		t.Fatalf("saving the state: %v", err)
+	}
+	// A field added to the state bumps the schema version so an older writer
+	// refuses to drop it; the admission block is version 6.
+	saved, err := os.ReadFile(config.StatePathForHome(home))
+	if err != nil {
+		t.Fatalf("reading the saved state: %v", err)
+	}
+	if !strings.HasPrefix(string(saved), "schema_version: 6\n") {
+		t.Fatalf("saved state version = %q, want schema_version: 6",
+			strings.SplitN(string(saved), "\n", 2)[0])
 	}
 	loaded, err := config.LoadStateForHome(home)
 	if err != nil {

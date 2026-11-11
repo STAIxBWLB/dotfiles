@@ -884,12 +884,18 @@ func TestAdmitIgnoreUncoveredNamesWhatItFound(t *testing.T) {
 		t.Fatalf("err = %v, want the uncovered defer", err)
 	}
 
-	_, errOut, err := runDotForTest("admit", "--ignore", "uncovered", "--wait", "0", "--", "true")
+	_, errOut, err := runDotForTest("admit", "--ignore", "uncovered", "--json", "--wait", "0", "--", "true")
 	if err != nil {
 		t.Fatalf("admit under --ignore uncovered = %v\nstderr=%s", err, errOut)
 	}
 	if !strings.Contains(errOut, "uncovered heavy work ignored (--ignore uncovered)") || !strings.Contains(errOut, "make(pid=4242") {
 		t.Errorf("stderr = %q, want the ignored findings named", errOut)
+	}
+	// The findings are what the rule would have deferred on, so the machine
+	// record names them too instead of only printing them.
+	if !strings.Contains(errOut, `"ignored_reasons"`) ||
+		!strings.Contains(errOut, "uncovered heavyweight work: make(pid=4242,parent=1,repo=repo-a)") {
+		t.Errorf("stderr = %q, want the ignored findings in ignored_reasons", errOut)
 	}
 }
 
@@ -1097,5 +1103,128 @@ func TestAdmitStatusListsOverflowSlot(t *testing.T) {
 	}
 	if !strings.Contains(out, "slot 1") {
 		t.Errorf("status does not list the overflow slot:\n%s", out)
+	}
+}
+
+// dry-run must not write state, including creating the state root. The relax
+// command saved the override regardless of the inherited flag.
+func TestAdmitRelaxDryRunWritesNothing(t *testing.T) {
+	home, _ := admitSandbox(t)
+	out, _, err := runDotForTest("--dry-run", "admit", "relax", "--for", "10m", "--ignore", "pressure")
+	if err != nil {
+		t.Fatalf("dry-run relax = %v", err)
+	}
+	if !strings.Contains(out, "dry-run: would set") || !strings.Contains(out, "--ignore pressure") {
+		t.Errorf("dry-run output = %q, want the override it would write", out)
+	}
+	root := admission.DefaultStateRoot(home)
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatalf("dry-run created the state root %s: %v", root, err)
+	}
+
+	// A dry-run clear leaves the override a real one wrote alone.
+	if _, _, err := runDotForTest("admit", "relax", "--for", "10m", "--ignore", "pressure"); err != nil {
+		t.Fatalf("relax = %v", err)
+	}
+	path := filepath.Join(admission.DefaultStateRoot(home), admission.RelaxFileName)
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("relax did not write the override: %v", err)
+	}
+	out, _, err = runDotForTest("--dry-run", "admit", "relax", "--clear")
+	if err != nil {
+		t.Fatalf("dry-run clear = %v", err)
+	}
+	if !strings.Contains(out, "dry-run: would clear") {
+		t.Errorf("dry-run clear output = %q, want what it would clear", out)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("dry-run clear removed the override: %v", err)
+	}
+}
+
+// A wait of up to --wait is long enough for an override to expire, so the limits
+// are resolved again before the post-wait gate: a relax that ended while the run
+// waited for a slot must not still bypass at launch.
+func TestAdmitRelaxExpiringDuringWaitRegatesOnFreshLimits(t *testing.T) {
+	home, workdir := admitSandbox(t)
+	snap := healthyAdmitSnapshot()
+	snap.MemoryLevel = admission.MemoryCritical
+	stubAdmitMonitor(t, snap)
+	stubAdmitScan(t, nil, nil)
+	runner := watchdogRunner(false)
+	store := admission.NewStore(admission.DefaultStateRoot(home), runner)
+	scope, err := admission.ResolveScope(context.Background(), runner, workdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, _, err := store.Acquire(context.Background(), scope, admission.ClassHeavy, admission.Lease{
+		Owner: "holder@test", PID: 4242, PIDStart: "Mon Sep 28 00:00:00 2026",
+	})
+	if err != nil || held == nil {
+		t.Fatalf("seeding the slot = %v, %v", held, err)
+	}
+	// The busy slot outlives the override: the run waits past the window, then
+	// finds the slot free and must gate again on the limits that are now in force.
+	go func() {
+		time.Sleep(3 * time.Second)
+		_ = held.Release()
+	}()
+	if _, _, err := runDotForTest("admit", "relax", "--for", "1s", "--ignore", "pressure"); err != nil {
+		t.Fatalf("relax = %v", err)
+	}
+
+	out, _, err := runDotForTest("admit", "--json", "--wait", "15s", "--", "true")
+	var exitErr *ExitCodeError
+	if !errors.As(err, &exitErr) || exitErr.Code != ExitDeferred {
+		t.Fatalf("err = %v, want the post-wait pressure defer", err)
+	}
+	if !strings.Contains(out, "memory pressure critical") {
+		t.Errorf("out = %q, want the defer reason the current limits produce", out)
+	}
+}
+
+// status --json says why its verdict came from the defaults, and shows the
+// limits in force. A plain host carries neither key, so its record is unchanged.
+func TestAdmitStatusJSONCarriesErrorAndLimits(t *testing.T) {
+	home, _ := admitSandbox(t)
+	stubAdmitMonitor(t, healthyAdmitSnapshot())
+
+	out, _, err := runDotForTest("admit", "status", "--json")
+	if err != nil {
+		t.Fatalf("status = %v", err)
+	}
+	if strings.Contains(out, `"limits"`) || strings.Contains(out, `"resolve_error"`) || strings.Contains(out, `"relax_until"`) {
+		t.Errorf("a default host's bundle gained limit keys:\n%s", out)
+	}
+
+	if _, _, err := runDotForTest("admit", "relax", "--for", "10m", "--set", "thresholds.recover_sustain=1m"); err != nil {
+		t.Fatalf("relax = %v", err)
+	}
+	out, _, err = runDotForTest("admit", "status", "--json")
+	if err != nil {
+		t.Fatalf("status with a relax = %v", err)
+	}
+	if !strings.Contains(out, `"relax_until"`) || !strings.Contains(out, `"source": "relax"`) {
+		t.Errorf("bundle does not carry the active relax:\n%s", out)
+	}
+	if !strings.Contains(out, `"key": "thresholds.recover_sustain"`) {
+		t.Errorf("bundle does not list the effective keys:\n%s", out)
+	}
+	if _, _, err := runDotForTest("admit", "relax", "--clear"); err != nil {
+		t.Fatalf("relax clear = %v", err)
+	}
+
+	// A config that blocks every gate: the record must not read as a healthy
+	// admit, and the limits it does show are the defaults it fell back to.
+	writeAdmitUserConfig(t, home, "admission:\n  slots:\n    heavy_per_repo: 99\n")
+	out, _, err = runDotForTest("admit", "status", "--json")
+	if err != nil {
+		t.Fatalf("status with a blocked config = %v", err)
+	}
+	if !strings.Contains(out, `"resolve_error"`) || !strings.Contains(out, "admission.slots.heavy_per_repo") {
+		t.Errorf("bundle does not carry the resolve error:\n%s", out)
+	}
+	if !strings.Contains(out, `"limits"`) || !strings.Contains(out, `"source": "default"`) {
+		t.Errorf("bundle does not show the limits it fell back to:\n%s", out)
 	}
 }

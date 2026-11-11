@@ -51,6 +51,16 @@ func (b *bypass) pressure(p *Printer, d admission.Decision) {
 	}
 }
 
+// uncovered records what a bypassed scan found. The findings are what the rule
+// would have deferred on, so the JSON record names them instead of only printing
+// them on stderr.
+func (b *bypass) uncovered(jobs []string) {
+	reason := "uncovered heavyweight work: " + strings.Join(jobs, ", ")
+	if !slices.Contains(b.reasons, reason) {
+		b.reasons = append(b.reasons, reason)
+	}
+}
+
 // annotate adds the bypass keys to a JSON record when anything was bypassed.
 func (b bypass) annotate(record map[string]any) {
 	if len(b.rules) > 0 {

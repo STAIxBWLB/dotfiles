@@ -209,11 +209,23 @@ func runAdmit(cmd *cobra.Command, args []string) error {
 	}
 
 	monitor := admitNewMonitor(runner, home)
-	policy, err := resolveAdmissionPolicy(store, ignoreFlag, false)
+	// resolveNow re-reads the config and the active relax override. A wait of up
+	// to --wait is long enough for an override to expire or be cleared, so every
+	// gate and every slot attempt resolves again instead of reusing the policy
+	// read at launch, and monitor.Thresholds follows the layer in use (the Linux
+	// memory mapping reads it).
+	resolveNow := func() (admission.Policy, error) {
+		fresh, rerr := resolveAdmissionPolicy(store, ignoreFlag, false)
+		if rerr != nil {
+			return fresh, rerr
+		}
+		monitor.Thresholds = &fresh.Thresholds
+		return fresh, nil
+	}
+	policy, err := resolveNow()
 	if err != nil {
 		return err
 	}
-	monitor.Thresholds = &policy.Thresholds
 	var bypassed bypass
 	deadline := time.Now().Add(wait)
 	decision, err := gateWithBusyRetry(ctx, store, monitor, policy, deadline)
@@ -229,10 +241,17 @@ func runAdmit(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	capacity := policy.Slots.For(class)
+	capacity := 0
 	backoff := 2 * time.Second
 	var slot *admission.Slot
 	for {
+		// Re-resolve on every attempt: an override that expired or was cleared
+		// while we waited must change the capacity, the slot bypass and the gate,
+		// not take effect only at the next invocation.
+		if policy, err = resolveNow(); err != nil {
+			return err
+		}
+		capacity = policy.Slots.For(class)
 		got, holder, aerr := store.AcquireWithOptions(ctx, effective, class, lease, admission.AcquireOptions{
 			Capacity: capacity,
 			Overflow: policy.Ignore.Slot,
@@ -262,9 +281,12 @@ func runAdmit(cmd *cobra.Command, args []string) error {
 		bypassed.rules = admissionIgnoreRules(bypassed.rules, admission.RuleSlot)
 	}
 
-	// The wait may have been long; re-gate before spending the slot on work
-	// that pressure would now defer anyway.
+	// The wait may have been long; resolve the current limits and re-gate before
+	// spending the slot on work that pressure would now defer anyway.
 	if wait > 0 {
+		if policy, err = resolveNow(); err != nil {
+			return err
+		}
 		decision, err = gateWithBusyRetry(ctx, store, monitor, policy, deadline)
 		if err != nil {
 			return err
@@ -282,10 +304,17 @@ func runAdmit(cmd *cobra.Command, args []string) error {
 	// failed scan or work in this repository (or of unknown ownership) defers;
 	// a bypassed uncovered rule names what it found and admits; the deferred
 	// Release above frees the slot.
+
+	// The scan reads the uncovered settings, so resolve once more right before
+	// it: an override that expired during the wait must not keep it switched off.
+	if policy, err = resolveNow(); err != nil {
+		return err
+	}
 	jobs, scanErr := admitFindUncovered(ctx, cwd, class == admission.ClassMaintenance, admission.LeasedPIDs(store), policy.Uncovered)
 	if scanErr == nil && len(jobs) > 0 && policy.Ignore.Uncovered {
 		admission.NoteIgnoredUncovered(p.Err, jobs, policy.IgnoreSource)
 		bypassed.rules = admissionIgnoreRules(bypassed.rules, admission.RuleUncovered)
+		bypassed.uncovered(jobs)
 		jobs = nil
 	}
 	if scanErr != nil || len(jobs) > 0 {
