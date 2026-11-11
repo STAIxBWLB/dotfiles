@@ -30,7 +30,8 @@ import (
 // Version 4 adds modules.container, for the same reason.
 // Version 5 adds modules.conda.
 // Version 6 adds the admission block, for the same reason.
-const currentSchemaVersion = 6
+// Version 7 adds the remote block, for the same reason.
+const currentSchemaVersion = 7
 
 // peekSchemaVersion recovers the top-level schema_version from raw state bytes
 // with a second decode into a one-field struct.
@@ -274,6 +275,7 @@ type UserState struct {
 	SSH           UserSSHState       `yaml:"ssh,omitempty"`
 	Secrets       SecretsUserConfig  `yaml:"secrets,omitempty"`
 	Admission     UserAdmissionState `yaml:"admission,omitempty"`
+	Remote        UserRemoteState    `yaml:"remote,omitempty"`
 
 	// carriedLegacy names the legacy keys the file this state was read from
 	// still used, in the order applyLegacyKeys applies them. It is unexported,
