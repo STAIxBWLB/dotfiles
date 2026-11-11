@@ -248,6 +248,11 @@ func (a *adapter) acquireProfile(ctx context.Context, opts Options, kind guardPr
 		gate = admission.PrebuiltGate(policy)
 	}
 	gate.Ignore, gate.IgnoreSource = policy.Ignore, policy.IgnoreSource
+	if policy.Relax != nil {
+		// The probe runs after this read, so an override that ends during it must
+		// not judge the sample it produced.
+		gate.ValidUntil = policy.Relax.ExpiresAt
+	}
 	if seams.Snapshot != nil {
 		gate.Snapshot = seams.Snapshot
 	} else if kind == profilePrebuilt {

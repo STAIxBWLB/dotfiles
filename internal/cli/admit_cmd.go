@@ -81,6 +81,11 @@ func gateWithBusyRetry(ctx context.Context, store *admission.Store, monitor *adm
 			Ignore:       policy.Ignore,
 			IgnoreSource: policy.IgnoreSource,
 		}
+		if policy.Relax != nil {
+			// The probe runs after this read, so an override that ends during it
+			// must not judge the sample it produced.
+			gate.ValidUntil = policy.Relax.ExpiresAt
+		}
 		d, err := admitGate(ctx, store, monitor, gate)
 		if err != nil || d.Admit || (!admission.IsGateBusy(d) && !d.Recovering) {
 			return d, err

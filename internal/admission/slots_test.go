@@ -342,6 +342,75 @@ func TestGateWithPolicyUsesCompletedSnapshotTimeAndOwnHistory(t *testing.T) {
 	}
 }
 
+// A probe can outlive the override that set the limits it is judged against. That
+// sample is dropped instead of persisted: a verdict recorded under limits the
+// controller no longer holds closes the episode for good, because the next
+// iteration only ever reads what this one saved.
+func TestGateDiscardsASampleWhoseOverrideExpiredDuringTheProbe(t *testing.T) {
+	store := testStore(t)
+	th := DefaultThresholds()
+	th.RecoverSustain = time.Minute
+	probeEnd := evalT0.Add(90 * time.Second)
+	monitor := &Monitor{Now: func() time.Time { return probeEnd }}
+	// An open episode whose recovery window the relaxed one-minute sustain has
+	// already covered: this sample would close it. The previous sample sits one
+	// second back so its own gap cannot restart the window.
+	episode := History{
+		DeferActive:  true,
+		DeferSince:   evalT0.Add(-time.Hour),
+		RecoverSince: evalT0.Add(-3 * time.Minute),
+		LastSampleAt: probeEnd.Add(-time.Second),
+	}
+	if err := SaveHistory(store.HistoryPath(), episode); err != nil {
+		t.Fatalf("seeding the episode: %v", err)
+	}
+
+	// The override that relaxed the sustain ended while the probe ran.
+	dropped, err := store.GateWithPolicy(context.Background(), monitor, GatePolicy{
+		Thresholds: th,
+		Snapshot:   func(context.Context) PressureSnapshot { return healthyDarwin() },
+		ValidUntil: evalT0,
+	})
+	if err != nil {
+		t.Fatalf("gate = %v", err)
+	}
+	if dropped.Admit {
+		t.Fatalf("admitted on limits the override no longer set: %+v", dropped)
+	}
+	if !dropped.Recovering || dropped.RetryAfter <= 0 {
+		t.Errorf("decision = %+v, want a resample (Recovering, short RetryAfter)", dropped)
+	}
+	if !strings.Contains(strings.Join(dropped.Reasons, " "), "override expired") {
+		t.Errorf("reasons = %v, want the expired override named", dropped.Reasons)
+	}
+	untouched, err := LoadHistory(store.HistoryPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !untouched.DeferActive || !untouched.RecoverSince.Equal(episode.RecoverSince) ||
+		!untouched.LastSampleAt.Equal(episode.LastSampleAt) {
+		t.Errorf("history = %+v, want the episode and its sample time untouched", untouched)
+	}
+
+	// Non-vacuity: the same sample under an override that is still in force
+	// admits and closes the episode, which is what the expiry check prevents.
+	admitted, err := store.GateWithPolicy(context.Background(), monitor, GatePolicy{
+		Thresholds: th,
+		Snapshot:   func(context.Context) PressureSnapshot { return healthyDarwin() },
+		ValidUntil: probeEnd.Add(time.Minute),
+	})
+	if err != nil || !admitted.Admit {
+		t.Fatalf("gate with a live override = %+v, %v; want the episode to close", admitted, err)
+	}
+	closed, err := LoadHistory(store.HistoryPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if closed.DeferActive {
+		t.Error("a live override did not close the episode; the expiry check proves nothing")
+	}
+}
+
 // TestClaimNotifyConcurrent pins the atomic claim: any number of
 // concurrent defer handlers for the same episode produce exactly one
 // notification winner.

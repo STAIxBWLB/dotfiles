@@ -118,7 +118,11 @@ func (d *FlexDuration) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &seconds); err != nil {
 		return fmt.Errorf("invalid duration %s: expected a string like \"1m\" or a count of seconds", string(data))
 	}
-	*d = FlexDuration(time.Duration(seconds) * time.Second)
+	parsed, err := secondsToDuration(seconds)
+	if err != nil {
+		return err
+	}
+	*d = parsed
 	return nil
 }
 
@@ -127,9 +131,26 @@ func (d FlexDuration) MarshalJSON() ([]byte, error) {
 	return json.Marshal(time.Duration(d).String())
 }
 
+// flexSecondsLimit is the largest count of seconds whose product with
+// time.Second still fits an int64. One past it the multiplication wraps:
+// -18446744073 seconds becomes a positive ~0.71s, which then passes every
+// "not negative" check downstream.
+const flexSecondsLimit = int64(math.MaxInt64) / int64(time.Second)
+
+// secondsToDuration converts a count of seconds, refusing one whose
+// multiplication by a second would overflow. Both integer decode paths (the
+// YAML/JSON scalar and the JSON number) share it so neither can drift.
+func secondsToDuration(seconds int64) (FlexDuration, error) {
+	if seconds < -flexSecondsLimit || seconds > flexSecondsLimit {
+		return 0, fmt.Errorf("invalid duration %d seconds: outside +/-%d seconds, the largest count that fits; pass a duration string like \"1m\"",
+			seconds, flexSecondsLimit)
+	}
+	return FlexDuration(time.Duration(seconds) * time.Second), nil
+}
+
 func parseFlexDuration(text string) (FlexDuration, error) {
 	if seconds, err := strconv.ParseInt(text, 10, 64); err == nil {
-		return FlexDuration(time.Duration(seconds) * time.Second), nil
+		return secondsToDuration(seconds)
 	}
 	parsed, err := time.ParseDuration(text)
 	if err != nil {

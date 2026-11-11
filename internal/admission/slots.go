@@ -696,6 +696,10 @@ type GatePolicy struct {
 	Evaluate     func(PressureSnapshot, Thresholds, History, time.Time) Decision
 	Ignore       IgnoreSet
 	IgnoreSource string
+	// ValidUntil is the expiry of the override the limits above came from, and
+	// zero when no override is in play. A probe can outlive it, so a sample
+	// judged after it is discarded instead of persisted: see GateWithPolicy.
+	ValidUntil time.Time
 }
 
 // GateWithPolicy runs one locked pressure evaluation and persists its result.
@@ -735,6 +739,21 @@ func (s *Store) GateWithPolicy(ctx context.Context, m *Monitor, policy GatePolic
 	now := s.now()
 	if m.Now != nil {
 		now = m.Now()
+	}
+	// The limits were resolved before the probe, and a Darwin pass can spend most
+	// of a minute in it. Judging this sample against an override that expired in
+	// the meantime would persist a verdict under limits the controller no longer
+	// holds — and a closed episode cannot be reopened by the next iteration, so
+	// the sample is dropped and the caller asked to resample: nothing is saved,
+	// not even the sample time.
+	if !policy.ValidUntil.IsZero() && now.After(policy.ValidUntil) {
+		return Decision{
+			Admit:        false,
+			Reasons:      []string{"admission override expired during the probe; resample to use the current limits"},
+			RetryAfter:   time.Second,
+			Recovering:   true, // makes `dot admit` resample inside its --wait budget
+			ProfileRetry: true, // and the verified prebuilt path inside its own budget
+		}, nil
 	}
 	hist = PrepareHistorySample(hist, policy.Thresholds, snap, now)
 	// The snapshot can run for most of a minute on a loaded host (probe

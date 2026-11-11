@@ -329,6 +329,45 @@ func TestFlexDurationDecodesYAMLAndJSON(t *testing.T) {
 	}
 }
 
+// An integer count of seconds is multiplied by time.Second, and one past the
+// int64 boundary wraps: -18446744073 becomes a positive ~0.71s, which then
+// passes every "not negative" check. Both integer decode paths refuse it.
+func TestFlexDurationRejectsSecondCountsThatWouldOverflow(t *testing.T) {
+	over := []string{"-18446744073", "18446744074"}
+	for _, text := range over {
+		var yamlValue FlexDuration
+		if err := yaml.Unmarshal([]byte(text), &yamlValue); err == nil {
+			t.Errorf("yaml %s decoded to %s, want a rejection naming the value", text, yamlValue.Std())
+		} else if !strings.Contains(err.Error(), text) || !strings.Contains(err.Error(), "seconds") {
+			t.Errorf("yaml %s error = %q, want the value and the accepted form", text, err)
+		}
+		var jsonValue FlexDuration
+		if err := json.Unmarshal([]byte(text), &jsonValue); err == nil {
+			t.Errorf("json %s decoded to %s, want a rejection naming the value", text, jsonValue.Std())
+		}
+	}
+
+	// The boundary itself still decodes, in both spellings of the largest count.
+	for _, text := range []string{"9223372036", "-9223372036", "300"} {
+		var yamlValue FlexDuration
+		if err := yaml.Unmarshal([]byte(text), &yamlValue); err != nil {
+			t.Errorf("yaml %s = %v, want it accepted", text, err)
+			continue
+		}
+		want, err := time.ParseDuration(text + "s")
+		if err != nil {
+			t.Fatalf("reference duration for %s: %v", text, err)
+		}
+		if yamlValue.Std() != want {
+			t.Errorf("yaml %s = %s, want %s", text, yamlValue.Std(), want)
+		}
+		var jsonValue FlexDuration
+		if err := json.Unmarshal([]byte(text), &jsonValue); err != nil || jsonValue != yamlValue {
+			t.Errorf("json %s = %s, %v; want %s", text, jsonValue.Std(), err, yamlValue.Std())
+		}
+	}
+}
+
 func TestUncoveredSettingsIgnoredAndCoverage(t *testing.T) {
 	settings := UncoveredSettings{Enabled: true, CPUPercent: 100, IgnoreNames: []string{"node"}}
 	if !settings.Ignored("node") || settings.Ignored("nodejs") {
