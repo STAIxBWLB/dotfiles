@@ -105,15 +105,31 @@ func AcquireVerifiedPrebuiltUpdate(ctx context.Context) (func(), error) {
 	a := native()
 	monitor := a.monitor()
 	opts := Options{Purpose: "verified prebuilt dot update", ScopeKey: "tooling"}
-	policy, err := a.policy()
+	budget, err := a.prebuiltRetryBudget()
 	if err != nil {
 		return nil, err
 	}
-	// The retry budget follows the configured quiet window: a longer window
-	// needs more samples, and a shorter one must not wait for a stale default.
-	return retryPrebuiltAcquire(ctx, policy.Prebuilt.SafetyWindow+sampleInterval, sampleInterval, func(waitCtx context.Context) (func(), error) {
+	return retryPrebuiltAcquire(ctx, budget, sampleInterval, func(waitCtx context.Context) (func(), error) {
 		return a.acquireProfile(waitCtx, opts, profilePrebuilt, prebuiltSeams{}, monitor)
 	})
+}
+
+// prebuiltRetryBudget is how long the sample warmup may take. A cold history
+// needs three samples about sampleInterval apart before the safety window can
+// be judged, so a short or zero safety_window must not shrink the budget below
+// the default window's: the samples never fit and a healthy host defers. The
+// budget is only a cap, so a shorter window still admits as soon as its samples
+// pass, and a longer one gets the time its window needs.
+func (a *adapter) prebuiltRetryBudget() (time.Duration, error) {
+	policy, err := a.policy()
+	if err != nil {
+		return 0, err
+	}
+	window := policy.Prebuilt.SafetyWindow
+	if window < admission.PrebuiltSafetyWindow {
+		window = admission.PrebuiltSafetyWindow
+	}
+	return window + sampleInterval, nil
 }
 
 // policy resolves the effective admission policy from the real user's config

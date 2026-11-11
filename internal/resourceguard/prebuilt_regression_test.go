@@ -465,6 +465,46 @@ func TestRetryPrebuiltAcquireSuccessCancellationAndContention(t *testing.T) {
 	})
 }
 
+// A cold history needs three samples about sampleInterval apart (fresh sample,
+// then the swap baseline, then the comparison), so a zero or short
+// prebuilt.safety_window must not shrink the retry budget: the samples never
+// fit and `dot update` defers on a healthy host.
+func TestPrebuiltRetryBudgetKeepsRoomForColdSamples(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", "")
+	writeGuardUserConfig(t, "admission:\n  prebuilt:\n    safety_window: 0s\n")
+	got, err := native().prebuiltRetryBudget()
+	if err != nil {
+		t.Fatalf("budget for a 0s safety window = %v", err)
+	}
+	if want := admission.PrebuiltSafetyWindow + sampleInterval; got < want {
+		t.Errorf("budget for a 0s safety window = %s, want at least the default %s", got, want)
+	}
+
+	// A longer window still gets the time its own samples need.
+	writeGuardUserConfig(t, "admission:\n  prebuilt:\n    safety_window: 2m\n")
+	got, err = native().prebuiltRetryBudget()
+	if err != nil {
+		t.Fatalf("budget for a 2m safety window = %v", err)
+	}
+	if want := 2*time.Minute + sampleInterval; got != want {
+		t.Errorf("budget for a 2m safety window = %s, want %s", got, want)
+	}
+}
+
+// writeGuardUserConfig writes the user config the adapter resolves its policy
+// from, under the sandboxed HOME.
+func writeGuardUserConfig(t *testing.T, body string) {
+	t.Helper()
+	path := filepath.Join(os.Getenv("HOME"), ".config", "dotfiles", "config.yaml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func envWith(env []string, key, value string) []string {
 	prefix := key + "="
 	filtered := make([]string, 0, len(env)+1)
