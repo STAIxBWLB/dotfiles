@@ -20,111 +20,200 @@ func writeAdmissionConfig(t *testing.T, body string) string {
 	return path
 }
 
-func TestResolveThresholdsConfigLayer(t *testing.T) {
+// AC1: a host with no config, no override and no environment resolves to the
+// values the controller hard-coded, with no source recorded.
+func TestResolvePolicyMissingConfigIsDefaults(t *testing.T) {
+	store := NewStore(filepath.Join(t.TempDir(), "admission"), nil)
+	policy, err := store.ResolvePolicy(ResolveOptions{ConfigPath: filepath.Join(t.TempDir(), "absent.yaml")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if policy.Thresholds != DefaultThresholds() {
+		t.Errorf("thresholds = %+v, want the policy defaults", policy.Thresholds)
+	}
+	want := DefaultPolicy()
+	if policy.Prebuilt != want.Prebuilt || policy.Slots != want.Slots ||
+		policy.Uncovered.Enabled != want.Uncovered.Enabled ||
+		policy.Uncovered.CPUPercent != want.Uncovered.CPUPercent ||
+		len(policy.Uncovered.IgnoreNames) != 0 {
+		t.Errorf("policy = %+v, want the defaults %+v", policy, want)
+	}
+	if len(policy.Sources) != 0 || policy.Ignore.Any() || policy.Relax != nil {
+		t.Errorf("a missing config reported overrides: %+v", policy)
+	}
+	if policy.Prebuilt.SafetyWindow != PrebuiltSafetyWindow {
+		t.Errorf("safety window = %s, want the shipped %s", policy.Prebuilt.SafetyWindow, PrebuiltSafetyWindow)
+	}
+}
+
+// AC2: each config key reaches its own rule, and an unset key keeps its default.
+func TestResolvePolicyConfigLayers(t *testing.T) {
 	configPath := writeAdmissionConfig(t, `name: test
 admission:
   thresholds:
     recover_sustain: 1m
     idle_defer_below: 5
     idle_recover_at: 10
+  prebuilt:
+    idle_defer_below: 10
+    safety_window: 45s
+  slots:
+    heavy_per_repo: 2
+    maintenance: 3
+  uncovered:
+    cpu_percent: 0
+    ignore_names: [node, rustc]
 `)
 	store := NewStore(filepath.Join(t.TempDir(), "admission"), nil)
-	resolved, err := store.ResolveThresholds(ResolveOptions{ConfigPath: configPath})
+	policy, err := store.ResolvePolicy(ResolveOptions{ConfigPath: configPath})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved.Thresholds.RecoverSustain != time.Minute {
-		t.Errorf("recover_sustain = %s, want 1m0s", resolved.Thresholds.RecoverSustain)
+	if policy.Thresholds.RecoverSustain != time.Minute || policy.Thresholds.IdleDeferBelow != 5 {
+		t.Errorf("thresholds = %+v, want the config values", policy.Thresholds)
 	}
-	if resolved.Source(KeyRecoverSustain) != SourceConfig || resolved.Source(KeyIdleDeferBelow) != SourceConfig {
-		t.Errorf("sources = %v, want config for the set keys", resolved.Sources)
+	if policy.Source(KeyRecoverSustain) != SourceConfig || policy.Source(KeyIdleDeferBelow) != SourceConfig {
+		t.Errorf("sources = %v, want config for the set keys", policy.Sources)
 	}
-	if resolved.Source(KeyDeferSustain) != SourceDefault {
-		t.Errorf("defer_sustain source = %s, want default", resolved.Source(KeyDeferSustain))
+	if policy.Source(KeyDeferSustain) != SourceDefault || policy.Thresholds.DeferSustain != DefaultDeferSustain {
+		t.Errorf("defer_sustain = %s (%s), want the unchanged default",
+			policy.Thresholds.DeferSustain, policy.Source(KeyDeferSustain))
 	}
-	if resolved.Thresholds.DeferSustain != DefaultDeferSustain {
-		t.Errorf("defer_sustain = %s, want the unchanged default %s", resolved.Thresholds.DeferSustain, DefaultDeferSustain)
+	if policy.Prebuilt.Thresholds.IdleDeferBelow != 10 || policy.Prebuilt.SafetyWindow != 45*time.Second {
+		t.Errorf("prebuilt = %+v, want the config block", policy.Prebuilt)
 	}
-	if resolved.IgnorePressure {
-		t.Error("config thresholds alone must not ignore pressure")
+	if policy.Slots.HeavyPerRepo != 2 || policy.Slots.Maintenance != 3 {
+		t.Errorf("slots = %+v, want 2 and 3", policy.Slots)
+	}
+	if policy.Uncovered.Enabled != true || policy.Uncovered.CPUPercent != 0 {
+		t.Errorf("uncovered = %+v, want enabled with the CPU rule off", policy.Uncovered)
+	}
+	if len(policy.Uncovered.IgnoreNames) != 2 || policy.Uncovered.IgnoreNames[1] != "rustc" {
+		t.Errorf("ignore_names = %v, want [node rustc]", policy.Uncovered.IgnoreNames)
+	}
+	if policy.Ignore.Any() {
+		t.Error("config alone must not bypass a rule")
 	}
 }
 
-func TestResolveThresholdsRejectsInvalidConfigNamingKey(t *testing.T) {
-	configPath := writeAdmissionConfig(t, "admission:\n  thresholds:\n    idle_defer_below: 150\n")
+// AC2: an invalid value fails loudly, naming the key, and a typo is refused
+// rather than silently doing nothing.
+func TestResolvePolicyRejectsInvalidConfigNamingKey(t *testing.T) {
+	cases := []struct{ body, wantKey string }{
+		{"admission:\n  thresholds:\n    idle_defer_below: 150\n", KeyIdleDeferBelow},
+		{"admission:\n  slots:\n    heavy_per_repo: 9\n", KeyHeavyPerRepo},
+		{"admission:\n  uncovered:\n    cpu_percent: -1\n", KeyUncoveredCPUPercent},
+		{"admission:\n  prebuilt:\n    safety_window: soon\n", KeyPrebuiltSafetyWindow},
+		{"admission:\n  thresholds:\n    recover_sustain: 1x\n", KeyRecoverSustain},
+	}
+	for _, tc := range cases {
+		store := NewStore(filepath.Join(t.TempDir(), "admission"), nil)
+		configPath := writeAdmissionConfig(t, tc.body)
+		_, err := store.ResolvePolicy(ResolveOptions{ConfigPath: configPath})
+		if err == nil || !strings.Contains(err.Error(), policyKeyPrefix+tc.wantKey) || !strings.Contains(err.Error(), configPath) {
+			t.Errorf("config %q: err = %v, want a message naming %s%s and the file %s", tc.body, err, policyKeyPrefix, tc.wantKey, configPath)
+		}
+	}
 	store := NewStore(filepath.Join(t.TempDir(), "admission"), nil)
-	_, err := store.ResolveThresholds(ResolveOptions{ConfigPath: configPath})
-	if err == nil || !strings.Contains(err.Error(), "admission.thresholds.idle_defer_below") {
-		t.Fatalf("err = %v, want a message naming admission.thresholds.idle_defer_below", err)
+	configPath := writeAdmissionConfig(t, "admission:\n  thresholds:\n    idle_defer_belo: 5\n")
+	_, err := store.ResolvePolicy(ResolveOptions{ConfigPath: configPath})
+	if err == nil || !strings.Contains(err.Error(), "unknown admission policy key") || !strings.Contains(err.Error(), configPath) {
+		t.Errorf("typo err = %v, want an unknown-key error naming %s", err, configPath)
 	}
 }
 
-func TestResolveThresholdsConfigOrderingAcrossLayers(t *testing.T) {
-	// One side of the comparison comes from the config and the other from the
-	// defaults: raising the defer point above the default recovery point must
-	// be refused rather than silently inverted.
+// A comparison can span two layers: the config may set one side and the
+// defaults the other, and the ordering error must still name the file.
+func TestResolvePolicyConfigOrderingAcrossLayers(t *testing.T) {
 	configPath := writeAdmissionConfig(t, "admission:\n  thresholds:\n    idle_defer_below: 50\n")
 	store := NewStore(filepath.Join(t.TempDir(), "admission"), nil)
-	_, err := store.ResolveThresholds(ResolveOptions{ConfigPath: configPath})
-	if err == nil || !strings.Contains(err.Error(), "idle_recover_at") {
-		t.Fatalf("err = %v, want the ordering error naming idle_recover_at", err)
+	_, err := store.ResolvePolicy(ResolveOptions{ConfigPath: configPath})
+	if err == nil || !strings.Contains(err.Error(), KeyIdleRecoverAt) || !strings.Contains(err.Error(), configPath) {
+		t.Fatalf("err = %v, want the ordering error naming %s and the file %s", err, KeyIdleRecoverAt, configPath)
 	}
 }
 
-func TestResolveThresholdsPrecedence(t *testing.T) {
+// Precedence: relax layers over config, and a one-off bypass (flag, then
+// environment) beats the relax override without narrowing it.
+func TestResolvePolicyPrecedence(t *testing.T) {
 	base := time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC)
 	configPath := writeAdmissionConfig(t, "admission:\n  thresholds:\n    recover_sustain: 2m\n")
 	store := NewStore(filepath.Join(t.TempDir(), "admission"), nil)
 	now := base
 	store.Now = func() time.Time { return now }
 	if err := store.SaveRelaxOverride(RelaxOverride{
-		SetAt:          base,
-		ExpiresAt:      base.Add(10 * time.Minute),
-		IgnorePressure: true,
-		Thresholds:     ThresholdOverrides{RecoverSustain: flexPtr(time.Minute)},
+		SetAt:     base,
+		ExpiresAt: base.Add(10 * time.Minute),
+		Ignore:    []string{RulePressure},
+		Set:       map[string]string{KeyRecoverSustain: "1m", KeyHeavyPerRepo: "2"},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
 	t.Run("relax layers over config", func(t *testing.T) {
-		resolved, err := store.ResolveThresholds(ResolveOptions{ConfigPath: configPath})
+		policy, err := store.ResolvePolicy(ResolveOptions{ConfigPath: configPath})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if resolved.Thresholds.RecoverSustain != time.Minute || resolved.Source(KeyRecoverSustain) != SourceRelax {
-			t.Errorf("recover_sustain = %s (%s), want 1m0s from relax", resolved.Thresholds.RecoverSustain, resolved.Source(KeyRecoverSustain))
+		if policy.Thresholds.RecoverSustain != time.Minute || policy.Source(KeyRecoverSustain) != SourceRelax {
+			t.Errorf("recover_sustain = %s (%s), want 1m0s from relax",
+				policy.Thresholds.RecoverSustain, policy.Source(KeyRecoverSustain))
 		}
-		if !resolved.IgnorePressure || !strings.Contains(resolved.IgnoreSource, "dot admit relax") {
-			t.Errorf("ignore = %v (%q), want the relax ignore", resolved.IgnorePressure, resolved.IgnoreSource)
+		if policy.Slots.HeavyPerRepo != 2 || policy.Source(KeyHeavyPerRepo) != SourceRelax {
+			t.Errorf("heavy_per_repo = %d (%s), want 2 from relax",
+				policy.Slots.HeavyPerRepo, policy.Source(KeyHeavyPerRepo))
 		}
-		if resolved.Relax == nil || !resolved.Relax.ExpiresAt.Equal(base.Add(10*time.Minute)) {
-			t.Errorf("relax = %+v, want the active override", resolved.Relax)
+		if !policy.Ignore.Pressure || !strings.Contains(policy.IgnoreSource, "dot admit relax") {
+			t.Errorf("ignore = %+v (%q), want the relax pressure bypass", policy.Ignore, policy.IgnoreSource)
+		}
+		if policy.Relax == nil || !policy.Relax.ExpiresAt.Equal(base.Add(10*time.Minute)) {
+			t.Errorf("relax = %+v, want the active override", policy.Relax)
 		}
 	})
 
-	t.Run("flag beats relax", func(t *testing.T) {
-		resolved, err := store.ResolveThresholds(ResolveOptions{ConfigPath: configPath, IgnorePressure: true})
+	t.Run("flag beats relax and adds to it", func(t *testing.T) {
+		policy, err := store.ResolvePolicy(ResolveOptions{
+			ConfigPath: configPath,
+			Ignore:     IgnoreSet{Slot: true},
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if resolved.IgnoreSource != "--ignore-pressure" {
-			t.Errorf("ignore source = %q, want the flag label", resolved.IgnoreSource)
+		if policy.IgnoreSource != "--ignore slot" {
+			t.Errorf("ignore source = %q, want the flag label", policy.IgnoreSource)
+		}
+		if !policy.Ignore.Pressure || !policy.Ignore.Slot {
+			t.Errorf("ignore = %+v, want the flag's slot plus the window's pressure", policy.Ignore)
 		}
 	})
 
 	t.Run("env beats relax", func(t *testing.T) {
-		t.Setenv(IgnorePressureEnv, "1")
-		resolved, err := store.ResolveThresholds(ResolveOptions{ConfigPath: configPath})
+		t.Setenv(IgnoreEnv, "slot,uncovered")
+		policy, err := store.ResolvePolicy(ResolveOptions{ConfigPath: configPath})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if resolved.IgnoreSource != IgnorePressureEnv+"=1" {
-			t.Errorf("ignore source = %q, want the env label", resolved.IgnoreSource)
+		if policy.IgnoreSource != IgnoreEnv+"=slot,uncovered" {
+			t.Errorf("ignore source = %q, want the env label", policy.IgnoreSource)
+		}
+		if !policy.Ignore.Slot || !policy.Ignore.Uncovered || !policy.Ignore.Pressure {
+			t.Errorf("ignore = %+v, want the env rules plus the window's pressure", policy.Ignore)
+		}
+	})
+
+	t.Run("env is validated", func(t *testing.T) {
+		t.Setenv(IgnoreEnv, "slots")
+		if _, err := store.ResolvePolicy(ResolveOptions{ConfigPath: configPath}); err == nil ||
+			!strings.Contains(err.Error(), IgnoreEnv) {
+			t.Fatalf("err = %v, want the variable named for a bad rule", err)
 		}
 	})
 }
 
-func TestResolveThresholdsExpiresRelaxOverride(t *testing.T) {
+// AC3: an expired override stops applying, the gate removes the file, and a
+// read-only view leaves it alone. A file the controller cannot honor fails
+// loudly instead of reading as "no override".
+func TestResolvePolicyExpiresRelaxOverride(t *testing.T) {
 	base := time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC)
 	store := NewStore(filepath.Join(t.TempDir(), "admission"), nil)
 	now := base
@@ -132,19 +221,19 @@ func TestResolveThresholdsExpiresRelaxOverride(t *testing.T) {
 
 	t.Run("prunes after expiry", func(t *testing.T) {
 		if err := store.SaveRelaxOverride(RelaxOverride{
-			SetAt:          base,
-			ExpiresAt:      base.Add(10 * time.Minute),
-			IgnorePressure: true,
+			SetAt:     base,
+			ExpiresAt: base.Add(10 * time.Minute),
+			Ignore:    []string{"all"},
 		}); err != nil {
 			t.Fatal(err)
 		}
 		now = base.Add(11 * time.Minute)
-		resolved, err := store.ResolveThresholds(ResolveOptions{})
+		policy, err := store.ResolvePolicy(ResolveOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if resolved.IgnorePressure || resolved.Relax != nil {
-			t.Fatalf("expired override still applied: %+v", resolved)
+		if policy.Ignore.Any() || policy.Relax != nil {
+			t.Fatalf("expired override still applied: %+v", policy)
 		}
 		if _, err := os.Stat(store.OverridePath()); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("expired override file still present: %v", err)
@@ -153,18 +242,18 @@ func TestResolveThresholdsExpiresRelaxOverride(t *testing.T) {
 
 	t.Run("status-style read leaves the file", func(t *testing.T) {
 		if err := store.SaveRelaxOverride(RelaxOverride{
-			SetAt:          base,
-			ExpiresAt:      base.Add(10 * time.Minute),
-			IgnorePressure: true,
+			SetAt:     base,
+			ExpiresAt: base.Add(10 * time.Minute),
+			Ignore:    []string{RulePressure},
 		}); err != nil {
 			t.Fatal(err)
 		}
 		now = base.Add(11 * time.Minute)
-		resolved, err := store.ResolveThresholds(ResolveOptions{KeepExpired: true})
+		policy, err := store.ResolvePolicy(ResolveOptions{KeepExpired: true})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if resolved.IgnorePressure {
+		if policy.Ignore.Any() {
 			t.Fatal("expired override applied by a read-only resolution")
 		}
 		if _, err := os.Stat(store.OverridePath()); err != nil {
@@ -182,7 +271,7 @@ func TestResolveThresholdsExpiresRelaxOverride(t *testing.T) {
 		if err := os.WriteFile(store.OverridePath(), []byte("{"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := store.ResolveThresholds(ResolveOptions{}); err == nil || !strings.Contains(err.Error(), "--clear") {
+		if _, err := store.ResolvePolicy(ResolveOptions{}); err == nil || !strings.Contains(err.Error(), "--clear") {
 			t.Fatalf("err = %v, want a corrupt-override error naming --clear", err)
 		}
 		if err := store.ClearRelaxOverride(); err != nil {
@@ -192,74 +281,28 @@ func TestResolveThresholdsExpiresRelaxOverride(t *testing.T) {
 			t.Errorf("second --clear = %v, want idempotent", err)
 		}
 	})
-}
 
-func TestGateIgnoreStillSamplesAndRecords(t *testing.T) {
-	fixed := evalT0
-	sampled := 0
-	snap := healthyDarwin()
-	snap.MemoryLevel = MemoryCritical
-	monitor := &Monitor{
-		GOOS: "darwin",
-		Now:  func() time.Time { return fixed },
-		SnapshotFunc: func(context.Context, *Monitor) PressureSnapshot {
-			sampled++
-			return snap
-		},
-	}
-
-	t.Run("deferred without ignore", func(t *testing.T) {
-		store := testStore(t)
-		d, err := store.Gate(context.Background(), monitor, DefaultThresholds())
-		if err != nil {
+	t.Run("unknown stored key fails loudly", func(t *testing.T) {
+		if err := store.SaveRelaxOverride(RelaxOverride{
+			SetAt:     base,
+			ExpiresAt: base.Add(10 * time.Minute),
+			Set:       map[string]string{"thresholds.nonsense": "1"},
+		}); err != nil {
 			t.Fatal(err)
 		}
-		if d.Admit {
-			t.Fatal("gate admitted under critical memory")
+		now = base.Add(time.Minute)
+		_, err := store.ResolvePolicy(ResolveOptions{})
+		if err == nil || !strings.Contains(err.Error(), "admission.thresholds.nonsense") {
+			t.Fatalf("err = %v, want the unknown key named", err)
+		}
+		if err := store.ClearRelaxOverride(); err != nil {
+			t.Fatal(err)
 		}
 	})
-
-	store := testStore(t)
-	before := sampled
-	d, err := store.GateWithPolicy(context.Background(), monitor, GatePolicy{
-		Thresholds:     DefaultThresholds(),
-		IgnorePressure: true,
-		IgnoreSource:   "--ignore-pressure",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !d.Admit || !d.PressureIgnored {
-		t.Fatalf("decision = %+v, want an ignored admission", d)
-	}
-	if len(d.IgnoredReasons) == 0 || !strings.Contains(strings.Join(d.IgnoredReasons, "; "), "memory pressure critical") {
-		t.Errorf("ignored reasons = %v, want the bypassed memory reason", d.IgnoredReasons)
-	}
-	if sampled-before != 1 {
-		t.Errorf("snapshot probes = %d, want the ignored gate to sample once", sampled-before)
-	}
-	hist, err := LoadHistory(store.HistoryPath())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !hist.DeferActive || !hist.LastSampleAt.Equal(fixed) {
-		t.Errorf("persisted history = %+v, want the ignored sample recorded", hist)
-	}
 }
 
-func TestApplyIgnoreLeavesGateBusyAndAdmissionsAlone(t *testing.T) {
-	busy := Decision{Reasons: []string{GateBusyReason}, RetryAfter: 10 * time.Second}
-	if got := ApplyIgnore(busy, "--ignore-pressure"); got.Admit || got.PressureIgnored {
-		t.Errorf("busy gate became %+v, want the defer kept", got)
-	}
-	admitted := Decision{Admit: true}
-	if got := ApplyIgnore(admitted, "--ignore-pressure"); got.PressureIgnored {
-		t.Error("an already-admitting decision was marked ignored")
-	}
-}
-
-// AC3: a relax override admits a deferring gate, the override expires, the
-// gate defers again, and the file is gone.
+// AC3: a relax override admits a deferring gate; once it expires the gate
+// defers again and the file is gone.
 func TestRelaxIgnoreAdmitsThenExpires(t *testing.T) {
 	base := evalT0
 	store := NewStore(filepath.Join(t.TempDir(), "admission"), nil)
@@ -275,33 +318,33 @@ func TestRelaxIgnoreAdmitsThenExpires(t *testing.T) {
 	}
 
 	if err := store.SaveRelaxOverride(RelaxOverride{
-		SetAt:          base,
-		ExpiresAt:      base.Add(10 * time.Minute),
-		IgnorePressure: true,
+		SetAt:     base,
+		ExpiresAt: base.Add(10 * time.Minute),
+		Ignore:    []string{"all"},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := store.ResolveThresholds(ResolveOptions{})
+	policy, err := store.ResolvePolicy(ResolveOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	d, err := store.GateResolved(context.Background(), monitor, resolved)
+	d, err := store.GateResolved(context.Background(), monitor, policy)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !d.Admit || !d.PressureIgnored {
-		t.Fatalf("decision inside the override = %+v, want an ignored admission", d)
+	if !d.Admit || !d.PressureIgnored || d.Ignored[0] != RulePressure {
+		t.Fatalf("decision inside the override = %+v, want a bypassed admission", d)
 	}
 
 	now = base.Add(11 * time.Minute)
-	resolved, err = store.ResolveThresholds(ResolveOptions{})
+	policy, err = store.ResolvePolicy(ResolveOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved.IgnorePressure {
-		t.Fatal("expired override still ignoring pressure")
+	if policy.Ignore.Any() {
+		t.Fatal("expired override still bypassing")
 	}
-	d, err = store.GateResolved(context.Background(), monitor, resolved)
+	d, err = store.GateResolved(context.Background(), monitor, policy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,16 +356,70 @@ func TestRelaxIgnoreAdmitsThenExpires(t *testing.T) {
 	}
 }
 
-func TestResolveThresholdsMissingConfigIsDefaults(t *testing.T) {
-	store := NewStore(filepath.Join(t.TempDir(), "admission"), nil)
-	resolved, err := store.ResolveThresholds(ResolveOptions{ConfigPath: filepath.Join(t.TempDir(), "absent.yaml")})
+// A bypassed pressure rule still samples and records, so recovery stays
+// continuous after the bypass ends; a busy slot is never treated as pressure.
+func TestGateIgnoreStillSamplesAndRecords(t *testing.T) {
+	fixed := evalT0
+	sampled := 0
+	snap := healthyDarwin()
+	snap.MemoryLevel = MemoryCritical
+	monitor := &Monitor{
+		GOOS: "darwin",
+		Now:  func() time.Time { return fixed },
+		SnapshotFunc: func(context.Context, *Monitor) PressureSnapshot {
+			sampled++
+			return snap
+		},
+	}
+
+	store := testStore(t)
+	d, err := store.Gate(context.Background(), monitor, DefaultThresholds())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved.Thresholds != DefaultThresholds() {
-		t.Errorf("thresholds = %+v, want the policy defaults", resolved.Thresholds)
+	if d.Admit {
+		t.Fatal("gate admitted under critical memory")
 	}
-	if len(resolved.Sources) != 0 || resolved.IgnorePressure {
-		t.Errorf("a missing config reported overrides: %+v", resolved)
+
+	before := sampled
+	policy := DefaultPolicy()
+	policy.Ignore = IgnoreSet{Pressure: true}
+	policy.IgnoreSource = "--ignore pressure"
+	d, err = store.GateResolved(context.Background(), monitor, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !d.Admit || !d.PressureIgnored {
+		t.Fatalf("decision = %+v, want a bypassed admission", d)
+	}
+	if len(d.IgnoredReasons) == 0 || !strings.Contains(strings.Join(d.IgnoredReasons, "; "), "memory pressure critical") {
+		t.Errorf("ignored reasons = %v, want the bypassed memory reason", d.IgnoredReasons)
+	}
+	if sampled-before != 1 {
+		t.Errorf("snapshot probes = %d, want the bypassed gate to sample once", sampled-before)
+	}
+	hist, err := LoadHistory(store.HistoryPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hist.DeferActive || !hist.LastSampleAt.Equal(fixed) {
+		t.Errorf("persisted history = %+v, want the bypassed sample recorded", hist)
+	}
+}
+
+// A bypass of another rule never turns a pressure defer into an admission, and
+// an already-admitting decision is never marked as bypassed.
+func TestApplyIgnoreLeavesOtherRulesAndAdmissionsAlone(t *testing.T) {
+	busy := Decision{Reasons: []string{GateBusyReason}, RetryAfter: 10 * time.Second}
+	if got := ApplyIgnore(busy, IgnoreSet{Pressure: true}, "--ignore pressure"); got.Admit || got.PressureIgnored {
+		t.Errorf("busy gate became %+v, want the defer kept", got)
+	}
+	deferred := Decision{Reasons: []string{"memory pressure critical"}}
+	if got := ApplyIgnore(deferred, IgnoreSet{Slot: true}, "--ignore slot"); got.Admit {
+		t.Errorf("slot-only bypass admitted a pressure defer: %+v", got)
+	}
+	admitted := Decision{Admit: true}
+	if got := ApplyIgnore(admitted, IgnoreSet{Pressure: true}, "--ignore pressure"); got.PressureIgnored {
+		t.Error("an already-admitting decision was marked bypassed")
 	}
 }

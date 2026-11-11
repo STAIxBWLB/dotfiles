@@ -41,18 +41,35 @@ func (e *DeferredError) Error() string { return "deferred-resource-pressure: " +
 // sampleInterval paces WaitAcquire's retries.
 const sampleInterval = 15 * time.Second
 
+// guardProfile selects which gate an acquire runs: the standard pressure gate
+// or the verified prebuilt update profile. Both read the same resolved policy,
+// so a config key or a bypass reaches each of them.
+type guardProfile int
+
+const (
+	profileStandard guardProfile = iota
+	profilePrebuilt
+)
+
+// prebuiltSeams lets a test replace the verified prebuilt profile's probes and
+// evaluator; real callers pass the zero value.
+type prebuiltSeams struct {
+	Snapshot func(context.Context) admission.PressureSnapshot
+	Evaluate func(admission.PressureSnapshot, admission.Thresholds, admission.History, time.Time) admission.Decision
+}
+
 type adapter struct {
 	root        func() (string, error)
 	runner      *exec.Runner
 	monitor     func() *admission.Monitor
-	uncovered   func(ctx context.Context, dir string, maintenance bool, leased []int) ([]string, error)
+	uncovered   func(ctx context.Context, dir string, maintenance bool, leased []int, settings admission.UncoveredSettings) ([]string, error)
 	lease       func(ctx context.Context, runner *exec.Runner, dir string) (admission.Lease, error)
 	resolve     func(ctx context.Context, runner *exec.Runner, dir string) (string, error)
 	parentLease func(ctx context.Context, store *admission.Store, scope, class string, childPID int) bool
 	heartbeat   time.Duration
-	// configPath names the user config file the thresholds and the relax
-	// override are read from. Nil means no config layer, which keeps tests
-	// deterministic on any host.
+	// configPath names the user config file the policy and the relax override
+	// are read from. Nil means no config layer, which keeps tests deterministic
+	// on any host.
 	configPath func() string
 }
 
@@ -88,17 +105,29 @@ func AcquireVerifiedPrebuiltUpdate(ctx context.Context) (func(), error) {
 	a := native()
 	monitor := a.monitor()
 	opts := Options{Purpose: "verified prebuilt dot update", ScopeKey: "tooling"}
-	policy := admission.GatePolicy{
-		HistoryFile: admission.PrebuiltHistoryFile,
-		Thresholds:  admission.PrebuiltThresholds(),
-		Snapshot: func(ctx context.Context) admission.PressureSnapshot {
-			return admission.SnapshotPrebuilt(ctx, monitor)
-		},
-		Evaluate: admission.EvaluatePrebuiltPressure,
+	policy, err := a.policy()
+	if err != nil {
+		return nil, err
 	}
-	return retryPrebuiltAcquire(ctx, admission.PrebuiltSafetyWindow+sampleInterval, sampleInterval, func(waitCtx context.Context) (func(), error) {
-		return a.acquirePolicy(waitCtx, opts, policy, monitor)
+	// The retry budget follows the configured quiet window: a longer window
+	// needs more samples, and a shorter one must not wait for a stale default.
+	return retryPrebuiltAcquire(ctx, policy.Prebuilt.SafetyWindow+sampleInterval, sampleInterval, func(waitCtx context.Context) (func(), error) {
+		return a.acquireProfile(waitCtx, opts, profilePrebuilt, prebuiltSeams{}, monitor)
 	})
+}
+
+// policy resolves the effective admission policy from the real user's config
+// and any active relax override.
+func (a *adapter) policy() (admission.Policy, error) {
+	root, err := a.root()
+	if err != nil {
+		return admission.Policy{}, err
+	}
+	configPath := ""
+	if a.configPath != nil {
+		configPath = a.configPath()
+	}
+	return admission.NewStore(root, a.runner).ResolvePolicy(admission.ResolveOptions{ConfigPath: configPath})
 }
 
 func retryPrebuiltAcquire(ctx context.Context, maxWait, delay time.Duration, attempt func(context.Context) (func(), error)) (func(), error) {
@@ -144,10 +173,10 @@ func (a *adapter) waitAcquire(ctx context.Context, opts Options, maxWait time.Du
 }
 
 func (a *adapter) acquire(ctx context.Context, opts Options) (func(), error) {
-	return a.acquirePolicy(ctx, opts, admission.GatePolicy{}, nil)
+	return a.acquireProfile(ctx, opts, profileStandard, prebuiltSeams{}, nil)
 }
 
-func (a *adapter) acquirePolicy(ctx context.Context, opts Options, policy admission.GatePolicy, selectedMonitor *admission.Monitor) (func(), error) {
+func (a *adapter) acquireProfile(ctx context.Context, opts Options, kind guardProfile, seams prebuiltSeams, selectedMonitor *admission.Monitor) (func(), error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -177,7 +206,7 @@ func (a *adapter) acquirePolicy(ctx context.Context, opts Options, policy admiss
 	}
 	// A child of a job that already holds this slot runs inside it.
 	nested := admission.NestedScope(os.Getenv(admission.NestedEnv), scope, class)
-	if policy.HistoryFile == "" && nested && class != admission.ClassMaintenance {
+	if kind == profileStandard && nested && class != admission.ClassMaintenance {
 		return func() {}, nil
 	}
 	root, err := a.root()
@@ -193,26 +222,32 @@ func (a *adapter) acquirePolicy(ctx context.Context, opts Options, policy admiss
 	if a.configPath != nil {
 		configPath = a.configPath()
 	}
-	resolved, err := store.ResolveThresholds(admission.ResolveOptions{ConfigPath: configPath})
+	policy, err := store.ResolvePolicy(admission.ResolveOptions{ConfigPath: configPath})
 	if err != nil {
 		return nil, err
 	}
+
+	gate := admission.GatePolicy{Thresholds: policy.Thresholds}
+	if kind == profilePrebuilt {
+		gate = admission.PrebuiltGate(policy)
+	}
+	gate.Ignore, gate.IgnoreSource = policy.Ignore, policy.IgnoreSource
+	if seams.Snapshot != nil {
+		gate.Snapshot = seams.Snapshot
+	} else if kind == profilePrebuilt {
+		gate.Snapshot = func(ctx context.Context) admission.PressureSnapshot {
+			return admission.SnapshotPrebuilt(ctx, monitor)
+		}
+	}
+	if seams.Evaluate != nil {
+		gate.Evaluate = seams.Evaluate
+	}
+	// The Linux MemAvailable mapping reads the level the gate it feeds judges
+	// against, so each profile maps with its own memory thresholds.
+	monitor.Thresholds = &gate.Thresholds
 	// The probes are bounded on their own; a caller canceling mid-probe must
 	// not record failed telemetry into the shared history.
-	var d admission.Decision
-	if policy.HistoryFile == "" {
-		// The standard policy takes the resolved thresholds (config, then the
-		// active relax override) and the one-off ignore. The verified prebuilt
-		// policy below keeps its own thresholds, but a one-off ignore still
-		// applies: `dot update` can step past the pressure gate for one run
-		// when the person asks it to.
-		monitor.Thresholds = &resolved.Thresholds
-		d, err = store.GateResolved(context.WithoutCancel(ctx), monitor, resolved)
-	} else {
-		policy.IgnorePressure = resolved.IgnorePressure
-		policy.IgnoreSource = resolved.IgnoreSource
-		d, err = store.GateWithPolicy(context.WithoutCancel(ctx), monitor, policy)
-	}
+	d, err := store.GateWithPolicy(context.WithoutCancel(ctx), monitor, gate)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +266,7 @@ func (a *adapter) acquirePolicy(ctx context.Context, opts Options, policy admiss
 		// A verified ancestor owns this exact slot. Re-scan after our gate and
 		// immediately before reuse because uncovered work may have started while
 		// the quiet-window samples were collected.
-		jobs, scanErr := a.uncovered(ctx, dir, true, admission.LeasedPIDs(store))
+		jobs, scanErr := a.scanUncovered(ctx, dir, true, store, policy)
 		if scanErr != nil {
 			return nil, &DeferredError{Reason: "heavy-work inventory unavailable: " + scanErr.Error()}
 		}
@@ -247,7 +282,11 @@ func (a *adapter) acquirePolicy(ctx context.Context, opts Options, policy admiss
 	if lease.Session == "" {
 		lease.Session = opts.Purpose // names the job in `dot admit status`
 	}
-	slot, holder, err := store.Acquire(ctx, scope, class, lease)
+	capacity := policy.Slots.For(class)
+	slot, holder, err := store.AcquireWithOptions(ctx, scope, class, lease, admission.AcquireOptions{
+		Capacity: capacity,
+		Overflow: policy.Ignore.Slot,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -258,9 +297,12 @@ func (a *adapter) acquirePolicy(ctx context.Context, opts Options, policy admiss
 		}
 		return nil, &DeferredError{Reason: reason}
 	}
+	// A bypassed capacity still holds a lease, in an overflow slot: it stays
+	// visible in status and its process tree stays covered for other callers.
+	admission.NoteOverflowSlot(os.Stderr, slot.Lease(), capacity, policy.IgnoreSource)
 	// Scan with the slot held, so the job that owned it is never mistaken for
 	// uncovered work; release it again on defer.
-	jobs, err := a.uncovered(ctx, dir, class == admission.ClassMaintenance, admission.LeasedPIDs(store))
+	jobs, err := a.scanUncovered(ctx, dir, class == admission.ClassMaintenance, store, policy)
 	if err != nil || len(jobs) > 0 {
 		_ = slot.Release()
 		if err != nil {
@@ -287,6 +329,21 @@ func (a *adapter) acquirePolicy(ctx context.Context, opts Options, policy admiss
 			_ = slot.Release()
 		})
 	}, nil
+}
+
+// scanUncovered runs the uncovered-work scan under the resolved settings. A
+// bypassed uncovered rule still scans — the findings are named on stderr, so the
+// person sees what the limit would have deferred — and then admits.
+func (a *adapter) scanUncovered(ctx context.Context, dir string, maintenance bool, store *admission.Store, policy admission.Policy) ([]string, error) {
+	jobs, err := a.uncovered(ctx, dir, maintenance, admission.LeasedPIDs(store), policy.Uncovered)
+	if err != nil || len(jobs) == 0 {
+		return jobs, err
+	}
+	if policy.Ignore.Uncovered {
+		admission.NoteIgnoredUncovered(os.Stderr, jobs, policy.IgnoreSource)
+		return nil, nil
+	}
+	return jobs, nil
 }
 
 // keepAlive heartbeats slot until the returned func is called.

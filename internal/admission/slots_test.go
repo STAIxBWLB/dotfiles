@@ -103,7 +103,7 @@ func TestStaleOwnerCrashRecovery(t *testing.T) {
 	dead := deadPIDLease(t, store)
 
 	// Occupy the slot as the dead owner.
-	dir := store.slotDir("/repo/a/.git", ClassHeavy)
+	dir := store.slotDir("/repo/a/.git", ClassHeavy, 0)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestPIDReuseNotForceFreed(t *testing.T) {
 	dead.Deadline = store.now().Add(time.Minute) // fresh heartbeat
 	dead.HeartbeatAt = store.now()
 
-	dir := store.slotDir("/repo/a/.git", ClassHeavy)
+	dir := store.slotDir("/repo/a/.git", ClassHeavy, 0)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestLiveOwnerStalledHeartbeatNotReclaimed(t *testing.T) {
 	lease.Deadline = past
 	lease.AcquiredAt = past
 
-	dir := store.slotDir("/repo/a/.git", ClassHeavy)
+	dir := store.slotDir("/repo/a/.git", ClassHeavy, 0)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestHeartbeatAndReleaseOwnershipGuard(t *testing.T) {
 	if err := slot.Heartbeat(); err != nil {
 		t.Fatalf("heartbeat: %v", err)
 	}
-	current, err := readLease(store.slotDir("/repo/a/.git", ClassHeavy))
+	current, err := readLease(store.slotDir("/repo/a/.git", ClassHeavy, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestHeartbeatAndReleaseOwnershipGuard(t *testing.T) {
 	foreign := lease
 	foreign.PID = lease.PID + 1000
 	foreign.AcquiredAt = store.now().Add(time.Second)
-	if err := writeLease(store.slotDir("/repo/a/.git", ClassHeavy), foreign); err != nil {
+	if err := writeLease(store.slotDir("/repo/a/.git", ClassHeavy, 0), foreign); err != nil {
 		t.Fatal(err)
 	}
 	if err := slot.Heartbeat(); err == nil {
@@ -204,14 +204,14 @@ func TestHeartbeatAndReleaseOwnershipGuard(t *testing.T) {
 	if err := slot.Release(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(store.slotDir("/repo/a/.git", ClassHeavy)); err != nil {
+	if _, err := os.Stat(store.slotDir("/repo/a/.git", ClassHeavy, 0)); err != nil {
 		t.Error("release after slot changed hands must not remove the new owner's slot")
 	}
 }
 
 func TestCorruptLeaseReclaimBound(t *testing.T) {
 	store := testStore(t)
-	dir := store.slotDir("/repo/a/.git", ClassHeavy)
+	dir := store.slotDir("/repo/a/.git", ClassHeavy, 0)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -417,7 +417,7 @@ func TestConcurrentReclaimExactlyOneWinner(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()
 	dead := deadPIDLease(t, store)
-	dir := store.slotDir("/repo/a/.git", ClassHeavy)
+	dir := store.slotDir("/repo/a/.git", ClassHeavy, 0)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -473,7 +473,7 @@ func TestReverifyStaleAbortsOnFreshLease(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()
 	dead := deadPIDLease(t, store)
-	dir := store.slotDir("/repo/a/.git", ClassHeavy)
+	dir := store.slotDir("/repo/a/.git", ClassHeavy, 0)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -526,7 +526,7 @@ func TestUpdateIdentityBindsChild(t *testing.T) {
 	if err := slot.UpdateIdentity(child.Process.Pid, childStart); err != nil {
 		t.Fatalf("UpdateIdentity: %v", err)
 	}
-	current, err := readLease(store.slotDir("/repo/a/.git", ClassHeavy))
+	current, err := readLease(store.slotDir("/repo/a/.git", ClassHeavy, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -538,7 +538,7 @@ func TestUpdateIdentityBindsChild(t *testing.T) {
 	// because the child incarnation is alive.
 	current.HeartbeatAt = store.now().Add(-2 * store.HeartbeatStaleAfter())
 	current.Deadline = current.HeartbeatAt
-	if err := writeLease(store.slotDir("/repo/a/.git", ClassHeavy), current); err != nil {
+	if err := writeLease(store.slotDir("/repo/a/.git", ClassHeavy, 0), current); err != nil {
 		t.Fatal(err)
 	}
 	// Slot's in-memory lease no longer matches the expired one on disk, so

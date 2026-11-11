@@ -38,7 +38,7 @@ func TestHeavyweightInventoryClassification(t *testing.T) {
 
 func TestWrapperForwardedCommandIsNotMaintenance(t *testing.T) {
 	rows := []processRow{{pid: 10, ppid: 1, name: "python", args: "python remote_dev.py verify /repo -- bun install --frozen-lockfile"}, {pid: 11, ppid: 1, name: "python", args: "python -m pip install x"}}
-	jobs, err := unownedHeavyJobs(rows, map[int]int{10: 1, 11: 1}, 99, nil)
+	jobs, err := unownedHeavyJobs(rows, map[int]int{10: 1, 11: 1}, 99, nil, DefaultUncoveredSettings())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,14 +144,14 @@ func TestUnownedHeavyJobsSkipsLeasedTrees(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	jobs, err := unownedHeavyJobs(rows, parents, 300, []int{100})
+	jobs, err := unownedHeavyJobs(rows, parents, 300, []int{100}, DefaultUncoveredSettings())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(jobs) != 1 || jobs[0].PID != 200 {
 		t.Fatalf("unowned jobs = %+v, want only pid 200", jobs)
 	}
-	if all, _ := unownedHeavyJobs(rows, parents, 300, nil); len(all) != 3 {
+	if all, _ := unownedHeavyJobs(rows, parents, 300, nil, DefaultUncoveredSettings()); len(all) != 3 {
 		t.Fatalf("without leases = %+v, want pids 101, 102 and 200", all)
 	}
 }
@@ -167,7 +167,7 @@ func TestFindUncoveredExcludesLeasedTrees(t *testing.T) {
 			"2000000101 2000000100  50.0 /usr/local/bin/npm install -g x\n" +
 			"2000000200          1  40.0 /opt/homebrew/bin/go test ./...\n", nil
 	}
-	got, err := FindUncovered(context.Background(), fixtureRepository(t), false, []int{2000000100})
+	got, err := FindUncovered(context.Background(), fixtureRepository(t), false, []int{2000000100}, DefaultUncoveredSettings())
 	if err != nil || len(got) != 1 || !strings.Contains(got[0], "pid=2000000200") {
 		t.Fatalf("uncovered = %v, %v; want only pid 2000000200", got, err)
 	}
@@ -210,7 +210,7 @@ func TestBackgroundSyncLeaseCoversItsRsyncChild(t *testing.T) {
 		t.Fatalf("background lease = %v, %v", slot, err)
 	}
 	for _, leased := range [][]int{nil, LeasedPIDs(store)} {
-		jobs, err := unownedHeavyJobs(rows, parents, self, leased)
+		jobs, err := unownedHeavyJobs(rows, parents, self, leased, DefaultUncoveredSettings())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -331,7 +331,7 @@ func TestUnownedHeavyJobsMarksCPUOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	jobs, err := unownedHeavyJobs(rows, parents, 999, nil)
+	jobs, err := unownedHeavyJobs(rows, parents, 999, nil, DefaultUncoveredSettings())
 	if err != nil || len(jobs) != 2 {
 		t.Fatalf("jobs=%+v err=%v", jobs, err)
 	}

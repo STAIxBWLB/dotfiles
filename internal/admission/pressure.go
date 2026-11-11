@@ -156,10 +156,12 @@ type Decision struct {
 	// Recovering marks the recovery countdown: telemetry is normal and only
 	// more continuous samples are needed, so waiting callers should resample.
 	Recovering bool
-	// PressureIgnored marks a pressure defer that a one-off ignore or a relax
-	// override admitted anyway. IgnoredReasons keeps what was bypassed, and
+	// PressureIgnored marks a pressure defer that a one-off bypass or a relax
+	// override admitted anyway. Ignored names the rules the caller stepped past,
+	// IgnoredReasons keeps what the pressure rule would have said, and
 	// IgnoreSource names the source for the one-line stderr note.
 	PressureIgnored bool
+	Ignored         []string
 	IgnoredReasons  []string
 	IgnoreSource    string
 	Next            History

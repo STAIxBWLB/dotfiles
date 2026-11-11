@@ -44,10 +44,15 @@ func (j HeavyJob) Describe() string {
 // the same repository, maintenance-shaped work for the maintenance class,
 // and any work whose repository is unknown. The caller's own ancestors and
 // direct children, and the process trees of the leased PIDs (jobs that hold a
-// slot), are never counted. A failed scan is an error; callers
-// defer on it rather than assume the host is quiet.
-func FindUncovered(ctx context.Context, projectDir string, maintenance bool, leased []int) ([]string, error) {
-	jobs, err := scanHeavyJobs(ctx, leased)
+// slot), are never counted. settings decides whether the scan runs at all, the
+// CPU-only rule's threshold (0 turns it off) and the process names it never
+// counts. A failed scan is an error; callers defer on it rather than assume
+// the host is quiet.
+func FindUncovered(ctx context.Context, projectDir string, maintenance bool, leased []int, settings UncoveredSettings) ([]string, error) {
+	if !settings.Enabled {
+		return nil, nil
+	}
+	jobs, err := scanHeavyJobs(ctx, leased, settings)
 	if err != nil {
 		return nil, err
 	}
@@ -56,6 +61,23 @@ func FindUncovered(ctx context.Context, projectDir string, maintenance bool, lea
 		project, _ = repositoryIdentity(projectDir)
 	}
 	return filterUncovered(jobs, project, maintenance), nil
+}
+
+// UnshapedCPU reports whether the CPU-only rule counts this reading at all.
+// A threshold of 0 turns the rule off: only a heavy shape defers then.
+func (u UncoveredSettings) UnshapedCPU(percent float64) bool {
+	return u.CPUPercent > 0 && percent >= u.CPUPercent
+}
+
+// Coverage names what the scan enforces, for the lines that describe it.
+func (u UncoveredSettings) Coverage() string {
+	if !u.Enabled {
+		return "scan disabled (admission.uncovered.enabled: false)"
+	}
+	if u.CPUPercent <= 0 {
+		return "shape rule only (admission.uncovered.cpu_percent: 0)"
+	}
+	return fmt.Sprintf("shapes or %g%% CPU", u.CPUPercent)
 }
 
 func filterUncovered(jobs []HeavyJob, project string, maintenance bool) []string {
@@ -111,7 +133,7 @@ var processTable = func(ctx context.Context) (string, error) {
 	return boundedOutput(ctx, "/bin/ps", "-axo", "pid=,ppid=,%cpu=,args=")
 }
 
-func scanHeavyJobs(ctx context.Context, leased []int) ([]HeavyJob, error) {
+func scanHeavyJobs(ctx context.Context, leased []int, settings UncoveredSettings) ([]HeavyJob, error) {
 	out, err := processTable(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("process inventory: %w", err)
@@ -120,7 +142,7 @@ func scanHeavyJobs(ctx context.Context, leased []int) ([]HeavyJob, error) {
 	if err != nil {
 		return nil, err
 	}
-	found, err := unownedHeavyJobs(rows, parents, os.Getpid(), leased)
+	found, err := unownedHeavyJobs(rows, parents, os.Getpid(), leased, settings)
 	if err != nil {
 		return nil, err
 	}
@@ -128,9 +150,9 @@ func scanHeavyJobs(ctx context.Context, leased []int) ([]HeavyJob, error) {
 }
 
 // unownedHeavyJobs picks the heavyweight rows that no admission owner
-// accounts for: not self's ancestors or direct children, and not inside the
-// process tree of a leased PID.
-func unownedHeavyJobs(rows []processRow, parents map[int]int, self int, leased []int) ([]HeavyJob, error) {
+// accounts for: not self's ancestors or direct children, not inside the
+// process tree of a leased PID, and not a name the policy exempts.
+func unownedHeavyJobs(rows []processRow, parents map[int]int, self int, leased []int, settings UncoveredSettings) ([]HeavyJob, error) {
 	ancestors := map[int]bool{}
 	for p := self; p > 0 && !ancestors[p]; p = parents[p] {
 		ancestors[p] = true
@@ -151,11 +173,11 @@ func unownedHeavyJobs(rows []processRow, parents map[int]int, self int, leased [
 	}
 	var found []HeavyJob
 	for _, r := range rows {
-		if ancestors[r.pid] || r.ppid == self || underLease(r.pid) {
+		if ancestors[r.pid] || r.ppid == self || underLease(r.pid) || settings.Ignored(r.name) {
 			continue
 		}
 		shaped := heavyweight(r.name, r.args)
-		if shaped || r.cpu >= 100 {
+		if shaped || settings.UnshapedCPU(r.cpu) {
 			found = append(found, HeavyJob{PID: r.pid, ParentPID: r.ppid, Name: r.name, CPUOnly: !shaped, Maintenance: containsWord(ownArgs(r.name, r.args), "install", "update", "upgrade", "sync", "ci")})
 			if len(found) > 20 {
 				return nil, fmt.Errorf("heavy process inventory exceeds 20 jobs; ownership cannot be established safely")

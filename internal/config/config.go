@@ -386,14 +386,23 @@ type BackupRecord struct {
 
 // UserAdmissionState holds the admission controller knobs a person sets in
 // config.yaml. The block is optional and every key is independent: an unset
-// key keeps the policy default, and the gate validates the values itself so an
-// invalid one fails loudly instead of silently falling back.
+// key keeps the policy default, and the controller validates the values itself
+// so an invalid one fails loudly instead of silently falling back.
+//
+// These structs exist so a save never drops the block; internal/admission parses
+// the same YAML with its own key table, and a round-trip test pins the two
+// against each other.
 type UserAdmissionState struct {
 	Thresholds UserAdmissionThresholds `yaml:"thresholds,omitempty"`
+	Prebuilt   UserAdmissionPrebuilt   `yaml:"prebuilt,omitempty"`
+	Slots      UserAdmissionSlots      `yaml:"slots,omitempty"`
+	Uncovered  UserAdmissionUncovered  `yaml:"uncovered,omitempty"`
 }
 
 // IsZero lets yaml.v3 omit an unset admission block from rendered output.
-func (c UserAdmissionState) IsZero() bool { return c.Thresholds.IsZero() }
+func (c UserAdmissionState) IsZero() bool {
+	return c.Thresholds.IsZero() && c.Prebuilt.IsZero() && c.Slots.IsZero() && c.Uncovered.IsZero()
+}
 
 // UserAdmissionThresholds is one optional override of the host-pressure
 // policy. Pointers keep "unset" distinct from a meaningful zero such as
@@ -416,6 +425,44 @@ func (c UserAdmissionThresholds) IsZero() bool {
 		c.LoadDeferFrac == nil && c.LoadRecoverFrac == nil &&
 		c.DeferSustain == nil && c.RecoverSustain == nil && c.WSGrace == nil &&
 		c.MemAvailWarnPct == nil && c.MemAvailCriticalPct == nil
+}
+
+// UserAdmissionPrebuilt is the verified prebuilt update profile's own block.
+type UserAdmissionPrebuilt struct {
+	IdleDeferBelow  *float64  `yaml:"idle_defer_below,omitempty"`
+	IdleRecoverAt   *float64  `yaml:"idle_recover_at,omitempty"`
+	LoadDeferFrac   *float64  `yaml:"load_defer_frac,omitempty"`
+	LoadRecoverFrac *float64  `yaml:"load_recover_frac,omitempty"`
+	SafetyWindow    *Duration `yaml:"safety_window,omitempty"`
+}
+
+// IsZero lets yaml.v3 omit an unset prebuilt block from rendered output.
+func (c UserAdmissionPrebuilt) IsZero() bool {
+	return c.IdleDeferBelow == nil && c.IdleRecoverAt == nil &&
+		c.LoadDeferFrac == nil && c.LoadRecoverFrac == nil && c.SafetyWindow == nil
+}
+
+// UserAdmissionSlots is how many concurrent leases each scope allows.
+type UserAdmissionSlots struct {
+	HeavyPerRepo *int `yaml:"heavy_per_repo,omitempty"`
+	Maintenance  *int `yaml:"maintenance,omitempty"`
+}
+
+// IsZero lets yaml.v3 omit an unset slots block from rendered output.
+func (c UserAdmissionSlots) IsZero() bool {
+	return c.HeavyPerRepo == nil && c.Maintenance == nil
+}
+
+// UserAdmissionUncovered is the uncovered heavy-work scan's block.
+type UserAdmissionUncovered struct {
+	Enabled     *bool    `yaml:"enabled,omitempty"`
+	CPUPercent  *float64 `yaml:"cpu_percent,omitempty"`
+	IgnoreNames []string `yaml:"ignore_names,omitempty"`
+}
+
+// IsZero lets yaml.v3 omit an unset uncovered block from rendered output.
+func (c UserAdmissionUncovered) IsZero() bool {
+	return c.Enabled == nil && c.CPUPercent == nil && len(c.IgnoreNames) == 0
 }
 
 // IsModuleEnabled returns whether a given module name is enabled in this config.

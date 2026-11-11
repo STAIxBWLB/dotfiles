@@ -314,3 +314,19 @@ compiler children (`rustc`, `clang`, `swift-frontend`, `ld`) are still
 name-shaped and still block. Revisit this when such unshaped builds cause a
 missed deferral: attribute work through the process tree's repository
 arguments, or add the tool's name to the shape rules.
+
+## Admission slot cap per scope
+
+`internal/admission/slots.go` caps one scope's slot capacity at
+`MaxSlotsPerScope` (8) and a `slot` bypass adds at most `MaxOverflowSlots` (8)
+more, so a repository or the maintenance class holds at most 16 leases.
+`admission.slots.heavy_per_repo` and `admission.slots.maintenance` reject
+anything outside 1-8 (`internal/admission/policy.go`).
+
+The cap bounds the acquire loop: `AcquireWithOptions` walks indexes from 0 and
+creates or stats each slot directory in turn, so an unbounded capacity would
+make a contended acquire proportional to the configured number. Sixteen
+concurrent heavy leases is far past any real build and test mix on a workstation
+or a GPU host, and the pressure gate defers new work long before that many are
+useful. Revisit this if a shared host needs more concurrent leases: raise the
+constant and replace the ordered scan with an index bitmap.

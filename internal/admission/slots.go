@@ -68,6 +68,10 @@ type Lease struct {
 	AcquiredAt  time.Time `json:"acquired_at"`
 	HeartbeatAt time.Time `json:"heartbeat_at"`
 	Deadline    time.Time `json:"deadline"`
+	// Index is the slot within its (scope, class): 0 is the original slot,
+	// higher indexes are the configured extra capacity and an overflow slot a
+	// bypass took. It is omitted at 0 so an existing lease file is unchanged.
+	Index int `json:"index,omitempty"`
 }
 
 // Store owns the admission state root (~/.local/state/dot/admission/): the
@@ -110,12 +114,18 @@ func (s *Store) HeartbeatStaleAfter() time.Duration {
 	return heartbeatStaleFactor * s.heartbeatInterval()
 }
 
-// slotDir names a slot by class plus a hash of the scope: the hash keeps
-// slashes and length out of the directory name, and the scope itself is
-// recorded inside the lease for status.
-func (s *Store) slotDir(scope, class string) string {
+// slotDir names a slot by class, a hash of the scope and its index: the hash
+// keeps slashes and length out of the directory name, and the scope itself is
+// recorded inside the lease for status. Index 0 keeps the original name, so a
+// state root written before slots became configurable reads unchanged in both
+// directions; a higher index appends its number.
+func (s *Store) slotDir(scope, class string, index int) string {
 	sum := sha256.Sum256([]byte(scope))
-	return filepath.Join(s.Root, "slots", fmt.Sprintf("%s-%s", class, hex.EncodeToString(sum[:])[:16]))
+	name := fmt.Sprintf("%s-%s", class, hex.EncodeToString(sum[:])[:16])
+	if index > 0 {
+		name = fmt.Sprintf("%s-%d", name, index)
+	}
+	return filepath.Join(s.Root, "slots", name)
 }
 
 // HistoryPath is the cross-invocation pressure history.
@@ -149,10 +159,61 @@ func (sl *Slot) Lease() Lease { return sl.lease }
 // by a waiter that holds NO slot — so no deadlock is possible by
 // construction.
 func (s *Store) Acquire(ctx context.Context, scope, class string, lease Lease) (*Slot, *Lease, error) {
+	return s.AcquireWithOptions(ctx, scope, class, lease, AcquireOptions{})
+}
+
+// AcquireOptions is the concurrency one caller's resolved policy allows for a
+// scope. A zero value is the policy default: one lease, no overflow.
+type AcquireOptions struct {
+	// Capacity is the number of concurrent leases for this scope. A bypassed
+	// capacity still starts at index 0, so a held slot keeps its identity.
+	Capacity int
+	// Overflow keeps trying past Capacity, which is what the slot bypass does:
+	// the job still takes a lease, in the first free overflow slot, so it stays
+	// visible in `dot admit status` and its process tree stays covered for
+	// every other caller's scan. It is never run without a lease.
+	Overflow bool
+}
+
+// AcquireWithOptions takes a slot for (scope, class) within the caller's
+// capacity, trying indexes in order and reclaiming a stale lease per index.
+// It reports the holder of the first busy index when the scope is full, so the
+// defer reason names who holds it.
+func (s *Store) AcquireWithOptions(ctx context.Context, scope, class string, lease Lease, opts AcquireOptions) (*Slot, *Lease, error) {
 	if err := os.MkdirAll(filepath.Join(s.Root, "slots"), 0o755); err != nil {
 		return nil, nil, fmt.Errorf("creating slots dir: %w", err)
 	}
-	dir := s.slotDir(scope, class)
+	capacity := opts.Capacity
+	if capacity < 1 {
+		capacity = 1
+	}
+	if capacity > MaxSlotsPerScope {
+		capacity = MaxSlotsPerScope
+	}
+	limit := capacity
+	if opts.Overflow {
+		limit += MaxOverflowSlots
+	}
+	var firstHolder *Lease
+	for index := 0; index < limit; index++ {
+		slot, holder, err := s.acquireIndex(ctx, scope, class, lease, index)
+		if err != nil {
+			return nil, nil, err
+		}
+		if slot != nil {
+			return slot, nil, nil
+		}
+		if firstHolder == nil && holder != nil {
+			firstHolder = holder
+		}
+	}
+	return nil, firstHolder, nil
+}
+
+// acquireIndex takes the slot at one index, or reports its holder.
+func (s *Store) acquireIndex(ctx context.Context, scope, class string, lease Lease, index int) (*Slot, *Lease, error) {
+	dir := s.slotDir(scope, class, index)
+	lease.Index = index
 	for attempt := 0; attempt < 3; attempt++ {
 		err := os.Mkdir(dir, 0o755)
 		if err == nil {
@@ -506,29 +567,43 @@ func (s *Store) Gate(ctx context.Context, m *Monitor, th Thresholds) (Decision, 
 	return s.GateWithPolicy(ctx, m, GatePolicy{Thresholds: th})
 }
 
-// GateResolved runs the standard policy with a resolved knob set: the
-// thresholds, and the ignore an active one-off or relax sets. The evaluation
-// still samples and records history when pressure is ignored.
-func (s *Store) GateResolved(ctx context.Context, m *Monitor, resolved ResolvedThresholds) (Decision, error) {
+// GateResolved runs the standard policy with a resolved policy's thresholds and
+// bypasses. The evaluation still samples and records history when pressure is
+// bypassed.
+func (s *Store) GateResolved(ctx context.Context, m *Monitor, policy Policy) (Decision, error) {
 	return s.GateWithPolicy(ctx, m, GatePolicy{
-		Thresholds:     resolved.Thresholds,
-		IgnorePressure: resolved.IgnorePressure,
-		IgnoreSource:   resolved.IgnoreSource,
+		Thresholds:   policy.Thresholds,
+		Ignore:       policy.Ignore,
+		IgnoreSource: policy.IgnoreSource,
 	})
 }
 
-// GatePolicy supplies an isolated history and optional pressure evaluator for
-// a narrowly-scoped admission policy. HistoryFile must be a basename under
-// Store.Root; the default policy uses history.json. IgnorePressure admits past
-// a pressure defer while still sampling and recording history; IgnoreSource
-// labels the bypass in IgnoredReasons's companion note.
+// PrebuiltGate builds the verified-prebuilt profile from a resolved policy: its
+// own thresholds, its own history file and its own safety window, so a change
+// to one profile never leaks into the other.
+func PrebuiltGate(policy Policy) GatePolicy {
+	window := policy.Prebuilt.SafetyWindow
+	return GatePolicy{
+		HistoryFile: PrebuiltHistoryFile,
+		Thresholds:  policy.Prebuilt.Thresholds,
+		Evaluate: func(snap PressureSnapshot, th Thresholds, hist History, now time.Time) Decision {
+			return EvaluatePrebuiltPressureWithWindow(snap, th, hist, now, window)
+		},
+	}
+}
+
+// GatePolicy selects one gate profile's history, thresholds and evaluator for a
+// narrowly-scoped admission policy. HistoryFile must be a basename under
+// Store.Root; the default policy uses history.json. A bypassed pressure rule
+// admits past a defer while still sampling and recording history; IgnoreSource
+// labels the bypass in the note and in the JSON record.
 type GatePolicy struct {
-	HistoryFile    string
-	Thresholds     Thresholds
-	Snapshot       func(context.Context) PressureSnapshot
-	Evaluate       func(PressureSnapshot, Thresholds, History, time.Time) Decision
-	IgnorePressure bool
-	IgnoreSource   string
+	HistoryFile  string
+	Thresholds   Thresholds
+	Snapshot     func(context.Context) PressureSnapshot
+	Evaluate     func(PressureSnapshot, Thresholds, History, time.Time) Decision
+	Ignore       IgnoreSet
+	IgnoreSource string
 }
 
 // GateWithPolicy runs one locked pressure evaluation and persists its result.
@@ -579,11 +654,11 @@ func (s *Store) GateWithPolicy(ctx context.Context, m *Monitor, policy GatePolic
 		evaluate = EvaluatePressure
 	}
 	d := evaluate(snap, policy.Thresholds, hist, now)
-	// The snapshot is taken and d.Next persisted either way: an ignored
-	// pressure defer must leave the recovery streak exactly as continuous as a
-	// real one, or the gate would never recover after the bypass ends.
-	if policy.IgnorePressure {
-		d = ApplyIgnore(d, policy.IgnoreSource)
+	// The snapshot is taken and d.Next persisted either way: a bypassed
+	// pressure rule must leave the recovery streak exactly as continuous as a
+	// real defer, or the gate would never recover after the bypass ends.
+	if policy.Ignore.Pressure {
+		d = ApplyIgnore(d, policy.Ignore, policy.IgnoreSource)
 	}
 	d.Next.LastSampleAt = now
 	if err := SaveHistory(historyPath, d.Next); err != nil {

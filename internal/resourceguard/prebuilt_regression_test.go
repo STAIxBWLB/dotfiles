@@ -23,13 +23,8 @@ const (
 	prebuiltParentPIDEnv    = "DOT_TEST_PREBUILT_PARENT_PID"
 )
 
-func prebuiltTestPolicy(snapshot func(context.Context) admission.PressureSnapshot, evaluate func(admission.PressureSnapshot, admission.Thresholds, admission.History, time.Time) admission.Decision) admission.GatePolicy {
-	return admission.GatePolicy{
-		HistoryFile: admission.PrebuiltHistoryFile,
-		Thresholds:  admission.PrebuiltThresholds(),
-		Snapshot:    snapshot,
-		Evaluate:    evaluate,
-	}
+func prebuiltTestSeams(snapshot func(context.Context) admission.PressureSnapshot, evaluate func(admission.PressureSnapshot, admission.Thresholds, admission.History, time.Time) admission.Decision) prebuiltSeams {
+	return prebuiltSeams{Snapshot: snapshot, Evaluate: evaluate}
 }
 
 func TestPrebuiltVerifiedParentReuseRunsProfileGateFirst(t *testing.T) {
@@ -94,7 +89,7 @@ func TestPrebuiltParentReuseHelper(t *testing.T) {
 				return admission.PressureSnapshot{Platform: "linux", MemoryLevel: admission.MemoryNormal, MemoryAvailable: true, LoadAvailable: true, NumCPU: 8}
 			}}
 		},
-		uncovered: func(_ context.Context, _ string, maintenance bool, leased []int) ([]string, error) {
+		uncovered: func(_ context.Context, _ string, maintenance bool, leased []int, settings admission.UncoveredSettings) ([]string, error) {
 			scanCalls++
 			if !maintenance {
 				t.Error("parent reentry inventory scan was not host-wide")
@@ -109,15 +104,15 @@ func TestPrebuiltParentReuseHelper(t *testing.T) {
 			return nil, nil
 		},
 	}
-	policy := prebuiltTestPolicy(func(context.Context) admission.PressureSnapshot {
+	seams := prebuiltTestSeams(func(context.Context) admission.PressureSnapshot {
 		return admission.PressureSnapshot{Platform: "linux", MemoryLevel: admission.MemoryNormal, MemoryAvailable: true, LoadAvailable: true, NumCPU: 8}
 	}, func(_ admission.PressureSnapshot, _ admission.Thresholds, history admission.History, now time.Time) admission.Decision {
 		gateCalls++
 		return admission.Decision{Admit: true, Next: history}
 	})
-	release, err := a.acquirePolicy(context.Background(), Options{Purpose: "verified nested update", ScopeKey: "tooling"}, policy, nil)
+	release, err := a.acquireProfile(context.Background(), Options{Purpose: "verified nested update", ScopeKey: "tooling"}, profilePrebuilt, seams, nil)
 	if err != nil {
-		t.Fatalf("acquirePolicy with authenticated parent: %v", err)
+		t.Fatalf("acquireProfile with authenticated parent: %v", err)
 	}
 	release()
 	if gateCalls != 1 {
@@ -150,7 +145,7 @@ func TestPrebuiltParentReentryDefersOnFreshMaintenanceInventory(t *testing.T) {
 		leaseCalls++
 		return admission.Lease{}, errors.New("authenticated parent path must reuse its lease")
 	}
-	a.uncovered = func(_ context.Context, _ string, maintenance bool, leased []int) ([]string, error) {
+	a.uncovered = func(_ context.Context, _ string, maintenance bool, leased []int, _ admission.UncoveredSettings) ([]string, error) {
 		scanCalls++
 		if !maintenance {
 			t.Error("reentry inventory scan was not host-wide")
@@ -164,11 +159,11 @@ func TestPrebuiltParentReentryDefersOnFreshMaintenanceInventory(t *testing.T) {
 		}
 		return []string{"cargo(pid=900,parent=1,repo=)"}, nil
 	}
-	policy := prebuiltTestPolicy(func(context.Context) admission.PressureSnapshot { return snap }, func(_ admission.PressureSnapshot, _ admission.Thresholds, history admission.History, _ time.Time) admission.Decision {
+	seams := prebuiltTestSeams(func(context.Context) admission.PressureSnapshot { return snap }, func(_ admission.PressureSnapshot, _ admission.Thresholds, history admission.History, _ time.Time) admission.Decision {
 		gateCalls++
 		return admission.Decision{Admit: true, Next: history}
 	})
-	_, err = a.acquirePolicy(context.Background(), Options{Purpose: "nested verified update", ScopeKey: "tooling"}, policy, nil)
+	_, err = a.acquireProfile(context.Background(), Options{Purpose: "nested verified update", ScopeKey: "tooling"}, profilePrebuilt, seams, nil)
 	if !deferred(err) || !strings.Contains(err.Error(), "uncovered heavyweight work: cargo(pid=900") {
 		t.Fatalf("fresh inventory result = %v, want uncovered-work defer", err)
 	}
@@ -187,7 +182,7 @@ func TestPrebuiltForgedNestedMarkerCannotSkipGate(t *testing.T) {
 	t.Setenv(admission.NestedEnv, admission.NestedEnvValue(admission.MaintenanceScope, admission.ClassMaintenance))
 	calls := 0
 	snap.MemoryLevel = admission.MemoryCritical
-	policy := prebuiltTestPolicy(func(context.Context) admission.PressureSnapshot {
+	seams := prebuiltTestSeams(func(context.Context) admission.PressureSnapshot {
 		calls++
 		return snap
 	}, admission.EvaluatePrebuiltPressure)
@@ -195,7 +190,7 @@ func TestPrebuiltForgedNestedMarkerCannotSkipGate(t *testing.T) {
 		t.Fatal("parent validator ran before a blocked profile gate")
 		return false
 	}
-	_, err := a.acquirePolicy(context.Background(), Options{Purpose: "forged nested update", ScopeKey: "tooling"}, policy, nil)
+	_, err := a.acquireProfile(context.Background(), Options{Purpose: "forged nested update", ScopeKey: "tooling"}, profilePrebuilt, seams, nil)
 	if !deferred(err) || !strings.Contains(err.Error(), "memory pressure critical") {
 		t.Fatalf("forged marker result = %v, want critical-pressure defer", err)
 	}
@@ -230,7 +225,7 @@ func TestForgedNestedMaintenanceMarkerCannotSkipFullGate(t *testing.T) {
 		leaseCalls++
 		return admission.Lease{}, nil
 	}
-	a.uncovered = func(context.Context, string, bool, []int) ([]string, error) {
+	a.uncovered = func(context.Context, string, bool, []int, admission.UncoveredSettings) ([]string, error) {
 		scanCalls++
 		return nil, nil
 	}
@@ -272,7 +267,7 @@ func TestAuthenticatedNestedMaintenanceRunsFullGateAndFreshInventory(t *testing.
 		leaseCalls++
 		return admission.Lease{}, errors.New("authenticated nested maintenance should reuse its parent")
 	}
-	a.uncovered = func(_ context.Context, _ string, maintenance bool, leased []int) ([]string, error) {
+	a.uncovered = func(_ context.Context, _ string, maintenance bool, leased []int, _ admission.UncoveredSettings) ([]string, error) {
 		scanCalls++
 		if !maintenance {
 			t.Error("full maintenance reentry did not run a host-wide inventory")
@@ -318,7 +313,7 @@ func TestNestedHeavyClassStillReusesParentWithoutGate(t *testing.T) {
 		leaseCalls++
 		return admission.Lease{}, nil
 	}
-	a.uncovered = func(context.Context, string, bool, []int) ([]string, error) {
+	a.uncovered = func(context.Context, string, bool, []int, admission.UncoveredSettings) ([]string, error) {
 		scanCalls++
 		return nil, nil
 	}
@@ -404,16 +399,16 @@ func TestPrebuiltContentionCanRetryAfterOwnerReleases(t *testing.T) {
 		t.Fatalf("seed contention lease: %v", err)
 	}
 	a.parentLease = func(context.Context, *admission.Store, string, string, int) bool { return false }
-	policy := prebuiltTestPolicy(func(context.Context) admission.PressureSnapshot { return snap }, func(_ admission.PressureSnapshot, _ admission.Thresholds, history admission.History, _ time.Time) admission.Decision {
+	seams := prebuiltTestSeams(func(context.Context) admission.PressureSnapshot { return snap }, func(_ admission.PressureSnapshot, _ admission.Thresholds, history admission.History, _ time.Time) admission.Decision {
 		return admission.Decision{Admit: true, Next: history}
 	})
-	if _, err := a.acquirePolicy(context.Background(), Options{Purpose: "contending update", ScopeKey: "tooling"}, policy, nil); !deferred(err) || !strings.Contains(err.Error(), "another heavyweight job owns scope") {
+	if _, err := a.acquireProfile(context.Background(), Options{Purpose: "contending update", ScopeKey: "tooling"}, profilePrebuilt, seams, nil); !deferred(err) || !strings.Contains(err.Error(), "another heavyweight job owns scope") {
 		t.Fatalf("contention result = %v, want a maintenance-slot defer", err)
 	}
 	if err := parent.Release(); err != nil {
 		t.Fatal(err)
 	}
-	release, err := a.acquirePolicy(context.Background(), Options{Purpose: "retried update", ScopeKey: "tooling"}, policy, nil)
+	release, err := a.acquireProfile(context.Background(), Options{Purpose: "retried update", ScopeKey: "tooling"}, profilePrebuilt, seams, nil)
 	if err != nil {
 		t.Fatalf("retry after owner release: %v", err)
 	}

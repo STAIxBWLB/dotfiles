@@ -30,6 +30,32 @@ func NoteIgnoredPressure(w io.Writer, d Decision) {
 	fmt.Fprintf(w, "admission: pressure gate ignored (%s): %s\n", source, reason)
 }
 
+// NoteIgnoredUncovered writes the line an uncovered-work bypass prints instead
+// of deferring: the scan still ran, so what it found is named and the person
+// can judge it.
+func NoteIgnoredUncovered(w io.Writer, jobs []string, source string) {
+	if len(jobs) == 0 || w == nil {
+		return
+	}
+	if source == "" {
+		source = "ignore"
+	}
+	fmt.Fprintf(w, "admission: uncovered heavy work ignored (%s): %s\n", source, strings.Join(jobs, ", "))
+}
+
+// NoteOverflowSlot writes the line a slot bypass prints when it holds a lease
+// past the configured capacity: the job is not leaseless, and the person should
+// know it is running next to the work the limit was protecting.
+func NoteOverflowSlot(w io.Writer, lease Lease, capacity int, source string) {
+	if lease.Index < capacity || w == nil {
+		return
+	}
+	if source == "" {
+		source = "ignore"
+	}
+	fmt.Fprintf(w, "admission: slot capacity %d exceeded (%s): holding overflow slot %d\n", capacity, source, lease.Index)
+}
+
 // DeferOutcome is the machine-readable record `dot admit` prints when it
 // defers (exit 75, EX_TEMPFAIL). RetryAfterSeconds is advisory.
 type DeferOutcome struct {
@@ -39,6 +65,10 @@ type DeferOutcome struct {
 	Owner             string `json:"owner,omitempty"`
 	Reason            string `json:"reason"`
 	RetryAfterSeconds int64  `json:"retry_after"`
+	// Ignored names the rules this run stepped past, when a bypass was active
+	// but did not turn this defer into an admission (a busy slot under
+	// --ignore pressure, for example). Absent otherwise.
+	Ignored []string `json:"ignored,omitempty"`
 }
 
 // Bundle is the bounded diagnostic record behind `dot admit status --json`:
@@ -51,9 +81,11 @@ type Bundle struct {
 	Platform    string   `json:"platform"`
 	Admit       bool     `json:"admit"`
 	Reasons     []string `json:"reasons,omitempty"`
-	// IgnoredReasons records what a one-off ignore or relax bypassed; it is
-	// absent unless the gate actually admitted past a pressure defer, so a
-	// default host's bundle is byte-identical to before.
+	// Ignored lists the rules a one-off bypass or the relax override stepped
+	// past, and IgnoredReasons what a bypassed pressure defer would have said.
+	// Both are absent unless something was actually bypassed, so a default
+	// host's bundle is byte-identical to before.
+	Ignored           []string         `json:"ignored,omitempty"`
 	IgnoredReasons    []string         `json:"ignored_reasons,omitempty"`
 	RetryAfterSeconds int64            `json:"retry_after_seconds,omitempty"`
 	Snapshot          PressureSnapshot `json:"snapshot"`
@@ -69,6 +101,7 @@ func BuildBundle(snap PressureSnapshot, d Decision, hist History, owners []Lease
 		Platform:       snap.Platform,
 		Admit:          d.Admit,
 		Reasons:        d.Reasons,
+		Ignored:        d.Ignored,
 		IgnoredReasons: d.IgnoredReasons,
 		Snapshot:       snap,
 		History:        hist,

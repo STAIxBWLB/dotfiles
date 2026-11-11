@@ -138,8 +138,8 @@ secrets:
   age_identity: "~/.ssh/age_key"
   age_recipients:
     - "age1..."
-admission:              # optional host-pressure gate overrides (dot admit)
-  thresholds:
+admission:              # optional resource-admission overrides (dot admit)
+  thresholds:           # host-pressure gate
     idle_defer_below: 10        # percent; unset keys keep the policy default
     idle_recover_at: 25
     load_defer_frac: 1.0        # load1 at this multiple of the CPU count
@@ -149,9 +149,22 @@ admission:              # optional host-pressure gate overrides (dot admit)
     ws_grace: 30m
     mem_avail_warn_pct: 10      # Linux MemAvailable percent
     mem_avail_critical_pct: 5
+  prebuilt:             # verified prebuilt dot update
+    idle_defer_below: 30
+    idle_recover_at: 30
+    load_defer_frac: 0.7
+    load_recover_frac: 0.7
+    safety_window: 30s          # quiet telemetry required before admitting
+  slots:                # concurrent leases per scope, 1-8
+    heavy_per_repo: 1
+    maintenance: 1
+  uncovered:            # heavy work that holds no slot
+    enabled: true
+    cpu_percent: 100            # CPU-only rule; 0 turns it off
+    ignore_names: []            # exact process basenames never counted
 ```
 
-Each `admission.thresholds` key is optional and independent. Values are validated when the gate runs: percentages must stay within 0-100, load fractions must be above zero, and the recovery side must be no stricter than the defer side (`idle_recover_at >= idle_defer_below`, `load_recover_frac <= load_defer_frac`, `mem_avail_critical_pct <= mem_avail_warn_pct`). An invalid value fails `dot admit` and `dot admit status` with a message naming the key. For a temporary change use `dot admit relax` (see [Resource admission](maintenance.md#resource-admission-dot-admit)) rather than editing this file.
+Every `admission` key is optional and independent; an unset key keeps the policy default. Values are validated when the policy resolves: percentages must stay within 0-100, load fractions must be above zero, durations must be at or above zero, the recovery side must be no stricter than the defer side (`idle_recover_at >= idle_defer_below`, `load_recover_frac <= load_defer_frac`, `mem_avail_critical_pct <= mem_avail_warn_pct`), slot counts must be between 1 and 8, and `uncovered.cpu_percent` at or above zero. An invalid value fails `dot admit` and `dot admit status` with a message naming the key and the config file. For a temporary change use `dot admit relax --set <key>=<value>` or `--ignore <rules>` (see [Resource admission](maintenance.md#resource-admission-dot-admit)) rather than editing this file.
 
 ### Environment Variables
 
@@ -166,6 +179,7 @@ Each `admission.thresholds` key is optional and independent. Values are validate
 | `DOTFILES_HOME` | Override home directory |
 | `GITHUB_TOKEN` | GitHub API token for `update` |
 | `DOT_CONTAINER_TRACE` | Set to `1` to print the backend argv the `container` shim runs |
+| `DOT_ADMISSION_IGNORE` | Rules to step past for one admitted run: `pressure`, `slot`, `uncovered`, or `all` (comma-separated); honored by every wrapped caller |
 | `DOT_SCHEMA_FORCE` | Set to `1` to overwrite a state file written by a newer `dot`, dropping any keys this binary does not know |
 
 ## Global flags

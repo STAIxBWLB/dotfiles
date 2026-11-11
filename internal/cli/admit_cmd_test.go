@@ -51,7 +51,7 @@ func admitSandbox(t *testing.T) (home, workdir string) {
 	workdir = t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", "")
-	t.Setenv(admission.IgnorePressureEnv, "")
+	t.Setenv(admission.IgnoreEnv, "")
 	t.Setenv(admission.NestedEnv, "")
 	t.Setenv(admission.OwnerEnv, "test-owner@test-host")
 	t.Chdir(workdir)
@@ -68,7 +68,9 @@ func stubAdmitUncovered(t *testing.T, jobs []string) {
 func stubAdmitScan(t *testing.T, jobs []string, err error) {
 	t.Helper()
 	old := admitFindUncovered
-	admitFindUncovered = func(context.Context, string, bool, []int) ([]string, error) { return jobs, err }
+	admitFindUncovered = func(context.Context, string, bool, []int, admission.UncoveredSettings) ([]string, error) {
+		return jobs, err
+	}
 	t.Cleanup(func() { admitFindUncovered = old })
 }
 
@@ -281,7 +283,7 @@ func goldenAdmitBase(t *testing.T, snap admission.PressureSnapshot) (home, root 
 	}
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", "")
-	t.Setenv(admission.IgnorePressureEnv, "")
+	t.Setenv(admission.IgnoreEnv, "")
 	t.Setenv(admission.NestedEnv, "")
 	t.Setenv(admission.OwnerEnv, "golden-owner@golden-host")
 	t.Setenv(admission.SessionEnv, "golden-session")
@@ -514,7 +516,7 @@ func TestAdmitPassesLeasesToScan(t *testing.T) {
 	defer func() { _ = other.Release() }()
 	var got []int
 	old := admitFindUncovered
-	admitFindUncovered = func(_ context.Context, _ string, _ bool, leased []int) ([]string, error) {
+	admitFindUncovered = func(_ context.Context, _ string, _ bool, leased []int, _ admission.UncoveredSettings) ([]string, error) {
 		got = leased
 		return nil, nil
 	}
@@ -715,7 +717,7 @@ func TestAdmitPreservesChildExitCode(t *testing.T) {
 	}
 }
 
-// --- configurable thresholds, relax and one-off ignore (#412) ---
+// --- configurable limits, relax and one-off bypass (#412) ---
 
 // writeAdmitUserConfig writes the user state file a person edits, with the
 // admission block under test.
@@ -743,11 +745,19 @@ func stubAdmitGateCapture(t *testing.T) *admission.GatePolicy {
 	return &got
 }
 
-// AC2: admission.thresholds.recover_sustain reaches the gate and status.
-func TestAdmitConfigThresholdsReachGateAndStatus(t *testing.T) {
+// AC2: the admission block reaches the gate and status reports each key with
+// the layer it came from.
+func TestAdmitConfigPolicyReachesGateAndStatus(t *testing.T) {
 	home, _ := admitSandbox(t)
 	stubAdmitMonitor(t, healthyAdmitSnapshot())
-	writeAdmitUserConfig(t, home, "admission:\n  thresholds:\n    recover_sustain: 1m\n")
+	writeAdmitUserConfig(t, home, `admission:
+  thresholds:
+    recover_sustain: 1m
+  slots:
+    heavy_per_repo: 2
+  uncovered:
+    ignore_names: [node]
+`)
 
 	policy := stubAdmitGateCapture(t)
 	if _, _, err := runDotForTest("admit", "--wait", "0", "--", "true"); err != nil {
@@ -761,16 +771,22 @@ func TestAdmitConfigThresholdsReachGateAndStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("status = %v", err)
 	}
-	if !regexp.MustCompile(`recover_sustain:\s+1m0s \(config\)`).MatchString(out) {
-		t.Errorf("status does not show the config source:\n%s", out)
+	checks := []string{
+		`thresholds.recover_sustain:\s+1m0s \(config\)`,
+		`thresholds.defer_sustain:\s+1m0s \(default\)`,
+		`slots.heavy_per_repo:\s+2 \(config\)`,
+		`uncovered.ignore_names:\s+node \(config\)`,
+		`prebuilt.safety_window:\s+30s \(default\)`,
 	}
-	if !regexp.MustCompile(`defer_sustain:\s+1m0s \(default\)`).MatchString(out) {
-		t.Errorf("status does not show an unset key as default:\n%s", out)
+	for _, want := range checks {
+		if !regexp.MustCompile(want).MatchString(out) {
+			t.Errorf("status does not show %s:\n%s", want, out)
+		}
 	}
 }
 
 // AC2: an invalid value fails loudly, naming the key, on both surfaces.
-func TestAdmitInvalidConfigThresholdNamesKey(t *testing.T) {
+func TestAdmitInvalidConfigPolicyNamesKey(t *testing.T) {
 	home, _ := admitSandbox(t)
 	stubAdmitMonitor(t, healthyAdmitSnapshot())
 	writeAdmitUserConfig(t, home, "admission:\n  thresholds:\n    idle_defer_below: 150\n")
@@ -786,27 +802,31 @@ func TestAdmitInvalidConfigThresholdNamesKey(t *testing.T) {
 	if _, _, err := runDotForTest("admit", "status"); err == nil || !strings.Contains(err.Error(), "admission.thresholds.idle_defer_below") {
 		t.Fatalf("status err = %v, want the key named", err)
 	}
+	if _, _, err := runDotForTest("admit", "relax", "--set", "slots.heavy_per_repo=9"); err == nil ||
+		!strings.Contains(err.Error(), "admission.slots.heavy_per_repo") {
+		t.Fatalf("relax err = %v, want the key named", err)
+	}
 }
 
-// AC5: --ignore-pressure admits past pressure, still records the sample, and
-// marks the completion record.
+// AC4/§4: --ignore pressure admits past pressure, still records the sample, and
+// marks the JSON records.
 func TestAdmitIgnorePressureFlagAdmitsAndMarksJSON(t *testing.T) {
 	home, _ := admitSandbox(t)
 	snap := healthyAdmitSnapshot()
 	snap.MemoryLevel = admission.MemoryCritical
 	stubAdmitMonitor(t, snap)
 
-	out, errOut, err := runDotForTest("admit", "--ignore-pressure", "--json", "--wait", "0", "--", "true")
+	out, errOut, err := runDotForTest("admit", "--ignore", "pressure", "--json", "--wait", "0", "--", "true")
 	if err != nil {
 		t.Fatalf("admit = %v\nstderr=%s", err, errOut)
 	}
 	if out != "" {
 		t.Errorf("stdout = %q, want no payload mixed into the stream", out)
 	}
-	if !strings.Contains(errOut, `"pressure_ignored": true`) {
-		t.Errorf("stderr = %q, want pressure_ignored in the completion record", errOut)
+	if !strings.Contains(errOut, `"ignored": [`) || !strings.Contains(errOut, `"pressure"`) {
+		t.Errorf("stderr = %q, want the ignored rule list in the completion record", errOut)
 	}
-	if !strings.Contains(errOut, "pressure gate ignored (--ignore-pressure)") || !strings.Contains(errOut, "memory pressure critical") {
+	if !strings.Contains(errOut, "pressure gate ignored (--ignore pressure)") || !strings.Contains(errOut, "memory pressure critical") {
 		t.Errorf("stderr = %q, want the one-line bypass note naming the reason", errOut)
 	}
 	store := admission.NewStore(admission.DefaultStateRoot(home), nil)
@@ -815,25 +835,54 @@ func TestAdmitIgnorePressureFlagAdmitsAndMarksJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !hist.DeferActive {
-		t.Errorf("history = %+v, want the ignored sample recorded as a defer episode", hist)
+		t.Errorf("history = %+v, want the bypassed sample recorded as a defer episode", hist)
 	}
 }
 
-// The env variable is the one-off ignore resourceguard honors; the CLI reads
-// it through the same resolver.
+// The environment variable is the one-off bypass resourceguard honors; the CLI
+// reads it through the same resolver.
 func TestAdmitIgnorePressureEnvAdmits(t *testing.T) {
 	admitSandbox(t)
 	snap := healthyAdmitSnapshot()
 	snap.MemoryLevel = admission.MemoryCritical
 	stubAdmitMonitor(t, snap)
-	t.Setenv(admission.IgnorePressureEnv, "1")
+	t.Setenv(admission.IgnoreEnv, "pressure")
 
 	_, errOut, err := runDotForTest("admit", "--json", "--wait", "0", "--", "true")
 	if err != nil {
 		t.Fatalf("admit = %v\nstderr=%s", err, errOut)
 	}
-	if !strings.Contains(errOut, `"pressure_ignored": true`) || !strings.Contains(errOut, admission.IgnorePressureEnv+"=1") {
+	if !strings.Contains(errOut, `"ignored"`) || !strings.Contains(errOut, admission.IgnoreEnv+"=pressure") {
 		t.Errorf("stderr = %q, want the env-labeled bypass", errOut)
+	}
+}
+
+func TestAdmitIgnoreRejectsUnknownRule(t *testing.T) {
+	admitSandbox(t)
+	_, _, err := runDotForTest("admit", "--ignore", "slots", "--", "true")
+	if err == nil || !strings.Contains(err.Error(), `"slots"`) {
+		t.Fatalf("err = %v, want the unknown rule named", err)
+	}
+}
+
+// AC4/§4: --ignore uncovered lets the scan's findings through, printing them.
+func TestAdmitIgnoreUncoveredNamesWhatItFound(t *testing.T) {
+	admitSandbox(t)
+	stubAdmitMonitor(t, healthyAdmitSnapshot())
+	stubAdmitScan(t, []string{"make(pid=4242,parent=1,repo=repo-a)"}, nil)
+
+	_, _, err := runDotForTest("admit", "--json", "--wait", "0", "--", "true")
+	var exitErr *ExitCodeError
+	if !errors.As(err, &exitErr) || exitErr.Code != ExitDeferred {
+		t.Fatalf("err = %v, want the uncovered defer", err)
+	}
+
+	_, errOut, err := runDotForTest("admit", "--ignore", "uncovered", "--wait", "0", "--", "true")
+	if err != nil {
+		t.Fatalf("admit under --ignore uncovered = %v\nstderr=%s", err, errOut)
+	}
+	if !strings.Contains(errOut, "uncovered heavy work ignored (--ignore uncovered)") || !strings.Contains(errOut, "make(pid=4242") {
+		t.Errorf("stderr = %q, want the ignored findings named", errOut)
 	}
 }
 
@@ -845,10 +894,10 @@ func TestAdmitRelaxAdmitsThenClearRestoresGate(t *testing.T) {
 	snap.MemoryLevel = admission.MemoryCritical
 	stubAdmitMonitor(t, snap)
 
-	if out, _, err := runDotForTest("admit", "relax", "--for", "10m", "--ignore-pressure"); err != nil {
+	if out, _, err := runDotForTest("admit", "relax", "--for", "10m", "--ignore", "all"); err != nil {
 		t.Fatalf("relax = %v", err)
-	} else if !strings.Contains(out, "until") {
-		t.Errorf("relax output = %q, want the expiry", out)
+	} else if !strings.Contains(out, "until") || !strings.Contains(out, "pressure,slot,uncovered") {
+		t.Errorf("relax output = %q, want the expiry and the rules", out)
 	}
 	overridePath := filepath.Join(admission.DefaultStateRoot(home), admission.RelaxFileName)
 	data, err := os.ReadFile(overridePath)
@@ -859,12 +908,12 @@ func TestAdmitRelaxAdmitsThenClearRestoresGate(t *testing.T) {
 	if err := json.Unmarshal(data, &override); err != nil {
 		t.Fatal(err)
 	}
-	if !override.IgnorePressure || override.ExpiresAt.IsZero() || override.SetAt.IsZero() {
-		t.Errorf("override = %+v, want ignore_pressure with both timestamps", override)
+	if len(override.Ignore) != 3 || override.ExpiresAt.IsZero() || override.SetAt.IsZero() {
+		t.Errorf("override = %+v, want all three rules with both timestamps", override)
 	}
 
 	_, errOut, err := runDotForTest("admit", "--json", "--wait", "0", "--", "true")
-	if err != nil || !strings.Contains(errOut, `"pressure_ignored": true`) {
+	if err != nil || !strings.Contains(errOut, `"ignored"`) {
 		t.Fatalf("admit under relax = %v\nstderr=%s", err, errOut)
 	}
 
@@ -881,6 +930,41 @@ func TestAdmitRelaxAdmitsThenClearRestoresGate(t *testing.T) {
 	}
 }
 
+// --set uses the same key table as the config file and layers over it.
+func TestAdmitRelaxSetLayersAndRejectsUnknownKeys(t *testing.T) {
+	admitSandbox(t)
+	stubAdmitMonitor(t, healthyAdmitSnapshot())
+
+	if _, _, err := runDotForTest("admit", "relax", "--for", "10m",
+		"--set", "thresholds.recover_sustain=1m", "--set", "slots.heavy_per_repo=2"); err != nil {
+		t.Fatalf("relax --set = %v", err)
+	}
+	out, _, err := runDotForTest("admit", "status")
+	if err != nil {
+		t.Fatalf("status = %v", err)
+	}
+	if !regexp.MustCompile(`thresholds.recover_sustain:\s+1m0s \(relax\)`).MatchString(out) {
+		t.Errorf("status does not show the relax source:\n%s", out)
+	}
+	if !regexp.MustCompile(`slots.heavy_per_repo:\s+2 \(relax\)`).MatchString(out) {
+		t.Errorf("status does not show the relaxed capacity:\n%s", out)
+	}
+
+	cases := []struct{ name, arg, want string }{
+		{"unknown key", "thresholds.nonsense=1", "unknown admission policy key"},
+		{"missing value", "thresholds.recover_sustain", "expected <key>=<value>"},
+		{"bad value", "uncovered.enabled=maybe", "true or false"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := runDotForTest("admit", "relax", "--set", tc.arg)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestAdmitRelaxRejectsBadInput(t *testing.T) {
 	admitSandbox(t)
 	cases := []struct {
@@ -889,10 +973,12 @@ func TestAdmitRelaxRejectsBadInput(t *testing.T) {
 		want string
 	}{
 		{"nothing to relax", []string{"admit", "relax", "--for", "1h"}, "nothing to relax"},
-		{"too long", []string{"admit", "relax", "--for", "30h", "--ignore-pressure"}, "maximum"},
-		{"non-positive", []string{"admit", "relax", "--for", "0s", "--ignore-pressure"}, "positive"},
-		{"clear with options", []string{"admit", "relax", "--clear", "--ignore-pressure"}, "--clear takes no other options"},
-		{"invalid threshold", []string{"admit", "relax", "--idle-defer-below", "150"}, "admission.thresholds.idle_defer_below"},
+		{"too long", []string{"admit", "relax", "--for", "30h", "--ignore", "all"}, "maximum"},
+		{"non-positive", []string{"admit", "relax", "--for", "0s", "--ignore", "all"}, "positive"},
+		{"clear with options", []string{"admit", "relax", "--clear", "--ignore", "all"}, "--clear takes no other options"},
+		{"unknown rule", []string{"admit", "relax", "--ignore", "slots"}, `"slots"`},
+		{"invalid threshold", []string{"admit", "relax", "--set", "thresholds.idle_defer_below=150"},
+			"admission.thresholds.idle_defer_below"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -908,7 +994,7 @@ func TestAdmitRelaxRejectsBadInput(t *testing.T) {
 func TestAdmitStatusShowsRelaxExpiry(t *testing.T) {
 	admitSandbox(t)
 	stubAdmitMonitor(t, healthyAdmitSnapshot())
-	if _, _, err := runDotForTest("admit", "relax", "--for", "10m", "--recover-sustain", "1m"); err != nil {
+	if _, _, err := runDotForTest("admit", "relax", "--for", "10m", "--set", "thresholds.recover_sustain=1m"); err != nil {
 		t.Fatalf("relax = %v", err)
 	}
 	out, _, err := runDotForTest("admit", "status")
@@ -918,7 +1004,40 @@ func TestAdmitStatusShowsRelaxExpiry(t *testing.T) {
 	if !regexp.MustCompile(`Relax override:\s+active until`).MatchString(out) {
 		t.Errorf("status does not show the relax expiry:\n%s", out)
 	}
-	if !regexp.MustCompile(`recover_sustain:\s+1m0s \(relax\)`).MatchString(out) {
-		t.Errorf("status does not show the relax source:\n%s", out)
+}
+
+// AC4: a bypassed slot still takes a lease, in the first overflow slot past the
+// configured capacity, and status lists it.
+func TestAdmitIgnoreSlotTakesOverflowLease(t *testing.T) {
+	home, workdir := admitSandbox(t)
+	stubAdmitMonitor(t, healthyAdmitSnapshot())
+	stubAdmitScan(t, nil, nil)
+	runner := watchdogRunner(false)
+	store := admission.NewStore(admission.DefaultStateRoot(home), runner)
+	scope, err := admission.ResolveScope(context.Background(), runner, workdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, _, err := store.Acquire(context.Background(), scope, admission.ClassHeavy, admission.Lease{
+		Owner: "holder@test", PID: 4242, PIDStart: "Mon Sep 28 00:00:00 2026",
+	})
+	if err != nil || held == nil {
+		t.Fatalf("seeding the slot = %v, %v", held, err)
+	}
+	defer func() { _ = held.Release() }()
+
+	// The configured capacity is one, so a plain run defers on the busy slot.
+	_, _, err = runDotForTest("admit", "--wait", "0", "--", "true")
+	var exitErr *ExitCodeError
+	if !errors.As(err, &exitErr) || exitErr.Code != ExitDeferred {
+		t.Fatalf("err = %v, want the busy-slot defer", err)
+	}
+
+	_, errOut, err := runDotForTest("admit", "--ignore", "slot", "--json", "--wait", "0", "--", "true")
+	if err != nil {
+		t.Fatalf("admit under --ignore slot = %v\nstderr=%s", err, errOut)
+	}
+	if !strings.Contains(errOut, "slot capacity 1 exceeded (--ignore slot): holding overflow slot 1") {
+		t.Errorf("stderr = %q, want the overflow-slot note", errOut)
 	}
 }

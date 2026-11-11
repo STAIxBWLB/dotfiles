@@ -9,6 +9,7 @@ import (
 	osexec "os/exec"
 	"os/signal"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -23,6 +24,43 @@ import (
 // The run side of `dot admit`: lease identity, process launch, heartbeat,
 // signal forwarding. The gate and slot acquisition live in admit_cmd.go.
 
+// bypass records what one run stepped past, for the stderr notes and the JSON
+// records: the rules, and the pressure reasons a bypassed defer held. The zero
+// value means nothing was bypassed, and then no key is added at all, so an
+// ordinary run's record and outcome stay byte-identical.
+type bypass struct {
+	rules   []string
+	reasons []string
+}
+
+// pressure records a gate decision that admitted past a pressure defer. A run
+// gates twice when it waits for a slot, so the rules and reasons accumulate
+// without repeating: the record names everything the run stepped past, once.
+func (b *bypass) pressure(p *Printer, d admission.Decision) {
+	if !d.PressureIgnored {
+		return
+	}
+	admission.NoteIgnoredPressure(p.Err, d)
+	for _, rule := range d.Ignored {
+		b.rules = admissionIgnoreRules(b.rules, rule)
+	}
+	for _, reason := range d.IgnoredReasons {
+		if !slices.Contains(b.reasons, reason) {
+			b.reasons = append(b.reasons, reason)
+		}
+	}
+}
+
+// annotate adds the bypass keys to a JSON record when anything was bypassed.
+func (b bypass) annotate(record map[string]any) {
+	if len(b.rules) > 0 {
+		record["ignored"] = b.rules
+	}
+	if len(b.reasons) > 0 {
+		record["ignored_reasons"] = b.reasons
+	}
+}
+
 // runAdmittedChild executes the wrapped command with stdio and signal
 // forwarding, a heartbeat goroutine while a slot is held, and the nested-run
 // marker in the environment. The child's exit code becomes dot's.
@@ -36,12 +74,8 @@ import (
 // completion record goes to STDERR: the wrapped command's stdout is the
 // payload, and mixing the JSON object into it would corrupt the stream for
 // downstream consumers (the process exit code is the machine-readable
-// result). Defer outcomes never run a child, so they stay on stdout. ignored
-// marks a run the pressure gate admitted only because a one-off ignore or a
-// relax override bypassed it; the completion record then carries
-// pressure_ignored, and the key is absent otherwise so an ordinary run's
-// record is unchanged.
-func runAdmittedChild(cmd *cobra.Command, runner *exec.Runner, args []string, scope, class string, slot *admission.Slot, asJSON, ignored bool) error {
+// result). Defer outcomes never run a child, so they stay on stdout.
+func runAdmittedChild(cmd *cobra.Command, runner *exec.Runner, args []string, scope, class string, slot *admission.Slot, asJSON bool, bypassed bypass) error {
 	ctx := cmd.Context()
 	p := printerFrom(cmd)
 	child := osexec.Command(args[0], args[1:]...) // #nosec G204 -- the command is the user's own invocation
@@ -128,9 +162,7 @@ func runAdmittedChild(cmd *cobra.Command, runner *exec.Runner, args []string, sc
 			"class":     class,
 			"exit_code": exitCode,
 		}
-		if ignored {
-			record["pressure_ignored"] = true
-		}
+		bypassed.annotate(record)
 		data, err := json.MarshalIndent(record, "", "  ")
 		if err != nil {
 			return err
@@ -156,7 +188,7 @@ func minDuration(a, b time.Duration) time.Duration {
 
 // deferExit prints the defer outcome (JSON when asked) and returns the
 // EX_TEMPFAIL error main turns into exit 75.
-func deferExit(p *Printer, scope, class, owner string, d admission.Decision, asJSON bool) error {
+func deferExit(p *Printer, scope, class, owner string, d admission.Decision, asJSON bool, bypassed bypass) error {
 	reason := strings.Join(d.Reasons, "; ")
 	outcome := admission.DeferOutcome{
 		Outcome:           "deferred",
@@ -165,6 +197,7 @@ func deferExit(p *Printer, scope, class, owner string, d admission.Decision, asJ
 		Owner:             owner,
 		Reason:            reason,
 		RetryAfterSeconds: int64(d.RetryAfter / time.Second),
+		Ignored:           bypassed.rules,
 	}
 	if asJSON {
 		data, err := json.MarshalIndent(outcome, "", "  ")

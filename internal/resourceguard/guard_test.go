@@ -38,7 +38,9 @@ func testAdapterScan(t *testing.T, snap *admission.PressureSnapshot, uncovered *
 		monitor: func() *admission.Monitor {
 			return &admission.Monitor{GOOS: "darwin", SnapshotFunc: func(context.Context, *admission.Monitor) admission.PressureSnapshot { return *snap }}
 		},
-		uncovered: func(context.Context, string, bool, []int) ([]string, error) { return *uncovered, *scanErr },
+		uncovered: func(context.Context, string, bool, []int, admission.UncoveredSettings) ([]string, error) {
+			return *uncovered, *scanErr
+		},
 		lease: func(_ context.Context, _ *exec.Runner, dir string) (admission.Lease, error) {
 			return admission.Lease{Owner: "adapter@test", PID: os.Getpid(), PIDStart: "Mon Sep 28 01:00:00 2026", CWD: dir}, nil
 		},
@@ -174,10 +176,11 @@ func TestAdapterDefersOnPressure(t *testing.T) {
 	}
 }
 
-// AC4 (#412): DOT_ADMISSION_IGNORE_PRESSURE=1 lets a resourceguard caller step
-// past the pressure deferral for one run, but never past a busy slot.
+// AC4 (#412): DOT_ADMISSION_IGNORE=pressure lets a resourceguard caller step
+// past the pressure deferral for one run, but never past a busy slot, and the
+// variable reaches the verified prebuilt profile too.
 func TestAdapterIgnorePressurePassesPressureNotBusySlot(t *testing.T) {
-	t.Setenv(admission.IgnorePressureEnv, "1")
+	t.Setenv(admission.IgnoreEnv, "pressure")
 	snap, none := healthySnapshot(), []string(nil)
 	snap.MemoryLevel = admission.MemoryCritical
 	a, store := testAdapter(t, &snap, &none)
@@ -198,12 +201,136 @@ func TestAdapterIgnorePressurePassesPressureNotBusySlot(t *testing.T) {
 		if r != nil {
 			r()
 		}
-		t.Fatalf("ignore-pressure bypassed slot exclusivity: %v", err)
+		t.Fatalf("a pressure-only ignore bypassed slot exclusivity: %v", err)
 	}
 }
 
-// An invalid admission.thresholds block fails the acquire loudly instead of
-// silently falling back to the defaults.
+// AC4 (#412): the same bypass reaches the verified prebuilt profile's gate, so
+// `dot update` can step past it for one run.
+func TestAdapterIgnorePressurePassesPrebuiltGate(t *testing.T) {
+	t.Setenv(admission.IgnoreEnv, "pressure")
+	snap, none := healthySnapshot(), []string(nil)
+	snap.MemoryLevel = admission.MemoryCritical
+	a, _ := testAdapter(t, &snap, &none)
+	seams := prebuiltSeams{
+		Snapshot: func(context.Context) admission.PressureSnapshot { return snap },
+		Evaluate: func(snap admission.PressureSnapshot, th admission.Thresholds, hist admission.History, now time.Time) admission.Decision {
+			return admission.EvaluatePrebuiltPressureWithWindow(snap, th, hist, now, time.Second)
+		},
+	}
+	release, err := a.acquireProfile(context.Background(),
+		Options{Purpose: "verified prebuilt dot update", ScopeKey: "tooling"}, profilePrebuilt, seams, nil)
+	if err != nil {
+		t.Fatalf("ignored pressure did not admit the prebuilt profile: %v", err)
+	}
+	release()
+}
+
+// AC4 (#412): DOT_ADMISSION_IGNORE=slot admits a second job in a busy repo, in
+// an overflow slot that status lists, never without a lease.
+func TestAdapterIgnoreSlotTakesOverflowLease(t *testing.T) {
+	snap, none := healthySnapshot(), []string(nil)
+	a, store := testAdapter(t, &snap, &none)
+	ctx := context.Background()
+	// The slot is seeded directly: two acquires through the adapter in one
+	// process look like a nested child and skip the slot by design.
+	seedSlot(t, store, "repo-a")
+
+	if r, err := a.acquire(ctx, Options{ProjectDir: t.TempDir()}); !deferred(err) || !strings.Contains(err.Error(), "another heavyweight job") {
+		if r != nil {
+			r()
+		}
+		t.Fatalf("err = %v, want the busy-slot defer without the bypass", err)
+	}
+
+	t.Setenv(admission.IgnoreEnv, "slot")
+	second, err := a.acquire(ctx, Options{ProjectDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("overflow acquire = %v", err)
+	}
+	defer second()
+	indexes := map[int]bool{}
+	for _, lease := range repoLeases(t, store) {
+		indexes[lease.Index] = true
+	}
+	if !indexes[0] || !indexes[1] {
+		t.Fatalf("held indexes = %v, want 0 and the overflow slot 1", indexes)
+	}
+}
+
+// seedSlot holds index 0 of (scope, heavy) for the whole test.
+func seedSlot(t *testing.T, store *admission.Store, scope string) {
+	t.Helper()
+	slot, _, err := store.Acquire(context.Background(), scope, admission.ClassHeavy, admission.Lease{
+		Owner: "holder@test", PID: 4242, PIDStart: "Mon Sep 28 00:00:00 2026",
+	})
+	if err != nil || slot == nil {
+		t.Fatalf("seeding the slot = %v, %v", slot, err)
+	}
+	t.Cleanup(func() { _ = slot.Release() })
+}
+
+func repoLeases(t *testing.T, store *admission.Store) []admission.Lease {
+	t.Helper()
+	leases, err := store.ListLeases()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []admission.Lease
+	for _, lease := range leases {
+		if lease.Scope == "repo-a" {
+			out = append(out, lease)
+		}
+	}
+	return out
+}
+
+// AC4 (#412): DOT_ADMISSION_IGNORE=uncovered passes an uncovered-work deferral.
+func TestAdapterIgnoreUncoveredPassesScan(t *testing.T) {
+	t.Setenv(admission.IgnoreEnv, "uncovered")
+	snap := healthySnapshot()
+	jobs := []string{"make(pid=4242,parent=1,repo=repo-a)"}
+	a, _ := testAdapter(t, &snap, &jobs)
+	release, err := a.acquire(context.Background(), Options{ProjectDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("ignored uncovered did not admit: %v", err)
+	}
+	release()
+}
+
+// AC2 (#412): the config's slot capacity admits a second concurrent job without
+// any bypass, and the scan settings reach the seam.
+func TestAdapterConfigCapacityAndScanSettings(t *testing.T) {
+	snap, none := healthySnapshot(), []string(nil)
+	a, store := testAdapter(t, &snap, &none)
+	cfg := filepath.Join(t.TempDir(), "config.yaml")
+	body := "admission:\n  slots:\n    heavy_per_repo: 2\n  uncovered:\n    cpu_percent: 50\n    ignore_names: [node]\n"
+	if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.configPath = func() string { return cfg }
+	var got admission.UncoveredSettings
+	a.uncovered = func(_ context.Context, _ string, _ bool, _ []int, settings admission.UncoveredSettings) ([]string, error) {
+		got = settings
+		return nil, nil
+	}
+	ctx := context.Background()
+	seedSlot(t, store, "repo-a")
+	second, err := a.acquire(ctx, Options{ProjectDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("second acquire under heavy_per_repo: 2 = %v", err)
+	}
+	defer second()
+	if !got.Enabled || got.CPUPercent != 50 || len(got.IgnoreNames) != 1 || got.IgnoreNames[0] != "node" {
+		t.Errorf("scan settings = %+v, want the configured values", got)
+	}
+	if leases, _ := store.ListLeases(); len(leases) != 2 {
+		t.Errorf("leases = %d, want 2 under heavy_per_repo: 2", len(leases))
+	}
+}
+
+// An invalid admission block fails the acquire loudly instead of silently
+// falling back to the defaults.
 func TestAdapterRejectsInvalidThresholdConfig(t *testing.T) {
 	snap, none := healthySnapshot(), []string(nil)
 	a, _ := testAdapter(t, &snap, &none)
@@ -255,12 +382,8 @@ func TestVerifiedPrebuiltPolicyDoesNotTrustNestedMarker(t *testing.T) {
 	snap.SwapOutBytes = 8192
 	a, store := testAdapter(t, &snap, &none)
 	t.Setenv(admission.NestedEnv, admission.NestedEnvValue(admission.MaintenanceScope, admission.ClassMaintenance))
-	policy := admission.GatePolicy{
-		HistoryFile: admission.PrebuiltHistoryFile,
-		Thresholds:  admission.PrebuiltThresholds(),
-		Evaluate:    admission.EvaluatePrebuiltPressure,
-	}
-	_, err := a.acquirePolicy(context.Background(), Options{Purpose: "verified prebuilt dot update", ScopeKey: "tooling"}, policy, nil)
+	seams := prebuiltSeams{Snapshot: func(context.Context) admission.PressureSnapshot { return snap }}
+	_, err := a.acquireProfile(context.Background(), Options{Purpose: "verified prebuilt dot update", ScopeKey: "tooling"}, profilePrebuilt, seams, nil)
 	if !deferred(err) || !strings.Contains(err.Error(), "prebuilt safety window") {
 		t.Fatalf("nested marker bypassed the verified prebuilt gate: %v", err)
 	}
@@ -346,7 +469,7 @@ func TestAdapterPassesLeasesToScan(t *testing.T) {
 	}
 	defer func() { _ = held.Release() }()
 	var got []int
-	a.uncovered = func(_ context.Context, _ string, _ bool, leased []int) ([]string, error) {
+	a.uncovered = func(_ context.Context, _ string, _ bool, leased []int, _ admission.UncoveredSettings) ([]string, error) {
 		got = leased
 		return nil, nil
 	}
