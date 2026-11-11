@@ -246,6 +246,11 @@ func (a *adapter) acquireProfile(ctx context.Context, opts Options, kind guardPr
 	if err != nil {
 		return nil, err
 	}
+	// One resolve feeds the gate, the slot take and the scan, so one snapshot
+	// records the override all three acted on; the commit point below requires it
+	// to still be the active one.
+	var watch admission.RelaxWatch
+	watch.Note(policy)
 
 	gate := admission.GatePolicy{Thresholds: policy.Thresholds}
 	if kind == profilePrebuilt {
@@ -298,6 +303,9 @@ func (a *adapter) acquireProfile(ctx context.Context, opts Options, kind guardPr
 		if len(jobs) > 0 {
 			return nil, &DeferredError{Reason: "uncovered heavyweight work: " + strings.Join(jobs, ", ")}
 		}
+		if err := a.commitCheck(&watch); err != nil {
+			return nil, &DeferredError{Reason: err.Error()}
+		}
 		return func() {}, nil
 	}
 	lease, err := a.lease(ctx, a.runner, dir)
@@ -335,6 +343,14 @@ func (a *adapter) acquireProfile(ctx context.Context, opts Options, kind guardPr
 		}
 		return nil, &DeferredError{Reason: "uncovered heavyweight work: " + strings.Join(jobs, ", ")}
 	}
+	// Commit point: everything above acted on the policy resolved at the top, and
+	// the gate, the slot take and the scan each ran after that read. An override
+	// that ended or was rewritten in between must not admit this job, so the slot
+	// goes back and the caller's retry loop starts over on the fresh limits.
+	if err := a.commitCheck(&watch); err != nil {
+		_ = slot.Release()
+		return nil, &DeferredError{Reason: err.Error()}
+	}
 
 	// Children inherit the nested marker, so a `dot admit` invocation
 	// inside this job runs in the slot instead of deadlocking on it.
@@ -358,35 +374,44 @@ func (a *adapter) acquireProfile(ctx context.Context, opts Options, kind guardPr
 
 // scanUncovered runs the uncovered-work scan under the resolved settings. A
 // bypassed uncovered rule still scans — the findings are named on stderr, so the
-// person sees what the limit would have deferred — and then admits.
+// person sees what the limit would have deferred — and then admits. The commit
+// point, not this function, is what requires the override behind the settings to
+// still be in force once the scan returns.
 func (a *adapter) scanUncovered(ctx context.Context, dir string, maintenance bool, store *admission.Store, policy admission.Policy) ([]string, error) {
 	jobs, err := a.uncovered(ctx, dir, maintenance, admission.LeasedPIDs(store), policy.Uncovered)
 	if err != nil || len(jobs) == 0 {
 		return jobs, err
 	}
-	if !policy.Ignore.Uncovered {
-		return jobs, nil
+	if policy.Ignore.Uncovered {
+		admission.NoteIgnoredUncovered(os.Stderr, jobs, policy.IgnoreSource)
+		return nil, nil
 	}
-	// The scan is the slowest step between the resolve above and this decision, so
-	// an override that ended inside it must not let its findings through: resolve
-	// again and judge the bypass on the policy in force now, keeping the jobs as
-	// found. The clock is read here rather than taken from the fresh resolve,
-	// because the resolver prunes on its own clock and can still see the override
-	// as live when the scan outlasted it.
-	now := time.Now()
+	return jobs, nil
+}
+
+// commitCheck is the resourceguard commit point: the overrides this acquire
+// acted on (the gate, the slot take with its capacity and bypass, the scan with
+// its settings) must still be the active ones. Every one of them was read before
+// the step it fed, so an override that ended or was rewritten in between must
+// not admit this job. The judgment uses this read's clock, not the resolver's,
+// because the resolver prunes on its own clock and can still report an ended
+// override as live; a failure is a deferral, and the caller's retry loop
+// (WaitAcquire, the prebuilt budget) starts over on the limits now in force.
+func (a *adapter) commitCheck(watch *admission.RelaxWatch) error {
+	fresh, err := a.policy()
+	if err != nil {
+		return err
+	}
+	return watch.Verify(fresh, a.nowTime())
+}
+
+// nowTime is the clock the commit point reads. Nil is the real clock, so a test
+// can put an override's expiry inside the admission.
+func (a *adapter) nowTime() time.Time {
 	if a.now != nil {
-		now = a.now()
+		return a.now()
 	}
-	if policy.OverrideExpired(now) {
-		if policy, err = a.policy(); err != nil {
-			return nil, err
-		}
-	}
-	if !policy.Ignore.Uncovered || policy.OverrideExpired(now) {
-		return jobs, nil
-	}
-	admission.NoteIgnoredUncovered(os.Stderr, jobs, policy.IgnoreSource)
-	return nil, nil
+	return time.Now()
 }
 
 // keepAlive heartbeats slot until the returned func is called.

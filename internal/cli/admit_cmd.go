@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/STAIxBWLB/dotfiles/internal/admission"
-	"github.com/STAIxBWLB/dotfiles/internal/config"
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
@@ -42,78 +40,14 @@ var admitNewMonitor = func(runner *exec.Runner, home string) *admission.Monitor 
 // fixed inventory instead of the real process table.
 var admitFindUncovered = admission.FindUncovered
 
-// admitScanClock is the clock read once the uncovered scan returns. The scan is
-// the slowest step between a policy resolve and the decision it feeds (ps plus
-// lsof on a busy host), so a test sets this to put an override's expiry inside
-// that window.
-var admitScanClock = time.Now
-
 // admitGate is the seam for gate evaluation: tests substitute scripted
 // decisions instead of probing the host.
 var admitGate = func(ctx context.Context, store *admission.Store, m *admission.Monitor, policy admission.GatePolicy) (admission.Decision, error) {
 	return store.GateWithPolicy(ctx, m, policy)
 }
 
-// resolveAdmissionPolicy layers the user's config and the active relax override
-// over the policy defaults. The config path is the real user's state file:
-// admission state is per real user, never a --home partition. keepExpired is set
-// by read-only views (status) so they never delete state.
-func resolveAdmissionPolicy(store *admission.Store, ignore admission.IgnoreSet, keepExpired bool) (admission.Policy, error) {
-	return store.ResolvePolicy(admission.ResolveOptions{
-		ConfigPath:  config.StatePath(),
-		Ignore:      ignore,
-		KeepExpired: keepExpired,
-	})
-}
-
-// gateWithBusyRetry re-evaluates history-lock contention and the recovery
-// countdown inside the wait budget. Neither is current host pressure, and the
-// countdown only completes when samples arrive within the 45s gap, so a
-// one-shot caller retrying minutes later could never close the episode.
-// Pressure defers return immediately.
-//
-// The limits are resolved again before every sample: the countdown can last the
-// whole --wait, and an override that expires or is cleared during it must not
-// keep closing the episode on a relaxed recover_sustain. Each evaluation
-// persists the episode state, so a stale layer would end it for good.
-func gateWithBusyRetry(ctx context.Context, store *admission.Store, monitor *admission.Monitor, resolveNow func() (admission.Policy, error), deadline time.Time) (admission.Decision, error) {
-	for {
-		policy, err := resolveNow()
-		if err != nil {
-			return admission.Decision{}, err
-		}
-		gate := admission.GatePolicy{
-			Thresholds:   policy.Thresholds,
-			Ignore:       policy.Ignore,
-			IgnoreSource: policy.IgnoreSource,
-		}
-		if policy.Relax != nil {
-			// The probe runs after this read, so an override that ends during it
-			// must not judge the sample it produced.
-			gate.ValidUntil = policy.Relax.ExpiresAt
-		}
-		d, err := admitGate(ctx, store, monitor, gate)
-		if err != nil || d.Admit || (!admission.IsGateBusy(d) && !d.Recovering) {
-			return d, err
-		}
-		backoff := d.RetryAfter
-		if backoff <= 0 {
-			backoff = 2 * time.Second
-		}
-		if time.Now().Add(backoff).After(deadline) {
-			return d, nil
-		}
-		select {
-		case <-ctx.Done():
-			return d, ctx.Err()
-		case <-time.After(backoff):
-		}
-		// The timer can wake late; never admit past the wait budget.
-		if time.Now().After(deadline) {
-			return d, nil
-		}
-	}
-}
+// resolveAdmissionPolicy and the gate it feeds live in admit_cycle.go, with the
+// rest of the sequence that turns a resolved policy into a held slot.
 
 func newAdmitCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -242,117 +176,37 @@ func runAdmit(cmd *cobra.Command, args []string) error {
 		monitor.Thresholds = &fresh.Thresholds
 		return fresh, nil
 	}
-	var policy admission.Policy
-	var bypassed bypass
 	deadline := time.Now().Add(wait)
-	decision, err := gateWithBusyRetry(ctx, store, monitor, resolveNow, deadline)
-	if err != nil {
-		return err
+	in := admitInput{
+		p:          p,
+		store:      store,
+		monitor:    monitor,
+		runner:     runner,
+		resolveNow: resolveNow,
+		scope:      effective,
+		class:      class,
+		cwd:        cwd,
+		wait:       wait,
+		deadline:   deadline,
 	}
-	bypassed.pressure(p, decision)
-	if !decision.Admit {
-		notifyDefer(ctx, cmd, store, effective, class, decision)
-		return deferExit(p, effective, class, "", decision, asJSON, bypassed)
-	}
-	lease, err := admission.SelfLease(ctx, runner, cwd)
-	if err != nil {
-		return err
-	}
-	capacity := 0
-	backoff := 2 * time.Second
-	var slot *admission.Slot
 	for {
-		// Re-resolve on every attempt: an override that expired or was cleared
-		// while we waited must change the capacity, the slot bypass and the gate,
-		// not take effect only at the next invocation.
-		if policy, err = resolveNow(); err != nil {
-			return err
-		}
-		capacity = policy.Slots.For(class)
-		got, holder, aerr := store.AcquireWithOptions(ctx, effective, class, lease, admission.AcquireOptions{
-			Capacity: capacity,
-			Overflow: policy.Ignore.Slot,
-		})
-		if aerr != nil {
-			return aerr
-		}
-		if got != nil {
-			slot = got
-			break
-		}
-		if wait == 0 || time.Now().Add(backoff).After(deadline) {
-			owner := ""
-			if holder != nil {
-				owner = holder.Owner
-			}
-			reason := admission.SlotBusyReason(class, holder, capacity, policy.Ignore.Slot)
-			d := admission.Decision{Admit: false, Reasons: []string{reason}, RetryAfter: backoff}
-			return deferExit(p, effective, class, owner, d, asJSON, bypassed)
-		}
-		time.Sleep(backoff)
-		backoff = minDuration(backoff*3/2, 15*time.Second)
-	}
-	defer func() { _ = slot.Release() }()
-	admission.NoteOverflowSlot(p.Err, slot.Lease(), capacity, policy.IgnoreSource)
-	if slot.Lease().Index >= capacity {
-		bypassed.rules = admissionIgnoreRules(bypassed.rules, admission.RuleSlot)
-		bypassed.slot(admission.OverflowSlotReason(capacity, slot.Lease().Index, policy.IgnoreSource))
-	}
-
-	// The wait may have been long, so gate again before spending the slot on work
-	// that pressure would now defer anyway; the gate re-resolves the limits itself.
-	if wait > 0 {
-		decision, err = gateWithBusyRetry(ctx, store, monitor, resolveNow, deadline)
+		out, err := admitCycle(ctx, in)
 		if err != nil {
 			return err
 		}
-		bypassed.pressure(p, decision)
-		if !decision.Admit {
-			notifyDefer(ctx, cmd, store, effective, class, decision)
-			return deferExit(p, effective, class, "", decision, asJSON, bypassed)
+		if out.restart && time.Now().Before(deadline) {
+			// The override that set this cycle's limits ended or changed before the
+			// launch, so nothing was started and the slot is back. A restart re-gates
+			// and re-acquires on the limits now in force.
+			continue
 		}
-	}
-
-	// Heavy work that holds no slot is invisible to the leases. The scan runs
-	// with the slot held, so the job that owned it is never mistaken for
-	// uncovered work, and it sees anything that started while we waited. A
-	// failed scan or work in this repository (or of unknown ownership) defers;
-	// a bypassed uncovered rule names what it found and admits; the deferred
-	// Release above frees the slot.
-
-	// The scan reads the uncovered settings, so resolve once more right before
-	// it: an override that expired during the wait must not keep it switched off.
-	if policy, err = resolveNow(); err != nil {
-		return err
-	}
-	jobs, scanErr := admitFindUncovered(ctx, cwd, class == admission.ClassMaintenance, admission.LeasedPIDs(store), policy.Uncovered)
-	if scanErr == nil && len(jobs) > 0 && policy.Ignore.Uncovered {
-		// The scan outlasts the settings it ran under by seconds, so an override that
-		// ended inside that window must not let its findings through: read the policy
-		// in force now and decide the bypass on it, keeping the jobs as found.
-		now := admitScanClock()
-		if policy.OverrideExpired(now) {
-			if policy, err = resolveNow(); err != nil {
-				return err
-			}
+		if !out.decision.Admit {
+			notifyDefer(ctx, cmd, store, effective, class, out.decision)
+			return deferExit(p, effective, class, out.owner, out.decision, asJSON, out.bypassed)
 		}
-		if policy.Ignore.Uncovered && !policy.OverrideExpired(now) {
-			admission.NoteIgnoredUncovered(p.Err, jobs, policy.IgnoreSource)
-			bypassed.rules = admissionIgnoreRules(bypassed.rules, admission.RuleUncovered)
-			bypassed.uncovered(jobs)
-			jobs = nil
-		}
+		defer func() { _ = out.slot.Release() }()
+		return runAdmittedChild(cmd, runner, args, effective, class, out.slot, asJSON, out.bypassed)
 	}
-	if scanErr != nil || len(jobs) > 0 {
-		reason := "uncovered heavyweight work: " + strings.Join(jobs, ", ")
-		if scanErr != nil {
-			reason = "heavy-work inventory unavailable: " + scanErr.Error()
-		}
-		d := admission.Decision{Admit: false, Reasons: []string{reason}, RetryAfter: 30 * time.Second}
-		return deferExit(p, effective, class, "", d, asJSON, bypassed)
-	}
-
-	return runAdmittedChild(cmd, runner, args, effective, class, slot, asJSON, bypassed)
 }
 
 // admissionIgnoreRules adds a rule to a bypass record without duplicating it.

@@ -387,20 +387,131 @@ func TestUncoveredSettingsIgnoredAndCoverage(t *testing.T) {
 }
 
 // A policy resolved from no override has nothing that can expire, so a config or
-// one-off bypass stays in force; a policy resolved from an override expires on
-// that override's clock.
-func TestPolicyOverrideExpired(t *testing.T) {
+// one-off bypass stays in force. Recorded anyway, it would defer a run because of
+// a layer that never applied to it.
+func TestRelaxWatchIgnoresAPolicyWithNoOverride(t *testing.T) {
 	base := time.Date(2026, 11, 12, 9, 0, 0, 0, time.UTC)
-	plain := DefaultPolicy()
-	if plain.OverrideExpired(base.Add(1000 * time.Hour)) {
-		t.Error("a policy with no override reported an expiry")
+	var watch RelaxWatch
+	watch.Note(DefaultPolicy())
+	if len(watch.seen) != 0 {
+		t.Fatalf("recorded %d snapshot(s) from a policy with no override, want none", len(watch.seen))
 	}
-	live := plain
-	live.Relax = &RelaxOverride{SetAt: base, ExpiresAt: base.Add(time.Minute)}
-	if live.OverrideExpired(base.Add(time.Minute - time.Second)) {
-		t.Error("a live override reported an expiry")
+	fresh := DefaultPolicy()
+	fresh.Relax = &RelaxOverride{SetAt: base, ExpiresAt: base.Add(time.Minute), Ignore: []string{"slot"}}
+	if err := watch.Verify(fresh, base.Add(1000*time.Hour)); err != nil {
+		t.Errorf("Verify = %v, want no error from a watch that recorded nothing", err)
 	}
-	if !live.OverrideExpired(base.Add(time.Minute)) {
-		t.Error("an override at its expiry still applied")
+}
+
+// One override recorded twice is one entry: every step of an admission resolves
+// again, and the same override behind all of them is still one thing to check.
+func TestRelaxWatchRecordsEachDistinctOverrideOnce(t *testing.T) {
+	base := time.Date(2026, 11, 12, 9, 0, 0, 0, time.UTC)
+	first := &RelaxOverride{SetAt: base, ExpiresAt: base.Add(time.Minute), Ignore: []string{"slot"}}
+	policyWith := func(override *RelaxOverride) Policy {
+		p := DefaultPolicy()
+		p.Relax = override
+		return p
+	}
+	var watch RelaxWatch
+	watch.Note(policyWith(first))
+	watch.Note(policyWith(&RelaxOverride{SetAt: base, ExpiresAt: first.ExpiresAt, Ignore: []string{"slot"}}))
+	if len(watch.seen) != 1 {
+		t.Fatalf("recorded %d snapshot(s) for the same override twice, want 1", len(watch.seen))
+	}
+	watch.Note(policyWith(&RelaxOverride{SetAt: base.Add(time.Minute), ExpiresAt: base.Add(2 * time.Minute)}))
+	if len(watch.seen) != 2 {
+		t.Fatalf("recorded %d snapshot(s) after a different override, want 2", len(watch.seen))
+	}
+}
+
+// The commit point requires every override a step acted on to be unexpired at
+// its own clock and still the active one. Identity rather than the expiry alone:
+// a rewritten override keeps its end and changes the limits, and only the
+// contents tell those two apart.
+func TestRelaxWatchVerify(t *testing.T) {
+	base := time.Date(2026, 11, 12, 9, 0, 0, 0, time.UTC)
+	withOverride := func(override *RelaxOverride) Policy {
+		p := DefaultPolicy()
+		p.Relax = override
+		return p
+	}
+	original := &RelaxOverride{
+		SetAt:     base,
+		ExpiresAt: base.Add(10 * time.Minute),
+		Ignore:    []string{"uncovered", "slot"},
+		Set:       map[string]string{KeyHeavyPerRepo: "2"},
+	}
+	until := "relax until 2026-11-12T09:10:00Z"
+	cases := []struct {
+		name  string
+		fresh *RelaxOverride
+		now   time.Time
+		want  []string // empty means Verify must pass
+	}{
+		{name: "still live and unchanged", fresh: original, now: base.Add(9 * time.Minute)},
+		{name: "one second before its end", fresh: original, now: base.Add(10*time.Minute - time.Second)},
+		{
+			name:  "written in another rule order",
+			fresh: &RelaxOverride{SetAt: base, ExpiresAt: original.ExpiresAt, Ignore: []string{"slot", "uncovered"}, Set: map[string]string{KeyHeavyPerRepo: "2"}},
+			now:   base.Add(9 * time.Minute),
+		},
+		{
+			name:  "ended at the commit clock",
+			fresh: original,
+			now:   base.Add(10 * time.Minute),
+			want:  []string{"ended during admission", until, "rerun"},
+		},
+		{
+			name:  "ended and already pruned from the file",
+			fresh: nil,
+			now:   base.Add(10 * time.Minute),
+			want:  []string{"ended during admission", "rerun"},
+		},
+		{
+			name:  "rewritten with the same expiry",
+			fresh: &RelaxOverride{SetAt: base, ExpiresAt: original.ExpiresAt, Ignore: []string{"uncovered", "slot"}, Set: map[string]string{KeyHeavyPerRepo: "4"}},
+			now:   base.Add(9 * time.Minute),
+			want:  []string{"changed during admission", "rerun"},
+		},
+		{
+			name:  "rewritten without its bypass",
+			fresh: &RelaxOverride{SetAt: base, ExpiresAt: original.ExpiresAt, Set: map[string]string{KeyHeavyPerRepo: "2"}},
+			now:   base.Add(9 * time.Minute),
+			want:  []string{"changed during admission", "rerun"},
+		},
+		{
+			name:  "cleared",
+			fresh: nil,
+			now:   base.Add(9 * time.Minute),
+			want:  []string{"changed during admission", until, "no override", "rerun"},
+		},
+		{
+			name:  "replaced by a later one",
+			fresh: &RelaxOverride{SetAt: base.Add(5 * time.Minute), ExpiresAt: base.Add(20 * time.Minute)},
+			now:   base.Add(9 * time.Minute),
+			want:  []string{"changed during admission", until, "relax until 2026-11-12T09:20:00Z"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var watch RelaxWatch
+			watch.Note(withOverride(original))
+			err := watch.Verify(withOverride(tc.fresh), tc.now)
+			if len(tc.want) == 0 {
+				if err != nil {
+					t.Fatalf("Verify = %v, want no error", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("Verify = nil, want an error")
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not say %q", err, want)
+				}
+			}
+		})
 	}
 }

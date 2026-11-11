@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"time"
 )
@@ -34,16 +36,100 @@ type RelaxOverride struct {
 // Expired reports whether the override no longer applies at now.
 func (r RelaxOverride) Expired(now time.Time) bool { return !now.Before(r.ExpiresAt) }
 
-// OverrideExpired reports whether the relax override this policy was resolved
-// from has ended by now. A policy with no override never expires, so a bypass
-// that came from the config or a one-off flag stays in force.
-//
-// It exists because a caller that resolved early and acts after a slow step (a
-// probe, a slot wait, the uncovered scan) must judge its bypass on the clock,
-// not only on the fresh resolve: the resolver's own clock can still see the
-// override as live when the step outlasted it.
-func (p Policy) OverrideExpired(now time.Time) bool {
-	return p.Relax != nil && p.Relax.Expired(now)
+// RelaxSnapshot is the identity of the relax override one resolved policy came
+// from: its expiry together with every key it set, or the absence of one.
+// Identity rather than the expiry alone, because `dot admit relax` can rewrite
+// the override mid-run: same end, different limits.
+type RelaxSnapshot struct {
+	present   bool
+	expiresAt time.Time
+	ignore    []string
+	set       map[string]string
+}
+
+func snapshotOf(r *RelaxOverride) RelaxSnapshot {
+	if r == nil {
+		return RelaxSnapshot{}
+	}
+	return RelaxSnapshot{
+		present:   true,
+		expiresAt: r.ExpiresAt,
+		ignore:    append([]string(nil), r.Ignore...),
+		set:       maps.Clone(r.Set),
+	}
+}
+
+// describe renders the snapshot for a defer reason.
+func (s RelaxSnapshot) describe() string {
+	if !s.present {
+		return "no override"
+	}
+	return "relax until " + s.expiresAt.Format(time.RFC3339)
+}
+
+func (s RelaxSnapshot) expired(now time.Time) bool {
+	return s.present && !now.Before(s.expiresAt)
+}
+
+func (s RelaxSnapshot) same(other RelaxSnapshot) bool {
+	if s.present != other.present {
+		return false
+	}
+	if !s.present {
+		return true
+	}
+	if !s.expiresAt.Equal(other.expiresAt) || len(s.ignore) != len(other.ignore) || !maps.Equal(s.set, other.set) {
+		return false
+	}
+	// Rule order is how the person wrote it, not which rules: the same set in
+	// another order is the same override.
+	a := slices.Clone(s.ignore)
+	b := slices.Clone(other.ignore)
+	slices.Sort(a)
+	slices.Sort(b)
+	return slices.Equal(a, b)
+}
+
+// RelaxWatch records the relax overrides one admission acted on, so its commit
+// point can require each one is still in force. Without it a run judges each
+// step against the limits it read before that step, and an override that ends or
+// is rewritten between a step and the launch still decides the run.
+type RelaxWatch struct {
+	seen []RelaxSnapshot
+}
+
+// Note records the override the policy behind one step came from. A policy with
+// no override records nothing: only a layer that can expire needs rechecking,
+// and a config or one-off bypass is not one.
+func (w *RelaxWatch) Note(p Policy) {
+	snap := snapshotOf(p.Relax)
+	if !snap.present {
+		return
+	}
+	for _, seen := range w.seen {
+		if seen.same(snap) {
+			return
+		}
+	}
+	w.seen = append(w.seen, snap)
+}
+
+// Verify requires every recorded override to be unexpired at now and still the
+// active one in fresh. The clock is the commit point's own, not the resolver's:
+// the resolver prunes on its own clock and can still report an ended override as
+// live. An error says which override ended or changed and that a rerun is what
+// applies the limits now in force.
+func (w *RelaxWatch) Verify(fresh Policy, now time.Time) error {
+	active := snapshotOf(fresh.Relax)
+	for _, seen := range w.seen {
+		if seen.expired(now) {
+			return fmt.Errorf("the admission override that set limits for this run ended during admission (%s); rerun to use the limits now in force", seen.describe())
+		}
+		if !seen.same(active) {
+			return fmt.Errorf("the admission override that set limits for this run changed during admission (%s, now %s); rerun to use the limits now in force", seen.describe(), active.describe())
+		}
+	}
+	return nil
 }
 
 // IgnoreSet parses the stored rule names.

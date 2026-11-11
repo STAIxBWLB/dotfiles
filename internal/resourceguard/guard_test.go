@@ -299,14 +299,55 @@ func TestAdapterIgnoreUncoveredPassesScan(t *testing.T) {
 	release()
 }
 
-// The uncovered bypass is read from the policy resolved before the scan, and the
-// scan is the slowest step in an acquire. An override that ends inside it must
-// not let the jobs it found through, so the bypass is judged on the policy in
-// force when the scan returns.
-func TestAdapterUncoveredOverrideExpiringDuringTheScanDefers(t *testing.T) {
-	snap := healthySnapshot()
-	jobs := []string{"make(pid=4242,parent=1,repo=repo-a)"}
-	a, store := testAdapter(t, &snap, &jobs)
+// The gate, the slot take and the scan each act on the policy resolved at the
+// top, so an override that ends between them must not admit the job. The commit
+// point catches it whatever step it landed in: an empty scan here, because the
+// defect this replaced needed found jobs, and a raised capacity, because the slot
+// take read it before the gate.
+func TestAdapterOverrideEndingBeforeTheCommitDefers(t *testing.T) {
+	snap, none := healthySnapshot(), []string(nil)
+	a, store := testAdapter(t, &snap, &none)
+	if err := store.SaveRelaxOverride(admission.RelaxOverride{
+		SetAt:     time.Now(),
+		ExpiresAt: time.Now().Add(time.Minute),
+		Set:       map[string]string{"slots.heavy_per_repo": "2"},
+	}); err != nil {
+		t.Fatalf("seeding the override: %v", err)
+	}
+	// The acquire outlasts the override: the gate and the slot take saw it live, and
+	// the clock read at the commit point is past its expiry.
+	a.now = func() time.Time { return time.Now().Add(2 * time.Minute) }
+
+	ctx := context.Background()
+	release, err := a.acquire(ctx, Options{ProjectDir: t.TempDir()})
+	if !deferred(err) || !strings.Contains(err.Error(), "ended during admission") {
+		if release != nil {
+			release()
+		}
+		t.Fatalf("err = %v, want the defer because the override ended before the commit", err)
+	}
+	if leases, _ := store.ListLeases(); len(leases) != 0 {
+		t.Errorf("leases = %d after the defer, want the slot released", len(leases))
+	}
+
+	// Non-vacuity arm: with the clock inside the override's life the same acquire
+	// succeeds, under the capacity the override raised.
+	a.now = nil
+	release, err = a.acquire(ctx, Options{ProjectDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("acquire with the override still live = %v", err)
+	}
+	release()
+}
+
+// An ended override also frees a nested maintenance reuse that found nothing,
+// because the parent lease and the scan were both judged on the same policy the
+// commit point re-reads.
+func TestAdapterNestedReuseOverrideEndingBeforeTheCommitDefers(t *testing.T) {
+	snap, none := healthySnapshot(), []string(nil)
+	a, store := testAdapter(t, &snap, &none)
+	a.parentLease = func(context.Context, *admission.Store, string, string, int) bool { return true }
+	t.Setenv(admission.NestedEnv, admission.NestedEnvValue(admission.MaintenanceScope, admission.ClassMaintenance))
 	if err := store.SaveRelaxOverride(admission.RelaxOverride{
 		SetAt:     time.Now(),
 		ExpiresAt: time.Now().Add(time.Minute),
@@ -314,31 +355,15 @@ func TestAdapterUncoveredOverrideExpiringDuringTheScanDefers(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seeding the override: %v", err)
 	}
-	// The scan outlasts the override: the gate and the pre-scan resolve saw it live,
-	// and the clock read after the scan is past its expiry.
 	a.now = func() time.Time { return time.Now().Add(2 * time.Minute) }
 
-	ctx := context.Background()
-	release, err := a.acquire(ctx, Options{ProjectDir: t.TempDir()})
-	if !deferred(err) || !strings.Contains(err.Error(), "make(pid=4242") {
+	release, err := a.acquire(context.Background(), Options{ScopeKey: "tooling", ProjectDir: t.TempDir()})
+	if !deferred(err) || !strings.Contains(err.Error(), "ended during admission") {
 		if release != nil {
 			release()
 		}
-		t.Fatalf("err = %v, want the uncovered defer after the override expired during the scan", err)
+		t.Fatalf("err = %v, want the defer because the override ended before the reuse", err)
 	}
-	if leases, _ := store.ListLeases(); len(leases) != 0 {
-		t.Errorf("leases = %d after the defer, want the slot released", len(leases))
-	}
-
-	// Non-vacuity arm: with the clock inside the override's life the same scan is
-	// bypassed and the acquire succeeds, so the row above is not green merely because
-	// the fixture never had a bypass to lose.
-	a.now = nil
-	release, err = a.acquire(ctx, Options{ProjectDir: t.TempDir()})
-	if err != nil {
-		t.Fatalf("acquire with the override still live = %v", err)
-	}
-	release()
 }
 
 // AC2 (#412): the config's slot capacity admits a second concurrent job without

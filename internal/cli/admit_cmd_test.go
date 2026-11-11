@@ -1358,43 +1358,78 @@ func admitRecord(t *testing.T, output string) map[string]any {
 	return record
 }
 
-// The uncovered settings come from the policy resolved before the scan, and the
-// scan is the slowest step in the run (ps plus lsof). An override that ends
-// inside it must not let the jobs it found through, so the bypass is decided on
-// the policy in force when the scan returns.
-func TestAdmitRelaxIgnoreUncoveredExpiringDuringTheScanDefers(t *testing.T) {
-	admitSandbox(t)
+// The gate, the slot take and the scan each read the limits before the step they
+// feed, so an override that ends between them must not launch the job. The commit
+// point catches it whatever step it landed in: the scan here, an empty inventory
+// and a raised capacity, because the defect this replaced needed found jobs.
+func TestAdmitOverrideEndingBeforeTheCommitDefers(t *testing.T) {
+	home, _ := admitSandbox(t)
 	stubAdmitMonitor(t, healthyAdmitSnapshot())
-	stubAdmitScan(t, []string{"make(pid=4242,parent=1,repo=repo-a)"}, nil)
-	if _, _, err := runDotForTest("admit", "relax", "--for", "10m", "--ignore", "uncovered"); err != nil {
+	stubAdmitScan(t, nil, nil)
+	if _, _, err := runDotForTest("admit", "relax", "--for", "10m", "--set", "slots.heavy_per_repo=2"); err != nil {
 		t.Fatalf("setting the override: %v", err)
 	}
 
-	// The scan outlasts the override: the gate and the pre-scan resolve saw it live,
-	// and the clock read after the scan is past its expiry.
-	old := admitScanClock
-	admitScanClock = func() time.Time { return time.Now().Add(11 * time.Minute) }
-	t.Cleanup(func() { admitScanClock = old })
+	// The run outlasts the override: every step saw it live, and the clock read at
+	// the commit point is past its expiry.
+	old := admitCommitClock
+	admitCommitClock = func() time.Time { return time.Now().Add(11 * time.Minute) }
+	t.Cleanup(func() { admitCommitClock = old })
 
 	out, errOut, err := runDotForTest("admit", "--json", "--wait", "0", "--", "true")
 	var exitErr *ExitCodeError
 	if !errors.As(err, &exitErr) || exitErr.Code != ExitDeferred {
-		t.Fatalf("err = %v (stderr=%s), want the uncovered defer after the override expired during the scan", err, errOut)
+		t.Fatalf("err = %v (stderr=%s), want a defer because the override ended before the launch", err, errOut)
 	}
 	// A defer runs no child, so its JSON record stays on stdout.
-	if !strings.Contains(out+errOut, "uncovered heavyweight work: make(pid=4242,parent=1,repo=repo-a)") {
-		t.Errorf("out = %q\nstderr=%s, want the jobs the scan found as the reason", out, errOut)
+	if !strings.Contains(out+errOut, "ended during admission") || !strings.Contains(out+errOut, "rerun") {
+		t.Errorf("out = %q\nstderr=%s, want the ended override and the rerun advice", out, errOut)
+	}
+	store := admission.NewStore(admission.DefaultStateRoot(home), watchdogRunner(false))
+	if leases, lerr := store.ListLeases(); lerr != nil || len(leases) != 0 {
+		t.Fatalf("leases = %v, %v after the defer; want the slot released", leases, lerr)
 	}
 
-	// Non-vacuity arm: with the clock still inside the override's life the same scan
-	// is bypassed and the run proceeds, so the row above is not green merely because
-	// the fixture never had a bypass to lose.
-	admitScanClock = old
-	_, errOut, err = runDotForTest("admit", "--json", "--wait", "0", "--", "true")
-	if err != nil {
+	// Non-vacuity arm: with the clock inside the override's life the same run
+	// launches, so the row above is not green merely because the fixture could never
+	// admit. The raised capacity is what proves the override reached the slot take.
+	admitCommitClock = old
+	if _, errOut, err := runDotForTest("admit", "--json", "--wait", "0", "--", "true"); err != nil {
 		t.Fatalf("admit with the override still live = %v\nstderr=%s", err, errOut)
 	}
-	if !strings.Contains(errOut, "uncovered heavy work ignored") {
-		t.Errorf("stderr = %q, want the ignored findings", errOut)
+	if leases, lerr := store.ListLeases(); lerr != nil || len(leases) != 0 {
+		t.Fatalf("leases = %v, %v after the child exited; want the slot released", leases, lerr)
+	}
+}
+
+// An ended override costs a restart, not the run, when the wait has room: the
+// slot goes back, the cycle re-gates and re-acquires on the limits now in force,
+// and only a spent budget ends the run.
+func TestAdmitOverrideEndingBeforeTheCommitRestartsWithinTheWait(t *testing.T) {
+	admitSandbox(t)
+	stubAdmitMonitor(t, healthyAdmitSnapshot())
+	stubAdmitScan(t, nil, nil)
+	if _, _, err := runDotForTest("admit", "relax", "--for", "10m", "--set", "slots.heavy_per_repo=2"); err != nil {
+		t.Fatalf("setting the override: %v", err)
+	}
+
+	// The first commit point sees the past-expiry clock; the second one, after the
+	// restart, sees the override still in force.
+	calls := 0
+	old := admitCommitClock
+	admitCommitClock = func() time.Time {
+		calls++
+		if calls == 1 {
+			return time.Now().Add(11 * time.Minute)
+		}
+		return time.Now()
+	}
+	t.Cleanup(func() { admitCommitClock = old })
+
+	if _, errOut, err := runDotForTest("admit", "--json", "--wait", "30s", "--", "true"); err != nil {
+		t.Fatalf("admit after the restart = %v\nstderr=%s", err, errOut)
+	}
+	if calls < 2 {
+		t.Fatalf("commit point read %d times, want a restart after the first refusal", calls)
 	}
 }
