@@ -51,6 +51,13 @@ func TestRemoteWritesAreInBoundaries(t *testing.T) {
 		"`<prefix>-verify-<mirror key>`",
 		"`<prefix>-src-<name>`",
 		"`refs/verify/<mirror key>/<sha>-<nonce>`",
+		"`<jobs root>/<name>`",
+		"`<prefix>-<profile>:latest`",
+		"`<prefix>-<profile>-<name>`",
+		"`<local.root>/<name>`",
+		"`~/dot-remote-jobs/<profile>`",
+		"`~/.local/state/dot/remote-jobs/<profile>/<name>`",
+		"`remote-job:<host>/<profile>`",
 	} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("docs/BOUNDARIES.md does not name %s", want)
@@ -68,6 +75,19 @@ func TestRemoteWritesAreInBoundaries(t *testing.T) {
 	}
 	// The sent listing is what a run writes on this machine, so the document
 	// names that too, and a rename has to reach it.
+	p := JobProfile{Name: "media", Dockerfile: "/x"}
+	if got := p.ImageHost(host).Image(); got != host.Prefix+"-media:latest" {
+		t.Errorf("profile image = %q", got)
+	}
+	if got := JobContainer(host, p, "j"); got != host.Prefix+"-media-j" {
+		t.Errorf("job container = %q", got)
+	}
+	if got := JobScope(host, "media"); got != "remote-job:"+host.Name+"/media" {
+		t.Errorf("job scope = %q", got)
+	}
+	if DefaultJobsRoot != "dot-remote-jobs" || DefaultLocalJobsRoot != ".local/state/dot/remote-jobs" {
+		t.Error("job root defaults drifted from docs/BOUNDARIES.md")
+	}
 	if !strings.Contains(doc, "`~/.local/state/dot/remote-sent/<host>--<mirror key>.sent`") {
 		t.Error("docs/BOUNDARIES.md does not name the sent listing a run keeps on this machine")
 	}
