@@ -430,3 +430,7 @@ Accepted because the gap is a few seconds, two machines verifying one checkout
 on one host is rare, and closing it needs a host-side claim for verify like the
 one `run` takes. Revisit if a verify is reported failing at its fetch while a
 prune ran, by having verify take the mirror claim around push and fetch.
+
+The same window covers mirrors: claims are per exact mirror path, so a run of a
+nested or parent mirror that another machine starts between prune's listing and
+its `rm -rf` is not excluded either. Same cause, same revisit trigger.

@@ -229,3 +229,51 @@ func TestPruneMirrorChecksForARunningContainer(t *testing.T) {
 		}
 	}
 }
+
+// A mirror record whose path carries a newline cannot forge a ref line that
+// reaches outside git_root.
+func TestPruneRejectsForgedRefLines(t *testing.T) {
+	root := t.TempDir()
+	f := &pruneFixture{listing: strings.Join([]string{
+		"mirror\t" + MirrorKey("x") + "\tfree\tx",
+		"ref\t../x.git\trefs/verify/0123456789ab/a-n",
+		"ref\t.hidden.git\trefs/verify/0123456789ab/a-n",
+		"ref\tr.git\trefs/heads/main",
+		"ref\tr.git\trefs/verify/0123456789ab/../../x",
+		"ref\tr.git\trefs/verify/0123456789ab/a-n",
+	}, "\n")}
+	report, err := f.deps(root).Prune(context.Background(), Config{LocalRoot: root}, testHost(), PruneOptions{Yes: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs := 0
+	for _, item := range report.Items {
+		if item.Kind == "verify-ref" {
+			refs++
+			if item.Name != "r.git refs/verify/0123456789ab/a-n" {
+				t.Errorf("forged ref accepted: %s", item.Name)
+			}
+		}
+	}
+	if refs != 1 || len(report.Skipped) != 4 {
+		t.Errorf("refs %d skipped %v", refs, report.Skipped)
+	}
+	if strings.Contains(strings.Join(f.calls, "\n"), "../") {
+		t.Errorf("a removal reached outside git_root: %v", f.calls)
+	}
+}
+
+// The listing script stays valid shell for an ssh destination holding a
+// quote, and the mirror claim is released however the script ends.
+func TestPruneScriptsQuoteAndReleaseTheClaim(t *testing.T) {
+	h := testHost()
+	h.SSH = "o'brien"
+	if out, err := osexec.Command("bash", "-n", "-c", pruneListScriptFor(h)).CombinedOutput(); err != nil {
+		t.Errorf("listing does not parse with a quoted ssh destination: %v %s", err, out)
+	}
+	script := pruneMirrorScript(testHost(), "a")
+	trap := strings.Index(script, "trap 'rmdir")
+	if trap < 0 || trap < strings.Index(script, `mkdir "$lock"`) || strings.Count(script, `rmdir "$lock"`) != 1 {
+		t.Errorf("the claim release is not one EXIT trap right after the mkdir:\n%s", script)
+	}
+}

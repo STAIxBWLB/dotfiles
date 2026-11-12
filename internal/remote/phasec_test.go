@@ -99,7 +99,7 @@ func TestPruneListsFirstAndRemovesOnlyWithYes(t *testing.T) {
 		"mirror\t" + MirrorKey("work/here") + "\tfree\twork/here",
 		"mirror\t" + MirrorKey("work/busy") + "\tclaimed\twork/busy",
 		"mirror\tdeadbeef0000\tfree\t../escape",
-		"ref\trepo-1.git\trefs/verify/abc/123-n",
+		"ref\trepo-1.git\trefs/verify/0123456789ab/123-n",
 		"container\tme-rdev-0123456789ab\tExited (137) 2 hours ago",
 		"job\tmedia\t/data/jobs/broken",
 	}, "\n")}
@@ -112,7 +112,7 @@ func TestPruneListsFirstAndRemovesOnlyWithYes(t *testing.T) {
 	for _, item := range report.Items {
 		kinds[item.Kind] = item.Name
 	}
-	if kinds["mirror"] != "work/gone" || kinds["verify-ref"] != "repo-1.git refs/verify/abc/123-n" || kinds["container"] != "me-rdev-0123456789ab" || len(report.Items) != 3 {
+	if kinds["mirror"] != "work/gone" || kinds["verify-ref"] != "repo-1.git refs/verify/0123456789ab/123-n" || kinds["container"] != "me-rdev-0123456789ab" || len(report.Items) != 3 {
 		t.Errorf("items = %+v", report.Items)
 	}
 	if len(report.Skipped) != 2 || len(report.Kept) != 1 {
@@ -129,7 +129,7 @@ func TestPruneListsFirstAndRemovesOnlyWithYes(t *testing.T) {
 	joined := strings.Join(f.calls, "\n")
 	for _, want := range []string{
 		`mkdir "$lock"`, `rel='work/gone'`,
-		"update-ref -d 'refs/verify/abc/123-n'", "name=^me-rdev-verify-abc$",
+		"update-ref -d 'refs/verify/0123456789ab/123-n'", "name=^me-rdev-verify-0123456789ab$",
 		"docker rm 'me-rdev-0123456789ab'",
 	} {
 		if !strings.Contains(joined, want) {
@@ -222,13 +222,13 @@ func TestPruneRefusesASymlinkedMirrorPath(t *testing.T) {
 func TestPruneHandlesPerRunVerifyRefs(t *testing.T) {
 	root := t.TempDir()
 	h := testHost()
-	f := &pruneFixture{listing: "ref\tr.git\trefs/verify/k1/abc-n\nref\tr.git\trefs/verify/k1/abc-n-base\n"}
+	f := &pruneFixture{listing: "ref\tr.git\trefs/verify/aaaaaaaaaaaa/abc-n\nref\tr.git\trefs/verify/aaaaaaaaaaaa/abc-n-base\n"}
 	report, err := f.deps(root).Prune(context.Background(), Config{LocalRoot: root}, h, PruneOptions{Yes: true})
 	if err != nil || len(report.Items) != 2 {
 		t.Fatalf("%v %+v", err, report.Items)
 	}
 	joined := strings.Join(f.calls, "\n")
-	for _, want := range []string{"'refs/verify/k1/abc-n'", "'refs/verify/k1/abc-n-base'", "name=^me-rdev-verify-k1$"} {
+	for _, want := range []string{"'refs/verify/aaaaaaaaaaaa/abc-n'", "'refs/verify/aaaaaaaaaaaa/abc-n-base'", "name=^me-rdev-verify-aaaaaaaaaaaa$"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("lacks %s:\n%s", want, joined)
 		}

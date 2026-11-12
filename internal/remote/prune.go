@@ -88,7 +88,7 @@ if [ -d "$HOME"/%s ]; then
   done
 fi
 if ! listed=$(%s ps -a --filter %s --format '{{.Names}}\t{{.Status}}' 2>&1); then
-  printf 'error\tcannot list containers (%%s): check that %s works for this user on this host (ssh %s %s ps), then rerun dot remote prune\n' "$listed"
+  printf 'error\tcannot list containers (%%s): check that %%s works for this user on this host (ssh %%s %%s ps), then rerun dot remote prune\n' "$listed" %s %s %s
 else
   printf '%%s\n' "$listed" | while IFS='	' read -r name status; do
     [ -n "$name" ] || continue
@@ -117,11 +117,11 @@ done
 unset IFS
 set +f
 if ! mkdir "$lock" 2>/dev/null; then echo 'busy: a run holds the claim on this mirror; run dot remote prune again after it ends' >&2; exit 3; fi
-if ! running=$(%s ps --filter %s --format '{{.Names}}' 2>&1); then rmdir "$lock"; echo "cannot tell whether a run is using this mirror ($running); run dot remote prune again once the runtime answers" >&2; exit 3; fi
-if [ -n "$running" ]; then rmdir "$lock"; echo 'busy: a container is running in this mirror without a claim; run dot remote prune again after it ends' >&2; exit 3; fi
+trap 'rmdir "$lock" 2>/dev/null' EXIT
+if ! running=$(%s ps --filter %s --format '{{.Names}}' 2>&1); then echo "cannot tell whether a run is using this mirror ($running); run dot remote prune again once the runtime answers" >&2; exit 3; fi
+if [ -n "$running" ]; then echo 'busy: a container is running in this mirror without a claim; run dot remote prune again after it ends' >&2; exit 3; fi
 rm -rf "$target" "$records"/%s
 status=$?
-rmdir "$lock"
 exit $status`
 
 // pruneRefTemplate deletes one leftover verify ref, unless the verify that
@@ -142,7 +142,7 @@ func PruneListScript(h Host) string { return pruneListScriptFor(h) }
 // pruneListScriptFor is the read-only listing for one host.
 func pruneListScriptFor(h Host) string {
 	return fmt.Sprintf(pruneListTemplate, ShellQuote(h.Root), ShellQuote(h.GitRoot), ShellQuote(h.GitRoot),
-		h.Runtime, ShellQuote("name="+regexp.QuoteMeta(h.Prefix+"-")), h.Runtime, h.SSH, h.Runtime, jobListScript(h))
+		h.Runtime, ShellQuote("name="+regexp.QuoteMeta(h.Prefix+"-")), ShellQuote(h.Runtime), ShellQuote(h.SSH), ShellQuote(h.Runtime), jobListScript(h))
 }
 
 // pruneMirrorScript removes one mirror under its own claim.
@@ -153,9 +153,17 @@ func pruneMirrorScript(h Host, rel string) string {
 }
 
 var (
-	hexKey      = regexp.MustCompile(`^[0-9a-f]{12}$`)
-	srcNameForm = regexp.MustCompile(`^(root|[A-Za-z0-9][A-Za-z0-9._-]*)$`)
+	verifyRefForm = regexp.MustCompile(`^refs/verify/[0-9a-f]{12}/[^/]+$`)
+	hexKey        = regexp.MustCompile(`^[0-9a-f]{12}$`)
+	srcNameForm   = regexp.MustCompile(`^(root|[A-Za-z0-9][A-Za-z0-9._-]*)$`)
 )
+
+// bareRepoName reports whether name is a plain bare repository basename under
+// git_root, as verify creates them.
+func bareRepoName(name string) bool {
+	return strings.HasSuffix(name, ".git") && !strings.HasPrefix(name, ".") && !strings.Contains(name, "/") &&
+		!bareUnsafe.MatchString(name)
+}
 
 // dotContainer reports whether name is one of the containers dot itself
 // names on this host: <prefix>-<key> (run), <prefix>-verify-<key>,
@@ -248,7 +256,11 @@ func (d Deps) Prune(ctx context.Context, cfg Config, h Host, opts PruneOptions) 
 			}
 			mirrors = append(mirrors, mirrorRecord{key: key, rel: rel, claimed: claim == "claimed"})
 		case "ref":
-			if len(fields) < 3 || !strings.HasPrefix(fields[2], "refs/verify/") {
+			if len(fields) != 3 {
+				continue
+			}
+			if !bareRepoName(fields[1]) || !verifyRefForm.MatchString(fields[2]) {
+				report.Skipped = append(report.Skipped, fmt.Sprintf("ref line %q %q is not a verify ref in a bare repo under git_root", fields[1], fields[2]))
 				continue
 			}
 			refKey := strings.SplitN(strings.TrimPrefix(fields[2], "refs/verify/"), "/", 2)[0]
