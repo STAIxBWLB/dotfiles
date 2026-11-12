@@ -99,8 +99,17 @@ fi
 // into a directory being deleted.
 const pruneMirrorTemplate = `records="$HOME"/%s/.dot-remote
 lock="$records"/%s.claim
+target="$HOME"/%s
+rest=${target#"$HOME"/}
+walk="$HOME"
+IFS=/
+for part in $rest; do
+  walk="$walk/$part"
+  if [ -L "$walk" ]; then echo "refused: $walk is a symlink, so the mirror path leaves the root; remove it by hand after checking"; exit 4; fi
+done
+unset IFS
 if ! mkdir "$lock" 2>/dev/null; then echo 'busy: a run holds the claim'; exit 3; fi
-rm -rf "$HOME"/%s "$records"/%s
+rm -rf "$target" "$records"/%s
 status=$?
 rmdir "$lock"
 exit $status`

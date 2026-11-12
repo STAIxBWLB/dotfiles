@@ -128,7 +128,7 @@ func TestPruneListsFirstAndRemovesOnlyWithYes(t *testing.T) {
 	}
 	joined := strings.Join(f.calls, "\n")
 	for _, want := range []string{
-		`mkdir "$lock"`, `rm -rf "$HOME"/'dot-remote/work/gone'`,
+		`mkdir "$lock"`, `target="$HOME"/'dot-remote/work/gone'`,
 		"update-ref -d 'refs/verify/abc/123-n'", "name=^me-rdev-verify-abc$",
 		"docker rm 'me-rdev-0123'",
 	} {
@@ -187,6 +187,50 @@ func TestPruneScriptsOnAShell(t *testing.T) {
 	for _, p := range []string{filepath.Join(home, h.Root, "work/gone"), filepath.Join(records, MirrorKey("work/gone")), filepath.Join(records, MirrorKey("work/gone")+".claim")} {
 		if _, err := os.Stat(p); err == nil {
 			t.Errorf("%s survived", p)
+		}
+	}
+}
+
+// A mirror path that crosses a symlink is refused, so prune never deletes
+// outside the mirror root.
+func TestPruneRefusesASymlinkedMirrorPath(t *testing.T) {
+	home := t.TempDir()
+	h := testHost()
+	outside := filepath.Join(home, "precious")
+	if err := os.MkdirAll(filepath.Join(outside, "gone"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, h.Root, ".dot-remote"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(home, h.Root, "work")); err != nil {
+		t.Fatal(err)
+	}
+	c := osexec.Command("bash", "-c", pruneMirrorScript(h, "work/gone"))
+	c.Env = append(os.Environ(), "HOME="+home)
+	out, _ := c.CombinedOutput()
+	if !strings.Contains(string(out), "is a symlink") {
+		t.Errorf("not refused: %s", out)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "gone")); err != nil {
+		t.Error("prune deleted through a symlink")
+	}
+}
+
+// Per-run verify refs and their -base are both listed and removed with the
+// verify container of their key checked.
+func TestPruneHandlesPerRunVerifyRefs(t *testing.T) {
+	root := t.TempDir()
+	h := testHost()
+	f := &pruneFixture{listing: "ref\tr.git\trefs/verify/k1/abc-n\nref\tr.git\trefs/verify/k1/abc-n-base\n"}
+	report, err := f.deps(root).Prune(context.Background(), Config{LocalRoot: root}, h, PruneOptions{Yes: true})
+	if err != nil || len(report.Items) != 2 {
+		t.Fatalf("%v %+v", err, report.Items)
+	}
+	joined := strings.Join(f.calls, "\n")
+	for _, want := range []string{"'refs/verify/k1/abc-n'", "'refs/verify/k1/abc-n-base'", "name=^me-rdev-verify-k1$"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("lacks %s:\n%s", want, joined)
 		}
 	}
 }
