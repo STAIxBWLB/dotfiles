@@ -170,10 +170,168 @@ func TestPruneVerifyRefFailsClosed(t *testing.T) {
 	if err != nil || len(report.Items) != 0 || len(report.Skipped) != 1 {
 		t.Errorf("held ref: %v %+v %v", err, report.Items, report.Skipped)
 	}
-	script := strings.Replace(pruneRefTemplate, "%s", "docker", 1)
-	out, code := runAt(t, t.TempDir(), "echo daemon down >&2; return 1;", script)
+	home := gitRootHome(t, h, "r.git")
+	out, code := runAt(t, home, "echo daemon down >&2; return 1;", pruneRefScript(h, "r.git", "refs/verify/0123456789ab/a-n"))
 	if code != 3 || !strings.Contains(out, "cannot tell") {
 		t.Errorf("ps failure: %d %s", code, out)
+	}
+}
+
+// gitRootHome makes a home whose git_root holds a bare repo with one verify ref.
+func gitRootHome(t *testing.T, h Host, repo string) string {
+	t.Helper()
+	home := t.TempDir()
+	bare := filepath.Join(home, h.GitRoot, repo)
+	if out, err := osexec.Command("git", "init", "-q", "--bare", bare).CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	src := t.TempDir()
+	for _, args := range [][]string{
+		{"init", "-q"}, {"-c", "user.name=t", "-c", "user.email=t@x", "commit", "-q", "--allow-empty", "-m", "x"},
+		{"push", "-q", bare, "HEAD:refs/verify/0123456789ab/a-n"},
+	} {
+		if out, err := osexec.Command("git", append([]string{"-C", src}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	return home
+}
+
+func refExists(t *testing.T, repo string) bool {
+	t.Helper()
+	return osexec.Command("git", "-C", repo, "rev-parse", "-q", "--verify", "refs/verify/0123456789ab/a-n").Run() == nil
+}
+
+// #430.1: a repo name under git_root that is a symlink, or resolves outside
+// git_root, is refused before any ref is deleted.
+func TestPruneRefRefusesASymlinkedRepo(t *testing.T) {
+	h := testHost()
+	home := gitRootHome(t, h, "real.git")
+	outside := filepath.Join(home, "elsewhere.git")
+	if err := os.Rename(filepath.Join(home, h.GitRoot, "real.git"), outside); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(home, h.GitRoot, "r.git")); err != nil {
+		t.Fatal(err)
+	}
+	out, code := runAt(t, home, ":;", pruneRefScript(h, "r.git", "refs/verify/0123456789ab/a-n"))
+	if code != 4 || !strings.Contains(out, "is a symlink") {
+		t.Errorf("symlinked repo: %d %s", code, out)
+	}
+	if !refExists(t, outside) {
+		t.Error("the ref outside git_root was deleted")
+	}
+	// The happy path still deletes.
+	home = gitRootHome(t, h, "r.git")
+	if out, code := runAt(t, home, ":;", pruneRefScript(h, "r.git", "refs/verify/0123456789ab/a-n")); code != 0 {
+		t.Fatalf("plain repo: %d %s", code, out)
+	}
+	if refExists(t, filepath.Join(home, h.GitRoot, "r.git")) {
+		t.Error("the ref of a plain repo was not deleted")
+	}
+}
+
+// #430.2: a symlinked records directory is refused by the listing and by the
+// removal, which leaves the claim and the record where they are.
+func TestPruneRefusesASymlinkedRecordsDirectory(t *testing.T) {
+	h := testHost()
+	home := t.TempDir()
+	elsewhere := filepath.Join(home, "elsewhere")
+	if err := os.MkdirAll(elsewhere, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(elsewhere, MirrorKey("work/gone")), []byte("work/gone"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, h.Root, "work", "gone"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, filepath.Join(home, h.Root, ".dot-remote")); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := runAt(t, home, ":;", pruneListScriptFor(h))
+	if !strings.Contains(out, "error\t") || !strings.Contains(out, "is a symlink") || strings.Contains(out, "mirror\t") {
+		t.Errorf("listing: %s", out)
+	}
+	out, code := runAt(t, home, ":;", pruneMirrorScript(h, "work/gone"))
+	if code != 4 || !strings.Contains(out, "is a symlink") {
+		t.Errorf("removal: %d %s", code, out)
+	}
+	if _, err := os.Stat(filepath.Join(elsewhere, MirrorKey("work/gone"))); err != nil {
+		t.Error("the record outside the root was removed")
+	}
+	if _, err := os.Stat(filepath.Join(elsewhere, MirrorKey("work/gone")+".claim")); err == nil {
+		t.Error("a claim was made outside the root")
+	}
+	if _, err := os.Stat(filepath.Join(home, h.Root, "work", "gone")); err != nil {
+		t.Error("the mirror was removed")
+	}
+}
+
+// #430.1: a plain directory under git_root whose .git points at another
+// repository (a symlink or a gitdir file) is refused, and the ref there
+// survives.
+func TestPruneRefRefusesARepoThatPointsElsewhere(t *testing.T) {
+	h := testHost()
+	for _, how := range []string{"symlink", "gitdir", "commondir-abs", "commondir-rel"} {
+		home := gitRootHome(t, h, "real.git")
+		outside := filepath.Join(home, "elsewhere.git")
+		if err := os.Rename(filepath.Join(home, h.GitRoot, "real.git"), outside); err != nil {
+			t.Fatal(err)
+		}
+		dir := filepath.Join(home, h.GitRoot, "r.git")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		var err error
+		switch how {
+		case "symlink":
+			err = os.Symlink(outside, filepath.Join(dir, ".git"))
+		case "gitdir":
+			err = os.WriteFile(filepath.Join(dir, ".git"), []byte("gitdir: "+outside+"\n"), 0o644)
+		default:
+			// A bare-looking directory whose commondir sends refs elsewhere.
+			for _, sub := range []string{"objects", "refs"} {
+				if err = os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err = os.WriteFile(filepath.Join(dir, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			target := outside
+			if how == "commondir-rel" {
+				target = "../../elsewhere.git"
+			}
+			err = os.WriteFile(filepath.Join(dir, "commondir"), []byte(target+"\n"), 0o644)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, code := runAt(t, home, ":;", pruneRefScript(h, "r.git", "refs/verify/0123456789ab/a-n"))
+		if code != 4 || !strings.Contains(out, "refused") {
+			t.Errorf("%s: %d %s", how, code, out)
+		}
+		if !refExists(t, outside) {
+			t.Errorf("%s: the ref in the outside repository was deleted", how)
+		}
+	}
+}
+
+// #430.3: a running verify of the same key under another prefix keeps the ref.
+func TestPruneRefWaitsForAnotherPrefixesVerify(t *testing.T) {
+	h := testHost()
+	home := gitRootHome(t, h, "r.git")
+	// The stub runtime answers `ps --filter name=...` like docker: it prints
+	// the running container whose name matches the filter's regex.
+	stub := `for a in "$@"; do case "$a" in name=*) re=${a#name=};; esac; done; ` +
+		`printf '%s\n' other-rdev-verify-0123456789ab | grep -E -e "$re" || true;`
+	out, code := runAt(t, home, stub, pruneRefScript(h, "r.git", "refs/verify/0123456789ab/a-n"))
+	if code != 3 || !strings.Contains(out, "other-rdev-verify-0123456789ab") {
+		t.Errorf("another prefix's verify: %d %s", code, out)
+	}
+	if !refExists(t, filepath.Join(home, h.GitRoot, "r.git")) {
+		t.Error("the ref of a running verify was deleted")
 	}
 }
 

@@ -419,12 +419,14 @@ vanished" (24) accepted on that pass alone.
 ## Prune and another machine's verify
 
 `internal/remote/prune.go` removes a leftover `refs/verify/<key>/...` ref only
-while no `<prefix>-verify-<key>` container runs on the host and this machine
-holds no lease on that checkout. A verify pushes its refs before its container
-starts, so a verify started by another machine in that gap (push done,
-container not yet running) can have its ref removed, and that verify then fails
-at its fetch. Nothing is lost: the commit is still in the checkout, and the
-verify is simply run again.
+while no container whose name ends in `-verify-<key>` runs on the host, under
+any prefix (two prefixes on one account share `git_root`, and a ref is named by
+the mirror key alone), and this machine holds no lease on that checkout. A
+verify pushes its refs before its container starts, so a verify started by
+another machine, or under another prefix, in that gap (push done, container not
+yet running) can have its ref removed, and that verify then fails at its fetch.
+Nothing is lost: the commit is still in the checkout, and the verify is simply
+run again.
 
 Accepted because the gap is a few seconds, two machines verifying one checkout
 on one host is rare, and closing it needs a host-side claim for verify like the
