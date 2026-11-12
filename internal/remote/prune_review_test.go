@@ -273,7 +273,7 @@ func TestPruneRefusesASymlinkedRecordsDirectory(t *testing.T) {
 // survives.
 func TestPruneRefRefusesARepoThatPointsElsewhere(t *testing.T) {
 	h := testHost()
-	for _, how := range []string{"symlink", "gitdir"} {
+	for _, how := range []string{"symlink", "gitdir", "commondir-abs", "commondir-rel"} {
 		home := gitRootHome(t, h, "real.git")
 		outside := filepath.Join(home, "elsewhere.git")
 		if err := os.Rename(filepath.Join(home, h.GitRoot, "real.git"), outside); err != nil {
@@ -284,10 +284,26 @@ func TestPruneRefRefusesARepoThatPointsElsewhere(t *testing.T) {
 			t.Fatal(err)
 		}
 		var err error
-		if how == "symlink" {
+		switch how {
+		case "symlink":
 			err = os.Symlink(outside, filepath.Join(dir, ".git"))
-		} else {
+		case "gitdir":
 			err = os.WriteFile(filepath.Join(dir, ".git"), []byte("gitdir: "+outside+"\n"), 0o644)
+		default:
+			// A bare-looking directory whose commondir sends refs elsewhere.
+			for _, sub := range []string{"objects", "refs"} {
+				if err = os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err = os.WriteFile(filepath.Join(dir, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			target := outside
+			if how == "commondir-rel" {
+				target = "../../elsewhere.git"
+			}
+			err = os.WriteFile(filepath.Join(dir, "commondir"), []byte(target+"\n"), 0o644)
 		}
 		if err != nil {
 			t.Fatal(err)
