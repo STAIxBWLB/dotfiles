@@ -98,6 +98,8 @@ func (f *fakeExec) execute(_ context.Context, argv []string, stdin io.Reader, st
 			fmt.Fprintln(stdout, containerNamed(command))
 		}
 		return 0, 0, nil
+	case strings.Contains(command, "# replaced-dirs"):
+		return 0, 0, nil
 	case strings.Contains(command, "claim: release"):
 		fmt.Fprint(stdout, f.releaseOut)
 		return 0, 0, nil
@@ -410,6 +412,11 @@ func TestRunSyncsAndThenRuns(t *testing.T) {
 	}
 	if check, transfer := f.exec.order("ps -a --filter"), f.exec.order("--files-from=-"); check < 0 || transfer < 0 || check > transfer {
 		t.Errorf("container check at %d, ship pass at %d: the check has to come first", check, transfer)
+	}
+	// A first run has no record, so it asks the host to clear any directory the
+	// checkout now has as a file, before anything is sent.
+	if clear, transfer := f.exec.order("# replaced-dirs"), f.exec.order("--files-from=-"); clear < 0 || clear > transfer {
+		t.Errorf("replaced-directory removal at %d, ship pass at %d: it has to run, and first", clear, transfer)
 	}
 	// The mirror in this fixture holds nothing, so reconciling it names nothing
 	// to delete and the ship pass is the whole sync.

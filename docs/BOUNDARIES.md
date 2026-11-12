@@ -507,7 +507,9 @@ configurable in the `remote:` block:
 
 - `~/dot-remote` (`root`) — the mirrors: one directory per mirrored checkout, at
   `<root>/<path relative to remote.local_root>`, fed by rsync and read back only
-  when a run has no record of that mirror and has to reconcile it
+  when a run has no record of that mirror and has to reconcile it; inside a
+  mirror a run also removes, over ssh and by name, a directory the checkout now
+  has as a file or a symlink
 - `~/dot-remote/.dot-remote` — one record per mirror, named by the mirror key
   and holding the mirror's relative path, so `dot remote status` can size a
   mirror whose path is nested rather than guessing from the root's top-level

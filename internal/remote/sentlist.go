@@ -222,6 +222,59 @@ func withoutBlockedPaths(src string, paths []byte) []byte {
 	return []byte(strings.Join(kept, "\x00") + "\x00")
 }
 
+// shipListing is git's listing without the paths rsync cannot stat: a file git
+// still lists under a directory this checkout replaced with a file or a symlink
+// and has not staged yet. The order is git's, and a listing never becomes nil,
+// because a nil listing means the path is not a checkout at all.
+func shipListing(src string, listing []byte) []byte {
+	if listing == nil {
+		return nil
+	}
+	kept := make([]byte, 0, len(listing))
+	for _, rel := range strings.Split(string(listing), "\x00") {
+		if rel != "" && !blockedByNonDirectory(src, rel) {
+			kept = append(kept, rel...)
+			kept = append(kept, 0)
+		}
+	}
+	return kept
+}
+
+// replacedCandidates are the listed paths the mirror may hold as a directory
+// while this checkout has a file or a symlink there: every listed non-directory
+// this machine did not send under that name last time. With no record that is
+// the whole listing, once per mirror; with one it is only what is new, which is
+// usually nothing.
+func replacedCandidates(src string, listing, sent []byte) []byte {
+	before := listedPaths(sent)
+	var fresh []string
+	for rel := range listedPaths(listing) {
+		if before[rel] {
+			continue
+		}
+		info, err := os.Lstat(filepath.Join(src, filepath.FromSlash(rel)))
+		if err != nil || info.IsDir() {
+			continue
+		}
+		fresh = append(fresh, rel)
+	}
+	if len(fresh) == 0 {
+		return nil
+	}
+	sort.Strings(fresh)
+	return []byte(strings.Join(fresh, "\x00") + "\x00")
+}
+
+// replacedDirsCommand removes, under one mirror, each path named on stdin
+// (NUL-separated) that is a real directory there, and prints the ones it
+// removed, NUL-separated. A path that is already a file or a symlink on the
+// mirror is left for the ship pass, and a mirror that does not exist yet has
+// nothing to remove.
+func replacedDirsCommand(mirror string) string {
+	return `cd "$HOME"/` + quotedWord(mirror) + ` 2>/dev/null || exit 0; ` +
+		`xargs -0 sh -c 'for p; do if [ -d "./$p" ] && [ ! -L "./$p" ]; then rm -rf -- "./$p" || exit 1; printf "%s\\0" "$p"; fi; done' sh # replaced-dirs`
+}
+
 // blockedByNonDirectory reports whether some ancestor of rel exists on this
 // machine as something other than a directory, which is a checkout that turned a
 // directory into a file or a symlink.

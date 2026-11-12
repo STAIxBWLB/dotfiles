@@ -161,7 +161,14 @@ checkout can turn a directory into a file or a symlink: rsync cannot put a
 non-directory where the mirror still has a non-empty directory, and it used to
 fail there before anything removed the old tree, on that run and every one after
 it. A directory the checkout replaced therefore goes whole, including anything
-the host built inside it; nothing outside the path being replaced is touched. A
+the host built inside it; nothing outside the path being replaced is touched.
+Before the passes, the run removes such a directory on the host by name and
+reports it: an excluded name inside it (`target`, `node_modules`) is protected
+from rsync on the receiving side too, so `--force` alone could not clear it. The
+run asks only about files it did not send under that name last time, so an
+ordinary run asks about nothing. A file git still lists under a directory that
+is now a file here (the replacement is not staged yet) is left out of the send
+list, since rsync cannot read a path under a file. A
 directory the checkout deleted outright loses the files it sent, while a build
 output the host made under it stays, and the pass reports rsync's "some files
 vanished" as the answer it asked for rather than as a failure.

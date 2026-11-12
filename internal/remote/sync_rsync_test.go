@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -63,6 +64,9 @@ func newSyncFixture(t *testing.T) *syncFixture {
 		Err:      &f.errs,
 		MirrorFiles: func(_ context.Context, _ Host, _ string) ([]byte, error) {
 			return f.mirrorFiles(), nil
+		},
+		ClearReplaced: func(_ context.Context, _ Host, _ string, paths []byte) ([]byte, error) {
+			return f.clearReplaced(paths)
 		},
 	}
 	f.pinGitEnv()
@@ -206,6 +210,17 @@ func (f *syncFixture) git(git string, args ...string) []byte {
 	return out
 }
 
+// clearReplaced runs the production removal command the way the host would, with
+// HOME pointed at the fixture's home.
+func (f *syncFixture) clearReplaced(paths []byte) ([]byte, error) {
+	f.t.Helper()
+	command := replacedDirsCommand(filepath.ToSlash(filepath.Join(f.host.Root, f.rel)))
+	cmd := exec.Command("/bin/sh", "-c", command)
+	cmd.Env = append(os.Environ(), "HOME="+filepath.Join(f.root, "home"))
+	cmd.Stdin = bytes.NewReader(paths)
+	return cmd.Output()
+}
+
 // runAsRun does what a run does for a checkout: decide the sync input for this
 // checkout, run the plan, then record what was sent - the same three steps Run
 // performs, through the same functions.
@@ -221,6 +236,9 @@ func (f *syncFixture) runAsRunExcludes(excludes []string, listing []byte) {
 		Excludes: excludes,
 		Listing:  listing,
 	})
+	if err := f.deps.clearReplaced(context.Background(), f.host, f.dest, decision.Replaced); err != nil {
+		f.t.Fatalf("removing the directories the checkout replaced: %v", err)
+	}
 	f.runPlan(decision.Input)
 	if !decision.Record {
 		// A path that is not a checkout has no listing to record, and a run that
@@ -838,5 +856,109 @@ func TestADeletedDirectoryLosesItsFilesAndKeepsWhatTheHostBuilt(t *testing.T) {
 	f.missing("item/two.txt")
 	if got := f.read("item/build.o"); got != "built on the host\n" {
 		t.Errorf("the delete pass removed the host's build output: %q", got)
+	}
+}
+
+// The replacement is not staged yet: git still lists item/old.txt beside the new
+// file item, and rsync cannot stat a path under a file. The ship list drops it.
+func TestAnUnstagedReplacementOfATrackedDirectoryStillSyncs(t *testing.T) {
+	f := newSyncFixture(t)
+	f.sourceFile("main.go", "package main\n")
+	f.sourceFile("item/old.txt", "old\n")
+	f.gitInit()
+	f.gitRun("add", "-A")
+	f.runAsRun(f.gitList())
+
+	if err := os.RemoveAll(filepath.Join(f.source, "item")); err != nil {
+		t.Fatal(err)
+	}
+	f.sourceFile("item", "now a file\n")
+	listing := f.gitList()
+	if !strings.Contains(string(listing), "item/old.txt") {
+		t.Fatalf("the fixture is wrong: git no longer lists the unstaged deletion:\n%q", listing)
+	}
+
+	f.runAsRun(listing)
+
+	if got := f.read("item"); got != "now a file\n" {
+		t.Errorf("the mirror has %q at item, want the file", got)
+	}
+	if got := f.read("main.go"); got != "package main\n" {
+		t.Errorf("main.go on the mirror is %q", got)
+	}
+}
+
+// What the host built inside the replaced directory is on the exclude list, and
+// an exclude protects on the receiving side, so --force alone cannot make way.
+// The directory the checkout replaced goes by name; the same names elsewhere stay.
+func TestAReplacedDirectoryHoldingExcludedBuildOutputIsReplaced(t *testing.T) {
+	for _, kind := range []string{"file", "symlink"} {
+		t.Run(kind, func(t *testing.T) {
+			f := newSyncFixture(t)
+			f.sourceFile("main.go", "package main\n")
+			f.sourceFile("item/old.txt", "old\n")
+			f.sourceFile("other/keep.txt", "keep\n")
+			f.gitInit()
+			f.runAsRun(f.gitList())
+			f.destFile("item/target/debug/app", "built\n")
+			f.destFile("item/node_modules/x/index.js", "built\n")
+			f.destFile("other/target/debug/app", "built elsewhere\n")
+
+			if err := os.RemoveAll(filepath.Join(f.source, "item")); err != nil {
+				t.Fatal(err)
+			}
+			if kind == "file" {
+				f.sourceFile("item", "now a file\n")
+			} else if err := os.Symlink("main.go", filepath.Join(f.source, "item")); err != nil {
+				t.Fatal(err)
+			}
+
+			f.runAsRun(f.gitList())
+
+			info, err := os.Lstat(filepath.Join(f.dest, "item"))
+			if err != nil {
+				t.Fatalf("item on the mirror: %v", err)
+			}
+			if info.IsDir() {
+				t.Fatal("the mirror still holds the directory the checkout replaced")
+			}
+			if got := f.read("other/target/debug/app"); got != "built elsewhere\n" {
+				t.Errorf("a build output outside the replaced directory is %q, want it untouched", got)
+			}
+			if got := f.read("other/keep.txt"); got != "keep\n" {
+				t.Errorf("other/keep.txt is %q", got)
+			}
+			if !strings.Contains(f.errs.String(), "which this checkout replaced with a file") {
+				t.Errorf("stderr does not report the removed directory:\n%s", f.errs.String())
+			}
+		})
+	}
+}
+
+// With a record, only a path this machine did not send under that name last
+// time can be a directory on the mirror, so an ordinary run asks about nothing.
+func TestReplacedCandidatesAreOnlyWhatIsNewSinceTheRecord(t *testing.T) {
+	src := t.TempDir()
+	for _, rel := range []string{"a.go", "b.go", "dir/c.go"} {
+		full := filepath.Join(src, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	listing := []byte("a.go\x00b.go\x00dir/c.go\x00gone.go\x00dir\x00")
+	if got := string(replacedCandidates(src, listing, []byte("a.go\x00dir/c.go\x00"))); got != "b.go\x00" {
+		t.Errorf("with a record the candidates are %q, want only the new file", got)
+	}
+	if got := string(replacedCandidates(src, listing, nil)); got != "a.go\x00b.go\x00dir/c.go\x00" {
+		t.Errorf("with no record the candidates are %q, want every listed file on disk and no directory", got)
+	}
+	if got := replacedCandidates(src, []byte("a.go\x00"), []byte("a.go\x00")); got != nil {
+		t.Errorf("an unchanged listing has candidates %q, want none", got)
+	}
+	if got := shipListing(src, []byte{}); got == nil {
+		t.Error("an empty listing became nil, which a run reads as a path that is not a checkout")
 	}
 }

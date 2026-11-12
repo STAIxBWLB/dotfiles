@@ -225,6 +225,9 @@ func (d Deps) Run(ctx context.Context, cfg Config, opts RunOptions) error {
 		return err
 	}
 	decision := d.syncInput(ctx, h, mirror, rel, path, SyncInput{Excludes: cfg.Excludes(), Listing: listing})
+	if err := d.clearReplaced(ctx, h, mirror, decision.Replaced); err != nil {
+		return err
+	}
 	if err := d.sync(ctx, h, mirror, rsyncPath, path, decision.Input); err != nil {
 		return err
 	}
@@ -308,6 +311,10 @@ type syncDecision struct {
 	// Record is false when the reconcile did not complete, or when the path is
 	// not a checkout and has no listing to record.
 	Record bool
+	// Replaced are the listed files and symlinks the mirror may still hold as a
+	// directory, NUL-separated: the ones this machine did not send as they are
+	// last time. clearReplaced removes such a directory before the passes run.
+	Replaced []byte
 }
 
 // syncInput decides what one sync of a checkout removes.
@@ -329,6 +336,10 @@ func (d Deps) syncInput(ctx context.Context, h Host, mirror, rel, path string, i
 		fmt.Fprintf(d.errOut(), "dot remote: %s is not a git checkout, mirroring it with the exclude list\n", path)
 		return syncDecision{Input: in}
 	}
+	// A path git still lists under a directory the checkout turned into a file
+	// or a symlink (the replacement is not staged yet) cannot be sent: rsync
+	// answers "Not a directory" and fails the whole ship pass.
+	in.Listing = shipListing(path, in.Listing)
 	record, err := d.readSent(h, rel, path)
 	switch {
 	case err != nil:
@@ -339,16 +350,49 @@ func (d Deps) syncInput(ctx context.Context, h Host, mirror, rel, path string, i
 			mirror, h.Name)
 	case record.Found:
 		in.Deletes = withoutBlockedPaths(path, goneFromDisk(path, record.Listing, in.Listing))
-		return syncDecision{Input: in, Record: true}
+		return syncDecision{Input: in, Record: true, Replaced: replacedCandidates(path, in.Listing, record.Listing)}
 	}
 	deletes, rerr := d.reconcile(ctx, h, mirror, path, in.Listing)
 	if rerr != nil {
 		fmt.Fprintf(d.errOut(), "dot remote: could not read what %s holds on %s (%v), so this run deletes nothing there and records nothing: the next run there reconciles the mirror again\n",
 			mirror, h.Name, rerr)
-		return syncDecision{Input: in}
+		return syncDecision{Input: in, Replaced: replacedCandidates(path, in.Listing, nil)}
 	}
 	in.Deletes = withoutBlockedPaths(path, deletes)
-	return syncDecision{Input: in, Record: true}
+	return syncDecision{Input: in, Record: true, Replaced: replacedCandidates(path, in.Listing, nil)}
+}
+
+// clearReplaced removes, on the host, each directory the checkout has replaced
+// with a file or a symlink.
+//
+// rsync cannot do it: the ship pass carries the exclude list, an exclude also
+// protects on the receiving side, and a directory holding a target/ or a
+// node_modules/ the host built is therefore never empty enough for --force to
+// replace. The checkout has decided that path is not a directory any more, so
+// the directory goes whole, by name, and nothing else is touched.
+func (d Deps) clearReplaced(ctx context.Context, h Host, mirror string, candidates []byte) error {
+	if len(candidates) == 0 {
+		return nil
+	}
+	var removed []byte
+	var err error
+	if d.ClearReplaced != nil {
+		removed, err = d.ClearReplaced(ctx, h, mirror, candidates)
+	} else {
+		var out string
+		out, err = d.capture(ctx, SSHArgv(h.SSH, replacedDirsCommand(mirror)), candidates)
+		removed = []byte(out)
+	}
+	if err != nil {
+		return fmt.Errorf("could not remove the directories this checkout replaced with files under %s on %s (%w): look at the mirror with `%s` and remove the directory that is now a file here",
+			mirror, h.Name, err, sshCommand(h, `ls -la "$HOME"/`+quotedWord(mirror)))
+	}
+	for _, rel := range strings.Split(string(removed), "\x00") {
+		if rel != "" {
+			fmt.Fprintf(d.errOut(), "dot remote: removed the directory %s on %s, which this checkout replaced with a file\n", mirror+"/"+rel, h.Name)
+		}
+	}
+	return nil
 }
 
 // reconcile is the deletion set for a mirror this machine has no record of: what

@@ -58,6 +58,10 @@ type Deps struct {
 	// Ignored reports which of the given paths git's ignore rules cover in one
 	// checkout, as a set. Empty means git itself runs there.
 	Ignored func(ctx context.Context, checkout string, paths []string) (map[string]bool, error)
+	// ClearReplaced removes the directories among the given NUL-separated paths
+	// of one mirror and returns the ones it removed, NUL-separated. Empty means
+	// the removal runs over ssh.
+	ClearReplaced func(ctx context.Context, h Host, mirror string, paths []byte) ([]byte, error)
 }
 
 // DefaultDeps wires the real terminal, git and the invoking user's admission
