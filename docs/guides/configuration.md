@@ -235,4 +235,7 @@ substitute for git's own view.
 
 ## Global flags
 
-All commands inherit `--config`, `--dry-run`, `--home` and `--yes`. `--profile` (minimal, full, server) is taken by the commands that load a profile: `apply`, `diff`, `config`, `status`, `init` (which preselects it), `watchdog setup` and `notify`, and `container setup`. `--module` is taken by `apply` and `diff`. `dot sync` names its store with `--store`. Generated pages list each command's own options.
+All commands inherit `--config`, `--dry-run`, `--home` and `--yes`, with one
+exception: `dot remote` refuses `--config` by name, because its hosts come from
+the user state and that block has no place in a sync config, so `--home` (or
+`DOTFILES_HOME`) is what points it at another home's state. `--profile` (minimal, full, server) is taken by the commands that load a profile: `apply`, `diff`, `config`, `status`, `init` (which preselects it), `watchdog setup` and `notify`, and `container setup`. `--module` is taken by `apply` and `diff`. `dot sync` names its store with `--store`. Generated pages list each command's own options.
