@@ -53,4 +53,9 @@ func TestRemoteWritesAreInBoundaries(t *testing.T) {
 			t.Errorf("docs/BOUNDARIES.md does not name %s", want)
 		}
 	}
+	// The sent listing is what a run writes on this machine, so the document
+	// names that too, and a rename has to reach it.
+	if !strings.Contains(doc, "`~/.local/state/dot/remote-sent/<host>--<mirror key>.sent`") {
+		t.Error("docs/BOUNDARIES.md does not name the sent listing a run keeps on this machine")
+	}
 }

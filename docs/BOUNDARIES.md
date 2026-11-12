@@ -491,10 +491,16 @@ tool):
 ### Remote hosts
 
 `dot remote` writes on the host it is pointed at, never on that host's system
-paths, and it writes nothing on this machine except the admission leases under
-the existing state root (one per mirror path and one per host). Every remote
-path is either anchored at the remote user's `$HOME` or carries the host's
-`prefix`, and all of the names below are configurable in the `remote:` block:
+paths. On this machine it writes the admission leases under the existing state
+root (one per mirror path and one per host) and, beside that root, one listing
+per mirror it has sent to:
+`~/.local/state/dot/remote-sent/<host>--<mirror key>.sent`, holding the paths
+that run sent, so the next run deletes exactly the ones the checkout no longer
+has. The listing stays on this machine rather than on the host because two
+machines can share one mirror, and a listing written by the other machine must
+never drive deletions here. Every remote path is either anchored at the remote
+user's `$HOME` or carries the host's `prefix`, and all of the names below are
+configurable in the `remote:` block:
 
 - `~/dot-remote` (`root`) — the mirrors: one directory per mirrored checkout, at
   `<root>/<path relative to remote.local_root>`, fed by rsync and never read

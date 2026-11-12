@@ -30,6 +30,9 @@ type Deps struct {
 	// StoreErr is why the store could not be opened, when it could not. It is
 	// carried rather than logged so a run can say what to fix.
 	StoreErr error
+	// SentRoot is the directory holding what this machine last sent to each
+	// mirror. Empty means the dot state directory beside the admission root.
+	SentRoot string
 	Runner   *exec.Runner
 	Exec     Execer
 	Now      func() time.Time

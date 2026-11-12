@@ -128,6 +128,18 @@ argument is a shell script, several are an argv. The mirror is mounted at
 `/work/<path relative to remote.local_root>`, caches are mounted from the
 host's volumes, and build outputs stay there between runs.
 
+What leaves the mirror is decided from what this machine sent, not from the
+ignore files. A run records the paths it sent to each mirror
+(`~/.local/state/dot/remote-sent/<host>--<mirror key>.sent`), and the next run
+deletes exactly the recorded paths that are gone from the checkout, so a build
+output the host made is never a candidate and neither is a file another machine
+sent. rsync reads those ignore files as plain excludes and cannot express a `!`
+negation, so they could not decide this: with `*.lock` and `!Cargo.lock` in one
+of them, a `Cargo.lock` that was deleted here stayed on the mirror. A mirror this
+machine has never sent to has no record yet, so its first run deletes from the
+destination's `.gitignore` and the other ignore files git honors; a pattern there
+can keep one file one run longer.
+
 ### Limits and interrupts
 
 A run holds two admission leases, both visible in `dot admit status`: one per
@@ -201,8 +213,9 @@ Mirrors live under `~/dot-remote` on the host (configurable), one directory per
 checkout, and `<root>/.dot-remote` holds one small record per mirror so `dot
 remote status` can size a mirror whose path is nested. Images, cache volumes and
 containers carry the host's `prefix`, so two people can share one host without
-colliding. Nothing else on the host is written, and this machine only gains
-admission leases.
+colliding. Nothing else on the host is written, and on this machine a run adds
+only the admission leases and the sent listing of that mirror, under
+`~/.local/state/dot/remote-sent/`.
 
 To reclaim space, delete the mirror directory of a checkout you no longer use;
 the next run of that path recreates it, and the caches stay warm in their

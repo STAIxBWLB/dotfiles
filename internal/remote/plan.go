@@ -24,43 +24,77 @@ type Step struct {
 	Stdin []byte
 }
 
+// SyncInput is what one sync of a checkout was decided on, and it is a struct
+// rather than an argument list because the delete pass has two shapes with
+// different inputs.
+type SyncInput struct {
+	// Excludes is the operator's exclude list, sent as rsync filters.
+	Excludes []string
+	// Listing is git's view of the checkout, NUL-separated. nil means src is not
+	// a checkout, which gets one plain mirroring pass with the exclude list.
+	Listing []byte
+	// Previous is what this machine last sent to this mirror, and HasPrevious
+	// says whether there is such a record at all - an empty listing is a record
+	// of a checkout with no files, not the absence of one.
+	Previous    []byte
+	HasPrevious bool
+	// Deletes is what to remove from the mirror: paths in Previous or Listing
+	// that are gone from this machine. Read only when HasPrevious is set.
+	Deletes []byte
+	// IgnoreFiles are the other ignore files git honored when it built the
+	// listing (.git/info/exclude and the global excludes file). They are the
+	// fallback's input only: without a sent listing there is nothing to subtract,
+	// so the first run of a mirror deletes from the ignore rules instead.
+	IgnoreFiles []string
+}
+
 // SyncPlan builds the transfer of src into dst.
 //
 // A git checkout gets two passes. The first sends exactly the files git lists,
-// so a file deleted locally is simply absent. The second transfers nothing
-// (--existing --ignore-existing) and only deletes, with the destination's
-// .gitignore read as an exclude file, which is what keeps the build outputs
-// that live only on the mirror.
+// so a file deleted locally is simply absent.
 //
-// ignoreFiles are the other ignore files git honored when it built the listing
-// (.git/info/exclude and the global excludes file). The delete pass merges each
-// of them into its filter list, so both passes agree on what "ignored" means: a
-// build output excluded by a rule outside .gitignore is protected from deletion
-// exactly as it was kept out of the ship pass.
+// The second deletes what this machine sent last time and no longer has:
+// --delete-missing-args removes each named path the source no longer has, so a
+// build output that was never sent is not a candidate at all. That is the whole
+// point of the sent listing - a filter file cannot say what git's ignore rules
+// say: rsync reads .gitignore's patterns as plain excludes, so with `*.lock` and
+// `!Cargo.lock` in one file a Cargo.lock that git lists, and that this machine
+// sent, is protected from deletion by the very pattern the negation was meant to
+// override, and the mirror keeps a file the checkout no longer has.
 //
-// A path that is not a git checkout (listing is nil) gets one plain mirroring
+// A mirror this machine has no listing for falls back to that ignore-file
+// prune, which is what it did before the listing existed; the run that uses the
+// fallback records its listing, so the fallback happens once per mirror.
+//
+// A path that is not a git checkout (Listing is nil) gets one plain mirroring
 // pass with the same exclude list and --delete.
-func SyncPlan(rsyncPath, src, dst string, excludes, ignoreFiles []string, listing []byte) []Step {
+func SyncPlan(rsyncPath, src, dst string, in SyncInput) []Step {
 	// -s (--secluded-args) sends the paths over rsync's own channel instead of
 	// interpolating them into the remote shell's command line. Without it a
 	// destination holding a space, ';' or '$(...)' is parsed by the shell on the
 	// far side, because ssh joins its arguments with spaces.
-	base := append([]string{"-a", "-s", "--mkpath"}, ExcludeArgs(excludes)...)
-	if listing == nil {
+	base := append([]string{"-a", "-s", "--mkpath"}, ExcludeArgs(in.Excludes)...)
+	if in.Listing == nil {
 		argv := append(append([]string{}, base...), "--delete", src+"/", dst+"/")
 		return []Step{{Argv: append([]string{rsyncPath}, argv...)}}
 	}
 	ship := append(append([]string{}, base...),
 		"--files-from=-", "--from0", "--ignore-missing-args", src+"/", dst+"/")
-	prune := append(append([]string{}, base...), "--delete", "--filter=:- .gitignore")
-	for _, file := range ignoreFiles {
-		prune = append(prune, "--filter=.- "+file)
+	steps := []Step{{Argv: append([]string{rsyncPath}, ship...), Stdin: in.Listing}}
+	if !in.HasPrevious {
+		prune := append(append([]string{}, base...), "--delete", "--filter=:- .gitignore")
+		for _, file := range in.IgnoreFiles {
+			prune = append(prune, "--filter=.- "+file)
+		}
+		prune = append(prune, "--existing", "--ignore-existing", src+"/", dst+"/")
+		return append(steps, Step{Argv: append([]string{rsyncPath}, prune...)})
 	}
-	prune = append(prune, "--existing", "--ignore-existing", src+"/", dst+"/")
-	return []Step{
-		{Argv: append([]string{rsyncPath}, ship...), Stdin: listing},
-		{Argv: append([]string{rsyncPath}, prune...)},
+	if len(in.Deletes) > 0 {
+		drop := append(append([]string{}, base...),
+			"--files-from=-", "--from0", "--delete-missing-args", src+"/", dst+"/")
+		steps = append(steps, Step{Argv: append([]string{rsyncPath}, drop...), Stdin: in.Deletes})
 	}
+	return steps
 }
 
 // SSHArgv is one remote command over ssh. BatchMode keeps a password or host

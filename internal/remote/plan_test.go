@@ -31,8 +31,11 @@ func TestSSHArgvIsBatchMode(t *testing.T) {
 
 func TestSyncPlanForAGitCheckout(t *testing.T) {
 	listing := []byte("main.go\x00docs/a.md\x00")
-	steps := SyncPlan("/usr/local/bin/rsync", "/home/u/repo", "buildbox:dot-remote/repo",
-		[]string{".git", "node_modules"}, []string{"/home/u/repo/.git/info/exclude"}, listing)
+	steps := SyncPlan("/usr/local/bin/rsync", "/home/u/repo", "buildbox:dot-remote/repo", SyncInput{
+		Excludes:    []string{".git", "node_modules"},
+		IgnoreFiles: []string{"/home/u/repo/.git/info/exclude"},
+		Listing:     listing,
+	})
 	if len(steps) != 2 {
 		t.Fatalf("steps = %d, want the ship pass and the delete pass", len(steps))
 	}
@@ -90,7 +93,7 @@ func TestSyncPlanForAGitCheckout(t *testing.T) {
 }
 
 func TestSyncPlanForAPathThatIsNotAGitCheckout(t *testing.T) {
-	steps := SyncPlan("rsync", "/home/u/plain", "buildbox:dot-remote/plain", []string{".git"}, nil, nil)
+	steps := SyncPlan("rsync", "/home/u/plain", "buildbox:dot-remote/plain", SyncInput{Excludes: []string{".git"}})
 	if len(steps) != 1 {
 		t.Fatalf("steps = %d, want one plain mirroring pass", len(steps))
 	}
@@ -100,6 +103,70 @@ func TestSyncPlanForAPathThatIsNotAGitCheckout(t *testing.T) {
 	}
 	if steps[0].Stdin != nil {
 		t.Error("a plain mirroring pass takes no stdin")
+	}
+}
+
+// Once this machine has a record of what it sent, the delete pass names those
+// paths and asks rsync to remove the ones the source no longer has. Nothing is
+// inferred from an ignore file, which is what the fallback has to do and what a
+// negation in one of them breaks.
+func TestSyncPlanDeletesWhatTheSentListingNames(t *testing.T) {
+	deletes := []byte("docs/gone.md\x00main.go\x00")
+	steps := SyncPlan("rsync", "/home/u/repo", "buildbox:dot-remote/repo", SyncInput{
+		Excludes:    []string{".git"},
+		Listing:     []byte("main.go\x00"),
+		Previous:    []byte("docs/gone.md\x00main.go\x00"),
+		HasPrevious: true,
+		Deletes:     deletes,
+	})
+	if len(steps) != 2 {
+		t.Fatalf("steps = %d, want the ship pass and the delete pass", len(steps))
+	}
+	drop := steps[1]
+	for _, want := range []string{"--files-from=-", "--from0", "--delete-missing-args", "/home/u/repo/", "buildbox:dot-remote/repo/"} {
+		if !slices.Contains(drop.Argv, want) {
+			t.Errorf("delete pass is missing %q: %v", want, drop.Argv)
+		}
+	}
+	if string(drop.Stdin) != string(deletes) {
+		t.Errorf("delete stdin = %q, want the paths gone from this machine", drop.Stdin)
+	}
+	// The delete pass must not go looking for deletions of its own: no --delete,
+	// and no ignore file read as a filter file.
+	for _, unwanted := range []string{"--delete", "--filter=:- .gitignore", "--existing", "--ignore-existing"} {
+		if slices.Contains(drop.Argv, unwanted) {
+			t.Errorf("delete pass carries %q: %v", unwanted, drop.Argv)
+		}
+	}
+}
+
+// A record that names nothing to delete costs no second rsync at all.
+func TestSyncPlanWithoutDeletesIsOnePass(t *testing.T) {
+	steps := SyncPlan("rsync", "/home/u/repo", "buildbox:dot-remote/repo", SyncInput{
+		Listing:     []byte("main.go\x00"),
+		Previous:    []byte("main.go\x00"),
+		HasPrevious: true,
+	})
+	if len(steps) != 1 {
+		t.Fatalf("steps = %d, want the ship pass alone", len(steps))
+	}
+}
+
+// An empty record is a record: a checkout that sent no files must not fall back
+// to reading the ignore files, because that is the pass the repository deleted
+// the fallback for.
+func TestAnEmptySentRecordIsStillARecord(t *testing.T) {
+	steps := SyncPlan("rsync", "/home/u/repo", "buildbox:dot-remote/repo", SyncInput{
+		Listing:     []byte("fresh.go\x00"),
+		Previous:    []byte{},
+		HasPrevious: true,
+		Deletes:     []byte("fresh.go\x00"),
+	})
+	if len(steps) != 2 {
+		t.Fatalf("steps = %d, want the ship pass and the delete pass", len(steps))
+	}
+	if slices.Contains(steps[1].Argv, "--filter=:- .gitignore") {
+		t.Errorf("an empty sent record fell back to the ignore-file prune: %v", steps[1].Argv)
 	}
 }
 

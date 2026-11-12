@@ -223,14 +223,17 @@ func (d Deps) Run(ctx context.Context, cfg Config, opts RunOptions) error {
 	if err != nil {
 		return err
 	}
-	var ignoreFiles []string
-	if isCheckout {
-		ignoreFiles = d.gitIgnoreFiles(ctx, path)
-	} else {
-		fmt.Fprintf(d.errOut(), "dot remote: %s is not a git checkout, mirroring it with the exclude list\n", path)
-	}
-	if err := d.sync(ctx, cfg, h, path, mirror, rsyncPath, ignoreFiles, listing); err != nil {
+	in := d.syncInput(ctx, h, mirror, rel, path, SyncInput{Excludes: cfg.Excludes(), Listing: listing})
+	if err := d.sync(ctx, h, mirror, rsyncPath, path, in); err != nil {
 		return err
+	}
+	if isCheckout {
+		// Recorded only after the mirror took the tree: a listing saved for a sync
+		// that failed would let the next run delete files this one never sent.
+		if err := d.writeSent(h, rel, listing); err != nil {
+			fmt.Fprintf(d.errOut(), "dot remote: could not record what this run sent to %s on %s (%v), so the next run there deletes from the ignore files instead\n",
+				mirror, h.Name, err)
+		}
 	}
 	fmt.Fprintf(d.errOut(), "dot remote: running in %s on %s (mirror %s)\n", container, h.Name, mirror)
 	exit, sig, runErr := d.ex()(ctx, SSHArgv(h.SSH, RunCommand(h, container, rel, opts.Command)), d.in(), d.out(), d.errOut())
@@ -289,11 +292,42 @@ func containerPresentScript(h Host, container string) string {
 	return h.Runtime + " ps -a --filter " + ShellQuote("name=^"+container+"$") + " --format '{{.Names}}' # container-present"
 }
 
-// sync sends git's view of the tree and then deletes what the checkout no
-// longer has, protecting the mirror's own build outputs.
-func (d Deps) sync(ctx context.Context, cfg Config, h Host, path, mirror, rsyncPath string, ignoreFiles []string, listing []byte) error {
+// syncInput decides what one sync of a checkout removes.
+//
+// git's listing says what the tree holds now; what this machine sent to this
+// mirror last time says what it used to hold, and the difference that is gone
+// from disk is what leaves the mirror. Nothing is inferred from an ignore file,
+// because rsync cannot read one the way git wrote it.
+//
+// A mirror this machine has no record for falls back to the destination's own
+// ignore files, which is what the delete pass did before that record existed.
+// The fallback is the safe direction - it deletes less - and it runs once per
+// mirror, because this same run records its listing.
+func (d Deps) syncInput(ctx context.Context, h Host, mirror, rel, path string, in SyncInput) SyncInput {
+	if in.Listing == nil {
+		fmt.Fprintf(d.errOut(), "dot remote: %s is not a git checkout, mirroring it with the exclude list\n", path)
+		return in
+	}
+	previous, ok, err := d.readSent(h, rel)
+	switch {
+	case err != nil:
+		fmt.Fprintf(d.errOut(), "dot remote: could not read what this machine last sent to %s on %s (%v), so this run deletes from the ignore files instead\n",
+			mirror, h.Name, err)
+		in.IgnoreFiles = d.gitIgnoreFiles(ctx, path)
+	case ok:
+		in.Previous, in.HasPrevious = previous, true
+		in.Deletes = goneFromDisk(path, previous, in.Listing)
+	default:
+		in.IgnoreFiles = d.gitIgnoreFiles(ctx, path)
+	}
+	return in
+}
+
+// sync sends git's view of the tree and then removes what left the checkout,
+// protecting the mirror's own build outputs by never naming them.
+func (d Deps) sync(ctx context.Context, h Host, mirror, rsyncPath, path string, in SyncInput) error {
 	target := h.SSH + ":" + mirror
-	for _, step := range SyncPlan(rsyncPath, path, target, cfg.Excludes(), ignoreFiles, listing) {
+	for _, step := range SyncPlan(rsyncPath, path, target, in) {
 		if _, err := d.capture(ctx, step.Argv, step.Stdin); err != nil {
 			return fmt.Errorf("mirroring %s to %s: %w", path, h.Name, err)
 		}
