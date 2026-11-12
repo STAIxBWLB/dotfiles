@@ -180,6 +180,50 @@ directory the checkout deleted outright loses the files it sent, while a build
 output the host made under it stays, and the pass reports rsync's "some files
 vanished" as the answer it asked for rather than as a failure.
 
+### Verify a commit
+
+```bash
+dot remote verify                    # the project's configured gate on HEAD
+dot remote verify --dirty            # the working tree as it is, not HEAD
+dot remote verify ~/workspace/work/dev/one -- make check
+```
+
+`verify` pushes the checkout's exact commit to an owner-only bare repository on
+the host (`<git_root>/<repo>-<hash>.git`, one per repository and shared by its
+worktrees, created with mode 700) and runs the command in a fresh checkout of
+that commit, with the base branch fetched beside it as `origin/<branch>`. The
+real history is there, so a gate that diffs against `main` or checks commit
+messages runs unchanged. Without a command it runs the matching
+`remote.projects` entry's `verify`; the base is that entry's `base`, or the
+remote's default branch. The pushed ref is deleted when the job ends, whatever
+its outcome.
+
+`--dirty` stages the working tree (tracked files plus untracked ones no ignore
+rule covers) in a throwaway index and writes a commit object on top of HEAD:
+your index, branches and refs are not touched, and ignored files are never
+sent. Only commits travel; nothing else of the checkout is copied.
+
+The container starts as root only to make the checkout and hand it to your host
+UID and GID, then drops to that user with no capabilities before the command
+runs. The bare repository is mounted read-only, and the host's caches are
+mounted as for a run. `verify` and `run` of one checkout hold the same path
+lease, so they exclude each other; the host's `max_runs` and load check apply
+as for a run.
+
+### Third-party source
+
+```bash
+dot remote src -- git clone https://example.com/lib.git lib
+dot remote src lib -- rg -n unsafe
+```
+
+`src` runs the command in the host's `src_root` (default `~/dot-remote-src`), or
+in the clone `src_root/NAME`, so untrusted code is cloned and analyzed only on
+the host. No cache volume is mounted, so that code cannot reach the caches
+trusted builds reuse. A NAME is one path segment (letters, digits, `.`, `_`,
+`-`); one the host has no clone of exits 66. Each NAME holds its own lease plus
+one of the host's `max_runs`.
+
 ### Limits and interrupts
 
 A run holds two admission leases, both visible in `dot admit status`: one per
@@ -251,7 +295,9 @@ reclaimed, since nothing here can prove that run is gone. See the ceiling in
 
 Mirrors live under `~/dot-remote` on the host (configurable), one directory per
 checkout, and `<root>/.dot-remote` holds one small record per mirror so `dot
-remote status` can size a mirror whose path is nested. Images, cache volumes and
+remote status` can size a mirror whose path is nested. `verify` keeps one bare
+repository per repository under `~/dot-remote-git`, and `src` keeps clones
+under `~/dot-remote-src`. Images, cache volumes and
 containers carry the host's `prefix`, so two people can share one host without
 colliding. Nothing else on the host is written, and on this machine a run adds
 only the admission leases and the sent listing of that mirror, under

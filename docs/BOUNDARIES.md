@@ -516,14 +516,18 @@ configurable in the `remote:` block:
   directories; plus one `<mirror key>.claim` directory per mirror while a run
   holds it, whose `owner` file holds the machine name, pid, start time and the
   local checkout path of that run
-- `~/dot-remote-git` (`git_root`) — reserved for the bare repositories the
-  `verify` command pushes commits into
-- `~/dot-remote-src` (`src_root`) — reserved for the third-party clones the
-  `src` command analyzes
+- `~/dot-remote-git` (`git_root`, mode 700) — one bare repository per
+  repository, `<name>-<hash>.git`, created once by `verify`; a verify pushes
+  its commit to `refs/verify/<mirror key>` (and the base branch to
+  `refs/heads/<branch>`) and deletes that ref when it ends
+- `~/dot-remote-src` (`src_root`) — the third-party clones `src` makes and
+  analyzes; `src` creates the directory and writes nothing else there itself
 - the image, named `<prefix>:latest` for a Dockerfile the host builds or the
   configured `image.ref` for one it pulls
 - the cache volumes `<prefix>-<cache>`, one per `caches` entry, and the
-  containers `<prefix>-<mirror key>` a run creates and removes
+  containers `<prefix>-<mirror key>` a run creates and removes,
+  `<prefix>-verify-<mirror key>` a verify does, and `<prefix>-src-<name>`
+  (`<prefix>-src-root` without a name) a src job does
 
 A run never copies anything back, and it removes the container it started on
 every exit path except a SIGKILL: after a kill the next run of that path
