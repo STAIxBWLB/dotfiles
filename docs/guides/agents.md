@@ -244,7 +244,7 @@ See [the policy configuration example](../examples/ai-policy.yaml) and
 `--config` is authoritative, including omission of a policy block; saved state
 cannot silently restore it. `--persist` saves the selected policy only after
 usable overlays are applied. Enabled policies also participate in `dot
-apply/check/diff`. The user-state schema (version 3 brought the policy; 6 is
+apply/check/diff`. The user-state schema (version 3 brought the policy; 7 is
 current) makes an older binary warn and refuse to save, so it cannot silently
 rewrite the policy away.
 
