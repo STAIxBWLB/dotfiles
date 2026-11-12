@@ -336,17 +336,28 @@ and the store lives in this machine's state root. Two machines pointing at one
 host therefore hold two independent counts and can each start `max_runs` jobs;
 nothing on the host enforces the total.
 
-What the host does enforce is one run per mirror, because the container name is
-derived from the mirror's path relative to `remote.local_root` (`MirrorKey`) and
-not from this machine's absolute path: two machines that mirror the same
-relative checkout to one host ask the runtime for the same container name, and
-a run looks for that container before it syncs. Finding one running, it defers
-rather than sharing a mirror another machine is using; finding one stopped, it
-removes it. The mirror path is the identifier, so two different local checkouts
-that land on the same relative path are one mirror on that host, by design.
+What the host does enforce is one run per mirror, and it enforces it as a claim
+rather than as a check. Every mirror has a claim directory under the record
+directory (`<root>/.dot-remote/<MirrorKey>.claim`): a run takes it with `mkdir`
+before it syncs and releases it on every exit path, so the winner of a race is
+the only machine allowed into that mirror. The loser defers, is told whose claim
+it found, and is handed the command that clears it. A container found running
+besides the claim is reported the same way, and one found stopped is removed
+before the sync.
 
-One operator on a shared host is the ordinary case, and this machine is the
-only place that holds the leases. Revisit this when two machines sharing one
-host regularly collide: move the count to the host as lease files under
-`<root>`, which also gives the load probe a place to record what it saw, and
-extend the container check from "is one running" to a holder record.
+The claim's name comes from the mirror's path relative to `remote.local_root`
+(`MirrorKey`), not from this machine's absolute path: two machines that mirror
+the same relative checkout to one host contend for one claim and one container
+name, and a different local path landing on the same relative path is one mirror
+on that host, by design.
+
+A claim is only reclaimed by the machine that left it. This machine's own name
+in the owner file, plus the local path lease the new run holds, is what proves
+the previous owner dead, so that case is taken over automatically. A claim or a
+container left by a SIGKILLed run on another machine is reported rather than
+removed, because nothing here can prove that run is gone; a person clears it
+with the command the defer prints. Revisit this when two machines sharing one
+host regularly collide: move the liveness proof onto the host itself (an owner
+pid there and a heartbeat file under `<root>`), which also gives the load probe a
+place to record what it saw, and let the claim's own staleness decide a takeover
+instead of a person's judgement.

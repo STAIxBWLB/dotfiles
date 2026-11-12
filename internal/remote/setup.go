@@ -3,6 +3,7 @@ package remote
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -40,6 +41,19 @@ type SetupReport struct {
 // SetupOptions carries the shared flags setup honors.
 type SetupOptions struct {
 	DryRun bool
+	// JSON keeps stdout for the report: the runtime's own build and pull
+	// progress goes to stderr instead, because a wrapper parsing the document
+	// cannot skip past a progress line.
+	JSON bool
+}
+
+// progressWriter is where the runtime's build and pull output goes: stdout by
+// default, stderr when stdout carries the report.
+func (d Deps) progressWriter(asJSON bool) io.Writer {
+	if asJSON {
+		return d.errOut()
+	}
+	return d.out()
 }
 
 // Setup checks the host and builds or pulls the dev image. It is safe to
@@ -83,10 +97,10 @@ func (d Deps) Setup(ctx context.Context, h Host, opts SetupOptions) (SetupReport
 		return report, fmt.Errorf("%s has no %s on PATH; install a container runtime there or set remote.hosts.%s.runtime", h.Name, h.Runtime, h.Name)
 	}
 	if h.Dockerfile != "" {
-		if err := d.buildImage(ctx, h); err != nil {
+		if err := d.buildImage(ctx, h, opts.JSON); err != nil {
 			return report, err
 		}
-	} else if err := d.pullImage(ctx, h); err != nil {
+	} else if err := d.pullImage(ctx, h, opts.JSON); err != nil {
 		return report, err
 	}
 	user, err := d.checkImageUser(ctx, h)
@@ -114,7 +128,7 @@ func (d Deps) checkImageUser(ctx context.Context, h Host) (string, error) {
 }
 
 // buildImage builds the host's image from the local Dockerfile over stdin.
-func (d Deps) buildImage(ctx context.Context, h Host) error {
+func (d Deps) buildImage(ctx context.Context, h Host, asJSON bool) error {
 	dockerfile, err := os.ReadFile(h.Dockerfile)
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", h.Dockerfile, err)
@@ -124,7 +138,7 @@ func (d Deps) buildImage(ctx context.Context, h Host) error {
 	command := fmt.Sprintf("%s build -t %s --build-arg UID=$(id -u) --build-arg GID=$(id -g) -",
 		h.Runtime, ShellQuote(h.Image()))
 	fmt.Fprintf(d.errOut(), "dot remote: building %s on %s from %s\n", h.Image(), h.Name, h.Dockerfile)
-	exit, sig, err := d.ex()(ctx, SSHArgv(h.SSH, command), strings.NewReader(string(dockerfile)), d.out(), d.errOut())
+	exit, sig, err := d.ex()(ctx, SSHArgv(h.SSH, command), strings.NewReader(string(dockerfile)), d.progressWriter(asJSON), d.errOut())
 	if err != nil {
 		return err
 	}
@@ -138,9 +152,9 @@ func (d Deps) buildImage(ctx context.Context, h Host) error {
 }
 
 // pullImage pulls the prebuilt image a host names instead of building one.
-func (d Deps) pullImage(ctx context.Context, h Host) error {
+func (d Deps) pullImage(ctx context.Context, h Host, asJSON bool) error {
 	fmt.Fprintf(d.errOut(), "dot remote: pulling %s on %s\n", h.Ref, h.Name)
-	exit, sig, err := d.ex()(ctx, SSHArgv(h.SSH, h.Runtime+" pull "+ShellQuote(h.Ref)), nil, d.out(), d.errOut())
+	exit, sig, err := d.ex()(ctx, SSHArgv(h.SSH, h.Runtime+" pull "+ShellQuote(h.Ref)), nil, d.progressWriter(asJSON), d.errOut())
 	if err != nil {
 		return err
 	}

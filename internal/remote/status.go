@@ -61,17 +61,28 @@ type Status struct {
 // is never read as "nothing there".
 const statusScriptTemplate = `records="$HOME"/%s/.dot-remote
 if [ -d "$records" ]; then
-  for record in "$records"/*; do
-    [ -f "$record" ] || continue
-    rel=$(cat "$record" 2>/dev/null)
-    [ -n "$rel" ] || continue
-    size=$(du -sk "$HOME"/%s/"$rel" 2>/dev/null | cut -f1)
-    if [ -n "$size" ]; then
-      printf 'mirror\t%%s\t%%s\n' "$size" "$rel"
-    else
-      printf 'error\tcannot measure the mirror of %%s\n' "$rel"
-    fi
-  done
+  if ! listing=$(ls -A "$records" 2>&1); then
+    printf 'error\tcannot list %%s (%%s)\n' "$records" "$listing"
+  else
+    for name in $listing; do
+      record="$records/$name"
+      [ -f "$record" ] || continue
+      if ! rel=$(cat "$record" 2>&1); then
+        printf 'error\tcannot read the record of %%s (%%s)\n' "$name" "$rel"
+        continue
+      fi
+      if [ -z "$rel" ]; then
+        printf 'error\tthe record of %%s is empty\n' "$name"
+        continue
+      fi
+      size=$(du -sk "$HOME"/%s/"$rel" 2>/dev/null | cut -f1)
+      if [ -n "$size" ]; then
+        printf 'mirror\t%%s\t%%s\n' "$size" "$rel"
+      else
+        printf 'error\tcannot measure the mirror of %%s\n' "$rel"
+      fi
+    done
+  fi
 elif [ -d "$HOME"/%s ]; then
   printf 'error\tthe mirror tree holds mirrors but no per-mirror record: a run of this version writes one\n'
 fi

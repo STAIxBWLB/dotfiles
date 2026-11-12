@@ -49,11 +49,27 @@ same path removes the one left behind.`,
 	return cmd
 }
 
-// remoteSession loads the config, resolves the host and wires the seams every
-// 'dot remote' subcommand needs. checkout is the resolved path a job targets,
+// remoteSession loads the config and the seams every 'dot remote' subcommand
+// needs, and resolves the host. checkout is the resolved path a job targets,
 // which decides the host when --host is not given; it is empty for a command
 // that addresses the host itself.
 func remoteSession(cmd *cobra.Command, checkout string) (remote.Config, remote.Host, remote.Deps, error) {
+	cfg, deps, err := remoteBase(cmd)
+	if err != nil {
+		return remote.Config{}, remote.Host{}, remote.Deps{}, err
+	}
+	name, _ := cmd.Flags().GetString("host")
+	host, err := cfg.HostFor(name, checkout)
+	if err != nil {
+		return remote.Config{}, remote.Host{}, remote.Deps{}, err
+	}
+	return cfg, host, deps, nil
+}
+
+// remoteBase loads the config and wires the seams, without choosing a host.
+// A run needs it that way round: the checkout it targets is what selects the
+// project's host, and resolving the checkout needs the deps.
+func remoteBase(cmd *cobra.Command) (remote.Config, remote.Deps, error) {
 	home := homeFor(cmd)
 	var state *config.UserState
 	var err error
@@ -63,20 +79,15 @@ func remoteSession(cmd *cobra.Command, checkout string) (remote.Config, remote.H
 		state, err = config.LoadState()
 	}
 	if err != nil {
-		return remote.Config{}, remote.Host{}, remote.Deps{}, fmt.Errorf("loading config: %w", err)
+		return remote.Config{}, remote.Deps{}, fmt.Errorf("loading config: %w", err)
 	}
 	cfg, err := remote.Load(state.Remote, home)
 	if err != nil {
-		return remote.Config{}, remote.Host{}, remote.Deps{}, err
-	}
-	name, _ := cmd.Flags().GetString("host")
-	host, err := cfg.HostFor(name, checkout)
-	if err != nil {
-		return remote.Config{}, remote.Host{}, remote.Deps{}, err
+		return remote.Config{}, remote.Deps{}, err
 	}
 	deps := remote.DefaultDeps(watchdogRunner(false))
 	deps.In, deps.Out, deps.Err = cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr()
-	return cfg, host, deps, nil
+	return cfg, deps, nil
 }
 
 // remoteIgnore resolves the rules a remote run steps past. It reads only the
@@ -138,7 +149,7 @@ func runRemoteSetup(cmd *cobra.Command, _ []string) error {
 	p := printerFrom(cmd)
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	asJSON, _ := cmd.Flags().GetBool("json")
-	report, err := deps.Setup(cmd.Context(), host, remote.SetupOptions{DryRun: dryRun})
+	report, err := deps.Setup(cmd.Context(), host, remote.SetupOptions{DryRun: dryRun, JSON: asJSON})
 	if err != nil {
 		return err
 	}
@@ -195,27 +206,26 @@ func runRemoteRun(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	checkout := ""
-	if path != "" {
-		// Resolved here as well as in the run, because the config's project
-		// match compares resolved paths: a project entry has to cover the same
-		// checkout the run mirrors.
-		checkout, err = remote.ResolvePath(path)
-		if err != nil {
-			return err
-		}
-	}
-	cfg, _, deps, err := remoteSession(cmd, checkout)
+	cfg, deps, err := remoteBase(cmd)
 	if err != nil {
 		return err
 	}
+	// The checkout is resolved before the host is chosen: with no PATH the
+	// default is the checkout the current directory belongs to, and a project
+	// entry's host applies to it. Choosing the host first would only ever see
+	// remote.default for that case. Resolved here rather than in the run because
+	// the config's project match compares resolved paths.
+	checkout, err := remote.ResolveCheckout(cmd.Context(), deps, path)
+	if err != nil {
+		return err
+	}
+	hostName, _ := cmd.Flags().GetString("host")
 	ignore, source, err := remoteIgnore(deps.Store)
 	if err != nil {
 		return err
 	}
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	wait, _ := cmd.Flags().GetDuration("wait")
-	hostName, _ := cmd.Flags().GetString("host")
 	if wait < 0 {
 		return fmt.Errorf("--wait must not be negative")
 	}

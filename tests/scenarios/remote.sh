@@ -80,10 +80,20 @@ else
   ABORT "fixture: $SSHD_BIN is not executable (openssh-server missing from the image)"
 fi
 # The two-pass sync needs 3.2.3 on both ends; openrsync is refused by design.
-if rsync --version | head -1 | grep -q 'rsync  version 3\.[2-9]'; then
-  pass "the image's rsync is 3.2 or newer: $(rsync --version | head -1)"
+# The version is read whole: `rsync --version | head -1` makes rsync die of
+# SIGPIPE as soon as head exits, and under pipefail that 141 is the pipeline's
+# status, so a perfectly modern rsync would read as unfit. awk reads to EOF and
+# keeps the first line instead.
+rsync_version=$(rsync --version 2>/dev/null | awk 'NR == 1 { first = $0 } END { print first }')
+rsync_numbers=$(printf '%s\n' "$rsync_version" | sed -n 's/.*version \([0-9][0-9]*\)\.\([0-9][0-9]*\)\.\([0-9][0-9]*\).*/\1 \2 \3/p')
+if [ -z "$rsync_numbers" ]; then
+  ABORT "fixture: rsync reports no rsync 3.x version line (openrsync is refused by design): $rsync_version"
+fi
+read -r rsync_major rsync_minor rsync_patch <<<"$rsync_numbers"
+if [ "$((10#$rsync_major * 10000 + 10#$rsync_minor * 100 + 10#$rsync_patch))" -ge 30203 ]; then
+  pass "the image's rsync is 3.2.3 or newer: $rsync_version"
 else
-  ABORT "fixture: the image's rsync is too old for --mkpath: $(rsync --version | head -1)"
+  ABORT "fixture: the image's rsync is too old for the two-pass sync (3.2.3 is the floor): $rsync_version"
 fi
 
 # ── the runtime stub ─────────────────────────────────────────────────────────
@@ -443,6 +453,119 @@ else
   fail "the runtime was not asked to remove it: $(cat "$HOME/stub.log")"
 fi
 
+# ── the host's own exclusion: one claim per mirror ───────────────────────────
+# The leases are per machine, so two machines mirroring one checkout hold one
+# each and both pass. What excludes them is a directory on the host: mkdir is
+# atomic, the owner file names the run, and it is removed on every exit path -
+# which is what makes a leftover claim mean a run that died rather than a run
+# that is still working.
+CLAIMS="$HOME/dot-remote/.dot-remote"
+# The key comes from dot's own dry run, so the arm cannot drift from the
+# derivation it checks: the container name is <prefix>-<mirror key>.
+claim_dir="$CLAIMS/${left_container#e2e-rdev-}.claim"
+: >"$HOME/stub.log"
+printf '6\n' >"$HOME/stub-hold"
+"$BIN" remote run "$HOME/remote-work/one" -- sleep 6 >"$tmpdir/claim.out" 2>"$tmpdir/claim.err" &
+claim_pid=$!
+claim_owner=""
+attempt=0
+while [ "$attempt" -lt 40 ]; do
+  if [ -f "$claim_dir/owner" ]; then
+    claim_owner=$(cat "$claim_dir/owner" 2>/dev/null || true)
+    break
+  fi
+  attempt=$((attempt + 1))
+  sleep 0.25
+done
+if [ -n "$claim_owner" ]; then
+  pass "a run claims the mirror on the host before it syncs: $claim_dir"
+else
+  fail "no claim appeared at $claim_dir while a run held the mirror"
+fi
+if [ "$(printf '%s' "$claim_owner" | cut -f1)" = "$(uname -n)" ] &&
+  [ -n "$(printf '%s' "$claim_owner" | cut -f2)" ] &&
+  [ -n "$(printf '%s' "$claim_owner" | cut -f3)" ]; then
+  pass "the claim names this machine, its pid and when it started: $claim_owner"
+else
+  fail "the claim's owner line is not machine/pid/start: '$claim_owner'"
+fi
+set +e
+wait "$claim_pid"
+claim_rc=$?
+set -e
+rm -f "$HOME/stub-hold"
+if [ "$claim_rc" -eq 0 ]; then
+  pass "the claiming run finished on its own"
+else
+  fail "the claiming run exited $claim_rc: $(cat "$tmpdir/claim.err")"
+fi
+if [ -e "$claim_dir" ]; then
+  fail "the claim outlived the run that took it: $(ls -A "$claim_dir" 2>/dev/null | tr '\n' ' ')"
+else
+  pass "a finished run releases its claim"
+fi
+
+# A claim another machine holds is not this run's to break: it defers, names the
+# owner, and hands over the command that clears it once that run is gone.
+mkdir -p "$claim_dir"
+printf 'another-box\t4242\t2026-01-01T00:00:00Z\n' >"$claim_dir/owner"
+: >"$HOME/stub.log"
+set +e
+"$BIN" remote run "$HOME/remote-work/one" -- true >"$tmpdir/foreign.out" 2>"$tmpdir/foreign.err"
+foreign_rc=$?
+set -e
+if [ "$foreign_rc" -eq 75 ]; then
+  pass "a claim another machine holds defers the run with exit 75"
+else
+  fail "a foreign claim exited $foreign_rc, want 75: $(cat "$tmpdir/foreign.err")"
+fi
+if grep -q "another machine holds the claim on dot-remote/one on remotehost (another-box" \
+  "$tmpdir/foreign.out" "$tmpdir/foreign.err"; then
+  pass "the defer reason names the machine that holds the claim"
+else
+  fail "the defer reason does not name the claim's owner: $(cat "$tmpdir/foreign.err")"
+fi
+if grep -q "rm -rf .*\.claim" "$tmpdir/foreign.out" "$tmpdir/foreign.err"; then
+  pass "the defer reason carries the command that clears the claim"
+else
+  fail "the defer reason carries no removal command: $(cat "$tmpdir/foreign.err")"
+fi
+if grep -q '^run --rm ' "$HOME/stub.log" 2>/dev/null; then
+  fail "a deferred run still started a container"
+else
+  pass "nothing is synced or run past another machine's claim"
+fi
+
+# The same claim, now carrying this machine's own name, plus the container a
+# killed run left: the local path lease this run holds proves that owner is
+# dead, so the leftover is reclaimed instead of reported as another machine
+# forever.
+printf '%s\t99999\t2026-01-01T00:00:00Z\n' "$(uname -n)" >"$claim_dir/owner"
+printf '%s\n' "$left_container" >"$HOME/stub-containers"
+: >"$HOME/stub-running"
+: >"$HOME/stub.log"
+if "$BIN" remote run "$HOME/remote-work/one" -- true >"$tmpdir/stale.out" 2>"$tmpdir/stale.err"; then
+  pass "a claim this machine left behind is taken over rather than deferred"
+else
+  fail "this machine's own leftover claim stopped the run: $(cat "$tmpdir/stale.err")"
+fi
+if grep -q "took over the claim an earlier run of" "$tmpdir/stale.err"; then
+  pass "the takeover is reported, not silent"
+else
+  fail "the run took the claim over silently: $(cat "$tmpdir/stale.err")"
+fi
+if grep -qx "rm -f $left_container" "$HOME/stub.log" &&
+  grep -q "removed the container $left_container that run left behind" "$tmpdir/stale.err"; then
+  pass "the takeover removes the container that dead run left behind"
+else
+  fail "the takeover left the dead run's container in place: $(cat "$tmpdir/stale.err")"
+fi
+if [ -e "$claim_dir" ]; then
+  fail "the takeover left the replaced claim behind"
+else
+  pass "the takeover's own claim is released at the end of the run"
+fi
+
 # ── leases: one per path, one per host ───────────────────────────────────────
 # The stub holds the first run open, so the second one meets a held lease. The
 # log starts empty: the wait below looks for a `run --rm` line, and an earlier
@@ -608,6 +731,25 @@ if "$BIN" remote status >"$tmpdir/status.out" 2>"$tmpdir/status.err"; then
   fi
 else
   fail "status exited non-zero: $(cat "$tmpdir/status.err")"
+fi
+
+# ── a path holding a space ───────────────────────────────────────────────────
+# The far side of an rsync invocation is a shell command: a destination with a
+# space in it is split there unless -s sends the paths over rsync's own channel.
+# A local destination cannot show that, because only ssh joins its argv with
+# spaces before the shell on the other end parses it.
+mkdir -p "$HOME/remote-work/weird name"
+printf 'a mirror whose path holds a space\n' >"$HOME/remote-work/weird name/note.txt"
+git -C "$HOME/remote-work/weird name" -c init.defaultBranch=main init --quiet .
+if "$BIN" remote run "$HOME/remote-work/weird name" -- true >"$tmpdir/space.out" 2>"$tmpdir/space.err"; then
+  pass "a checkout whose path holds a space mirrors and runs"
+else
+  fail "a checkout whose path holds a space failed: $(cat "$tmpdir/space.err")"
+fi
+if [ "$(cat "$HOME/dot-remote/weird name/note.txt" 2>/dev/null)" = "a mirror whose path holds a space" ]; then
+  pass "the spaced mirror holds the file byte for byte, so the ssh quoting held"
+else
+  fail "the spaced mirror does not hold note.txt: $(ls -A "$HOME/dot-remote/weird name" 2>/dev/null | tr '\n' ' ')"
 fi
 
 # ── the lease is visible where dot admit shows its own ───────────────────────

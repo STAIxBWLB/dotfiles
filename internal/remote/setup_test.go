@@ -164,6 +164,41 @@ func TestParseKeyValues(t *testing.T) {
 	}
 }
 
+// A report a wrapper parses cannot share stdout with the runtime's own
+// progress: docker and podman both narrate a build and a pull.
+func TestSetupJSONKeepsStdoutForTheReport(t *testing.T) {
+	deps, fake, out, errOut := setupDeps(t, setupReply)
+	fake.progress = "Step 1/4 : FROM debian:12-slim\nStep 2/4 : RUN apt-get update\n"
+	report, err := deps.Setup(context.Background(), testHost(), SetupOptions{JSON: true})
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	if got := out.String(); got != "" {
+		t.Errorf("stdout carries %q, want nothing but the report", got)
+	}
+	for _, want := range []string{"Step 1/4", "dot remote: pulling ghcr.io/org/dev:1 on buildbox"} {
+		if !strings.Contains(errOut.String(), want) {
+			t.Errorf("stderr does not carry %q:\n%s", want, errOut.String())
+		}
+	}
+	if report.ImageUser == "" {
+		t.Error("the report lost the image user")
+	}
+}
+
+// Without --json the runtime's progress stays where a person watching the
+// command expects it: stdout, in order with the rest of what setup says.
+func TestSetupWithoutJSONStreamsTheRuntimeToStdout(t *testing.T) {
+	deps, fake, out, _ := setupDeps(t, setupReply)
+	fake.progress = "Step 1/4 : FROM debian:12-slim\n"
+	if _, err := deps.Setup(context.Background(), testHost(), SetupOptions{}); err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	if !strings.Contains(out.String(), "Step 1/4") {
+		t.Errorf("stdout does not carry the runtime's progress:\n%s", out.String())
+	}
+}
+
 // The image's own user is the one a run gets, so setup refuses an image whose
 // user is root: everything that image writes into the mirror would belong to
 // root, and the host user could not clean it up.

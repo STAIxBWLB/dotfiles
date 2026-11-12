@@ -17,23 +17,30 @@ import (
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
-// preflightAbsent is the host's ordinary answer: no container for this mirror,
-// the image is there, and it runs as an unprivileged user.
-const preflightAbsent = "container\tabsent\nimage\tknown\nuser\tdev\n"
+// preflightAbsent is the host's ordinary answer: no claim and no container for
+// this mirror, the image is there, and it runs as an unprivileged user.
+const preflightAbsent = "claim\tfree\ncontainer\tabsent\nimage\tknown\nuser\tdev\n"
 
 // fakeExec stands in for the real execer: it records every argv and answers the
-// shapes a run sends (the load probe, the preflight, rsync, the container run
-// and the container removal).
+// shapes a run sends (the load probe, the inspection, the claim, rsync, the
+// container run, the container removal and the claim's release).
 type fakeExec struct {
 	t *testing.T
 	// loads is what the load probe reads.
 	loads string
 	// probeErr makes the load probe fail instead of answering.
 	probeErr error
-	// preflight is what the host answers about the container and the image.
+	// preflight is what the host answers about the claim, the container and the
+	// image.
 	preflight string
-	// preflightErr makes the preflight fail, as an unreachable host would.
+	// preflightErr makes the inspection fail, as an unreachable host would.
 	preflightErr error
+	// claim is what the host answers when the run takes its claim with a mkdir.
+	claim string
+	// claimExit makes the claim call itself fail.
+	claimExit int
+	// removeErr makes the container removal fail.
+	removeErr error
 	// imageUser is what the image reports for its own user; empty means an
 	// unprivileged "dev".
 	imageUser string
@@ -44,8 +51,10 @@ type fakeExec struct {
 	sig  syscall.Signal
 	// output is what the container run writes to stdout.
 	output string
-	calls  [][]string
-	stdin  [][]byte
+	// progress is what a build or a pull narrates on stdout.
+	progress string
+	calls    [][]string
+	stdin    [][]byte
 }
 
 func (f *fakeExec) execute(_ context.Context, argv []string, stdin io.Reader, stdout, stderr io.Writer) (int, syscall.Signal, error) {
@@ -69,6 +78,24 @@ func (f *fakeExec) execute(_ context.Context, argv []string, stdin io.Reader, st
 		fmt.Fprint(stdout, f.loads)
 		return 0, 0, nil
 	case strings.HasPrefix(command, "docker rm -f"):
+		if f.removeErr != nil {
+			return 1, 0, f.removeErr
+		}
+		return 0, 0, nil
+	case strings.Contains(command, "claim: release"):
+		return 0, 0, nil
+	case strings.Contains(command, "claim: take"):
+		if f.claimExit != 0 {
+			return f.claimExit, 0, nil
+		}
+		answer := f.claim
+		if answer == "" {
+			answer = "claim\tacquired\n"
+		}
+		fmt.Fprint(stdout, answer)
+		return 0, 0, nil
+	case strings.Contains(command, " build -t ") || strings.Contains(command, " pull "):
+		fmt.Fprint(stdout, f.progress)
 		return 0, 0, nil
 	case strings.Contains(command, "ps -a --filter"):
 		if f.preflightErr != nil {
@@ -371,9 +398,20 @@ func TestRunSyncsAndThenRuns(t *testing.T) {
 	if argv := strings.Join(run[:len(run)-1], " "); argv != "ssh -o BatchMode=yes buildbox" {
 		t.Errorf("the run was not sent over batch-mode ssh: %s", argv)
 	}
-	// The run is last: the mirror has to be in place before it starts.
-	if last := f.exec.calls[len(f.exec.calls)-1]; last[len(last)-1] != command {
-		t.Errorf("the container run was not the last command sent")
+	// The run is last of the mirror-changing steps: the mirror has to be in
+	// place before it starts, and nothing may touch it after.
+	lastChange := -1
+	for i, argv := range f.exec.calls {
+		if argv[0] == "rsync" || strings.Contains(argv[len(argv)-1], " run --rm ") {
+			lastChange = i
+		}
+	}
+	if lastChange != len(f.exec.calls)-2 {
+		t.Errorf("the container run was not the last mirror-changing call (index %d of %d)", lastChange, len(f.exec.calls))
+	}
+	// The claim is held to the very end: the release is the last thing sent.
+	if got := f.exec.calls[len(f.exec.calls)-1][len(f.exec.calls[len(f.exec.calls)-1])-1]; !strings.Contains(got, "claim: release") {
+		t.Errorf("the run did not release its claim last: %q", got)
 	}
 }
 
@@ -660,8 +698,8 @@ func TestAnSSHFailureRemovesTheContainer(t *testing.T) {
 	if len(removals) != 1 || !strings.Contains(removals[0], "rm -f '"+container+"'") {
 		t.Errorf("removals = %v, want the container removed after an ssh failure", removals)
 	}
-	if !strings.Contains(exit.Error(), "ssh connection to buildbox failed") {
-		t.Errorf("error = %q, want it to say the connection failed", exit.Error())
+	if !strings.Contains(exit.Error(), "ssh or the command exited 255") {
+		t.Errorf("error = %q, want it to name ssh or the command's own 255", exit.Error())
 	}
 }
 
@@ -670,12 +708,18 @@ func TestAnSSHFailureRemovesTheContainer(t *testing.T) {
 // name is free and the leftover cannot be mistaken for the new run.
 func TestAStoppedContainerIsRemovedBeforeTheSync(t *testing.T) {
 	f := newRunFixture(t)
-	f.exec.preflight = "container\tremoved\nimage\tknown\nuser\tdev\n"
+	f.exec.preflight = "claim\tfree\ncontainer\tstopped\nimage\tknown\nuser\tdev\n"
 	if err := f.run(RunOptions{Command: []string{"true"}}); err != nil {
 		t.Fatalf("Run over a stopped container = %v", err)
 	}
 	if !strings.Contains(f.errOut.String(), "removed the stopped container") {
 		t.Errorf("stderr does not explain the removal:\n%s", f.errOut.String())
+	}
+	if removals := f.exec.removals(); len(removals) != 1 || !strings.Contains(removals[0], f.container()) {
+		t.Errorf("removals = %v, want the stopped container removed", removals)
+	}
+	if check, transfer := f.exec.order("docker rm -f"), f.exec.order("--files-from=-"); check < 0 || transfer < 0 || check > transfer {
+		t.Errorf("removal at %d, ship pass at %d: the leftover must be gone before the sync", check, transfer)
 	}
 	if f.exec.runArgv() == nil {
 		t.Error("the run did not start after the removal")
@@ -708,23 +752,194 @@ func TestARunningContainerForTheMirrorDefersTheRun(t *testing.T) {
 }
 
 // A container the host cannot remove holds the name the run needs, so the run
-// stops and names the command that clears it rather than failing later inside
-// the runtime's own message.
+// stops with the cause rather than syncing into a mirror it cannot guarantee.
 func TestAFailedContainerRemovalStopsTheRun(t *testing.T) {
 	f := newRunFixture(t)
-	f.exec.preflight = "container\tremove-failed\nimage\tknown\nuser\tdev\n"
+	f.exec.preflight = "claim\tfree\ncontainer\tstopped\nimage\tknown\nuser\tdev\n"
+	f.exec.removeErr = errors.New("Error response from daemon: container is in use")
 	err := f.run(RunOptions{Command: []string{"true"}})
 	if err == nil {
 		t.Fatal("a run whose container could not be removed was accepted")
 	}
-	if !strings.Contains(err.Error(), "could not remove the stopped container") {
-		t.Errorf("error = %q", err)
-	}
-	if !strings.Contains(err.Error(), "rm -f") {
-		t.Errorf("error = %q, want the command that clears it", err)
+	if !strings.Contains(err.Error(), "removing the container") {
+		t.Errorf("error = %q, want it to name the removal", err)
 	}
 	if got := len(f.exec.transfers()); got != 0 {
 		t.Errorf("%d rsync calls after a failed removal, want none", got)
+	}
+	if f.exec.runArgv() != nil {
+		t.Error("the run started despite the failed removal")
+	}
+}
+
+// The claim is the exclusion two machines cannot get from the lease store: it
+// is a mkdir on the host, taken before anything is sent and held to the end.
+func TestTheMirrorIsClaimedBeforeTheSyncAndReleasedAtTheEnd(t *testing.T) {
+	f := newRunFixture(t)
+	if err := f.run(RunOptions{Command: []string{"true"}}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	claim, transfer := f.exec.order("claim: take"), f.exec.order("--files-from=-")
+	if claim < 0 {
+		t.Fatal("the run never claimed the mirror")
+	}
+	if claim > transfer {
+		t.Errorf("claim at %d, ship pass at %d: the claim has to come first", claim, transfer)
+	}
+	take := f.exec.calls[claim][len(f.exec.calls[claim])-1]
+	if !strings.Contains(take, "[ take = replace ]") {
+		t.Errorf("a fresh claim was taken as a replacement:\n%s", take)
+	}
+	if !strings.Contains(take, "mkdir") {
+		t.Errorf("the claim is not a mkdir, so it is not atomic:\n%s", take)
+	}
+}
+
+// A claim another machine holds means that machine is inside this mirror right
+// now. The lease store cannot see it, so the run defers and names the command
+// that clears the claim once that run is gone.
+func TestAClaimAnotherMachineHoldsDefersTheRun(t *testing.T) {
+	f := newRunFixture(t)
+	f.exec.preflight = "claim\tforeign\totherbox\t4242\t2026-01-01T00:00:00Z\ncontainer\tabsent\nimage\tknown\nuser\tdev\n"
+	err := f.run(RunOptions{Command: []string{"true"}})
+	var deferred *Deferred
+	if !errors.As(err, &deferred) {
+		t.Fatalf("Run = %v, want a defer while another machine holds the claim", err)
+	}
+	if deferred.Outcome.Scope != PathScope(f.checkout) {
+		t.Errorf("scope = %q, want the path scope", deferred.Outcome.Scope)
+	}
+	for _, want := range []string{"another machine holds the claim", "otherbox", "ssh buildbox rm -rf", ".claim"} {
+		if !strings.Contains(deferred.Outcome.Reason, want) {
+			t.Errorf("reason %q does not name %q", deferred.Outcome.Reason, want)
+		}
+	}
+	if f.exec.order("claim: take") >= 0 {
+		t.Error("a run that deferred on the claim took one anyway")
+	}
+	if got := len(f.exec.transfers()); got != 0 {
+		t.Errorf("%d rsync calls while another machine holds the claim, want none", got)
+	}
+	if f.exec.runArgv() != nil {
+		t.Error("the container started while another machine holds the claim")
+	}
+}
+
+// A claim whose owner file cannot be read is neither free nor foreign, and
+// guessing either way is what the old check did.
+func TestAnUnreadableClaimDefersTheRun(t *testing.T) {
+	f := newRunFixture(t)
+	f.exec.preflight = "claim\tunreadable\tno readable $HOME/dot-remote/.dot-remote/x.claim/owner\ncontainer\tabsent\nimage\tknown\nuser\tdev\n"
+	err := f.run(RunOptions{Command: []string{"true"}})
+	var deferred *Deferred
+	if !errors.As(err, &deferred) {
+		t.Fatalf("Run = %v, want a defer when the claim cannot be read", err)
+	}
+	if !strings.Contains(deferred.Outcome.Reason, "cannot be read") {
+		t.Errorf("reason = %q", deferred.Outcome.Reason)
+	}
+	if got := len(f.exec.transfers()); got != 0 {
+		t.Errorf("%d rsync calls with an unreadable claim, want none", got)
+	}
+}
+
+// The claim a SIGKILLed run leaves has this machine's name in it, and the local
+// path lease this run holds proves that owner dead - so the container it left
+// running is removed and the claim taken over, instead of being reported as
+// another machine's forever.
+func TestAClaimThisMachineLeftIsTakenOver(t *testing.T) {
+	f := newRunFixture(t)
+	container := f.container()
+	f.exec.preflight = "claim\tours\t" + f.deps().machine() + "\t4242\t2026-01-01T00:00:00Z\ncontainer\trunning\nimage\tknown\nuser\tdev\n"
+	if err := f.run(RunOptions{Command: []string{"true"}}); err != nil {
+		t.Fatalf("Run over this machine's own leftover = %v", err)
+	}
+	take := ""
+	for _, argv := range f.exec.calls {
+		if command := argv[len(argv)-1]; strings.Contains(command, "claim: take") {
+			take = command
+		}
+	}
+	if !strings.Contains(take, "[ replace = replace ]") || !strings.Contains(take, "rm -rf") {
+		t.Errorf("the leftover claim was not replaced:\n%s", take)
+	}
+	removals := f.exec.removals()
+	if len(removals) != 1 || !strings.Contains(removals[0], container) {
+		t.Errorf("removals = %v, want the dead run's container removed", removals)
+	}
+	if !strings.Contains(f.errOut.String(), "took over the claim") {
+		t.Errorf("stderr does not say the claim was taken over:\n%s", f.errOut.String())
+	}
+	if f.exec.runArgv() == nil {
+		t.Error("the run did not start after the takeover")
+	}
+}
+
+// Two machines can inspect an unclaimed mirror at once; the mkdir decides. The
+// loser defers rather than syncing into a mirror the winner is using.
+func TestLosingTheClaimRaceDefersTheRun(t *testing.T) {
+	f := newRunFixture(t)
+	f.exec.claim = "claim\tlost-race\n"
+	err := f.run(RunOptions{Command: []string{"true"}})
+	var deferred *Deferred
+	if !errors.As(err, &deferred) {
+		t.Fatalf("Run = %v, want a defer after losing the claim race", err)
+	}
+	if !strings.Contains(deferred.Outcome.Reason, "took the claim") {
+		t.Errorf("reason = %q", deferred.Outcome.Reason)
+	}
+	if got := len(f.exec.transfers()); got != 0 {
+		t.Errorf("%d rsync calls after losing the claim race, want none", got)
+	}
+}
+
+// A runtime that cannot answer is not a host with nothing there: read as an
+// answer, the second query's empty output would say "stopped" and the run would
+// remove a container another machine is running in.
+func TestAFailedContainerQueryStopsTheRun(t *testing.T) {
+	for name, answer := range map[string]string{
+		"first query":  "claim\tfree\ncontainer\tquery-failed\tCannot connect to the Docker daemon\nimage\tknown\nuser\tdev\n",
+		"second query": "claim\tfree\ncontainer\tquery-failed\tpermission denied while connecting\nimage\tknown\nuser\tdev\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newRunFixture(t)
+			f.exec.preflight = answer
+			err := f.run(RunOptions{Command: []string{"true"}})
+			if err == nil {
+				t.Fatalf("a run whose %s failed was accepted", name)
+			}
+			for _, want := range []string{"could not report the container", "neither sync nor remove"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not name %q", err, want)
+				}
+			}
+			if removals := f.exec.removals(); len(removals) != 0 {
+				t.Errorf("removals = %v, want none when the query failed", removals)
+			}
+			if got := len(f.exec.transfers()); got != 0 {
+				t.Errorf("%d rsync calls after a failed query, want none", got)
+			}
+			if f.exec.order("claim: take") >= 0 {
+				t.Error("a run that stopped on the query took a claim anyway")
+			}
+		})
+	}
+}
+
+// A claim the host refuses to create is a hard failure, not a silent run: the
+// exclusion is the whole point of taking it.
+func TestAFailedClaimStopsTheRun(t *testing.T) {
+	f := newRunFixture(t)
+	f.exec.claimExit = 1
+	err := f.run(RunOptions{Command: []string{"true"}})
+	if err == nil {
+		t.Fatal("a run whose claim failed was accepted")
+	}
+	if !strings.Contains(err.Error(), "claiming the mirror") {
+		t.Errorf("error = %q", err)
+	}
+	if got := len(f.exec.transfers()); got != 0 {
+		t.Errorf("%d rsync calls without a claim, want none", got)
 	}
 }
 

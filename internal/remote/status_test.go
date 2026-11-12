@@ -170,3 +170,45 @@ func TestASizeFailureIsReportedNotSwallowed(t *testing.T) {
 		t.Errorf("mirrors = %+v, want the unmeasurable one left out", status.Mirrors)
 	}
 }
+
+// The record directory is what makes an empty mirror list mean something, so a
+// host that cannot list it - or cannot read one of the records, or reads an
+// empty one - has to say so. Silently reporting a clean empty list would read
+// as "this host has no mirrors" for a permission problem or a truncated record.
+func TestAStatusThatCannotReadTheRecordsSaysWhy(t *testing.T) {
+	const reply = "error\tcannot list /home/u/dot-remote/.dot-remote (Permission denied)\n" +
+		"error\tcannot read the record of 4f2a (Permission denied)\n" +
+		"error\tthe record of 9c1b is empty\n"
+	fake := &fakeExec{t: t, loads: "1.00 0.50 0.25 1/100 42\n8\n", output: reply}
+	deps := Deps{Exec: fake.execute}
+	status, err := deps.Status(context.Background(), statusConfig("/home/u/workspace"), testHost())
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	for _, want := range []string{
+		"cannot list /home/u/dot-remote/.dot-remote (Permission denied)",
+		"cannot read the record of 4f2a (Permission denied)",
+		"the record of 9c1b is empty",
+	} {
+		if !strings.Contains(status.SizesUnavailable, want) {
+			t.Errorf("sizes_unavailable does not carry %q: %q", want, status.SizesUnavailable)
+		}
+	}
+	if len(status.Mirrors) != 0 {
+		t.Errorf("mirrors = %+v, want nothing sized", status.Mirrors)
+	}
+
+	// The reasons come from the script's own arms: each command's status is
+	// checked there, because sh would otherwise hand back an empty string that
+	// reads as a mirror of size zero.
+	script := fake.calls[len(fake.calls)-1][len(fake.calls[len(fake.calls)-1])-1]
+	for _, want := range []string{
+		`if ! listing=$(ls -A "$records" 2>&1)`,
+		`if ! rel=$(cat "$record" 2>&1)`,
+		"the record of %s is empty",
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("the status script does not carry %q:\n%s", want, script)
+		}
+	}
+}

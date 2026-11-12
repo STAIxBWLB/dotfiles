@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -233,5 +235,114 @@ func TestRemoteIgnoreReadsTheEnvironmentAndNothingElse(t *testing.T) {
 	}
 	if set.Any() || source != "" {
 		t.Errorf("set = %+v from %q, want nothing", set, source)
+	}
+}
+
+// remoteCLIFixture is a sandboxed home with a `remote:` block and a PATH that
+// holds only stubs: no real ssh, no real runtime, no real git. What the command
+// does off this machine is therefore decided by the stubs alone.
+type remoteCLIFixture struct {
+	home     string
+	checkout string
+	// sub is a directory inside the checkout, which is where a run with no PATH
+	// argument has to look past to find the tree.
+	sub string
+}
+
+func newRemoteCLIFixture(t *testing.T) remoteCLIFixture {
+	t.Helper()
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	checkout := filepath.Join(home, "workspace", "repo")
+	sub := filepath.Join(checkout, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	bin := filepath.Join(home, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stubs := map[string]string{
+		// ssh answers setup's check, narrates a pull the way a runtime does, and
+		// reports the image's user.
+		"ssh": "#!/bin/sh\n" +
+			"case \"$*\" in\n" +
+			"  *\"image inspect\"*) echo 1000:1000 ;;\n" +
+			"  *\"pull \"*) echo 'Step 1/4 : FROM debian:12-slim'; echo 'Step 2/4 : RUN true' ;;\n" +
+			"  *) printf 'git=/usr/bin/git\\nrsync=/usr/bin/rsync\\nrsync_version=rsync  version 3.2.7  protocol version 31\\nruntime=Docker version 27.1.1, build 6312585\\nuser=builder\\ncpus=12\\n' ;;\n" +
+			"esac\n",
+		"rsync": "#!/bin/sh\necho 'rsync  version 3.2.7  protocol version 31'\n",
+		"ps":    "#!/bin/sh\necho 'Mon Jan  1 00:00:00 2024'\n",
+		// git names whichever checkout a run asks about, so the run resolves the
+		// tree without a real repository.
+		"git": "#!/bin/sh\ncase \"$*\" in\n  *--show-toplevel*) echo '__CHECKOUT__' ;;\n  *) printf 'docs/a.md\\000' ;;\nesac\n",
+	}
+	for name, body := range stubs {
+		body = strings.ReplaceAll(body, "__CHECKOUT__", checkout)
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin)
+	return remoteCLIFixture{home: home, checkout: checkout, sub: sub}
+}
+
+// writeConfig writes the sandbox's config file, which is what decides the host
+// a command addresses.
+func (f remoteCLIFixture) writeConfig(t *testing.T, body string) {
+	t.Helper()
+	writeCLITestFile(t, filepath.Join(f.home, ".config", "dotfiles", "config.yaml"), body)
+}
+
+// `setup --json` has to be one document on stdout even when the runtime
+// narrates the pull: a wrapper that parses the report cannot skip past a
+// progress line, and the whole stdout is what it decodes.
+func TestRemoteSetupJSONIsOneDocumentWhileTheRuntimeNarrates(t *testing.T) {
+	f := newRemoteCLIFixture(t)
+	f.writeConfig(t, "remote:\n  default: buildbox\n  hosts:\n    buildbox:\n      image:\n        ref: example.invalid/dev:1\n")
+	out, errOut, err := runDotForTest("remote", "setup", "--json")
+	if err != nil {
+		t.Fatalf("remote setup --json: %v\nstderr:\n%s", err, errOut)
+	}
+	var report remote.SetupReport
+	if uerr := json.Unmarshal([]byte(out), &report); uerr != nil {
+		t.Fatalf("stdout is not one JSON document (%v):\n%s", uerr, out)
+	}
+	if report.Host != "buildbox" || report.ImageUser != "1000:1000" {
+		t.Errorf("report = %+v, want the host and the image's unprivileged user", report)
+	}
+	if !strings.Contains(errOut, "Step 1/4") {
+		t.Errorf("the runtime's progress is not on stderr:\n%s", errOut)
+	}
+}
+
+// With no PATH argument the checkout is the one the current directory belongs
+// to, and a project entry's host applies to it. Choosing the host before
+// resolving that checkout would only ever see remote.default, which this
+// fixture deliberately does not set.
+func TestRemoteRunTakesTheHostFromTheProjectEntryOfTheDefaultCheckout(t *testing.T) {
+	f := newRemoteCLIFixture(t)
+	f.writeConfig(t, "remote:\n"+
+		"  local_root: "+filepath.Join(f.home, "workspace")+"\n"+
+		"  hosts:\n"+
+		"    projbox:\n"+
+		"      ssh: projbox-alias\n"+
+		"      image:\n"+
+		"        ref: example.invalid/dev:1\n"+
+		"  projects:\n"+
+		"    "+f.checkout+":\n"+
+		"      host: projbox\n")
+	t.Chdir(f.sub)
+	out, errOut, err := runDotForTest("remote", "run", "--dry-run", "--", "true")
+	if err != nil {
+		t.Fatalf("remote run --dry-run: %v\nstderr:\n%s", err, errOut)
+	}
+	if !strings.Contains(out, "projbox-alias:"+remote.DefaultRoot+"/repo") {
+		t.Errorf("the dry run did not target the project's host:\n%s", out)
 	}
 }

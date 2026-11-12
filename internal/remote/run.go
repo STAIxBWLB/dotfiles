@@ -143,26 +143,65 @@ func (d Deps) Run(ctx context.Context, cfg Config, opts RunOptions) error {
 		}
 	}
 
-	pre, err := d.preflight(ctx, h, rel, container)
+	seen, err := d.inspect(ctx, h, rel, container)
 	if err != nil {
 		return err
 	}
-	switch pre.Container {
-	case containerRunning:
-		// Leases are per machine, so this is the one exclusion the host
-		// enforces for us: a run of the same mirror from somewhere else.
-		return deferFor(PathScope(path), fmt.Sprintf("a container for %s is already running on %s (%s), so another machine is running this checkout; wait for it or remove it with `ssh %s %s rm -f %s`",
-			mirror, h.Name, container, h.SSH, h.Runtime, container), time.Minute)
-	case containerRemoved:
-		fmt.Fprintf(d.errOut(), "dot remote: removed the stopped container %s left on %s\n", container, h.Name)
-	}
-	if pre.RecordFailed {
+	if seen.RecordFailed {
 		fmt.Fprintf(d.errOut(), "dot remote: could not record the mirror of %s on %s, so `dot remote status` will not size it\n", path, h.Name)
 	}
-	if pre.Image == imageUnknown {
+	// A failed query is not an answer: an empty list from a broken runtime would
+	// otherwise read as "nothing there" and, worse, as "nothing running", and
+	// the removal below would kill a live run of another machine.
+	if seen.Container == containerQueryFailed {
+		return fmt.Errorf("%s could not report the container of %s (%s), so this run will neither sync nor remove anything there: check that %s answers on %s",
+			h.Name, mirror, seen.ContainerDetail, h.Runtime, h.Name)
+	}
+	// The host-side claim is the exclusion the local leases cannot give: two
+	// machines pointing at one host hold independent lease counts.
+	switch seen.Claim {
+	case claimForeign:
+		return deferFor(PathScope(path), fmt.Sprintf("another machine holds the claim on %s on %s (%s), so this mirror is in use elsewhere; wait for it, or remove it once that run is gone with `ssh %s rm -rf %s`",
+			mirror, h.Name, seen.Detail, h.SSH, h.claimPath(rel)), time.Minute)
+	case claimUnreadable:
+		return deferFor(PathScope(path), fmt.Sprintf("the claim on %s on %s cannot be read (%s), so this run will not guess whether another machine is using the mirror; inspect it with `ssh %s ls -la %s`",
+			mirror, h.Name, seen.Detail, h.SSH, h.claimPath(rel)), time.Minute)
+	}
+	stale := seen.Claim == claimOurs
+	if err := d.claimMirror(ctx, h, rel, path, stale); err != nil {
+		return err
+	}
+	// Held from here to the end of the run, on every exit path.
+	defer d.releaseClaim(ctx, h, rel)
+	if stale {
+		// The claim was this machine's own leftover, and the local path lease
+		// this run holds proves the owner is dead - so whatever is still under
+		// this name belongs to that dead run.
+		fmt.Fprintf(d.errOut(), "dot remote: took over the claim an earlier run of %s left on %s\n", mirror, h.Name)
+		if err := d.removeContainerStrict(ctx, h, container); err != nil {
+			return err
+		}
+		if seen.Container != containerAbsent {
+			fmt.Fprintf(d.errOut(), "dot remote: removed the container %s that run left behind\n", container)
+		}
+	} else {
+		switch seen.Container {
+		case containerRunning:
+			// No claim, but a live container: an older dot, or a machine that
+			// never took one. Either way something else is inside the mirror.
+			return deferFor(PathScope(path), fmt.Sprintf("a container for %s is already running on %s (%s) without a claim, so another machine is running this checkout; wait for it or remove it with `ssh %s %s rm -f %s`",
+				mirror, h.Name, container, h.SSH, h.Runtime, container), time.Minute)
+		case containerStopped:
+			if err := d.removeContainerStrict(ctx, h, container); err != nil {
+				return err
+			}
+			fmt.Fprintf(d.errOut(), "dot remote: removed the stopped container %s left on %s\n", container, h.Name)
+		}
+	}
+	if seen.Image == imageUnknown {
 		return fmt.Errorf("%s does not have %s yet, so there is nothing to run in: run `dot remote setup`", h.Name, h.Image())
 	}
-	if imageRunsAsRoot(pre.ImageUser) {
+	if imageRunsAsRoot(seen.ImageUser) {
 		return fmt.Errorf("%s's image %s runs as root (no USER), so the command would write root-owned files into %s: give the image an unprivileged user (ARG UID/GID, then USER dev - see docs/guides/servers.md) and re-run `dot remote setup`",
 			h.Name, h.Image(), mirror)
 	}
@@ -190,11 +229,13 @@ func (d Deps) Run(ctx context.Context, cfg Config, opts RunOptions) error {
 		return &ExitCode{Code: 128 + int(sig), Err: fmt.Errorf("interrupted by signal %d; removed %s on %s", int(sig), container, h.Name)}
 	}
 	if exit == sshFailureStatus {
-		// ssh's own failure status, which is how a dropped connection and a
-		// handled SIGINT both arrive. The container may still be running there.
+		// 255 is ssh's own failure status, which is how a dropped connection and
+		// a handled SIGINT both arrive - and it is also what a command that
+		// exits 255 reports, since the run is one ssh invocation. The container
+		// may still be running there.
 		d.removeContainer(ctx, h, container)
-		return &ExitCode{Code: exit, Err: fmt.Errorf("the ssh connection to %s failed with status %d, so the run did not finish; removed %s if it was left behind",
-			h.Name, exit, container)}
+		return &ExitCode{Code: exit, Err: fmt.Errorf("ssh or the command exited %d, so the run did not finish; removed %s if it was left behind",
+			exit, container)}
 	}
 	if exit != 0 {
 		return &ExitCode{Code: exit, Err: fmt.Errorf("remote command exited with status %d", exit)}
@@ -282,6 +323,13 @@ func resolveLocalPath(value string) (string, error) {
 // resolved paths).
 func ResolvePath(value string) (string, error) { return resolveLocalPath(value) }
 
+// ResolveCheckout answers the checkout a run would target, so a caller can pick
+// the host from it: the value given, or - when it is empty - the checkout the
+// current directory belongs to, which is the same default the run applies.
+func ResolveCheckout(ctx context.Context, d Deps, value string) (string, error) {
+	return d.checkoutPath(ctx, value)
+}
+
 // gitListing returns git's view of the tree and whether path is a work tree.
 //
 // A repository whose listing cannot be read is an error, never a fallback: the
@@ -367,47 +415,80 @@ func (d Deps) localRsync(ctx context.Context) (string, error) {
 	return "", fmt.Errorf("no usable local rsync: %s", strings.Join(rejected, "; "))
 }
 
-// Preflight is what one `dot remote` round trip under the container name
-// reports: the container's state, the image's user, and whether the mirror was
-// recorded for `status`.
-type preflight struct {
-	Container    string
-	ImageUser    string
-	Image        string
-	RecordFailed bool
+// inspection is what one read-only `dot remote` round trip under this mirror's
+// name reports: the claim's owner, the container's state and the image's user.
+type inspection struct {
+	// Claim is claimFree, claimAcquired, claimOurs, claimForeign or
+	// claimUnreadable.
+	Claim string
+	// Detail carries the claim's owner line, or the reason it could not be read.
+	Detail string
+	// Container is one of the container* states, and ContainerDetail is the
+	// runtime's own error when that state is containerQueryFailed.
+	Container       string
+	ContainerDetail string
+	Image           string
+	ImageUser       string
+	RecordFailed    bool
 }
 
 const (
-	containerAbsent       = "absent"
-	containerRemoved      = "removed"
-	containerRunning      = "running"
-	containerRemoveFailed = "remove-failed"
+	containerAbsent      = "absent"
+	containerRunning     = "running"
+	containerStopped     = "stopped"
+	containerQueryFailed = "query-failed"
+
+	claimFree       = "free"
+	claimAcquired   = "acquired"
+	claimOurs       = "ours"
+	claimForeign    = "foreign"
+	claimUnreadable = "unreadable"
+	claimLostRace   = "lost-race"
 
 	imageKnown   = "known"
 	imageUnknown = "unknown"
 )
 
-// preflightTemplate checks, removes, records and inspects in one ssh round trip.
+// inspectTemplate reads this mirror's claim, container and image in one ssh
+// round trip, and records the mirror so `dot remote status` can size it. It
+// changes nothing on the host: the claim is taken separately, once this run has
+// decided it may.
 //
-// The removal is unconditional rather than a response to a reclaimed lease: a
-// lease is per machine, so a container can be left by this machine's killed run,
-// by an older dot, or by another machine's run, and the name is derived from the
-// mirror path. Checking it here, before the sync, is the only place that can
-// stop the sync from changing a mirror another machine is using.
-const preflightTemplate = `name=%s
+// Every runtime query is checked. An empty list from a broken runtime is not
+// "no container waiting": read as one, the run would sync into a mirror another
+// machine is using, and read the other way round it would remove a live one.
+const inspectTemplate = `name=%s
 runtime=%s
 records="$HOME"/%s/.dot-remote
+lock="$records"/%s.claim
+me=%s
 if mkdir -p "$records" 2>/dev/null && printf '%%s\n' %s >"$records/%s" 2>/dev/null; then :; else printf 'record\tfailed\n'; fi
-if [ -n "$("$runtime" ps -a --filter "name=^$name$" --format '{{.Names}}' 2>/dev/null)" ]; then
-  if [ -n "$("$runtime" ps --filter "name=^$name$" --format '{{.Names}}' 2>/dev/null)" ]; then
-    printf 'container\trunning\n'
-  elif "$runtime" rm -f "$name" >/dev/null 2>&1; then
-    printf 'container\tremoved\n'
+if [ -d "$lock" ]; then
+  owner=$(cat "$lock/owner" 2>/dev/null)
+  if [ -z "$owner" ]; then
+    printf 'claim\tunreadable\tno readable %%s/owner\n' "$lock"
+  elif [ "$(printf '%%s' "$owner" | cut -f1)" = "$me" ]; then
+    printf 'claim\tours\t%%s\n' "$owner"
   else
-    printf 'container\tremove-failed\n'
+    printf 'claim\tforeign\t%%s\n' "$owner"
   fi
 else
-  printf 'container\tabsent\n'
+  printf 'claim\tfree\n'
+fi
+if listed=$("$runtime" ps -a --filter "name=^$name$" --format '{{.Names}}' 2>&1); then
+  if [ -z "$listed" ]; then
+    printf 'container\tabsent\n'
+  elif running=$("$runtime" ps --filter "name=^$name$" --format '{{.Names}}' 2>&1); then
+    if [ -n "$running" ]; then
+      printf 'container\trunning\n'
+    else
+      printf 'container\tstopped\n'
+    fi
+  else
+    printf 'container\tquery-failed\t%%s\n' "$running"
+  fi
+else
+  printf 'container\tquery-failed\t%%s\n' "$listed"
 fi
 if user=$("$runtime" image inspect -f '{{.Config.User}}' %s 2>/dev/null); then
   printf 'image\tknown\nuser\t%%s\n' "$user"
@@ -415,38 +496,138 @@ else
   printf 'image\tunknown\n'
 fi`
 
-// preflight asks the host about this mirror's container and image before
-// anything is sent, and records the mirror so `dot remote status` can size it.
-func (d Deps) preflight(ctx context.Context, h Host, rel, container string) (preflight, error) {
-	script := fmt.Sprintf(preflightTemplate,
-		ShellQuote(container), ShellQuote(h.Runtime), ShellQuote(h.Root), ShellQuote(rel),
-		MirrorKey(rel), ShellQuote(h.Image()))
+// claimTemplate takes this mirror's claim with a mkdir, which is atomic on the
+// host: the winner of a race is the only run that gets the directory, so two
+// machines cannot both pass a check and then sync into one mirror. replace says
+// the claim on the host is this machine's own leftover, which the local path
+// lease this run holds has just proved dead.
+const claimTemplate = `# claim: take
+lock="$HOME"/%s/.dot-remote/%s.claim
+if [ %s = replace ]; then rm -rf "$lock" 2>/dev/null; fi
+if mkdir "$lock" 2>/dev/null; then
+  if printf '%%s\t%%s\t%%s\n' %s %d %s >"$lock/owner" 2>/dev/null; then
+    printf 'claim\tacquired\n'
+  else
+    rm -rf "$lock" 2>/dev/null
+    printf 'claim\tfailed\tcannot write the owner file under %%s\n' "$lock"
+  fi
+else
+  printf 'claim\tlost-race\n'
+fi`
+
+// releaseTemplate drops this mirror's claim, and only when the owner line is
+// still this machine's: a claim that changed hands is not this run's to remove.
+const releaseTemplate = `# claim: release
+lock="$HOME"/%s/.dot-remote/%s.claim
+owner=$(cat "$lock/owner" 2>/dev/null)
+if [ -d "$lock" ] && [ "$(printf '%%s' "$owner" | cut -f1)" = %s ]; then
+  rm -rf "$lock" 2>/dev/null || printf 'release\tfailed\t%%s\n' "$lock"
+fi`
+
+// claimPath is the claim directory of one mirror, in the form a person can type
+// into ssh.
+func (h Host) claimPath(rel string) string {
+	return "$HOME/" + h.Root + "/.dot-remote/" + MirrorKey(rel) + ".claim"
+}
+
+// inspect asks the host about this mirror's claim, container and image before
+// anything is sent.
+func (d Deps) inspect(ctx context.Context, h Host, rel, container string) (inspection, error) {
+	script := fmt.Sprintf(inspectTemplate,
+		ShellQuote(container), ShellQuote(h.Runtime), ShellQuote(h.Root), MirrorKey(rel),
+		ShellQuote(d.machine()), ShellQuote(rel), MirrorKey(rel), ShellQuote(h.Image()))
 	out, err := d.capture(ctx, SSHArgv(h.SSH, script), nil)
 	if err != nil {
-		return preflight{}, fmt.Errorf("checking %s on %s: %w", rel, h.Name, err)
+		return inspection{}, fmt.Errorf("checking %s on %s: %w", rel, h.Name, err)
 	}
-	result := preflight{Container: containerAbsent, Image: imageUnknown}
+	result := inspection{Container: containerAbsent, Image: imageUnknown, Claim: claimFree}
 	for _, line := range strings.Split(out, "\n") {
-		key, value, found := strings.Cut(strings.TrimSpace(line), "\t")
-		if !found {
+		fields := strings.Split(strings.TrimSpace(line), "\t")
+		if len(fields) < 2 {
 			continue
 		}
-		switch key {
-		case "container":
-			result.Container = value
+		switch fields[0] {
 		case "record":
-			result.RecordFailed = value == "failed"
+			result.RecordFailed = fields[1] == "failed"
+		case "claim":
+			result.Claim = fields[1]
+			if len(fields) > 2 {
+				result.Detail = strings.Join(fields[2:], " ")
+			}
+		case "container":
+			result.Container = fields[1]
+			if len(fields) > 2 {
+				result.ContainerDetail = strings.Join(fields[2:], " ")
+			}
 		case "image":
-			result.Image = value
+			result.Image = fields[1]
 		case "user":
-			result.ImageUser = value
+			result.ImageUser = fields[1]
 		}
 	}
-	if result.Container == containerRemoveFailed {
-		return result, fmt.Errorf("%s could not remove the stopped container %s, which holds the name this run needs: remove it by hand with `ssh %s %s rm -f %s`",
-			h.Name, container, h.SSH, h.Runtime, container)
-	}
 	return result, nil
+}
+
+// claimMirror takes this mirror's claim on the host. The directory is the whole
+// protocol: mkdir is atomic, the owner file says who holds it, and the removal
+// on every exit path is what makes a leftover mean a dead run.
+func (d Deps) claimMirror(ctx context.Context, h Host, rel, path string, replace bool) error {
+	mode := "take"
+	if replace {
+		mode = "replace"
+	}
+	script := fmt.Sprintf(claimTemplate, ShellQuote(h.Root), MirrorKey(rel), mode,
+		ShellQuote(d.machine()), os.Getpid(), ShellQuote(d.started()))
+	out, err := d.capture(ctx, SSHArgv(h.SSH, script), nil)
+	if err != nil {
+		return fmt.Errorf("claiming the mirror %s on %s: %w", rel, h.Name, err)
+	}
+	state, detail := parseClaimAnswer(out)
+	switch state {
+	case claimAcquired:
+		return nil
+	case claimLostRace:
+		return deferFor(PathScope(path), fmt.Sprintf("another run took the claim on %s on %s while this run was checking it, so that run is using the mirror; wait for it or remove it with `ssh %s rm -rf %s`",
+			h.MirrorDir(rel), h.Name, h.SSH, h.claimPath(rel)), time.Minute)
+	default:
+		return fmt.Errorf("claiming the mirror %s on %s failed: %s", rel, h.Name, detail)
+	}
+}
+
+// releaseClaim drops this mirror's claim, and reports rather than hides a
+// failure: the next run of this machine takes its own leftovers over, so the
+// text says which case a person is looking at.
+func (d Deps) releaseClaim(ctx context.Context, h Host, rel string) {
+	script := fmt.Sprintf(releaseTemplate, ShellQuote(h.Root), MirrorKey(rel), ShellQuote(d.machine()))
+	if _, err := d.capture(context.WithoutCancel(ctx), SSHArgv(h.SSH, script), nil); err != nil {
+		fmt.Fprintf(d.errOut(), "dot remote: could not release the claim on %s on %s (%v); this machine's next run of that mirror takes it over\n", rel, h.Name, err)
+	}
+}
+
+// parseClaimAnswer reads the state and detail a claim script printed.
+func parseClaimAnswer(out string) (string, string) {
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Split(strings.TrimSpace(line), "\t")
+		if len(fields) < 2 || fields[0] != "claim" {
+			continue
+		}
+		state := fields[1]
+		if len(fields) > 2 {
+			return state, strings.Join(fields[2:], " ")
+		}
+		return state, ""
+	}
+	return "", "the host printed no claim answer"
+}
+
+// removeContainerStrict removes one container and reports a failure. The
+// best-effort removeContainer is for a path that is already reporting a worse
+// problem; this one guards the sync, so it has to work.
+func (d Deps) removeContainerStrict(ctx context.Context, h Host, container string) error {
+	if _, err := d.capture(ctx, SSHArgv(h.SSH, h.Runtime+" rm -f "+ShellQuote(container)), nil); err != nil {
+		return fmt.Errorf("removing the container %s on %s: %w", container, h.Name, err)
+	}
+	return nil
 }
 
 // imageRunsAsRoot reports whether an image's configured user is root. An empty
@@ -466,4 +647,26 @@ func imageRunsAsRoot(user string) bool {
 		return true
 	}
 	return false
+}
+
+// machine is this machine's name, written into the host-side claim so a later
+// run can tell its own dead predecessor from another machine's live run.
+func (d Deps) machine() string {
+	if d.Machine != "" {
+		return d.Machine
+	}
+	name, err := os.Hostname()
+	if err != nil || strings.TrimSpace(name) == "" {
+		return "unknown-machine"
+	}
+	return name
+}
+
+// started is this process's start time, in the claim's owner line, for the
+// person reading it on the host.
+func (d Deps) started() string {
+	if d.Started != "" {
+		return d.Started
+	}
+	return d.now().UTC().Format(time.RFC3339)
 }

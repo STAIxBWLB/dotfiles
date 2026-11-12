@@ -40,6 +40,13 @@ type Deps struct {
 	// before a run, never guessed here: a non-login shell puts openrsync first
 	// on macOS, and openrsync cannot serve --files-from --from0.
 	LocalRsync string
+	// Machine is this machine's name, written into the host-side claim so a
+	// later run can tell its own dead predecessor from another machine's live
+	// run. Empty means os.Hostname().
+	Machine string
+	// Started is what the claim's owner line records as this run's start. Empty
+	// means now.
+	Started string
 	// Git runs one read-only git query in a local checkout and returns stdout.
 	Git func(ctx context.Context, dir string, args ...string) ([]byte, error)
 }
@@ -99,6 +106,11 @@ func (d Deps) git(ctx context.Context, dir string, args ...string) ([]byte, erro
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	cmd := osexec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	// LC_ALL=C because two answers are read as text: "not a git repository"
+	// decides whether a path may fall back to the exclude list, and a
+	// translated message would make a non-repository look like a listing
+	// failure that stops the run.
+	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()

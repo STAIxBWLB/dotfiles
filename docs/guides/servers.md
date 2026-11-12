@@ -111,6 +111,12 @@ dot remote run ~/workspace/work/dev/one -- go test ./...
 dot remote status                    # load, active runs, mirror sizes, image age
 ```
 
+`setup --json` keeps stdout to the report alone: the runtime's own build and
+pull progress goes to stderr there, so a wrapper can decode the whole output as
+one document. `status` does the same, and it reports `sizes_unavailable` with
+the host's own reason when it cannot list the record directory, read a record,
+or measure a mirror, rather than showing a clean empty list.
+
 `dot remote run` takes the checkout as an optional path (default: the current
 directory, which may be a worktree) and a command after `--`. One command
 argument is a shell script, several are an argv. The mirror is mounted at
@@ -137,16 +143,35 @@ unreadable host defers too: missing telemetry is not health.
   sending anything.
 
 Interrupting a run removes its container, and so does an ssh connection that
-drops (OpenSSH's own status 255): the container may still be running there. A
-SIGKILL cannot clean up, so every run checks for its mirror's container before
-it syncs. One still running means another machine is running that mirror, and
-the run defers with exit 75 rather than sharing it; one left stopped is removed
-and the run goes ahead.
+drops (OpenSSH's own status 255, which a command that exits 255 also reports):
+the container may still be running there.
+
+One run per mirror is enforced on the host, not by a check. Before it syncs, a
+run takes a claim directory, `<root>/.dot-remote/<mirror key>.claim`, whose
+`owner` file names the machine, the pid and the start time; it removes the claim
+on every exit path, including an interrupt and a dropped connection. The
+`mkdir` is atomic, so two machines racing the same mirror cannot both get in.
+
+- A claim carrying another machine's name defers the run with exit 75 and names
+  that owner. Wait for it, or, once you know that run is gone, remove it:
+  `ssh <host> rm -rf <root>/.dot-remote/<mirror key>.claim`.
+- A claim carrying this machine's name is a leftover: the local path lease this
+  run holds proves the run that took it is dead, so the claim is replaced and
+  the container under the mirror's name is removed. A SIGKILLed run therefore
+  heals on the next run of the same checkout, from the same machine.
+- A container still running under the mirror's name without a claim (an older
+  dot, or a machine that never wrote one) defers the same way; one left stopped
+  is removed before the sync.
+- A runtime that cannot answer `ps` stops the run instead of reading as "no
+  container": the reason names the runtime's own error, nothing is synced and
+  nothing is removed.
 
 Cross-machine `max_runs` is not enforced: two machines pointing at one host can
-each start `max_runs` jobs. The one run per mirror is, because the container
-name comes from the mirror's path on that host rather than from your local
-path. See the ceiling in [CEILINGS](../CEILINGS.md).
+each start `max_runs` jobs. The one run per mirror is, because the claim and the
+container name both come from the mirror's path on that host rather than from
+your local path. A claim left by another machine is reported rather than
+reclaimed, since nothing here can prove that run is gone. See the ceiling in
+[CEILINGS](../CEILINGS.md).
 
 ### Where it writes, and cleanup
 
