@@ -488,6 +488,58 @@ tool):
 - `<workspace>/.dotfiles/peer/hooks-disabled.txt`: the launchd labels the
   role hooks disabled, one per line, so `on_activate` re-enables only those.
 
+### Remote hosts
+
+`dot remote` writes on the host it is pointed at, never on that host's system
+paths. On this machine it writes the admission leases under the existing state
+root (one per mirror path and one per host) and, beside that root, one listing
+per mirror it has sent to:
+`~/.local/state/dot/remote-sent/<host>--<mirror key>.sent`, holding the paths
+that run sent, so the next run deletes exactly the ones the checkout no longer
+has. The file opens with the identity of the mirror it describes (ssh
+destination, remote root, relative path, local checkout), is replaced by rename,
+and one written for another mirror is read as no record rather than acted on.
+The listing stays on this machine rather than on the host because two machines
+can share one mirror, and a listing written by the other machine must never
+drive deletions here. Every remote path is either anchored at the remote user's
+`$HOME` or carries the host's `prefix`, and all of the names below are
+configurable in the `remote:` block:
+
+- `~/dot-remote` (`root`) — the mirrors: one directory per mirrored checkout, at
+  `<root>/<path relative to remote.local_root>`, fed by rsync and read back only
+  when a run has no record of that mirror and has to reconcile it; inside a
+  mirror a run also removes, over ssh and by name, a directory the checkout now
+  has as a file or a symlink
+- `~/dot-remote/.dot-remote` — one record per mirror, named by the mirror key
+  and holding the mirror's relative path, so `dot remote status` can size a
+  mirror whose path is nested rather than guessing from the root's top-level
+  directories; plus one `<mirror key>.claim` directory per mirror while a run
+  holds it, whose `owner` file holds the machine name, pid, start time and the
+  local checkout path of that run
+- `~/dot-remote-git` (`git_root`) — reserved for the bare repositories the
+  `verify` command pushes commits into
+- `~/dot-remote-src` (`src_root`) — reserved for the third-party clones the
+  `src` command analyzes
+- the image, named `<prefix>:latest` for a Dockerfile the host builds or the
+  configured `image.ref` for one it pulls
+- the cache volumes `<prefix>-<cache>`, one per `caches` entry, and the
+  containers `<prefix>-<mirror key>` a run creates and removes
+
+A run never copies anything back, and it removes the container it started on
+every exit path except a SIGKILL: after a kill the next run of that path
+removes the container left behind. The container name is derived from the
+mirror's relative path, so a run removes the container a killed run, an older
+dot, or another machine left under that mirror's name, before it syncs.
+
+The exclusion two machines need is the claim directory, not those checks. A run
+takes `<mirror key>.claim` with a `mkdir` before it syncs and releases it on
+every exit path, so the winner of a race is the only machine allowed into that
+mirror. A claim whose owner record names another machine, or another checkout,
+defers the run; one that names this machine *and* this checkout is a leftover of
+a dead run - the local path lease this run holds proves that - so it is replaced
+and the container under the mirror's name is removed. A container that cannot be
+removed keeps the claim in place, since that mirror still has a container in it.
+
 ## dotfiles Must Not Write Directly
 
 - anything under any tool skill root outside the explicit peer filesystem

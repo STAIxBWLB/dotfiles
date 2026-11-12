@@ -29,6 +29,12 @@ const (
 	// process tree is a leased owner, so the uncovered-work scan counts its
 	// rsync and ssh children as covered for every other class.
 	ClassBackground = "background"
+	// ClassRemote is a `dot remote` run (#421): the work itself is on another
+	// host, so it skips the local pressure gate and the local heavy slot. Its
+	// leases are still real leases, which is what makes "one run per mirror
+	// path" and "max_runs per host" visible in `dot admit status` and
+	// `dot remote status`, and reclaimable when their owner dies.
+	ClassRemote = "remote"
 )
 
 // DefaultHeartbeatInterval is how often a running job refreshes its lease.
@@ -72,6 +78,10 @@ type Lease struct {
 	// higher indexes are the configured extra capacity and an overflow slot a
 	// bypass took. It is omitted at 0 so an existing lease file is unchanged.
 	Index int `json:"index,omitempty"`
+	// Host names the remote host of a ClassRemote lease, so `dot remote
+	// status --host` can tell one host's runs from another's. Empty for every
+	// other class, and omitted then, so no existing lease file changes.
+	Host string `json:"host,omitempty"`
 }
 
 // Store owns the admission state root (~/.local/state/dot/admission/): the

@@ -512,6 +512,79 @@ func (c UserAdmissionUncovered) IsZero() bool {
 	return c.Enabled == nil && c.CPUPercent == nil && len(c.IgnoreNames) == 0
 }
 
+// UserRemoteState is the optional `remote:` block: the ssh-reachable hosts
+// `dot remote` sends builds and tests to, and the local trees it mirrors
+// there. Nothing about remote work is enabled without this block.
+//
+// These structs exist so a save never drops the block, exactly like the
+// admission one: internal/remote resolves the defaults and validates the
+// values with its own error messages, and a round-trip test pins the two
+// against each other.
+type UserRemoteState struct {
+	Default      string                       `yaml:"default,omitempty"`
+	Hosts        map[string]UserRemoteHost    `yaml:"hosts,omitempty"`
+	LocalRoot    string                       `yaml:"local_root,omitempty"`
+	ExcludeExtra []string                     `yaml:"exclude_extra,omitempty"`
+	Projects     map[string]UserRemoteProject `yaml:"projects,omitempty"`
+}
+
+// IsZero lets yaml.v3 omit an unset remote block from rendered output.
+func (r UserRemoteState) IsZero() bool {
+	return r.Default == "" && len(r.Hosts) == 0 && r.LocalRoot == "" &&
+		len(r.ExcludeExtra) == 0 && len(r.Projects) == 0
+}
+
+// UserRemoteHost is one host's settings. Every remote name is configurable so
+// an existing mirror tree, image and volumes can be adopted as they are.
+type UserRemoteHost struct {
+	SSH     string `yaml:"ssh,omitempty"`     // ssh destination or alias
+	Runtime string `yaml:"runtime,omitempty"` // docker (default) | podman
+	Prefix  string `yaml:"prefix,omitempty"`  // image, volume and container prefix
+	Root    string `yaml:"root,omitempty"`    // mirrors, under the remote $HOME
+	GitRoot string `yaml:"git_root,omitempty"`
+	SrcRoot string `yaml:"src_root,omitempty"`
+	CPUs    int    `yaml:"cpus,omitempty"`
+	Memory  string `yaml:"memory,omitempty"`
+	// MaxRuns is how many runs this machine may have on the host at once.
+	// A pointer keeps an explicit 0 distinguishable from "unset".
+	MaxRuns *int `yaml:"max_runs,omitempty"`
+	// MaxLoadRatio defers a run at load1 >= ratio x the host's CPU count.
+	// Unset means no load check at all.
+	MaxLoadRatio *float64          `yaml:"max_load_ratio,omitempty"`
+	Image        UserRemoteImage   `yaml:"image,omitempty"`
+	Caches       map[string]string `yaml:"caches,omitempty"` // named volume (prefix added) -> container path
+	Env          map[string]string `yaml:"env,omitempty"`    // extra container env
+}
+
+// IsZero lets yaml.v3 omit an unset host from rendered output.
+func (h UserRemoteHost) IsZero() bool {
+	return h.SSH == "" && h.Runtime == "" && h.Prefix == "" && h.Root == "" &&
+		h.GitRoot == "" && h.SrcRoot == "" && h.CPUs == 0 && h.Memory == "" &&
+		h.MaxRuns == nil && h.MaxLoadRatio == nil && h.Image.IsZero() &&
+		len(h.Caches) == 0 && len(h.Env) == 0
+}
+
+// UserRemoteImage names the dev image exactly one way: built on the host from
+// a local Dockerfile, or pulled as a prebuilt ref.
+type UserRemoteImage struct {
+	Dockerfile string `yaml:"dockerfile,omitempty"`
+	Ref        string `yaml:"ref,omitempty"`
+}
+
+// IsZero lets yaml.v3 omit an unset image from rendered output.
+func (i UserRemoteImage) IsZero() bool { return i.Dockerfile == "" && i.Ref == "" }
+
+// UserRemoteProject is one checkout's defaults. A repo and its worktrees share
+// an entry, and the longest matching path prefix wins.
+type UserRemoteProject struct {
+	Verify string `yaml:"verify,omitempty"`
+	Base   string `yaml:"base,omitempty"`
+	Host   string `yaml:"host,omitempty"`
+}
+
+// IsZero lets yaml.v3 omit an unset project from rendered output.
+func (p UserRemoteProject) IsZero() bool { return p.Verify == "" && p.Base == "" && p.Host == "" }
+
 // IsModuleEnabled returns whether a given module name is enabled in this config.
 func (c *Config) IsModuleEnabled(name string) bool {
 	switch name {

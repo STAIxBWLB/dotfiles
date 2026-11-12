@@ -136,6 +136,9 @@ func goldenCases() []goldenCase {
 		{surface: "peer git status", args: []string{"peer", "git", "status", "--json"}, fixture: goldenPeerGitFixture},
 		{surface: "peer diff", args: []string{"peer", "diff", "--json"}, fixture: goldenPeerPlanFixture},
 		{surface: "peer sync", args: []string{"peer", "sync", "--json"}, fixture: goldenPeerPlanFixture},
+		{surface: "remote run", args: []string{"remote", "run", "--json", "@ROOT@", "--", "true"}, wantExit: ExitDeferred, fixture: goldenRemoteFixture},
+		{surface: "remote setup", args: []string{"remote", "setup", "--json", "--dry-run"}, fixture: goldenRemoteFixture},
+		{surface: "remote status", args: []string{"remote", "status", "--json"}, fixture: goldenRemoteFixture},
 		{surface: "sync configure", args: []string{"sync", "configure", "--json", "--yes"}, fixture: goldenSyncFixture},
 		{surface: "sync filters get", args: []string{"sync", "filters", "get", "include", "--json"}, fixture: goldenSyncFixture},
 		{surface: "sync filters set", args: []string{"sync", "filters", "set", "exclude", "--json"}, stdin: "*.tmp\nbuild/\n", fixture: goldenSyncFixture},
@@ -170,6 +173,43 @@ func goldenPeerPlanFixture(t *testing.T) (home, root string) {
 	storeCfg := "target: ssh:golden-peer:/remote/work\nowner: " + syncer.PreferredMachineName() + "\npropagation:\n  create: true\n  update: true\n  delete: true\n"
 	writeCLITestFile(t, filepath.Join(f.local, ".dotfiles", "peer", "config.yaml"), storeCfg)
 	return f.home, f.local
+}
+
+// goldenRemoteFixture gives the two `dot remote` --json surfaces a configured
+// host and a PATH holding only what a run reads before it has to reach the
+// host: rsync for its version banner, ps for this process's start time. ssh is
+// deliberately absent, so a run defers at the load probe and a status reports
+// the host unreachable, both deterministically and without a network.
+func goldenRemoteFixture(t *testing.T) (home, root string) {
+	t.Helper()
+	// Resolved first: a run resolves the checkout it is given, so an
+	// unresolved /var on macOS would put it outside the configured local_root.
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	root = filepath.Join(home, "workspace", "repo")
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeCLITestFile(t, filepath.Join(home, ".config", "dotfiles", "config.yaml"),
+		"remote:\n  local_root: "+filepath.Dir(root)+"\n  hosts:\n    buildbox:\n      image:\n        ref: golden.invalid/dev:1\n      max_load_ratio: 0.7\n")
+	bin := filepath.Join(home, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"rsync": "#!/bin/sh\necho 'rsync  version 3.2.7  protocol version 31'\n",
+		"ps":    "#!/bin/sh\necho 'Mon Jan  1 00:00:00 2024'\n",
+	} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin)
+	return home, root
 }
 
 // goldenPeerGitFixture gives `peer git status` a deterministic non-git

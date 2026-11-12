@@ -140,10 +140,23 @@ echo "--- baseline ---"
 copy_inputs
 run_gate
 expect_green "committed policy is green"
-if printf '%s' "$GATE_OUT" | grep -Fq '36 package(s), 34 override(s), 2 exclusion(s)'; then
-  pass "baseline reports the 36/34/2 partition"
+# The counts are not pinned to the tree's size: the tree grows, and a pinned
+# snapshot turns every added package into a red gate that says nothing about the
+# policy. What has to hold is that the gate counted a PARTITION of the tree -
+# every package measured or excluded, nothing double-listed - rather than a
+# partial list it then compared with itself.
+partition=$(printf '%s' "$GATE_OUT" |
+  sed -n 's/^check-coverage-floors: \([0-9][0-9]*\) package(s), \([0-9][0-9]*\) override(s), \([0-9][0-9]*\) exclusion(s)$/\1 \2 \3/p')
+if [ -z "$partition" ]; then
+  fail "baseline did not report a partition\n$GATE_OUT"
 else
-  fail "baseline did not report the 36/34/2 partition\n$GATE_OUT"
+  read -r packages overrides exclusions <<<"$partition"
+  if [ "$packages" -gt 0 ] && [ "$overrides" -gt 0 ] && [ "$exclusions" -gt 0 ] &&
+    [ "$packages" -eq $((overrides + exclusions)) ]; then
+    pass "baseline partitions $packages package(s) into $overrides override(s) and $exclusions exclusion(s)"
+  else
+    fail "baseline partition does not add up: $packages != $overrides + $exclusions\n$GATE_OUT"
+  fi
 fi
 
 echo "--- workflow trigger mutation ---"

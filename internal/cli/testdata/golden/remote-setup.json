@@ -1,0 +1,7 @@
+{
+  "host": "buildbox",
+  "ssh": "buildbox",
+  "runtime": "docker",
+  "image": "golden.invalid/dev:1",
+  "built": false
+}

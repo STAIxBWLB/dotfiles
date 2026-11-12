@@ -327,3 +327,91 @@ concurrent heavy leases is far past any real build and test mix on a workstation
 or a GPU host, and the pressure gate defers new work long before that many are
 useful. Revisit this if a shared host needs more concurrent leases: raise the
 constant and replace the ordered scan with an index bitmap.
+
+## Cross-machine remote runs per host
+
+`internal/remote` counts a host's runs in the admission store's per-host scope
+(`HostScope`, one scope per host name) against `remote.hosts.<name>.max_runs`,
+and the store lives in this machine's state root. Two machines pointing at one
+host therefore hold two independent counts and can each start `max_runs` jobs;
+nothing on the host enforces the total.
+
+What the host does enforce is one run per mirror, and it enforces it as a claim
+rather than as a check. Every mirror has a claim directory under the record
+directory (`<root>/.dot-remote/<MirrorKey>.claim`): a run takes it with `mkdir`
+before it syncs and releases it on every exit path, so the winner of a race is
+the only machine allowed into that mirror. The loser defers, is told whose claim
+it found, and is handed the command that clears it. A container found running
+besides the claim is reported the same way, and one found stopped is removed
+before the sync.
+
+The claim's name comes from the mirror's path relative to `remote.local_root`
+(`MirrorKey`), not from this machine's absolute path: two machines that mirror
+the same relative checkout to one host contend for one claim and one container
+name, and a different local path landing on the same relative path is one mirror
+on that host, by design.
+
+A claim is only reclaimed by the machine that left it, and only for the same
+checkout. The machine name and the checkout path in the owner record, plus the
+local path lease the new run holds, are what prove the previous owner dead, so
+that case is taken over automatically and every other claim - another machine's,
+or another clone's on this machine - is reported instead of removed: nothing here
+can prove that run is gone. A person clears it with the command the defer prints.
+Revisit this when two machines sharing one host regularly collide: move the
+liveness proof onto the host itself (an owner pid there and a heartbeat file
+under `<root>`), which also gives the load probe a place to record what it saw,
+and let the claim's own staleness decide a takeover instead of a person's
+judgement.
+
+A claim also outlives the run that could not remove its container, on every path
+that removes one: the takeover before the sync, and the last act of an
+interrupted or dropped-connection run. That keeps this machine's next run of the
+same checkout as the one that retries, instead of a person clearing a claim whose
+container is still inside the mirror. The cost is a claim that stays until that
+next run or a person removes it.
+
+## What a remote run may delete from a mirror
+
+A mirror cannot tell a file the checkout dropped from a build output the host
+made, so the deletion set cannot be read off the mirror. `internal/remote`
+records what this machine sent to each mirror (one file per host and mirror key,
+in this machine's state directory, opening with the identity of the mirror it
+describes) and the next run deletes exactly the recorded paths that are gone
+from disk, through `--delete-missing-args`, which touches nothing it does not
+name. The ignore files are not read for this, because a filter file cannot carry
+git's semantics: rsync takes `.gitignore`'s patterns as plain excludes, so a `!`
+negation is lost and a stale pattern protects a file git lists.
+
+Two limits follow. A mirror this machine has no record for - its first run, a
+state directory that was lost, or a record written for another mirror - is
+reconciled once instead of subtracted from: the run lists what the mirror holds
+(files and symlinks, not following a link), drops every path this checkout still
+has and everything `git check-ignore` covers, and deletes the rest, so the stale
+tree of an older checkout goes and the host's build outputs stay. A run that
+cannot read that listing deletes nothing and records nothing, so the reconcile
+happens again next time rather than being spent on a record that never described
+the mirror. The listing is over ssh and is the one part of a run that grows with
+the mirror's size; the built-in exclude names are pruned from the walk so
+`node_modules` and `target` are not read file by file. And the record is this
+machine's own view: a file another machine sent is not this machine's to delete,
+so a mirror shared by two machines is cleaned by each of them for its own files
+only. Revisit this when a mirror is written by something other than `dot
+remote`, or when the record has to be shared between machines: the subtraction
+then has to name the sending machine per path.
+
+One exception to that protection, accepted with it: a path the checkout turns
+from a directory into a file or a symlink is sent with `--force`, because rsync
+cannot otherwise replace a non-empty directory, and the previous behaviour was a
+run that failed on that change and on every run after it. Everything the host
+built under that path goes with the directory, since a build output under a path
+that is now a file has nowhere to live. `--force` acts only on the path being
+replaced; every other file the checkout left alone keeps the host's copy. Where
+that directory holds a name on the exclude list, rsync protects it on the
+receiving side as well, so the run removes the directory itself over ssh first,
+only for a listed file or symlink it did not send under that name last time,
+never for a path rsync itself would not send under the exclude list (a dry run
+answers that), never through a symlink on the mirror,
+and only when the mirror holds a real directory there. A
+directory the checkout deletes outright is the other shape, and there the files
+it sent go while a build output beside them stays, with rsync's "some files
+vanished" (24) accepted on that pass alone.

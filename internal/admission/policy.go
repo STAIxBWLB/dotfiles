@@ -657,20 +657,27 @@ const (
 	RulePressure  = "pressure"
 	RuleSlot      = "slot"
 	RuleUncovered = "uncovered"
+	// RuleRemoteLoad is the remote host's own load probe (#421). It is its own
+	// rule because that load says nothing about this machine: a person may
+	// decide to run on a busy host without relaxing anything local.
+	RuleRemoteLoad = "remote-load"
 )
 
 // IgnoreSet is the set of rules one caller steps past. Each rule keeps its own
 // semantics: pressure still samples and records, slot still takes a lease,
-// uncovered still scans and names what it found.
+// uncovered still scans and names what it found, and remote-load still probes
+// the host and names the load it found.
 type IgnoreSet struct {
-	Pressure  bool
-	Slot      bool
-	Uncovered bool
+	Pressure   bool
+	Slot       bool
+	Uncovered  bool
+	RemoteLoad bool
 }
 
-// ParseIgnoreSet parses "pressure,slot,uncovered" (any order) or "all". Every
-// name is checked wherever it appears: "all" expands to the three rules and the
-// scan continues, so "all,slots" fails the same way "slots,all" does.
+// ParseIgnoreSet parses "pressure,slot,uncovered,remote-load" (any order) or
+// "all". Every name is checked wherever it appears: "all" expands to the four
+// rules and the scan continues, so "all,slots" fails the same way "slots,all"
+// does.
 func ParseIgnoreSet(spec string) (IgnoreSet, error) {
 	var set IgnoreSet
 	for _, part := range strings.Split(spec, ",") {
@@ -678,29 +685,32 @@ func ParseIgnoreSet(spec string) (IgnoreSet, error) {
 		case "":
 			continue
 		case "all":
-			set.Pressure, set.Slot, set.Uncovered = true, true, true
+			set.Pressure, set.Slot, set.Uncovered, set.RemoteLoad = true, true, true, true
 		case RulePressure:
 			set.Pressure = true
 		case RuleSlot:
 			set.Slot = true
 		case RuleUncovered:
 			set.Uncovered = true
+		case RuleRemoteLoad:
+			set.RemoteLoad = true
 		default:
-			return IgnoreSet{}, fmt.Errorf("unknown ignore rule %q: use pressure, slot, uncovered or all", strings.TrimSpace(part))
+			return IgnoreSet{}, fmt.Errorf("unknown ignore rule %q: use pressure, slot, uncovered, remote-load or all", strings.TrimSpace(part))
 		}
 	}
 	return set, nil
 }
 
 // Any reports whether any rule is bypassed.
-func (s IgnoreSet) Any() bool { return s.Pressure || s.Slot || s.Uncovered }
+func (s IgnoreSet) Any() bool { return s.Pressure || s.Slot || s.Uncovered || s.RemoteLoad }
 
 // Union returns the rules either set bypasses.
 func (s IgnoreSet) Union(other IgnoreSet) IgnoreSet {
 	return IgnoreSet{
-		Pressure:  s.Pressure || other.Pressure,
-		Slot:      s.Slot || other.Slot,
-		Uncovered: s.Uncovered || other.Uncovered,
+		Pressure:   s.Pressure || other.Pressure,
+		Slot:       s.Slot || other.Slot,
+		Uncovered:  s.Uncovered || other.Uncovered,
+		RemoteLoad: s.RemoteLoad || other.RemoteLoad,
 	}
 }
 
@@ -715,6 +725,9 @@ func (s IgnoreSet) Strings() []string {
 	}
 	if s.Uncovered {
 		out = append(out, RuleUncovered)
+	}
+	if s.RemoteLoad {
+		out = append(out, RuleRemoteLoad)
 	}
 	return out
 }

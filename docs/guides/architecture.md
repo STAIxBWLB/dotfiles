@@ -39,6 +39,7 @@ The files `dot` may write are listed in [BOUNDARIES.md](../BOUNDARIES.md), and a
 | `internal/module` | The apply modules: shell, git, packages, terminal, fonts, AI and the rest |
 | `internal/noindex` | Keeps Spotlight out of regenerable build and cache directories |
 | `internal/profilesnap` | Versioned snapshots of the dotfiles profile (`dot profile`) |
+| `internal/remote` | Mirrors a checkout to an ssh host and runs a command there (`dot remote`) |
 | `internal/resourceguard` | Worker limits and supervised child processes for admitted jobs |
 | `internal/secrets` | The age-encrypted secrets store |
 | `internal/sliceutil` | Small generic slice helpers |

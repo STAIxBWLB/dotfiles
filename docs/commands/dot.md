@@ -46,6 +46,7 @@ dot [flags]
 * [dot profile](dot_profile.md)	 - Snapshot and restore dot profile state (config, app lists, secrets)
 * [dot reconfigure](dot_reconfigure.md)	 - Re-run init prompts with current values as defaults
 * [dot register](dot_register.md)	 - Register a project for workspace management
+* [dot remote](dot_remote.md)	 - Run builds and tests in a container on an ssh-reachable host
 * [dot restore](dot_restore.md)	 - One-stop interactive restore (profile, apps, AI, secrets)
 * [dot rollback](dot_rollback.md)	 - Activate the previous standalone dot binary
 * [dot secrets](dot_secrets.md)	 - Manage encrypted secrets

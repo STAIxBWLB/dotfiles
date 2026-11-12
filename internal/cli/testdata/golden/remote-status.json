@@ -1,0 +1,18 @@
+{
+  "host": "buildbox",
+  "ssh": "buildbox",
+  "runtime": "docker",
+  "image": "golden.invalid/dev:1",
+  "max_runs": 3,
+  "max_load_ratio": 0.7,
+  "load": {
+    "load1": 0,
+    "cpus": 0,
+    "error": "starting ssh: exec: \"ssh\": executable file not found in $PATH"
+  },
+  "verdict": "host load unreadable on buildbox (starting ssh: exec: \"ssh\": executable file not found in $PATH); missing telemetry is not health (remote.hosts.buildbox.max_load_ratio)",
+  "mirrors": [],
+  "bare_repos": [],
+  "active_runs": [],
+  "sizes_unavailable": "starting ssh: exec: \"ssh\": executable file not found in $PATH"
+}

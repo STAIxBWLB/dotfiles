@@ -33,6 +33,235 @@ no `--dns`) unless the call already passes `--dns` or `--no-dns`. When
 Cloudflare WARP holds port 53, DNS inside apple/container fails, and setup offers `[1.1.1.1, 1.0.0.1]`. `dot container
 status [--probe]` reports the backend, service, shim, DNS and WARP state.
 
+## Remote hosts
+
+`dot remote` moves heavy Linux-portable work (builds, full test runs, repo
+gates, third-party source analysis) to an ssh-reachable host, without moving
+the source: this machine stays the only place you edit, a run sends git's view
+of the checkout, and nothing is ever copied back. Results come back as the
+command's output and exit code.
+
+The host needs a login you can use non-interactively (key auth: every ssh dot
+runs is `BatchMode=yes`), `git`, `rsync` 3.2.3 or newer (openrsync is refused),
+and `docker` or `podman`. No toolchain is installed on the host itself: tools
+live in the image, so changing them means editing the Dockerfile and running
+`dot remote setup` again.
+
+### Configure
+
+```yaml
+remote:
+  default: buildbox
+  hosts:
+    buildbox:
+      ssh: buildbox                 # ssh destination or alias (default: the host's name)
+      cpus: 16                      # container CPU limit, and the default for
+      memory: 32g                   # CARGO_BUILD_JOBS and GOMAXPROCS
+      max_runs: 3                   # concurrent runs from this machine
+      max_load_ratio: 0.7           # defer at load1 >= 0.7 x CPUs; unset = no load check
+      image:
+        dockerfile: ~/images/dev.Dockerfile   # built on the host from stdin
+      caches:                       # named volumes, kept between runs
+        cargo-registry: /usr/local/cargo/registry
+      env:
+        LANG: C.UTF-8
+  local_root: ~/workspace           # mirrors are laid out relative to this
+```
+
+Every key, including `prefix`, `root`, `git_root`, `src_root` and
+`image.ref`, is in the [configuration guide](configuration.md#remote-hosts). An
+existing mirror tree and image from another tool can be adopted by setting
+those names; nothing has to be rebuilt.
+
+The block lives in the user state, so `--home` (or `DOTFILES_HOME`) picks whose
+state the commands read. `--config` names a sync config, which has no `remote`
+block, so `dot remote` refuses it by name rather than addressing the default
+state's host while you are reading another file.
+
+### A starter Dockerfile
+
+```dockerfile
+FROM debian:12-slim
+
+ARG UID=1000
+ARG GID=1000
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends bash ca-certificates git rsync \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd -g "${GID}" dev \
+ && useradd -m -u "${UID}" -g "${GID}" -s /bin/bash dev
+
+USER dev
+WORKDIR /home/dev
+```
+
+`setup` passes your own UID and GID as build arguments, so the unprivileged
+user in the image matches you and can read and write the mirror. Add the
+toolchains the work needs to this file; the image is the only place they live.
+
+The `USER` line is not optional: a run passes no `--user`, so the job runs as
+whatever the image says, and an image without an unprivileged `USER` would write
+root-owned files into the mirror that you cannot clean up on the host. `dot
+remote setup` inspects the image and refuses one whose user is root (empty,
+`root` or `0`), naming this section.
+
+### Use it
+
+```bash
+dot remote setup                     # check the host, build or pull the image
+dot remote setup --json              # the same report as one JSON document
+dot remote run -- make test          # mirror the current checkout, run there
+dot remote run ~/workspace/work/dev/one -- go test ./...
+dot remote status                    # load, active runs, mirror sizes, image age
+```
+
+`setup --json` keeps stdout to the report alone: the runtime's own build and
+pull progress goes to stderr there, so a wrapper can decode the whole output as
+one document. `status` does the same, and it reports `sizes_unavailable` with
+the host's own reason when it cannot list the record directory, read a record,
+or measure a mirror, rather than showing a clean empty list.
+
+`dot remote run` takes the checkout as an optional path (default: the current
+directory, which may be a worktree) and a command after `--`. One command
+argument is a shell script, several are an argv. The mirror is mounted at
+`/work/<path relative to remote.local_root>`, caches are mounted from the
+host's volumes, and build outputs stay there between runs.
+
+What leaves the mirror is decided from what this machine sent, not from the
+ignore files. A run records the paths it sent to each mirror
+(`~/.local/state/dot/remote-sent/<host>--<mirror key>.sent`), and the next run
+deletes exactly the recorded paths that are gone from the checkout, so a build
+output the host made is never a candidate and neither is a file another machine
+sent. rsync reads those ignore files as plain excludes and cannot express a `!`
+negation, so they could not decide this: with `*.lock` and `!Cargo.lock` in one
+of them, a `Cargo.lock` that was deleted here stayed on the mirror. The record
+also names the mirror it describes - ssh destination, remote root, relative
+path and the local checkout - and one written for another mirror is ignored
+rather than acted on.
+
+A mirror this machine has no record of, because it has never sent there or
+because the host's `root` or `ssh` changed, is reconciled once against its own
+contents: a run lists what the mirror holds (files and symlinks, never following
+a link), keeps every path the checkout still has on disk, and deletes the rest
+except what `git check-ignore` reports as ignored, so an adopted mirror loses the
+tree an older checkout left while its own build outputs (`node_modules`, `target`
+and the rest of the built-in excludes are not even walked) stay. A path git still
+lists but this machine no longer has goes too, since `rm old.go` without staging
+leaves it listed while the ship pass skips it. If that listing cannot be read,
+the run deletes nothing there, records nothing, and says so: the next run
+reconciles the mirror again, because a record written there would describe a
+mirror this machine never read and the file it missed would never be a candidate
+again. A path that is still on this machine is never deleted on the mirror,
+whether git lists it or not: `git rm --cached` on a build output leaves it here
+and the host's copy stays with it.
+
+The two passes run deletes first, and the send pass carries `--force`, because a
+checkout can turn a directory into a file or a symlink: rsync cannot put a
+non-directory where the mirror still has a non-empty directory, and it used to
+fail there before anything removed the old tree, on that run and every one after
+it. A directory the checkout replaced therefore goes whole, including anything
+the host built inside it; nothing outside the path being replaced is touched.
+Before the passes, the run removes such a directory on the host by name and
+reports it: an excluded name inside it (`target`, `node_modules`) is protected
+from rsync on the receiving side too, so `--force` alone could not clear it. The
+run asks only about files it did not send under that name last time, so an
+ordinary run asks about nothing. It asks only about paths the send pass would
+really send, which it learns from a dry run of rsync under the same exclude
+list, and on the host it does not follow a symlink in the path, so nothing
+outside the mirror and nothing the run would not send is removed; a mirror that
+is itself a symlink, or sits under one, is left to rsync alone. A file under a
+directory the exclude list names stays home even when git tracks it: the
+directories above each listed file go through the same dry run, and the run
+says how many files it left. A file git still lists under a directory that
+is now a file here (the replacement is not staged yet) is left out of the send
+list, since rsync cannot read a path under a file. A
+directory the checkout deleted outright loses the files it sent, while a build
+output the host made under it stays, and the pass reports rsync's "some files
+vanished" as the answer it asked for rather than as a failure.
+
+### Limits and interrupts
+
+A run holds two admission leases, both visible in `dot admit status`: one per
+mirror path, so a repository and each of its worktrees run one job at a time,
+and one per host, up to `max_runs` from this machine. A run defers with exit
+75 (`EX_TEMPFAIL`) and prints the reason, the scope and a retry hint when a
+lease is held or the host's own load is at or over `max_load_ratio`. An
+unreadable host defers too: missing telemetry is not health.
+
+- `--wait 5m` retries a held lease for up to that long before deferring.
+- `DOT_ADMISSION_IGNORE=remote-load` (or a `dot admit relax --ignore
+  remote-load` override) steps past the load check for one run. It still reads
+  the host and prints the load it found. `slot` in the same list takes a lease
+  past capacity, the way `dot admit` treats it; it relaxes the host's
+  `max_runs` only, never the one-run-per-path lease, because a second run would
+  delete files inside a mirror another run is using.
+- `--dry-run` prints the mirror, the container and the run command without
+  sending anything.
+
+Interrupting a run removes its container, and so does an ssh connection that
+drops (OpenSSH's own status 255, which a command that exits 255 also reports):
+the container may still be running there. Either path reports what the removal
+achieved, and a container that cannot be removed is `could not remove` with the
+claim kept, not a removal that did not happen.
+
+One run per mirror is enforced on the host, not by a check. Before it syncs, a
+run takes a claim directory, `<root>/.dot-remote/<mirror key>.claim`, whose
+`owner` file names the machine, the pid, the start time and the local checkout;
+it removes the claim on every exit path, including an interrupt and a dropped
+connection, unless a container removal could not be confirmed. The `mkdir` is
+atomic, so two machines racing the same mirror cannot both get in.
+
+- A claim naming another machine, or another checkout, defers the run with exit
+  75 and quotes that owner record. Wait for it, or, once you know that run is
+  gone, remove it:
+  `ssh <host> 'rm -rf "$HOME"/<root>/.dot-remote/<mirror key>.claim'`. The remote
+  part is one single-quoted argument so `$HOME` is the host's: pasted unquoted,
+  your own shell would expand it and name a path in your local home.
+- A claim naming this machine *and* this checkout is a leftover: the local path
+  lease this run holds proves the run that took it is dead, so the claim is
+  replaced and the container under the mirror's name is removed. A SIGKILLed run
+  therefore heals on the next run of the same checkout, from the same machine. A
+  second clone of your own is a different checkout, so its claim defers like
+  anyone else's.
+- A container still running under the mirror's name without a claim (an older
+  dot, or a machine that never wrote one) defers the same way; one left stopped
+  is removed before the sync.
+- A runtime that cannot answer `ps` stops the run instead of reading as "no
+  container": the reason names the runtime's own error, nothing is synced and
+  nothing is removed.
+- A container that cannot be removed stops the run with `could not remove`, and
+  the claim stays on the host: that mirror still has a container in it, so
+  releasing the claim would let another machine into it. Your next run of the
+  same checkout takes the claim over and retries, and the message carries the
+  two `ssh` commands that clear both by hand. This holds on the interrupt and
+  ssh-255 paths too, where the removal is the last thing a run does. A removal
+  the runtime answers with "no such container" is not a failure: the container
+  is started with `--rm` and may already be gone, so the run asks whether the
+  name is still listed and reports a failed removal only when it is.
+
+Cross-machine `max_runs` is not enforced: two machines pointing at one host can
+each start `max_runs` jobs. The one run per mirror is, because the claim and the
+container name both come from the mirror's path on that host rather than from
+your local path. A claim left by another machine is reported rather than
+reclaimed, since nothing here can prove that run is gone. See the ceiling in
+[CEILINGS](../CEILINGS.md).
+
+### Where it writes, and cleanup
+
+Mirrors live under `~/dot-remote` on the host (configurable), one directory per
+checkout, and `<root>/.dot-remote` holds one small record per mirror so `dot
+remote status` can size a mirror whose path is nested. Images, cache volumes and
+containers carry the host's `prefix`, so two people can share one host without
+colliding. Nothing else on the host is written, and on this machine a run adds
+only the admission leases and the sent listing of that mirror, under
+`~/.local/state/dot/remote-sent/`.
+
+To reclaim space, delete the mirror directory of a checkout you no longer use;
+the next run of that path recreates it, and the caches stay warm in their
+volumes. There is no prune command yet: the mirror tree is made of ordinary
+directories.
+
 ## GPU Server Provisioning
 
 On a fresh DGX or GPU server — auto-detects NVIDIA GPU + CUDA:

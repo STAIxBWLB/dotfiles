@@ -67,13 +67,14 @@ func TestUserStateAdmissionBlockRoundTrips(t *testing.T) {
 		t.Fatalf("saving the state: %v", err)
 	}
 	// A field added to the state bumps the schema version so an older writer
-	// refuses to drop it; the admission block is version 6.
+	// refuses to drop it; the admission block is version 6 and the remote block
+	// is version 7.
 	saved, err := os.ReadFile(config.StatePathForHome(home))
 	if err != nil {
 		t.Fatalf("reading the saved state: %v", err)
 	}
-	if !strings.HasPrefix(string(saved), "schema_version: 6\n") {
-		t.Fatalf("saved state version = %q, want schema_version: 6",
+	if !strings.HasPrefix(string(saved), "schema_version: 7\n") {
+		t.Fatalf("saved state version = %q, want schema_version: 7",
 			strings.SplitN(string(saved), "\n", 2)[0])
 	}
 	loaded, err := config.LoadStateForHome(home)

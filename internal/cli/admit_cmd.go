@@ -51,7 +51,7 @@ var admitGate = func(ctx context.Context, store *admission.Store, m *admission.M
 
 func newAdmitCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "admit [--class heavy|maintenance] [--wait 30m] [--json] [--ignore pressure,slot,uncovered|all] -- <command> [args...]",
+		Use:   "admit [--class heavy|maintenance] [--wait 30m] [--json] [--ignore pressure,slot,uncovered,remote-load|all] -- <command> [args...]",
 		Short: "Run one heavy job per repo behind the host-pressure gate",
 		Long: `Admit a heavy job (build, full test run, indexing, bulk copy, dependency
 update) through the resource-admission controller. The gate defers while the
@@ -75,12 +75,14 @@ bounded process-table scan defers when such work runs in this repo or its
 repo is unknown. Use '--' before commands that collide with
 subcommand names.
 
---ignore pressure,slot,uncovered (or DOT_ADMISSION_IGNORE=pressure,slot,uncovered,
-or 'all') steps past those rules for this run only. Nothing is skipped
-silently: a bypassed pressure gate still samples and records history and names
-what it bypassed on stderr, a bypassed slot still takes a lease in an overflow
-slot past the configured capacity, and a bypassed scan still runs and prints
-what it found. Slot scans and leases stay honest; --json adds "ignored".
+--ignore pressure,slot,uncovered,remote-load (or
+DOT_ADMISSION_IGNORE=pressure,slot,uncovered,remote-load, or 'all') steps past
+those rules for this run only. Nothing is skipped silently: a bypassed
+pressure gate still samples and records history and names what it bypassed on
+stderr, a bypassed slot still takes a lease in an overflow slot past the
+configured capacity, a bypassed scan still runs and prints what it found, and
+a bypassed remote-load probe still reads the host and names the load it found.
+Slot scans and leases stay honest; --json adds "ignored".
 
 The child receives CARGO_BUILD_JOBS=2, RUST_TEST_THREADS=2 and GOMAXPROCS=2,
 replacing inherited values unless --no-limit-threads is set. Tool-specific
@@ -94,7 +96,7 @@ flags (Go -p 2 -parallel 2; browser workers=1) remain the caller's choice.
 	cmd.Flags().String("class", admission.ClassHeavy, "slot class: heavy (per-repo) or maintenance (host-wide)")
 	cmd.Flags().Duration("wait", 30*time.Minute, "maximum time to wait for the slot before deferring")
 	cmd.Flags().Bool("json", false, "print the outcome as JSON")
-	cmd.Flags().String("ignore", "", "rules to step past for this run: pressure, slot, uncovered, or all")
+	cmd.Flags().String("ignore", "", "rules to step past for this run: pressure, slot, uncovered, remote-load, or all")
 	cmd.Flags().Bool("no-limit-threads", false, "Keep inherited worker settings instead of limiting Cargo, Rust tests and Go to 2")
 	cmd.Flags().String("project", "", "Checkout whose slot and working directory to use (defaults to current directory)")
 	cmd.AddCommand(newAdmitStatusCmd())

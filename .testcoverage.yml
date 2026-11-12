@@ -111,6 +111,8 @@ override:
     threshold: 90
   - path: ^internal/profilesnap$ # measured 74.5455% (164/220)
     threshold: 73
+  - path: ^internal/remote$ # measured 81.0% on darwin at introduction (dotfiles#421 phase A); the ssh, container and load-probe bodies stay fixture-driven
+    threshold: 79
   - path: ^internal/secrets$ # measured 44.9339% (102/227)
     threshold: 43
   - path: ^internal/sliceutil$ # measured 100.0000% (24/24)

@@ -10,8 +10,9 @@ until the override expires; --set layers the same keys the admission block of
 Every evaluation still measures what it bypassed, so the limits come back
 correctly when the override ends: a bypassed pressure gate still samples and
 records history, a bypassed slot still takes a lease (in an overflow slot past
-the configured capacity), and a bypassed scan still runs and names what it
-found. An expired override is ignored and removed by the next evaluation.
+the configured capacity), a bypassed scan still runs and names what it found,
+and a bypassed remote-load probe still reads the remote host. An expired
+override is ignored and removed by the next evaluation.
 
 --set keys and examples:
   thresholds.recover_sustain=1m      thresholds.idle_defer_below=5
@@ -25,7 +26,7 @@ The override is stored in ~/.local/state/dot/admission/override.json.
 nothing.
 
 ```
-dot admit relax --for 1h [--ignore pressure,slot,uncovered|all] [--set <key>=<value> ...] | relax --clear [flags]
+dot admit relax --for 1h [--ignore pressure,slot,uncovered,remote-load|all] [--set <key>=<value> ...] | relax --clear [flags]
 ```
 
 ### Options
@@ -34,7 +35,7 @@ dot admit relax --for 1h [--ignore pressure,slot,uncovered|all] [--set <key>=<va
       --clear             Remove the temporary override now
       --for duration      how long the override lasts (maximum 24h) (default 1h0m0s)
   -h, --help              help for relax
-      --ignore string     rules to step past until the override expires: pressure, slot, uncovered, or all
+      --ignore string     rules to step past until the override expires: pressure, slot, uncovered, remote-load, or all
       --set stringArray   policy key to layer until the override expires, as <key>=<value> (repeatable)
 ```
 
