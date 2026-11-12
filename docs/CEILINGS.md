@@ -362,3 +362,10 @@ liveness proof onto the host itself (an owner pid there and a heartbeat file
 under `<root>`), which also gives the load probe a place to record what it saw,
 and let the claim's own staleness decide a takeover instead of a person's
 judgement.
+
+A claim also outlives the run that could not remove its container, on every path
+that removes one: the takeover before the sync, and the last act of an
+interrupted or dropped-connection run. That keeps this machine's next run of the
+same checkout as the one that retries, instead of a person clearing a claim whose
+container is still inside the mirror. The cost is a claim that stays until that
+next run or a person removes it.

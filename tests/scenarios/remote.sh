@@ -841,6 +841,47 @@ else
 fi
 rm -f "$HOME/stub-hold"
 
+# An interrupt whose removal the runtime refuses has to say so and keep the
+# claim: releasing it would invite another machine into a mirror that may still
+# hold the container that would not go.
+printf '30\n' >"$HOME/stub-hold"
+touch "$HOME/stub-remove-fail"
+: >"$HOME/stub.log"
+"$BIN" remote run "$HOME/remote-work/one" -- sleep 30 >"$tmpdir/int2.out" 2>"$tmpdir/int2.err" &
+int2_pid=$!
+started=""
+attempt=0
+while [ "$attempt" -lt 40 ]; do
+  if grep -q '^run --rm ' "$HOME/stub.log" 2>/dev/null; then
+    started=yes
+    break
+  fi
+  attempt=$((attempt + 1))
+  sleep 0.25
+done
+if [ -n "$started" ]; then
+  kill -INT "$int2_pid"
+  set +e
+  wait "$int2_pid"
+  int2_rc=$?
+  set -e
+  if [ "$int2_rc" -eq 130 ] && grep -q 'could not remove the container' "$tmpdir/int2.err"; then
+    pass "an interrupt whose removal fails says it could not remove the container"
+  else
+    fail "an interrupted run with a refused removal exited $int2_rc: $(cat "$tmpdir/int2.err")"
+  fi
+  if [ -d "$claim_dir" ]; then
+    pass "the claim stays when an interrupted run cannot remove its container"
+  else
+    fail "the claim was released over a container the runtime would not remove"
+  fi
+else
+  kill "$int2_pid" >/dev/null 2>&1 || true
+  fail "the interrupt-with-refused-removal arm never reached the runtime"
+fi
+rm -f "$HOME/stub-hold" "$HOME/stub-remove-fail"
+rm -rf "$claim_dir"
+
 # ── status ───────────────────────────────────────────────────────────────────
 if "$BIN" remote status >"$tmpdir/status.out" 2>"$tmpdir/status.err"; then
   pass "status exits 0"

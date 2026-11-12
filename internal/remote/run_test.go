@@ -41,6 +41,11 @@ type fakeExec struct {
 	claimExit int
 	// removeErr makes the container removal fail.
 	removeErr error
+	// containerGone says the host no longer lists the container when a failed
+	// removal is settled, as it is when --rm already reaped it.
+	containerGone bool
+	// presentErr makes that settling query fail too.
+	presentErr error
 	// imageUser is what the image reports for its own user; empty means an
 	// unprivileged "dev".
 	imageUser string
@@ -82,6 +87,14 @@ func (f *fakeExec) execute(_ context.Context, argv []string, stdin io.Reader, st
 			return 1, 0, f.removeErr
 		}
 		return 0, 0, nil
+	case strings.Contains(command, "# container-present"):
+		if f.presentErr != nil {
+			return 1, 0, f.presentErr
+		}
+		if !f.containerGone {
+			fmt.Fprintln(stdout, containerNamed(command))
+		}
+		return 0, 0, nil
 	case strings.Contains(command, "claim: release"):
 		return 0, 0, nil
 	case strings.Contains(command, "claim: take"):
@@ -117,6 +130,16 @@ func (f *fakeExec) execute(_ context.Context, argv []string, stdin io.Reader, st
 		fmt.Fprint(stdout, f.output)
 		return f.exit, f.sig, nil
 	}
+}
+
+// containerNamed reads the container name out of a `name=^<container>$` filter.
+func containerNamed(command string) string {
+	_, after, ok := strings.Cut(command, "name=^")
+	if !ok {
+		return ""
+	}
+	name, _, _ := strings.Cut(after, "$")
+	return name
 }
 
 // probed reports whether the load probe ran, and what it answered.
@@ -700,6 +723,80 @@ func TestAnSSHFailureRemovesTheContainer(t *testing.T) {
 	}
 	if !strings.Contains(exit.Error(), "ssh or the command exited 255") {
 		t.Errorf("error = %q, want it to name ssh or the command's own 255", exit.Error())
+	}
+}
+
+// An interrupt that cannot remove its container says so and keeps the claim:
+// the mirror may still hold that container, so releasing the claim would let
+// another machine sync into it.
+func TestAnInterruptedRunWhoseRemovalFailsKeepsTheClaim(t *testing.T) {
+	f := newRunFixture(t)
+	f.exec.sig = syscall.SIGINT
+	f.exec.removeErr = errors.New("Error response from daemon: container is in use")
+	err := f.run(RunOptions{Command: []string{"sleep", "60"}})
+	var exit *ExitCode
+	if !errors.As(err, &exit) {
+		t.Fatalf("Run = %v, want an interrupt", err)
+	}
+	if want := 128 + int(syscall.SIGINT); exit.Code != want {
+		t.Errorf("exit = %d, want %d", exit.Code, want)
+	}
+	for _, want := range []string{"interrupted by signal 2", "could not remove the container", "keeps the claim"} {
+		if !strings.Contains(exit.Error(), want) {
+			t.Errorf("error = %q, want it to say %q", exit.Error(), want)
+		}
+	}
+	if strings.Contains(exit.Error(), "removed "+f.container()) {
+		t.Errorf("error = %q, claims a removal that did not happen", exit.Error())
+	}
+	if at := f.exec.order("claim: release"); at >= 0 {
+		t.Errorf("the claim was released at call %d over a container that could not be removed", at)
+	}
+}
+
+// A container the runtime no longer has is not a failed removal: --rm reaps it
+// when the command finishes, so an rm answered with "no such container" is
+// settled by asking the host, and the run still releases its claim.
+func TestARemovalWithNothingLeftToRemoveIsNotAFailure(t *testing.T) {
+	f := newRunFixture(t)
+	f.exec.sig = syscall.SIGINT
+	f.exec.removeErr = errors.New("Error response from daemon: No such container")
+	f.exec.containerGone = true
+	err := f.run(RunOptions{Command: []string{"sleep", "60"}})
+	var exit *ExitCode
+	if !errors.As(err, &exit) {
+		t.Fatalf("Run = %v, want an interrupt", err)
+	}
+	if strings.Contains(exit.Error(), "could not remove") {
+		t.Errorf("error = %q, calls a container that is already gone a failed removal", exit.Error())
+	}
+	if !strings.Contains(exit.Error(), "removed "+f.container()) {
+		t.Errorf("error = %q, want it to name the container it cleared", exit.Error())
+	}
+	if at := f.exec.order("claim: release"); at < 0 {
+		t.Errorf("the claim was kept over a container the host no longer lists")
+	}
+}
+
+// When neither the removal nor the query that settles it answers, the run says
+// both reasons instead of reporting the first as the whole story.
+func TestAnUnconfirmedRemovalNamesBothFailures(t *testing.T) {
+	f := newRunFixture(t)
+	f.exec.sig = syscall.SIGINT
+	f.exec.removeErr = errors.New("Error response from daemon: container is in use")
+	f.exec.presentErr = errors.New("Cannot connect to the Docker daemon")
+	err := f.run(RunOptions{Command: []string{"sleep", "60"}})
+	var exit *ExitCode
+	if !errors.As(err, &exit) {
+		t.Fatalf("Run = %v, want an interrupt", err)
+	}
+	for _, want := range []string{"could not remove the container", "container is in use", "could not confirm it is gone"} {
+		if !strings.Contains(exit.Error(), want) {
+			t.Errorf("error = %q, want it to say %q", exit.Error(), want)
+		}
+	}
+	if at := f.exec.order("claim: release"); at >= 0 {
+		t.Errorf("the claim was released at call %d over an unconfirmed removal", at)
 	}
 }
 

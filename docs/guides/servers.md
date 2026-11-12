@@ -144,14 +144,16 @@ unreadable host defers too: missing telemetry is not health.
 
 Interrupting a run removes its container, and so does an ssh connection that
 drops (OpenSSH's own status 255, which a command that exits 255 also reports):
-the container may still be running there.
+the container may still be running there. Either path reports what the removal
+achieved, and a container that cannot be removed is `could not remove` with the
+claim kept, not a removal that did not happen.
 
 One run per mirror is enforced on the host, not by a check. Before it syncs, a
 run takes a claim directory, `<root>/.dot-remote/<mirror key>.claim`, whose
 `owner` file names the machine, the pid, the start time and the local checkout;
 it removes the claim on every exit path, including an interrupt and a dropped
-connection. The `mkdir` is atomic, so two machines racing the same mirror cannot
-both get in.
+connection, unless a container removal could not be confirmed. The `mkdir` is
+atomic, so two machines racing the same mirror cannot both get in.
 
 - A claim naming another machine, or another checkout, defers the run with exit
   75 and quotes that owner record. Wait for it, or, once you know that run is
@@ -172,7 +174,11 @@ both get in.
   the claim stays on the host: that mirror still has a container in it, so
   releasing the claim would let another machine into it. Your next run of the
   same checkout takes the claim over and retries, and the message carries the
-  two `ssh` commands that clear both by hand.
+  two `ssh` commands that clear both by hand. This holds on the interrupt and
+  ssh-255 paths too, where the removal is the last thing a run does. A removal
+  the runtime answers with "no such container" is not a failure: the container
+  is started with `--rm` and may already be gone, so the run asks whether the
+  name is still listed and reports a failed removal only when it is.
 
 Cross-machine `max_runs` is not enforced: two machines pointing at one host can
 each start `max_runs` jobs. The one run per mirror is, because the claim and the

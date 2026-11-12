@@ -238,7 +238,14 @@ func (d Deps) Run(ctx context.Context, cfg Config, opts RunOptions) error {
 		return runErr
 	}
 	if sig != 0 {
-		d.removeContainer(ctx, h, container)
+		// The interrupt cancels ctx; the removal still has to run, and it has to
+		// say whether it worked: "removed" over a container that is still there
+		// would leave the next machine locked out of nothing and this one
+		// believing its mirror clean.
+		if err := d.removeContainerStrict(ctx, h, container); err != nil {
+			keepClaim = true
+			return &ExitCode{Code: 128 + int(sig), Err: fmt.Errorf("interrupted by signal %d; %w", int(sig), claimKept(err, mirror, h, rel, container))}
+		}
 		return &ExitCode{Code: 128 + int(sig), Err: fmt.Errorf("interrupted by signal %d; removed %s on %s", int(sig), container, h.Name)}
 	}
 	if exit == sshFailureStatus {
@@ -246,7 +253,10 @@ func (d Deps) Run(ctx context.Context, cfg Config, opts RunOptions) error {
 		// a handled SIGINT both arrive - and it is also what a command that
 		// exits 255 reports, since the run is one ssh invocation. The container
 		// may still be running there.
-		d.removeContainer(ctx, h, container)
+		if err := d.removeContainerStrict(ctx, h, container); err != nil {
+			keepClaim = true
+			return &ExitCode{Code: exit, Err: fmt.Errorf("ssh or the command exited %d, so the run did not finish; %w", exit, claimKept(err, mirror, h, rel, container))}
+		}
 		return &ExitCode{Code: exit, Err: fmt.Errorf("ssh or the command exited %d, so the run did not finish; removed %s if it was left behind",
 			exit, container)}
 	}
@@ -273,10 +283,10 @@ func claimKept(err error, mirror string, h Host, rel, container string) error {
 		err, mirror, h.Name, container, h.SSH, h.Runtime, container, h.SSH, h.claimPath(rel))
 }
 
-// removeContainer removes one container by name, ignoring a failure: this is the
-// cleanup of a path that is already reporting a worse problem.
-func (d Deps) removeContainer(ctx context.Context, h Host, container string) {
-	_, _ = d.capture(context.WithoutCancel(ctx), SSHArgv(h.SSH, h.Runtime+" rm -f "+ShellQuote(container)), nil)
+// containerPresentScript is the query that settles a failed removal: the
+// container's name if the host still lists it, nothing if it is gone.
+func containerPresentScript(h Host, container string) string {
+	return h.Runtime + " ps -a --filter " + ShellQuote("name=^"+container+"$") + " --format '{{.Names}}' # container-present"
 }
 
 // sync sends git's view of the tree and then deletes what the checkout no
@@ -726,15 +736,31 @@ func parseReleaseAnswer(out string) (string, bool) {
 	return "", false
 }
 
-// removeContainerStrict removes one container and reports a failure. The
-// best-effort removeContainer is for a path that is already reporting a worse
-// problem; this one guards the sync, so it has to work, and a failure says
-// "could not remove" rather than anything that reads as removal.
+// removeContainerStrict removes one container and reports anything short of a
+// container that is gone: "could not remove" rather than a claim of removal.
+//
+// A failed rm is settled by asking the host whether the name is still listed,
+// because the container is started with --rm and may already have been reaped
+// when the connection dropped - a removal that had nothing left to do is not a
+// failure, and calling it one would keep a claim a person then has to clear by
+// hand. The context is detached from the run's own: an interrupted run still
+// has to clean up after itself.
 func (d Deps) removeContainerStrict(ctx context.Context, h Host, container string) error {
-	if _, err := d.capture(ctx, SSHArgv(h.SSH, h.Runtime+" rm -f "+ShellQuote(container)), nil); err != nil {
-		return fmt.Errorf("could not remove the container %s on %s (%v)", container, h.Name, err)
+	ctx = context.WithoutCancel(ctx)
+	_, rmErr := d.capture(ctx, SSHArgv(h.SSH, h.Runtime+" rm -f "+ShellQuote(container)), nil)
+	if rmErr == nil {
+		return nil
 	}
-	return nil
+	left, listErr := d.capture(ctx, SSHArgv(h.SSH, containerPresentScript(h, container)), nil)
+	switch {
+	case listErr == nil && strings.TrimSpace(left) == "":
+		return nil
+	case listErr != nil:
+		return fmt.Errorf("could not remove the container %s on %s (%v, and %s could not confirm it is gone either: %v)",
+			container, h.Name, rmErr, h.Runtime, listErr)
+	default:
+		return fmt.Errorf("could not remove the container %s on %s (%v)", container, h.Name, rmErr)
+	}
 }
 
 // imageRunsAsRoot reports whether an image's configured user is root. An empty
