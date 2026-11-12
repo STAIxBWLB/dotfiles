@@ -242,7 +242,8 @@ func TestVerifyPushesRunsAndDeletesTheRef(t *testing.T) {
 // Two runs of one path, from one machine or two, push to different refs, so
 // neither can replace the commit the other's container is about to fetch.
 func TestVerifyRefIsUniquePerRun(t *testing.T) {
-	if VerifyRef("p", "abc", verifyNonce()) == VerifyRef("p", "abc", verifyNonce()) {
+	first, second := VerifyRef("p", "abc", verifyNonce()), VerifyRef("p", "abc", verifyNonce())
+	if first == second {
 		t.Error("two runs of one commit share a ref")
 	}
 	if !strings.HasPrefix(VerifyRef("p", "abc", "x"), "refs/verify/"+MirrorKey("p")+"/") {
