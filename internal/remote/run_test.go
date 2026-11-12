@@ -248,9 +248,10 @@ type runFixture struct {
 	// repository".
 	gitToplevel    string
 	gitToplevelErr error
-	// gitExclude and gitGlobal answer the two ignore-file queries.
-	gitExclude string
-	gitGlobal  string
+	// mirrorHeld is what the mirror already holds, for a run that has no record
+	// of it, and ignored is what git answers for those paths.
+	mirrorHeld []string
+	ignored    map[string]bool
 	out        bytes.Buffer
 	errOut     bytes.Buffer
 }
@@ -288,6 +289,21 @@ func (f *runFixture) deps() Deps {
 		Out:        &f.out,
 		Err:        &f.errOut,
 		LocalRsync: "rsync",
+		// A first run reconciles the mirror before it syncs: the mirror's own
+		// files come from the fixture, and git's answer about what it ignores is
+		// the fake here, so no real repository is needed.
+		MirrorFiles: func(_ context.Context, _ Host, _ string) ([]byte, error) {
+			return []byte(strings.Join(f.mirrorHeld, "\x00")), nil
+		},
+		Ignored: func(_ context.Context, _ string, paths []string) (map[string]bool, error) {
+			ignored := map[string]bool{}
+			for _, rel := range paths {
+				if f.ignored[rel] {
+					ignored[rel] = true
+				}
+			}
+			return ignored, nil
+		},
 		Git: func(_ context.Context, dir string, args ...string) ([]byte, error) {
 			f.gitDirs = append(f.gitDirs, dir)
 			if len(args) > 0 && args[0] == "ls-files" {
@@ -313,13 +329,6 @@ func (f *runFixture) deps() Deps {
 					return nil, errors.New("exit status 128: fatal: not a git repository (or any of the parent directories): .git")
 				}
 				return []byte(f.gitToplevel + "\n"), nil
-			case "rev-parse --git-path info/exclude":
-				return []byte(f.gitExclude + "\n"), nil
-			case "config --path --get core.excludesFile":
-				if f.gitGlobal == "" {
-					return nil, errors.New("exit status 1")
-				}
-				return []byte(f.gitGlobal + "\n"), nil
 			}
 			return nil, fmt.Errorf("unexpected git %v", args)
 		},
@@ -362,8 +371,8 @@ func selfLease(t *testing.T, dir string) admission.Lease {
 }
 
 // The order the run fixes: the load probe, the container check, git's listing
-// shipped, the delete pass, then the run itself. Nothing that changes the
-// mirror may happen before the container check.
+// shipped (with whatever the delete pass names), then the run itself. Nothing
+// that changes the mirror may happen before the container check.
 func TestRunSyncsAndThenRuns(t *testing.T) {
 	f := newRunFixture(t)
 	f.host.MaxLoadRatio = 0.7
@@ -383,9 +392,11 @@ func TestRunSyncsAndThenRuns(t *testing.T) {
 	if check, transfer := f.exec.order("ps -a --filter"), f.exec.order("--files-from=-"); check < 0 || transfer < 0 || check > transfer {
 		t.Errorf("container check at %d, ship pass at %d: the check has to come first", check, transfer)
 	}
+	// The mirror in this fixture holds nothing, so reconciling it names nothing
+	// to delete and the ship pass is the whole sync.
 	transfers := f.exec.transfers()
-	if len(transfers) != 2 {
-		t.Fatalf("rsync calls = %d, want the ship and the delete pass", len(transfers))
+	if len(transfers) != 1 {
+		t.Fatalf("rsync calls = %d, want the ship pass alone", len(transfers))
 	}
 	if !strings.Contains(strings.Join(transfers[0], " "), "--files-from=-") {
 		t.Errorf("first pass is not the file list: %v", transfers[0])
@@ -393,12 +404,6 @@ func TestRunSyncsAndThenRuns(t *testing.T) {
 	ship := f.exec.stin(transfers[0])
 	if string(ship) != string(f.gitData) {
 		t.Errorf("ship pass was fed %q, want git's listing %q", ship, f.gitData)
-	}
-	if !strings.Contains(strings.Join(transfers[1], " "), "--delete") {
-		t.Errorf("second pass is not the delete pass: %v", transfers[1])
-	}
-	if got := f.exec.stin(transfers[1]); len(got) != 0 {
-		t.Errorf("delete pass was fed %q, want nothing", got)
 	}
 	if len(f.gitDirs) == 0 || f.gitDirs[0] != f.checkout {
 		t.Errorf("git read %v, want the checkout %s", f.gitDirs, f.checkout)
@@ -439,6 +444,38 @@ func TestRunSyncsAndThenRuns(t *testing.T) {
 	// The claim is held to the very end: the release is the last thing sent.
 	if got := f.exec.calls[len(f.exec.calls)-1][len(f.exec.calls[len(f.exec.calls)-1])-1]; !strings.Contains(got, "claim: release") {
 		t.Errorf("the run did not release its claim last: %q", got)
+	}
+}
+
+// A mirror this machine has no record of is reconciled against its own contents
+// before the run: the files it holds that this checkout neither lists nor has,
+// and that git's ignore rules do not cover, are named on the delete pass, while
+// a build output the host made stays where it is.
+func TestAFirstRunReconcilesTheMirrorItAdopted(t *testing.T) {
+	f := newRunFixture(t)
+	f.mirrorHeld = []string{"./Cargo.lock", "./assets/logo.png", "./target/debug/app"}
+	f.ignored = map[string]bool{"target/debug/app": true}
+
+	if err := f.run(RunOptions{Command: []string{"true"}}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	transfers := f.exec.transfers()
+	if len(transfers) != 2 {
+		t.Fatalf("rsync calls = %d, want the ship and the delete pass", len(transfers))
+	}
+	drop := transfers[1]
+	for _, want := range []string{"--files-from=-", "--delete-missing-args"} {
+		if !slices.Contains(drop, want) {
+			t.Errorf("delete pass is missing %q: %v", want, drop)
+		}
+	}
+	if got := nulList(f.exec.stin(drop)); !slices.Equal(got, []string{"Cargo.lock", "assets/logo.png"}) {
+		t.Errorf("delete pass was fed %v, want the paths git does not ignore", got)
+	}
+	// The run records what it sent, so the next run there subtracts from it
+	// instead of reading the mirror again.
+	if record, err := f.deps().readSent(f.host, "repo", f.checkout); err != nil || !record.Found {
+		t.Fatalf("readSent after the run = (%+v, %v), want the listing this run sent", record, err)
 	}
 }
 

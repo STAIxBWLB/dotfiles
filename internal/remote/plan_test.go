@@ -31,15 +31,16 @@ func TestSSHArgvIsBatchMode(t *testing.T) {
 
 func TestSyncPlanForAGitCheckout(t *testing.T) {
 	listing := []byte("main.go\x00docs/a.md\x00")
+	deletes := []byte("docs/gone.md\x00")
 	steps := SyncPlan("/usr/local/bin/rsync", "/home/u/repo", "buildbox:dot-remote/repo", SyncInput{
-		Excludes:    []string{".git", "node_modules"},
-		IgnoreFiles: []string{"/home/u/repo/.git/info/exclude"},
-		Listing:     listing,
+		Excludes: []string{".git", "node_modules"},
+		Listing:  listing,
+		Deletes:  deletes,
 	})
 	if len(steps) != 2 {
 		t.Fatalf("steps = %d, want the ship pass and the delete pass", len(steps))
 	}
-	ship, prune := steps[0], steps[1]
+	ship, drop := steps[0], steps[1]
 	for _, want := range []string{"-a", "-s", "--mkpath", "--files-from=-", "--from0", "--ignore-missing-args",
 		"--exclude=.git", "--exclude=node_modules", "--include=.env.example",
 		"/home/u/repo/", "buildbox:dot-remote/repo/"} {
@@ -49,8 +50,8 @@ func TestSyncPlanForAGitCheckout(t *testing.T) {
 	}
 	// -s keeps rsync from interpolating the paths into the remote shell's
 	// command line, where a space or a ';' in a mirror path would be parsed.
-	if !slices.Contains(prune.Argv, "-s") {
-		t.Errorf("delete pass is missing -s: %v", prune.Argv)
+	if !slices.Contains(drop.Argv, "-s") {
+		t.Errorf("delete pass is missing -s: %v", drop.Argv)
 	}
 	if string(ship.Stdin) != string(listing) {
 		t.Errorf("ship stdin = %q, want git's listing", ship.Stdin)
@@ -71,24 +72,20 @@ func TestSyncPlanForAGitCheckout(t *testing.T) {
 	if include < 0 || exclude < 0 || include > exclude {
 		t.Errorf("include at %d, first exclude at %d: the template must come first", include, exclude)
 	}
-	for _, want := range []string{"--delete", "--filter=:- .gitignore", "--existing", "--ignore-existing"} {
-		if !slices.Contains(prune.Argv, want) {
-			t.Errorf("delete pass is missing %q: %v", want, prune.Argv)
+	// The delete pass removes exactly the named paths: no --delete, no filter
+	// file, and nothing that would keep or move a file.
+	for _, want := range []string{"--files-from=-", "--from0", "--delete-missing-args", "/home/u/repo/", "buildbox:dot-remote/repo/"} {
+		if !slices.Contains(drop.Argv, want) {
+			t.Errorf("delete pass is missing %q: %v", want, drop.Argv)
 		}
 	}
-	// The ignore files git honored outside .gitignore reach the delete pass, so
-	// a build output they cover is not deleted from the mirror.
-	if !slices.Contains(prune.Argv, "--filter=.- /home/u/repo/.git/info/exclude") {
-		t.Errorf("delete pass does not merge git's other ignore files: %v", prune.Argv)
+	for _, unwanted := range []string{"--delete", "--filter=:- .gitignore", "--filter=.- ", "--existing", "--ignore-existing", "--ignore-missing-args"} {
+		if slices.Contains(drop.Argv, unwanted) {
+			t.Errorf("delete pass carries %q: %v", unwanted, drop.Argv)
+		}
 	}
-	if slices.Contains(ship.Argv, "--filter=.- /home/u/repo/.git/info/exclude") {
-		t.Error("the ship pass was given a delete-only filter file")
-	}
-	if prune.Stdin != nil {
-		t.Error("the delete pass must transfer nothing, but it was given stdin")
-	}
-	if slices.Contains(prune.Argv, "--files-from=-") {
-		t.Error("the delete pass listed files instead of pruning")
+	if string(drop.Stdin) != string(deletes) {
+		t.Errorf("delete stdin = %q, want the paths gone from this machine", drop.Stdin)
 	}
 }
 
@@ -108,16 +105,14 @@ func TestSyncPlanForAPathThatIsNotAGitCheckout(t *testing.T) {
 
 // Once this machine has a record of what it sent, the delete pass names those
 // paths and asks rsync to remove the ones the source no longer has. Nothing is
-// inferred from an ignore file, which is what the fallback has to do and what a
-// negation in one of them breaks.
+// inferred from an ignore file, which is what the delete pass has to do and what
+// a negation in one of them breaks.
 func TestSyncPlanDeletesWhatTheSentListingNames(t *testing.T) {
 	deletes := []byte("docs/gone.md\x00main.go\x00")
 	steps := SyncPlan("rsync", "/home/u/repo", "buildbox:dot-remote/repo", SyncInput{
-		Excludes:    []string{".git"},
-		Listing:     []byte("main.go\x00"),
-		Previous:    []byte("docs/gone.md\x00main.go\x00"),
-		HasPrevious: true,
-		Deletes:     deletes,
+		Excludes: []string{".git"},
+		Listing:  []byte("main.go\x00"),
+		Deletes:  deletes,
 	})
 	if len(steps) != 2 {
 		t.Fatalf("steps = %d, want the ship pass and the delete pass", len(steps))
@@ -140,33 +135,31 @@ func TestSyncPlanDeletesWhatTheSentListingNames(t *testing.T) {
 	}
 }
 
-// A record that names nothing to delete costs no second rsync at all.
+// A decision that names nothing to delete costs no second rsync at all.
 func TestSyncPlanWithoutDeletesIsOnePass(t *testing.T) {
 	steps := SyncPlan("rsync", "/home/u/repo", "buildbox:dot-remote/repo", SyncInput{
-		Listing:     []byte("main.go\x00"),
-		Previous:    []byte("main.go\x00"),
-		HasPrevious: true,
+		Listing: []byte("main.go\x00"),
 	})
 	if len(steps) != 1 {
 		t.Fatalf("steps = %d, want the ship pass alone", len(steps))
 	}
 }
 
-// An empty record is a record: a checkout that sent no files must not fall back
-// to reading the ignore files, because that is the pass the repository deleted
-// the fallback for.
-func TestAnEmptySentRecordIsStillARecord(t *testing.T) {
+// A checkout with no files at all is still a checkout: the ship pass sends
+// nothing, and the delete pass still removes what the decision named.
+func TestAnEmptyListingStillPlansBothPasses(t *testing.T) {
 	steps := SyncPlan("rsync", "/home/u/repo", "buildbox:dot-remote/repo", SyncInput{
-		Listing:     []byte("fresh.go\x00"),
-		Previous:    []byte{},
-		HasPrevious: true,
-		Deletes:     []byte("fresh.go\x00"),
+		Listing: []byte{},
+		Deletes: []byte("fresh.go\x00"),
 	})
 	if len(steps) != 2 {
 		t.Fatalf("steps = %d, want the ship pass and the delete pass", len(steps))
 	}
-	if slices.Contains(steps[1].Argv, "--filter=:- .gitignore") {
-		t.Errorf("an empty sent record fell back to the ignore-file prune: %v", steps[1].Argv)
+	if string(steps[0].Stdin) != "" {
+		t.Errorf("ship stdin = %q, want no files", steps[0].Stdin)
+	}
+	if !slices.Contains(steps[1].Argv, "--delete-missing-args") {
+		t.Errorf("delete pass = %v, want the named-path removal", steps[1].Argv)
 	}
 }
 

@@ -52,6 +52,12 @@ type Deps struct {
 	Started string
 	// Git runs one read-only git query in a local checkout and returns stdout.
 	Git func(ctx context.Context, dir string, args ...string) ([]byte, error)
+	// MirrorFiles lists every file one mirror holds on the host, NUL-separated
+	// and relative to the mirror. Empty means the listing is taken over ssh.
+	MirrorFiles func(ctx context.Context, h Host, mirror string) ([]byte, error)
+	// Ignored reports which of the given paths git's ignore rules cover in one
+	// checkout, as a set. Empty means git itself runs there.
+	Ignored func(ctx context.Context, checkout string, paths []string) (map[string]bool, error)
 }
 
 // DefaultDeps wires the real terminal, git and the invoking user's admission

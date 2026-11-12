@@ -1,17 +1,18 @@
 package remote
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/STAIxBWLB/dotfiles/internal/admission"
-	"github.com/STAIxBWLB/dotfiles/internal/config"
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
 )
 
@@ -230,8 +231,8 @@ func (d Deps) Run(ctx context.Context, cfg Config, opts RunOptions) error {
 	if isCheckout {
 		// Recorded only after the mirror took the tree: a listing saved for a sync
 		// that failed would let the next run delete files this one never sent.
-		if err := d.writeSent(h, rel, listing); err != nil {
-			fmt.Fprintf(d.errOut(), "dot remote: could not record what this run sent to %s on %s (%v), so the next run there deletes from the ignore files instead\n",
+		if err := d.writeSent(h, rel, path, listing); err != nil {
+			fmt.Fprintf(d.errOut(), "dot remote: could not record what this run sent to %s on %s (%v), so the next run there reconciles the mirror instead\n",
 				mirror, h.Name, err)
 		}
 	}
@@ -299,28 +300,101 @@ func containerPresentScript(h Host, container string) string {
 // from disk is what leaves the mirror. Nothing is inferred from an ignore file,
 // because rsync cannot read one the way git wrote it.
 //
-// A mirror this machine has no record for falls back to the destination's own
-// ignore files, which is what the delete pass did before that record existed.
-// The fallback is the safe direction - it deletes less - and it runs once per
-// mirror, because this same run records its listing.
+// A mirror this machine has no record of - its first run here, or a record that
+// describes another mirror - is reconciled against its own contents instead:
+// what it holds, this checkout neither lists nor has, and git does not ignore is
+// gone, so an adopted mirror loses the tree an older checkout left while its own
+// build outputs stay. The run records its listing afterwards either way.
 func (d Deps) syncInput(ctx context.Context, h Host, mirror, rel, path string, in SyncInput) SyncInput {
 	if in.Listing == nil {
 		fmt.Fprintf(d.errOut(), "dot remote: %s is not a git checkout, mirroring it with the exclude list\n", path)
 		return in
 	}
-	previous, ok, err := d.readSent(h, rel)
+	record, err := d.readSent(h, rel, path)
 	switch {
 	case err != nil:
-		fmt.Fprintf(d.errOut(), "dot remote: could not read what this machine last sent to %s on %s (%v), so this run deletes from the ignore files instead\n",
+		fmt.Fprintf(d.errOut(), "dot remote: could not read what this machine last sent to %s on %s (%v), so this run reconciles the mirror instead\n",
 			mirror, h.Name, err)
-		in.IgnoreFiles = d.gitIgnoreFiles(ctx, path)
-	case ok:
-		in.Previous, in.HasPrevious = previous, true
-		in.Deletes = goneFromDisk(path, previous, in.Listing)
-	default:
-		in.IgnoreFiles = d.gitIgnoreFiles(ctx, path)
+	case record.Stale:
+		fmt.Fprintf(d.errOut(), "dot remote: the record of what this machine sent to %s on %s was written for another mirror, so this run reconciles this one instead\n",
+			mirror, h.Name)
+	case record.Found:
+		in.Deletes = goneFromDisk(path, record.Listing, in.Listing)
+		return in
 	}
+	deletes, rerr := d.reconcile(ctx, h, mirror, path, in.Listing)
+	if rerr != nil {
+		fmt.Fprintf(d.errOut(), "dot remote: could not read what %s holds on %s (%v), so this run deletes nothing there; the run records its listing, and the next one there deletes from that\n",
+			mirror, h.Name, rerr)
+		return in
+	}
+	in.Deletes = deletes
 	return in
+}
+
+// reconcile is the deletion set for a mirror this machine has no record of: what
+// the mirror holds that this checkout neither lists nor has, minus what git's
+// ignore rules cover.
+func (d Deps) reconcile(ctx context.Context, h Host, mirror, path string, listing []byte) ([]byte, error) {
+	held, err := d.mirrorFiles(ctx, h, mirror)
+	if err != nil {
+		return nil, err
+	}
+	candidates := mirrorCandidates(path, held, listing)
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	ignored, err := d.gitIgnored(ctx, path, candidates)
+	if err != nil {
+		return nil, err
+	}
+	return deletionSet(candidates, ignored), nil
+}
+
+// mirrorFiles lists every file one mirror holds, NUL-separated and relative to
+// the mirror. A directory that cannot be entered reads as an empty mirror, which
+// deletes nothing.
+func (d Deps) mirrorFiles(ctx context.Context, h Host, mirror string) ([]byte, error) {
+	if d.MirrorFiles != nil {
+		return d.MirrorFiles(ctx, h, mirror)
+	}
+	out, err := d.capture(ctx, SSHArgv(h.SSH, mirrorFindCommand(mirror)), nil)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(strings.Join(mirrorPaths([]byte(out)), "\x00")), nil
+}
+
+// gitIgnored asks git which of the given paths its ignore rules cover in this
+// checkout. Every ignore source git honors is read - .gitignore at any depth,
+// .git/info/exclude and the global excludes file - with git's own semantics, a
+// `!` negation included.
+func (d Deps) gitIgnored(ctx context.Context, path string, candidates []string) (map[string]bool, error) {
+	if d.Ignored != nil {
+		return d.Ignored(ctx, path, candidates)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	cmd := osexec.CommandContext(ctx, "git", append([]string{"-C", path}, gitIgnoreArgs()...)...)
+	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
+	cmd.Stdin = strings.NewReader(strings.Join(candidates, "\x00") + "\x00")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		// check-ignore exits 1 when no path is ignored, and that is an answer.
+		var exitErr *osexec.ExitError
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+			return nil, fmt.Errorf("git check-ignore in %s: %w: %s", path, err, strings.TrimSpace(stderr.String()))
+		}
+	}
+	ignored := map[string]bool{}
+	for _, rel := range strings.Split(string(out), "\x00") {
+		if rel != "" {
+			ignored[rel] = true
+		}
+	}
+	return ignored, nil
 }
 
 // sync sends git's view of the tree and then removes what left the checkout,
@@ -429,39 +503,6 @@ func (d Deps) gitListing(ctx context.Context, path string) ([]byte, bool, error)
 // here". Every other failure has to stop a run rather than widen what it sends.
 func notARepository(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "not a git repository")
-}
-
-// gitIgnoreFiles lists the other ignore files git honored for this checkout -
-// .git/info/exclude and the global excludes file - so the delete pass protects
-// what the ship pass never sent. Only files that exist are returned.
-func (d Deps) gitIgnoreFiles(ctx context.Context, path string) []string {
-	var candidates []string
-	if out, err := d.git(ctx, path, "rev-parse", "--git-path", "info/exclude"); err == nil {
-		if name := strings.TrimSpace(string(out)); name != "" {
-			if !filepath.IsAbs(name) {
-				name = filepath.Join(path, name)
-			}
-			candidates = append(candidates, name)
-		}
-	}
-	if out, err := d.git(ctx, path, "config", "--path", "--get", "core.excludesFile"); err == nil {
-		if name := strings.TrimSpace(string(out)); name != "" {
-			candidates = append(candidates, name)
-		}
-	} else if home, herr := os.UserHomeDir(); herr == nil {
-		// git's own default when core.excludesFile is unset:
-		// $XDG_CONFIG_HOME/git/ignore, then ~/.config/git/ignore. The root comes
-		// from config.ConfigHome rather than a second read of the variable,
-		// because one place decides a path from it (internal/config.StateDir).
-		candidates = append(candidates, filepath.Join(config.ConfigHome(home, false), "git", "ignore"))
-	}
-	var files []string
-	for _, name := range candidates {
-		if info, err := os.Stat(name); err == nil && !info.IsDir() {
-			files = append(files, name)
-		}
-	}
-	return files
 }
 
 // localRsync resolves the local rsync client a transfer uses, and refuses one

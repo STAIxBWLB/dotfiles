@@ -212,11 +212,14 @@ hosts](servers.md#remote-hosts) for the workflow.
 
 A first run sends what `git ls-files` names (tracked files plus untracked ones
 no ignore rule covers) and then prunes the mirror of what the checkout no longer
-has. The prune honors the same ignore sources the listing did - `.gitignore`,
-`.git/info/exclude` and the global excludes file - so a build output the host
-made under any of them survives. A checkout git cannot list is an error rather
-than a fallback to the exclude list, because the exclude list is not a
-substitute for git's own view.
+has. Later runs prune from the listing this machine sent to that mirror last
+time, so nothing is inferred from the exclude list. A mirror this machine has no
+record of is reconciled against git's own rules instead: every file it holds and
+this checkout neither lists nor has is deleted unless `git check-ignore` reports
+it as ignored (`.gitignore`, `.git/info/exclude` and the global excludes file,
+negations included), so a build output the host made survives. A checkout git
+cannot list is an error rather than a fallback to the exclude list, because the
+exclude list is not a substitute for git's own view.
 
 ### Environment Variables
 

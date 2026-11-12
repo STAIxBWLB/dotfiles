@@ -1,6 +1,8 @@
 package remote
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path"
@@ -21,6 +23,17 @@ import (
 // It is kept on this machine rather than on the host deliberately: two machines
 // may share one mirror, and a listing written by the other one must never make
 // this machine delete files it never sent.
+//
+// A record also names the mirror it describes. The name a config file gives a
+// host is not that name: the same host name and relative path can point at a
+// different root, a different ssh destination or a different local checkout
+// after one edit, and a record from before that edit is a deletion list against
+// a mirror this machine never fed.
+
+// sentHeader opens every record. The identity that follows it is checked before
+// any path in the record is used, so a record describing another mirror is
+// recognized rather than acted on.
+const sentHeader = "dot-remote-sent 1 "
 
 // sentRoot is the directory holding one file per mirror this machine has sent
 // to. It sits beside the admission state root, whose parent is the dot state
@@ -37,7 +50,8 @@ func (d Deps) sentRoot() string {
 
 // sentPath is where one mirror's last listing lives: the host and the mirror key
 // together, because one checkout can be mirrored to two hosts and the two
-// listings describe different mirrors.
+// listings describe different mirrors. What the record is a record *of* is the
+// identity inside it, not this name.
 func (d Deps) sentPath(h Host, rel string) string {
 	root := d.sentRoot()
 	if root == "" {
@@ -46,35 +60,94 @@ func (d Deps) sentPath(h Host, rel string) string {
 	return filepath.Join(root, fileNameSafe(h.Name)+"--"+MirrorKey(rel)+".sent")
 }
 
-// readSent answers what this machine last sent to one mirror, and whether it has
-// that record at all: a mirror this machine has never sent to has none, and a
-// checkout with no files at all is a record with nothing in it.
-func (d Deps) readSent(h Host, rel string) ([]byte, bool, error) {
+// sentIdentity is the mirror a record describes: where the host is reached, the
+// remote root, the mirror's relative path and the local checkout. Hashing the
+// four keeps the header one word a person can also compare by eye when two
+// records are in question.
+func sentIdentity(h Host, rel, checkout string) string {
+	sum := sha256.New()
+	for _, field := range []string{h.SSH, h.Root, rel, filepath.ToSlash(checkout)} {
+		sum.Write([]byte(field))
+		sum.Write([]byte{0})
+	}
+	return hex.EncodeToString(sum.Sum(nil))
+}
+
+// sentRecord is what one look at the state directory found for a mirror.
+type sentRecord struct {
+	// Listing is what this machine sent to this mirror, NUL-separated.
+	Listing []byte
+	// Found says the record describes this mirror, and may be subtracted from.
+	Found bool
+	// Stale says a record exists but does not describe this mirror - another
+	// root or checkout, or a file this code cannot read - so it must not drive a
+	// delete.
+	Stale bool
+}
+
+// readSent answers what this machine last sent to one mirror. A mirror this
+// machine has never sent to has no record, and a checkout with no files at all
+// is a record with nothing in it, so Found stays true there.
+func (d Deps) readSent(h Host, rel, checkout string) (sentRecord, error) {
 	sentPath := d.sentPath(h, rel)
 	if sentPath == "" {
-		return nil, false, fmt.Errorf("no state directory to keep the sent listing in")
+		return sentRecord{}, fmt.Errorf("no state directory to keep the sent listing in")
 	}
 	data, err := os.ReadFile(sentPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, false, nil
+			return sentRecord{}, nil
 		}
-		return nil, false, err
+		return sentRecord{}, err
 	}
-	return data, true, nil
+	header, listing, ok := strings.Cut(string(data), "\n")
+	if !ok || !strings.HasPrefix(header, sentHeader) {
+		return sentRecord{Stale: true}, nil
+	}
+	if strings.TrimPrefix(header, sentHeader) != sentIdentity(h, rel, checkout) {
+		return sentRecord{Stale: true}, nil
+	}
+	return sentRecord{Listing: []byte(listing), Found: true}, nil
 }
 
 // writeSent records what this run sent, for the next run of the same mirror to
 // subtract.
-func (d Deps) writeSent(h Host, rel string, listing []byte) error {
+func (d Deps) writeSent(h Host, rel, checkout string, listing []byte) error {
 	sentPath := d.sentPath(h, rel)
 	if sentPath == "" {
 		return fmt.Errorf("no state directory to keep the sent listing in")
 	}
-	if err := os.MkdirAll(filepath.Dir(sentPath), 0o755); err != nil {
+	dir := filepath.Dir(sentPath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(sentPath, listing, 0o644)
+	content := append([]byte(sentHeader+sentIdentity(h, rel, checkout)+"\n"), listing...)
+	// Written aside and renamed: a run that dies mid-write leaves the previous
+	// record whole instead of a truncated deletion list.
+	tmp, err := os.CreateTemp(dir, filepath.Base(sentPath)+".*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	remove := func() { _ = os.Remove(tmpName) }
+	if _, err := tmp.Write(content); err != nil {
+		_ = tmp.Close()
+		remove()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		remove()
+		return err
+	}
+	if err := os.Chmod(tmpName, 0o644); err != nil {
+		remove()
+		return err
+	}
+	if err := os.Rename(tmpName, sentPath); err != nil {
+		remove()
+		return err
+	}
+	return nil
 }
 
 // goneFromDisk is what the delete pass removes: every path this machine sent
@@ -88,10 +161,7 @@ func (d Deps) writeSent(h Host, rel string, listing []byte) error {
 func goneFromDisk(src string, listings ...[]byte) []byte {
 	seen := map[string]bool{}
 	for _, listing := range listings {
-		for _, rel := range strings.Split(string(listing), "\x00") {
-			if rel == "" || seen[rel] || !safeRelPath(rel) {
-				continue
-			}
+		for rel := range listedPaths(listing) {
 			seen[rel] = true
 		}
 	}
@@ -106,6 +176,18 @@ func goneFromDisk(src string, listings ...[]byte) []byte {
 		return nil
 	}
 	return []byte(strings.Join(gone, "\x00") + "\x00")
+}
+
+// listedPaths reads a listing as a set of paths under the checkout, dropping
+// anything that is not one.
+func listedPaths(listing []byte) map[string]bool {
+	set := map[string]bool{}
+	for _, rel := range strings.Split(string(listing), "\x00") {
+		if safeRelPath(rel) {
+			set[rel] = true
+		}
+	}
+	return set
 }
 
 // safeRelPath reports whether a listed path is one rsync can take as a

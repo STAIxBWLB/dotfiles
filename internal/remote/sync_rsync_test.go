@@ -52,12 +52,40 @@ func newSyncFixture(t *testing.T) *syncFixture {
 		}
 	}
 	// The sent listing lives in the state directory a run uses beside the
-	// admission root, here a directory of the fixture's own.
+	// admission root, here a directory of the fixture's own. The mirror's own
+	// file list is what a run over ssh would read, so the fixture reads it from
+	// the local destination; git is the real one, its global configuration
+	// pinned so the person's ignores cannot decide what the fixture calls
+	// ignored.
 	f.deps = Deps{
 		SentRoot: filepath.Join(f.root, "state", "dot", "remote-sent"),
 		Err:      &f.errs,
+		MirrorFiles: func(_ context.Context, _ Host, _ string) ([]byte, error) {
+			return f.mirrorFiles(), nil
+		},
 	}
+	f.pinGitEnv()
 	return f
+}
+
+// pinGitEnv keeps the real git calls inside the fixture's own configuration.
+func (f *syncFixture) pinGitEnv() {
+	f.t.Helper()
+	f.t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	f.t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+	f.t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	f.t.Setenv("XDG_CONFIG_HOME", filepath.Join(f.root, "xdg"))
+}
+
+// mirrorFiles is what `find` on the host would print: every file the mirror
+// holds, NUL-separated and relative to it, in the "./" form find writes.
+func (f *syncFixture) mirrorFiles() []byte {
+	f.t.Helper()
+	var found []string
+	for _, rel := range f.present() {
+		found = append(found, "./"+rel)
+	}
+	return []byte(strings.Join(found, "\x00"))
 }
 
 func (f *syncFixture) write(root, rel, content string) {
@@ -172,30 +200,28 @@ func (f *syncFixture) git(git string, args ...string) []byte {
 	return out
 }
 
-// sync runs one plan for a listing with no sent record - the first run of a
-// mirror, which is where the ignore-file fallback still applies.
-func (f *syncFixture) sync(listing []byte) {
-	f.t.Helper()
-	f.runPlan(SyncInput{Excludes: (Config{}).Excludes(), Listing: listing})
-}
-
-// syncExcludes is the same, with an operator exclude list.
-func (f *syncFixture) syncExcludes(excludes []string, listing []byte) {
-	f.t.Helper()
-	f.runPlan(SyncInput{Excludes: excludes, Listing: listing})
-}
-
 // runAsRun does what a run does for a checkout: decide the sync input for this
 // checkout, run the plan, then record what was sent - the same three steps Run
 // performs, through the same functions.
 func (f *syncFixture) runAsRun(listing []byte) {
 	f.t.Helper()
+	f.runAsRunExcludes((Config{}).Excludes(), listing)
+}
+
+// runAsRunExcludes is the same, with an operator exclude list.
+func (f *syncFixture) runAsRunExcludes(excludes []string, listing []byte) {
+	f.t.Helper()
 	in := f.deps.syncInput(context.Background(), f.host, f.dest, f.rel, f.source, SyncInput{
-		Excludes: (Config{}).Excludes(),
+		Excludes: excludes,
 		Listing:  listing,
 	})
 	f.runPlan(in)
-	if err := f.deps.writeSent(f.host, f.rel, listing); err != nil {
+	if listing == nil {
+		// A path that is not a checkout has no listing to record, which is what
+		// Run does too.
+		return
+	}
+	if err := f.deps.writeSent(f.host, f.rel, f.source, listing); err != nil {
 		f.t.Fatalf("recording what the run sent: %v", err)
 	}
 }
@@ -255,7 +281,7 @@ func TestTwoPassSyncShipsGitFilesAndPrunesTheMirror(t *testing.T) {
 		}
 	}
 
-	f.sync(listing)
+	f.runAsRun(listing)
 
 	want := []string{".env.example", ".gitignore", "build/out.bin", "docs/a.md", "main.go"}
 	if got := f.present(); !slices.Equal(got, want) {
@@ -280,7 +306,14 @@ func TestTheShipPassAloneDeletesNothing(t *testing.T) {
 	f := newSyncFixture(t)
 	f.sourceFile("main.go", "package main\n")
 	f.destFile("stale.txt", "deleted locally\n")
-	steps := SyncPlan(f.rsync, f.source, f.dest, SyncInput{Excludes: (Config{}).Excludes(), Listing: []byte("main.go\x00")})
+	steps := SyncPlan(f.rsync, f.source, f.dest, SyncInput{
+		Excludes: (Config{}).Excludes(),
+		Listing:  []byte("main.go\x00"),
+		Deletes:  []byte("stale.txt\x00"),
+	})
+	if len(steps) != 2 {
+		t.Fatalf("steps = %d, want the ship pass and the delete pass", len(steps))
+	}
 	runSyncStep(t, steps[0])
 	want := []string{"main.go", "stale.txt"}
 	if got := f.present(); !slices.Equal(got, want) {
@@ -293,7 +326,7 @@ func TestTheShipPassAloneDeletesNothing(t *testing.T) {
 func TestTheShipPassToleratesAListedFileThatIsGone(t *testing.T) {
 	f := newSyncFixture(t)
 	f.sourceFile("keep.txt", "keep\n")
-	f.sync([]byte("keep.txt\x00removed.txt\x00"))
+	f.runAsRun([]byte("keep.txt\x00removed.txt\x00"))
 	if got := f.present(); !slices.Equal(got, []string{"keep.txt"}) {
 		t.Errorf("mirror holds %v, want only keep.txt", got)
 	}
@@ -310,7 +343,7 @@ func TestSyncOfAPathThatIsNotACheckoutMirrorsAndDeletes(t *testing.T) {
 	f.destFile("gone.txt", "removed locally\n")
 	f.destFile("notes.md", "old\n")
 
-	f.sync(nil)
+	f.runAsRun(nil)
 
 	if got := f.present(); !slices.Equal(got, []string{"notes.md"}) {
 		t.Errorf("mirror holds %v, want only notes.md", got)
@@ -326,7 +359,7 @@ func TestExtraExcludesReachRsync(t *testing.T) {
 	f := newSyncFixture(t)
 	f.sourceFile("notes.md", "# notes\n")
 	f.sourceFile("datasets/imagenet.bin", "huge\n")
-	f.syncExcludes((Config{ExcludeExtra: []string{"datasets"}}).Excludes(), nil)
+	f.runAsRunExcludes((Config{ExcludeExtra: []string{"datasets"}}).Excludes(), nil)
 	if got := f.present(); !slices.Equal(got, []string{"notes.md"}) {
 		t.Errorf("mirror holds %v, want the extra exclude to keep datasets out", got)
 	}
@@ -348,7 +381,7 @@ func TestAPathWithShellCharactersMirrorsIntact(t *testing.T) {
 	if err := os.MkdirAll(f.dest, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	f.sync(nil)
+	f.runAsRun(nil)
 	if got := f.present(); !slices.Equal(got, []string{"main.go"}) {
 		t.Errorf("mirror holds %v, want the tree intact under the odd path", got)
 	}
@@ -367,17 +400,15 @@ func TestAPathWithShellCharactersMirrorsIntact(t *testing.T) {
 	}
 }
 
-// gitignore is not git's only ignore source: a rule in .git/info/exclude or in
-// the global excludes file keeps a file out of the ship pass, so the delete pass
-// has to honor the same rules or it removes what the host built under them.
-func TestTheDeletePassProtectsWhatTheOtherIgnoreFilesCover(t *testing.T) {
+// gitignore is not git's only ignore source. The reconcile asks git, so a rule
+// in .git/info/exclude keeps what the host built when an adopted mirror is
+// cleaned, while a file git does not claim leaves.
+func TestAFirstRunKeepsWhatTheOtherIgnoreFilesCover(t *testing.T) {
 	f := newSyncFixture(t)
 	f.sourceFile(".gitignore", "build/\n")
 	f.sourceFile("main.go", "package main\n")
-	listing := f.gitListing()
+	f.gitInit()
 
-	// A locally-ignored directory that only exists on the mirror, this time
-	// covered by .git/info/exclude rather than .gitignore.
 	exclude := filepath.Join(f.source, ".git", "info", "exclude")
 	if err := os.MkdirAll(filepath.Dir(exclude), 0o755); err != nil {
 		t.Fatal(err)
@@ -387,25 +418,21 @@ func TestTheDeletePassProtectsWhatTheOtherIgnoreFilesCover(t *testing.T) {
 	}
 	f.destFile("main.go", "package main\n")
 	f.destFile("artifacts/out.tar", "built on the host\n")
+	f.destFile("stale.txt", "an older checkout's file\n")
 
-	ignoreFiles := Deps{}.gitIgnoreFiles(context.Background(), f.source)
-	if !slices.Contains(ignoreFiles, exclude) {
-		t.Fatalf("gitIgnoreFiles = %v, want it to name %s", ignoreFiles, exclude)
-	}
-	steps := SyncPlan(f.rsync, f.source, f.dest, SyncInput{Excludes: (Config{}).Excludes(), Listing: listing, IgnoreFiles: ignoreFiles})
-	for _, step := range steps {
-		runSyncStep(t, step)
-	}
+	f.runAsRun(f.gitList())
+
+	f.missing("stale.txt")
 	if got := f.read("artifacts/out.tar"); got != "built on the host\n" {
-		t.Errorf("the delete pass removed a file .git/info/exclude covers: %q", got)
+		t.Errorf("the reconcile removed a file .git/info/exclude covers: %q", got)
 	}
 }
 
-// The global excludes file is the third source, and it is honored the same way.
-func TestTheDeletePassProtectsTheGlobalExcludesFile(t *testing.T) {
+// The global excludes file is the third source, and git answers for it too.
+func TestAFirstRunKeepsWhatTheGlobalExcludesFileCovers(t *testing.T) {
 	f := newSyncFixture(t)
 	f.sourceFile("main.go", "package main\n")
-	listing := f.gitListing()
+	f.gitInit()
 
 	globalIgnore := filepath.Join(f.root, "gitignore-global")
 	if err := os.WriteFile(globalIgnore, []byte("vendor/\n"), 0o644); err != nil {
@@ -416,25 +443,46 @@ func TestTheDeletePassProtectsTheGlobalExcludesFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("GIT_CONFIG_GLOBAL", globalConfig)
-	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(f.root, "xdg"))
 
-	ignoreFiles := Deps{}.gitIgnoreFiles(context.Background(), f.source)
-	if !slices.Contains(ignoreFiles, globalIgnore) {
-		t.Fatalf("gitIgnoreFiles = %v, want it to name the global excludes file %s", ignoreFiles, globalIgnore)
-	}
 	f.destFile("main.go", "package main\n")
 	f.destFile("vendor/lib.a", "vendored on the host\n")
-	for _, step := range SyncPlan(f.rsync, f.source, f.dest, SyncInput{Excludes: (Config{}).Excludes(), Listing: listing, IgnoreFiles: ignoreFiles}) {
-		runSyncStep(t, step)
-	}
+	f.destFile("stale.txt", "an older checkout's file\n")
+
+	f.runAsRun(f.gitList())
+
+	f.missing("stale.txt")
 	if got := f.read("vendor/lib.a"); got != "vendored on the host\n" {
-		t.Errorf("the delete pass removed a globally ignored file: %q", got)
+		t.Errorf("the reconcile removed a globally ignored file: %q", got)
 	}
 }
 
-// The four tests below run a checkout twice, through the same decision a run
-// makes (syncInput), and delete something between the runs. That is the only
+// The first run of a mirror this machine has no record of is where the old
+// ignore-file prune could keep a file for good: it protected what `*.lock`
+// matched, the run then recorded a listing without the deleted lock file, and
+// the file was never a candidate again. The reconcile asks git instead, and git
+// says the negation re-includes Cargo.lock, so it goes - while the ignored build
+// output beside it stays.
+func TestAFirstRunDeletesAStaleFileGitDoesNotIgnore(t *testing.T) {
+	f := newSyncFixture(t)
+	f.sourceFile(".gitignore", "*.lock\n!Cargo.lock\nbuild/\n")
+	f.sourceFile("main.go", "package main\n")
+	f.gitInit()
+
+	// An adopted mirror: a lock file that was sent once and is deleted here, and
+	// a build output the host made under a rule git does cover.
+	f.destFile("Cargo.lock", "name = \"one\"\n")
+	f.destFile("build/app.o", "compiled there\n")
+
+	f.runAsRun(f.gitList())
+
+	f.missing("Cargo.lock")
+	if got := f.read("build/app.o"); got != "compiled there\n" {
+		t.Errorf("the reconcile removed the host's build output: %q", got)
+	}
+}
+
+// The tests below run a checkout twice, through the same decision a run makes
+// (syncInput), and delete something between the runs. That is the only
 // shape that can tell what the mirror loses from what it keeps: the first run
 // leaves a record of what was sent, the second subtracts.
 
@@ -521,9 +569,9 @@ func TestAnIgnoredBuildOutputOnTheMirrorSurvivesTheDeletePass(t *testing.T) {
 }
 
 // The same two directions at depth: git honors an ignore file in any directory,
-// while a delete pass built from .gitignore reads the destination's file for
-// that directory only. A nested file this machine sent and deleted leaves the
-// mirror, and a build output under the same nested rule stays.
+// and the reconcile asks git about every path, so a nested file this machine sent
+// and deleted leaves the mirror while a build output under the same nested rule
+// stays.
 func TestANestedIgnoreFileLetsAStaleFileGoAndKeepsABuildOutput(t *testing.T) {
 	f := newSyncFixture(t)
 	f.sourceFile(".gitignore", "build/\n")
@@ -542,5 +590,44 @@ func TestANestedIgnoreFileLetsAStaleFileGoAndKeepsABuildOutput(t *testing.T) {
 	f.missing("sub/notes.md")
 	if got := f.read("sub/build/app.o"); got != "compiled there\n" {
 		t.Errorf("the delete pass removed a build output under a nested ignore file: %q", got)
+	}
+}
+
+// The record names the mirror it describes, not the name a config file gives the
+// host. Repointing the host's root keeps the host name and the relative path, so
+// the two mirrors share one record file - and its paths belong to the old
+// mirror. Acting on it would delete a file from a mirror this machine never fed.
+func TestARecordWrittenForAnotherRootDoesNotDeleteFromThisMirror(t *testing.T) {
+	f := newSyncFixture(t)
+	f.sourceFile(".gitignore", "out/\n")
+	f.sourceFile("main.go", "package main\n")
+	f.sourceFile("out/sent.txt", "force-added\n")
+	f.gitInit()
+	f.gitRun("add", "-f", "out/sent.txt")
+
+	// The record now names out/sent.txt, and the checkout drops it: out of git's
+	// listing, gone from disk.
+	f.runAsRun(f.gitList())
+	f.gitRun("rm", "-q", "--cached", "out/sent.txt")
+	if err := os.Remove(filepath.Join(f.source, "out", "sent.txt")); err != nil {
+		t.Fatal(err)
+	}
+
+	// The host's root moves: same host name, same relative path, another mirror.
+	f.host.Root = "dot-remote2"
+	f.dest = filepath.Join(f.root, "home", "dot-remote2", "one")
+	if err := os.MkdirAll(f.dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Something the host built there, at the path the old record names.
+	f.destFile("out/sent.txt", "built there\n")
+
+	f.runAsRun(f.gitList())
+
+	if got := f.read("out/sent.txt"); got != "built there\n" {
+		t.Errorf("the record of another mirror deleted %q from this one", got)
+	}
+	if !strings.Contains(f.errs.String(), "was written for another mirror") {
+		t.Errorf("stderr does not say the record describes another mirror:\n%s", f.errs.String())
 	}
 }

@@ -45,6 +45,7 @@ func TestGoneFromDiskIsSortedAndEmptyWhenNothingLeft(t *testing.T) {
 func TestGoneFromDiskDropsAPathThatLeavesTheCheckout(t *testing.T) {
 	src := t.TempDir()
 	writeTree(t, src, "ok.go", "package main\n")
+
 	got := nulList(goneFromDisk(src, []byte("../escape.go\x00/etc/passwd\x00./ok.go\x00dir/gone.go\x00")))
 	if want := []string{"dir/gone.go"}; !slices.Equal(got, want) {
 		t.Errorf("goneFromDisk = %v, want %v: only a path under the checkout", got, want)
@@ -82,21 +83,104 @@ func TestSentRecordIsPerMirrorAndPerHost(t *testing.T) {
 		t.Errorf("fileNameSafe(\"\") = %q, want a usable name", got)
 	}
 
-	if _, ok, err := deps.readSent(host, "one"); ok || err != nil {
-		t.Fatalf("readSent on a fresh state = (ok=%v, err=%v), want no record and no error", ok, err)
+	if record, err := deps.readSent(host, "one", "/local/one"); err != nil || record.Found || record.Stale {
+		t.Fatalf("readSent on a fresh state = (%+v, %v), want no record and no error", record, err)
 	}
-	if err := deps.writeSent(host, "one", []byte("a.go\x00b.go\x00")); err != nil {
+	if err := deps.writeSent(host, "one", "/local/one", []byte("a.go\x00b.go\x00")); err != nil {
 		t.Fatal(err)
 	}
-	data, ok, err := deps.readSent(host, "one")
-	if err != nil || !ok {
-		t.Fatalf("readSent = (ok=%v, err=%v), want the record back", ok, err)
+	record, err := deps.readSent(host, "one", "/local/one")
+	if err != nil || !record.Found {
+		t.Fatalf("readSent = (%+v, %v), want the record back", record, err)
 	}
-	if string(data) != "a.go\x00b.go\x00" {
-		t.Errorf("record = %q, want the listing as sent", data)
+	if string(record.Listing) != "a.go\x00b.go\x00" {
+		t.Errorf("record = %q, want the listing as sent", record.Listing)
 	}
-	if _, ok, err := deps.readSent(host, "two"); ok || err != nil {
-		t.Errorf("another mirror read this record: ok=%v err=%v", ok, err)
+	if record, err := deps.readSent(host, "two", "/local/two"); err != nil || record.Found || record.Stale {
+		t.Errorf("another mirror read this record: %+v, %v", record, err)
+	}
+	// The record is written aside and renamed, so nothing is left beside it.
+	entries, err := os.ReadDir(deps.SentRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		var names []string
+		for _, entry := range entries {
+			names = append(names, entry.Name())
+		}
+		t.Errorf("state directory holds %v, want only the record", names)
+	}
+}
+
+// The name a config file gives a host is not the identity of the mirror behind
+// it: the same host name and relative path can point at another root, another
+// ssh destination or another local checkout after one edit. A record from before
+// that edit must not be used, because its paths would be deleted from a mirror
+// this machine never fed.
+func TestASentRecordThatDescribesAnotherMirrorIsNotUsed(t *testing.T) {
+	deps := Deps{SentRoot: t.TempDir()}
+	host := testHost()
+	checkout := "/local/one"
+	if err := deps.writeSent(host, "one", checkout, []byte("build/app.o\x00")); err != nil {
+		t.Fatal(err)
+	}
+
+	moved := host
+	moved.Root = "dot-remote2"
+	reached := host
+	reached.SSH = "buildbox.example"
+	for name, tc := range map[string]struct {
+		host     Host
+		rel      string
+		checkout string
+	}{
+		"another root":        {host: moved, rel: "one", checkout: checkout},
+		"another destination": {host: reached, rel: "one", checkout: checkout},
+		"another checkout":    {host: host, rel: "one", checkout: "/local/two"},
+	} {
+		record, err := deps.readSent(tc.host, tc.rel, tc.checkout)
+		if err != nil {
+			t.Errorf("%s: readSent: %v", name, err)
+			continue
+		}
+		if record.Found {
+			t.Errorf("%s: the record was used for a mirror it does not describe", name)
+		}
+		if !record.Stale {
+			t.Errorf("%s: the record did not read as describing another mirror", name)
+		}
+	}
+	// Another mirror path is another record file, so it is no record at all
+	// rather than one about this mirror.
+	if record, err := deps.readSent(host, "two", checkout); err != nil || record.Found || record.Stale {
+		t.Errorf("the record of another mirror path = (%+v, %v), want no record", record, err)
+	}
+	// The record it does describe is still there.
+	if record, err := deps.readSent(host, "one", checkout); err != nil || !record.Found {
+		t.Errorf("the original mirror lost its record: %+v, %v", record, err)
+	}
+}
+
+// A record this code cannot read is not one it may act on either.
+func TestAnUnreadableSentRecordReadsAsAnotherMirror(t *testing.T) {
+	deps := Deps{SentRoot: t.TempDir()}
+	host := testHost()
+	path := deps.sentPath(host, "one")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, content := range []string{"", "a.go\x00b.go\x00", "dot-remote-sent 9 deadbeef\nmain.go\x00"} {
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		record, err := deps.readSent(host, "one", "/local/one")
+		if err != nil {
+			t.Fatalf("readSent(%q): %v", content, err)
+		}
+		if record.Found || !record.Stale {
+			t.Errorf("readSent(%q) = %+v, want a record that describes another mirror", content, record)
+		}
 	}
 }
 
@@ -104,11 +188,11 @@ func TestSentRecordIsPerMirrorAndPerHost(t *testing.T) {
 // says so instead of syncing without one.
 func TestSentRecordWithoutAStateDirectoryIsAnError(t *testing.T) {
 	deps := Deps{}
-	if err := deps.writeSent(testHost(), "one", []byte("a.go\x00")); err == nil {
+	if err := deps.writeSent(testHost(), "one", "/local/one", []byte("a.go\x00")); err == nil {
 		t.Error("writeSent with no state directory succeeded")
 	}
-	if _, ok, err := deps.readSent(testHost(), "one"); err == nil || ok {
-		t.Errorf("readSent with no state directory = (ok=%v, err=%v), want an error", ok, err)
+	if record, err := deps.readSent(testHost(), "one", "/local/one"); err == nil || record.Found {
+		t.Errorf("readSent with no state directory = (%+v, %v), want an error", record, err)
 	}
 }
 

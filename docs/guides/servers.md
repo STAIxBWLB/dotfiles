@@ -135,10 +135,22 @@ deletes exactly the recorded paths that are gone from the checkout, so a build
 output the host made is never a candidate and neither is a file another machine
 sent. rsync reads those ignore files as plain excludes and cannot express a `!`
 negation, so they could not decide this: with `*.lock` and `!Cargo.lock` in one
-of them, a `Cargo.lock` that was deleted here stayed on the mirror. A mirror this
-machine has never sent to has no record yet, so its first run deletes from the
-destination's `.gitignore` and the other ignore files git honors; a pattern there
-can keep one file one run longer.
+of them, a `Cargo.lock` that was deleted here stayed on the mirror. The record
+also names the mirror it describes - ssh destination, remote root, relative
+path and the local checkout - and one written for another mirror is ignored
+rather than acted on.
+
+A mirror this machine has no record of, because it has never sent there or
+because the host's `root` or `ssh` changed, is reconciled once against its own
+contents: a run lists what the mirror holds, keeps every path the checkout still
+has on disk, and deletes the rest except what `git check-ignore` reports as
+ignored, so an adopted mirror loses the tree an older checkout left while its
+own build outputs (`node_modules`, `target` and the rest of the built-in
+excludes are not even walked) stay. If that listing cannot be read, the run
+deletes nothing there and says so; it records its own listing either way, so the
+next run subtracts from that instead. A path that is still on this machine is
+never deleted on the mirror, whether git lists it or not: `git rm --cached` on a
+build output leaves it here and the host's copy stays with it.
 
 ### Limits and interrupts
 
