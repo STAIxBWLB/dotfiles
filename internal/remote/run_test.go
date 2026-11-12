@@ -971,7 +971,7 @@ func TestAClaimAnotherMachineHoldsDefersTheRun(t *testing.T) {
 	if deferred.Outcome.Scope != PathScope(f.checkout) {
 		t.Errorf("scope = %q, want the path scope", deferred.Outcome.Scope)
 	}
-	for _, want := range []string{"belongs to", "otherbox", "ssh buildbox rm -rf", ".claim"} {
+	for _, want := range []string{"belongs to", "otherbox", "ssh buildbox 'rm -rf \"$HOME\"", ".claim"} {
 		if !strings.Contains(deferred.Outcome.Reason, want) {
 			t.Errorf("reason %q does not name %q", deferred.Outcome.Reason, want)
 		}
@@ -998,7 +998,7 @@ func TestAClaimForAnotherCheckoutOfThisMachineDefersTheRun(t *testing.T) {
 	if !errors.As(err, &deferred) {
 		t.Fatalf("Run = %v, want a defer for another checkout's claim", err)
 	}
-	for _, want := range []string{"belongs to", "other-clone", "ssh buildbox rm -rf"} {
+	for _, want := range []string{"belongs to", "other-clone", "ssh buildbox 'rm -rf \"$HOME\""} {
 		if !strings.Contains(deferred.Outcome.Reason, want) {
 			t.Errorf("reason %q does not name %q", deferred.Outcome.Reason, want)
 		}

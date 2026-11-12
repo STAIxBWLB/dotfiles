@@ -166,8 +166,8 @@ func (d Deps) Run(ctx context.Context, cfg Config, opts RunOptions) error {
 	case claimForeign:
 		return deferFor(PathScope(path), claimHeldElsewhere(h.MirrorDir(rel), h, rel, seen.Detail), time.Minute)
 	case claimUnreadable:
-		return deferFor(PathScope(path), fmt.Sprintf("the claim on %s on %s cannot be read (%s), so this run will not guess whether another run is using the mirror; inspect it with `ssh %s ls -la %s`",
-			mirror, h.Name, seen.Detail, h.SSH, h.claimPath(rel)), time.Minute)
+		return deferFor(PathScope(path), fmt.Sprintf("the claim on %s on %s cannot be read (%s), so this run will not guess whether another run is using the mirror; inspect it with `%s`",
+			mirror, h.Name, seen.Detail, h.claimCommand("ls -la", rel)), time.Minute)
 	}
 	stale := seen.Claim == claimOurs
 	if err := d.claimMirror(ctx, h, rel, path, stale); err != nil {
@@ -201,8 +201,8 @@ func (d Deps) Run(ctx context.Context, cfg Config, opts RunOptions) error {
 		case containerRunning:
 			// No claim, but a live container: an older dot, or a machine that
 			// never took one. Either way something else is inside the mirror.
-			return deferFor(PathScope(path), fmt.Sprintf("a container for %s is already running on %s (%s) without a claim, so another machine is running this checkout; wait for it or remove it with `ssh %s %s rm -f %s`",
-				mirror, h.Name, container, h.SSH, h.Runtime, container), time.Minute)
+			return deferFor(PathScope(path), fmt.Sprintf("a container for %s is already running on %s (%s) without a claim, so another machine is running this checkout; wait for it or remove it with `%s`",
+				mirror, h.Name, container, sshCommand(h, h.Runtime+" rm -f "+quotedWord(container))), time.Minute)
 		case containerStopped:
 			if err := d.removeContainerStrict(ctx, h, container); err != nil {
 				keepClaim = true
@@ -271,16 +271,16 @@ func (d Deps) Run(ctx context.Context, cfg Config, opts RunOptions) error {
 // tells another machine's run from a different checkout of this one, and only
 // the record carries that.
 func claimHeldElsewhere(mirror string, h Host, rel, owner string) string {
-	return fmt.Sprintf("the claim on %s on %s belongs to %s, so this mirror is in use elsewhere; wait for it, or remove it once that run is gone with `ssh %s rm -rf %s`",
-		mirror, h.Name, owner, h.SSH, h.claimPath(rel))
+	return fmt.Sprintf("the claim on %s on %s belongs to %s, so this mirror is in use elsewhere; wait for it, or remove it once that run is gone with `%s`",
+		mirror, h.Name, owner, h.claimCommand("rm -rf", rel))
 }
 
 // claimKept is a container removal that did not happen, with what keeps the
 // run from going on: the claim stays, so no other machine can sync into a
 // mirror that may still have that container in it.
 func claimKept(err error, mirror string, h Host, rel, container string) error {
-	return fmt.Errorf("%w, so this run stops here and keeps the claim on %s on %s: another machine cannot sync into a mirror that may still have %s in it, and this machine's next run of that checkout takes the claim over and retries the removal (or clear both with `ssh %s %s rm -f %s` and `ssh %s rm -rf %s`)",
-		err, mirror, h.Name, container, h.SSH, h.Runtime, container, h.SSH, h.claimPath(rel))
+	return fmt.Errorf("%w, so this run stops here and keeps the claim on %s on %s: another machine cannot sync into a mirror that may still have %s in it, and this machine's next run of that checkout takes the claim over and retries the removal (or clear both with `%s` and `%s`)",
+		err, mirror, h.Name, container, sshCommand(h, h.Runtime+" rm -f "+quotedWord(container)), h.claimCommand("rm -rf", rel))
 }
 
 // containerPresentScript is the query that settles a failed removal: the
@@ -599,10 +599,40 @@ if ! err=$(rm -rf "$lock" 2>&1); then
   printf 'release\tfailed\tthe claim under %%s could not be removed (%%s)\n' "$lock" "$err"
 fi`
 
-// claimPath is the claim directory of one mirror, in the form a person can type
-// into ssh.
+// claimPath is the claim directory of one mirror below the host's $HOME, in the
+// form a message spells it out: a record of where a claim is, not a word a shell
+// can be handed as it stands - see claimCommand for that.
 func (h Host) claimPath(rel string) string {
 	return "$HOME/" + h.Root + "/.dot-remote/" + MirrorKey(rel) + ".claim"
+}
+
+// claimCommand is one command a person pastes to look at or clear a mirror's
+// claim. $HOME is double quoted inside the remote part and that whole part is
+// one single-quoted argument, so the host's shell expands it: left bare, the
+// shell of the machine the message is printed on would expand it first and ask
+// the host about this machine's own home, leaving the claim where it is.
+func (h Host) claimCommand(action, rel string) string {
+	path := `"$HOME"/` + quotedWord(h.Root) + "/.dot-remote/" + MirrorKey(rel) + ".claim"
+	return sshCommand(h, action+" "+path)
+}
+
+// sshCommand renders a command a person pastes. The remote part is one
+// single-quoted argument so any $HOME in it belongs to the host's shell; h.SSH
+// is validated to hold no whitespace and to start with no dash, so it needs no
+// quoting of its own.
+func sshCommand(h Host, remote string) string {
+	return "ssh " + h.SSH + " " + ShellQuote(remote)
+}
+
+// quotedWord renders one word to sit inside a command that is itself quoted
+// whole: bare when a shell passes it through unchanged, in double quotes with
+// what a double-quoted word still acts on escaped otherwise. Either form is one
+// word for the shell that reads the message and for the one that runs it.
+func quotedWord(word string) string {
+	if safeWord.MatchString(word) {
+		return word
+	}
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, "$", `\$`, "`", "\\`").Replace(word) + `"`
 }
 
 // claimScript is the shell one run's claim becomes. It is built here rather
@@ -682,15 +712,15 @@ func (d Deps) claimMirror(ctx context.Context, h Host, rel, path string, replace
 	case claimAcquired:
 		return nil
 	case claimLostRace:
-		return deferFor(PathScope(path), fmt.Sprintf("another run took the claim on %s on %s while this run was checking it, so that run is using the mirror; wait for it or remove it with `ssh %s rm -rf %s`",
-			h.MirrorDir(rel), h.Name, h.SSH, h.claimPath(rel)), time.Minute)
+		return deferFor(PathScope(path), fmt.Sprintf("another run took the claim on %s on %s while this run was checking it, so that run is using the mirror; wait for it or remove it with `%s`",
+			h.MirrorDir(rel), h.Name, h.claimCommand("rm -rf", rel)), time.Minute)
 	case claimForeign:
 		// The claim changed hands between the check and the take: the owner is
 		// read again inside the take, so this is the record it found.
 		return deferFor(PathScope(path), claimHeldElsewhere(h.MirrorDir(rel), h, rel, detail), time.Minute)
 	default:
-		return fmt.Errorf("claiming the mirror %s on %s failed: %s; nothing was synced, so look at the claim with `ssh %s ls -la %s` before trying again",
-			rel, h.Name, detail, h.SSH, h.claimPath(rel))
+		return fmt.Errorf("claiming the mirror %s on %s failed: %s; nothing was synced, so look at the claim with `%s` before trying again",
+			rel, h.Name, detail, h.claimCommand("ls -la", rel))
 	}
 }
 
@@ -704,13 +734,14 @@ func (d Deps) releaseClaim(ctx context.Context, h Host, rel, path string) {
 	script := releaseScript(h, rel, path, d)
 	out, err := d.capture(context.WithoutCancel(ctx), SSHArgv(h.SSH, script), nil)
 	detail, failed := parseReleaseAnswer(out)
+	inspect, clear := h.claimCommand("ls -la", rel), h.claimCommand("rm -rf", rel)
 	switch {
 	case err != nil:
-		fmt.Fprintf(d.errOut(), "dot remote: could not release the claim on %s on %s (%v); it is at %s, so look at it with `ssh %s ls -la %s` and clear it with `ssh %s rm -rf %s`\n",
-			rel, h.Name, err, h.claimPath(rel), h.SSH, h.claimPath(rel), h.SSH, h.claimPath(rel))
+		fmt.Fprintf(d.errOut(), "dot remote: could not release the claim on %s on %s (%v); it is at %s, so look at it with `%s` and clear it with `%s`\n",
+			rel, h.Name, err, h.claimPath(rel), inspect, clear)
 	case failed:
-		fmt.Fprintf(d.errOut(), "dot remote: could not release the claim on %s on %s (%s); it is at %s, so look at it with `ssh %s ls -la %s` and clear it with `ssh %s rm -rf %s`\n",
-			rel, h.Name, detail, h.claimPath(rel), h.SSH, h.claimPath(rel), h.SSH, h.claimPath(rel))
+		fmt.Fprintf(d.errOut(), "dot remote: could not release the claim on %s on %s (%s); it is at %s, so look at it with `%s` and clear it with `%s`\n",
+			rel, h.Name, detail, h.claimPath(rel), inspect, clear)
 	}
 }
 

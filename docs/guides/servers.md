@@ -162,7 +162,10 @@ atomic, so two machines racing the same mirror cannot both get in.
 
 - A claim naming another machine, or another checkout, defers the run with exit
   75 and quotes that owner record. Wait for it, or, once you know that run is
-  gone, remove it: `ssh <host> rm -rf <root>/.dot-remote/<mirror key>.claim`.
+  gone, remove it:
+  `ssh <host> 'rm -rf "$HOME"/<root>/.dot-remote/<mirror key>.claim'`. The remote
+  part is one single-quoted argument so `$HOME` is the host's: pasted unquoted,
+  your own shell would expand it and name a path in your local home.
 - A claim naming this machine *and* this checkout is a leftover: the local path
   lease this run holds proves the run that took it is dead, so the claim is
   replaced and the container under the mirror's name is removed. A SIGKILLed run

@@ -589,10 +589,11 @@ if grep -q "the claim on dot-remote/one on remotehost belongs to another-box" \
 else
   fail "the defer reason does not name the claim's owner: $(cat "$tmpdir/foreign.err")"
 fi
-if grep -q "rm -rf .*\.claim" "$tmpdir/foreign.out" "$tmpdir/foreign.err"; then
-  pass "the defer reason carries the command that clears the claim"
+if grep -qF "ssh remotehost 'rm -rf \"\$HOME\"/dot-remote/.dot-remote/" \
+  "$tmpdir/foreign.out" "$tmpdir/foreign.err"; then
+  pass "the defer reason carries the command that clears the claim, quoted for the host"
 else
-  fail "the defer reason carries no removal command: $(cat "$tmpdir/foreign.err")"
+  fail "the defer reason carries no quoted removal command: $(cat "$tmpdir/foreign.err")"
 fi
 if grep -q '^run --rm ' "$HOME/stub.log" 2>/dev/null; then
   fail "a deferred run still started a container"

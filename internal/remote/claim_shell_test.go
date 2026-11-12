@@ -1,6 +1,8 @@
 package remote
 
 import (
+	"context"
+	"errors"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
@@ -406,3 +408,137 @@ func TestAClaimAPartialRemovalLeftBehindIsUnreadableToTheNextRun(t *testing.T) {
 // claimContainer is the name the run derives for this sandbox's mirror, so the
 // inspection asks about the container it would use.
 func (s *claimSandbox) claimContainer() string { return s.host.ContainerName(s.rel) }
+
+// The recovery commands a run prints are meant to be pasted, so the text dot
+// writes is not what has to be right: what a shell makes of it is. ssh has to
+// receive one remote command, and a $HOME inside it has to stay a $HOME for the
+// host's shell - expanded here, it names this machine's own home and the host
+// removes or lists nothing. Driven through /bin/sh with an ssh that prints its
+// arguments, that expansion is exactly what a Mac does to the printed command.
+
+// pastedLocalHome is what $HOME looks like on the machine reading the message,
+// and what must not appear on the far side.
+const pastedLocalHome = "/Users/someone"
+
+// pastedArguments is what ssh receives when a person pastes command: the
+// destination, then the remote command.
+func pastedArguments(t *testing.T, command string) []string {
+	t.Helper()
+	script := "ssh() { printf '%s\\n' \"$@\"; }\n" + command
+	cmd := osexec.Command("/bin/sh", "-c", script)
+	cmd.Env = []string{"HOME=" + pastedLocalHome, "PATH=/usr/bin:/bin", "LC_ALL=C"}
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("running the printed command %q failed (%v): %s", command, err, out)
+	}
+	return strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
+}
+
+// printedCommands is every command a message puts in backticks, which is how a
+// run hands a person something to paste.
+func printedCommands(message string) []string {
+	var commands []string
+	for _, part := range strings.Split(message, "`") {
+		if strings.HasPrefix(part, "ssh ") {
+			commands = append(commands, part)
+		}
+	}
+	return commands
+}
+
+// checkPastedCommand asserts one printed command survives the shell that reads
+// it: ssh gets a destination and one remote command, no local home directory
+// was expanded into it, and a command naming a claim still carries $HOME for
+// the host.
+func checkPastedCommand(t *testing.T, command string) {
+	t.Helper()
+	args := pastedArguments(t, command)
+	if len(args) != 2 {
+		t.Errorf("%q reached ssh as %v, want a destination and one remote command", command, args)
+		return
+	}
+	if strings.Contains(args[1], pastedLocalHome) {
+		t.Errorf("%q expanded $HOME on this machine, so the host would act on %s", command, args[1])
+	}
+	if strings.Contains(command, ".claim") && !strings.Contains(args[1], "$HOME") {
+		t.Errorf("%q does not leave $HOME to the host: %s", command, args[1])
+	}
+}
+
+// Each message a run stops with carries a command, and each of them is checked
+// the way a person would use it. The messages come from the runs themselves -
+// not from the builders - so a new call site is covered the day it is written.
+func TestEveryPrintedClaimCommandLeavesHomeToTheHost(t *testing.T) {
+	type printed struct{ name, message string }
+	f := newRunFixture(t)
+	h, rel := f.host, "repo"
+	var messages []printed
+
+	f.exec.preflight = "claim\tunreadable\tno readable record\ncontainer\tabsent\nimage\tknown\nuser\tdev\n"
+	var deferred *Deferred
+	if err := f.run(RunOptions{Command: []string{"true"}}); !errors.As(err, &deferred) {
+		t.Fatalf("a run over an unreadable claim = %v, want a defer", err)
+	}
+	messages = append(messages, printed{"a claim that cannot be read", deferred.Outcome.Reason})
+
+	f.exec.preflight = preflightAbsent
+	f.exec.claim = "claim\tlost-race\n"
+	deferred = nil
+	if err := f.run(RunOptions{Command: []string{"true"}}); !errors.As(err, &deferred) {
+		t.Fatalf("a run that lost the take = %v, want a defer", err)
+	}
+	messages = append(messages, printed{"a take another run won", deferred.Outcome.Reason})
+
+	f.exec.claim = "claim\tfailed\tmkdir: cannot create directory\n"
+	if err := f.run(RunOptions{Command: []string{"true"}}); err == nil {
+		t.Fatal("a failed take succeeded")
+	} else {
+		messages = append(messages, printed{"a take that failed", err.Error()})
+	}
+	f.exec.claim = ""
+
+	f.exec.preflight = "container\trunning\nimage\tknown\tuser\tdev\n"
+	deferred = nil
+	if err := f.run(RunOptions{Command: []string{"true"}}); !errors.As(err, &deferred) {
+		t.Fatalf("a run over a claimless running container = %v, want a defer", err)
+	}
+	messages = append(messages, printed{"a container without a claim", deferred.Outcome.Reason})
+
+	messages = append(messages,
+		printed{"a claim held elsewhere", claimHeldElsewhere(h.MirrorDir(rel), h, rel, claimMachine+"\t4242\t"+claimStarted+"\t/home/u/other")},
+		printed{"a claim kept after a failed removal", claimKept(errors.New("could not remove"), h.MirrorDir(rel), h, rel, h.ContainerName(rel)).Error()},
+	)
+
+	f.exec.releaseOut = "release\tfailed\tthe claim could not be removed (Permission denied)\n"
+	f.deps().releaseClaim(context.Background(), h, rel, f.checkout)
+	messages = append(messages, printed{"a release that failed", f.errOut.String()})
+
+	for _, tc := range messages {
+		commands := printedCommands(tc.message)
+		if len(commands) == 0 {
+			t.Errorf("%s carries no pasteable command: %s", tc.name, tc.message)
+			continue
+		}
+		for _, command := range commands {
+			checkPastedCommand(t, command)
+		}
+	}
+	// The claim commands are the ones this is about, so count them: a message
+	// that stopped naming one would otherwise pass on the container command
+	// alone.
+	if commands := printedCommands(claimHeldElsewhere(h.MirrorDir(rel), h, rel, claimMachine)); len(commands) != 1 {
+		t.Fatalf("the claim-held message carries %d commands, want the one that clears it", len(commands))
+	}
+	if got := h.claimCommand("rm -rf", rel); got != "ssh buildbox 'rm -rf \"$HOME\"/dot-remote/.dot-remote/"+MirrorKey(rel)+".claim'" {
+		t.Errorf("claimCommand = %s", got)
+	}
+	// A root a shell would split has to arrive as one word, and stay one word
+	// for the host's shell that expands $HOME in front of it.
+	spaced := h
+	spaced.Root = "my mirrors"
+	command := spaced.claimCommand("rm -rf", rel)
+	args := pastedArguments(t, command)
+	if len(args) != 2 || !strings.Contains(args[1], `"my mirrors"`) {
+		t.Errorf("%q reached ssh as %v, want the root as one quoted word", command, args)
+	}
+}
