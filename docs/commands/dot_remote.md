@@ -48,6 +48,7 @@ same path removes the one left behind.
 
 * [dot](dot.md)	 - User environment & workspace management tool
 * [dot remote job](dot_remote_job.md)	 - Run file-in, file-out jobs on a host's job profile, or locally when it is busy
+* [dot remote prune](dot_remote_prune.md)	 - List, and with --yes remove, what runs left behind on the host
 * [dot remote run](dot_remote_run.md)	 - Mirror a checkout to the host and run a command in a container there
 * [dot remote setup](dot_remote_setup.md)	 - Check the host and build or pull the dev image
 * [dot remote src](dot_remote_src.md)	 - Clone or analyze third-party source on the host, never on this machine

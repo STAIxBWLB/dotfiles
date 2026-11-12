@@ -1128,6 +1128,38 @@ else
   fail "interrupt: exit $code, $(cat "$tmpdir/held.err")"
 fi
 
+# ── prune and -p ─────────────────────────────────────────────────────────────
+mkdir -p "$HOME/remote-work/doomed"
+printf 'x\n' >"$HOME/remote-work/doomed/f.txt"
+git -C "$HOME/remote-work/doomed" -c init.defaultBranch=main init --quiet .
+: >"$HOME/stub.log"
+if "$BIN" remote run -p 18080 "$HOME/remote-work/doomed" -- true >/dev/null 2>"$tmpdir/port.err"; then
+  if grep -q -- '-p 127.0.0.1:18080:18080' "$HOME/stub.log"; then
+    pass "-p publishes the port on the host loopback"
+  else
+    fail "-p argv: $(grep '^run ' "$HOME/stub.log" | tail -1)"
+  fi
+else
+  fail "run -p failed: $(cat "$tmpdir/port.err")"
+fi
+rm -rf "$HOME/remote-work/doomed"
+"$BIN" remote prune --json >"$tmpdir/prune.json" 2>"$tmpdir/prune.err" || true
+if grep -q '"name": "doomed"' "$tmpdir/prune.json" && [ -d "$HOME/dot-remote/doomed" ]; then
+  pass "prune lists the mirror of a deleted checkout and removes nothing"
+else
+  fail "prune listing: $(cat "$tmpdir/prune.json" "$tmpdir/prune.err")"
+fi
+if grep -q '"name": "one"' "$tmpdir/prune.json"; then
+  fail "prune listed a mirror whose checkout still exists"
+else
+  pass "prune leaves the mirror of a live checkout alone"
+fi
+if "$BIN" remote prune --yes >/dev/null 2>"$tmpdir/prune2.err" && [ ! -e "$HOME/dot-remote/doomed" ] && [ -d "$HOME/dot-remote/one" ]; then
+  pass "prune --yes removes only the orphaned mirror"
+else
+  fail "prune --yes: $(cat "$tmpdir/prune2.err")"
+fi
+
 # D-10: `report` alone returns success on zero assertions, so the verdict
 # conjoins a positive pass count on its own line.
 report

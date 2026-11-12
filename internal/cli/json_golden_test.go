@@ -139,6 +139,7 @@ func goldenCases() []goldenCase {
 		{surface: "remote job check", args: []string{"remote", "job", "check", "--json"}, wantExit: 69, fixture: goldenRemoteFixture},
 		{surface: "remote job run", args: []string{"remote", "job", "run", "--json", "--remote-only", "-o", "@ROOT@", "--name", "golden", "--", "true"}, wantExit: 69, fixture: goldenRemoteFixture},
 		{surface: "remote run", args: []string{"remote", "run", "--json", "@ROOT@", "--", "true"}, wantExit: ExitDeferred, fixture: goldenRemoteFixture},
+		{surface: "remote prune", args: []string{"remote", "prune", "--json", "--dry-run"}, fixture: goldenRemoteFixture},
 		{surface: "remote setup", args: []string{"remote", "setup", "--json", "--dry-run"}, fixture: goldenRemoteFixture},
 		{surface: "remote src", args: []string{"remote", "src", "--json", "--", "true"}, wantExit: ExitDeferred, fixture: goldenRemoteFixture},
 		{surface: "remote status", args: []string{"remote", "status", "--json"}, fixture: goldenRemoteFixture},

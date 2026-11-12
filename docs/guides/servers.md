@@ -242,6 +242,18 @@ unreadable host defers too: missing telemetry is not health.
   delete files inside a mirror another run is using.
 - `--dry-run` prints the mirror, the container and the run command without
   sending anything.
+- `-p PORT` (repeatable) publishes the container's port on the host's
+  `127.0.0.1` only and forwards local `127.0.0.1:PORT` to it over the run's own
+  ssh connection, so a dev server in the container is reachable here for the
+  life of the run. ssh runs with `ExitOnForwardFailure`, so a port already taken
+  locally fails the run instead of running it without the forward.
+- `--cgroup` gives the command a writable cgroup v2 subtree, its path in
+  `DOT_REMOTE_CGROUP`, for tools that create their own cgroups. The container
+  starts as root with `CAP_SYS_ADMIN`, AppArmor unconfined and a private cgroup
+  namespace only for the setup (an init leaf, the memory controller, a
+  delegated subtree owned by the image's user), then `setpriv` drops to that
+  user with every capability removed before the command runs. The host must use
+  cgroup v2; a failed setup says so and stops before the command.
 
 Interrupting a run removes its container, and so does an ssh connection that
 drops (OpenSSH's own status 255, which a command that exits 255 also reports):
@@ -393,10 +405,17 @@ colliding. Nothing else on the host is written, and on this machine a run adds
 only the admission leases and the sent listing of that mirror, under
 `~/.local/state/dot/remote-sent/`.
 
-To reclaim space, delete the mirror directory of a checkout you no longer use;
-the next run of that path recreates it, and the caches stay warm in their
-volumes. There is no prune command yet: the mirror tree is made of ordinary
-directories.
+To reclaim space, run `dot remote prune`: it lists mirrors whose local
+checkout (`remote.local_root/<path>`) no longer exists, verify refs a killed
+verify left, and containers carrying the host's prefix that are not running,
+and removes them only with `--yes`. A mirror a run holds (its claim on the host,
+or a lease here) is skipped, and each removal takes the mirror's claim itself,
+so a run that starts meanwhile defers rather than syncing into a directory being
+deleted. A verify ref is left while its verify container still runs, and a
+container that was restarted since the listing is left too. Job directories
+kept after a failed `dot remote job` are listed but never removed: their `out/`
+may be the only copy of what the job made, so read and delete them yourself.
+The caches stay warm in their volumes; prune does not touch them.
 
 ## GPU Server Provisioning
 
