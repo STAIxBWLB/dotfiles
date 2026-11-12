@@ -518,7 +518,7 @@ configurable in the `remote:` block:
   local checkout path of that run
 - `~/dot-remote-git` (`git_root`, mode 700) — one bare repository per
   repository, `<name>-<hash>.git`, created once by `verify`; a verify pushes
-  its commit to `refs/verify/<mirror key>` (and the base branch to
+  its commit to `refs/verify/<mirror key>/<sha>-<nonce>`, one ref per run (and the base branch to
   `refs/heads/<branch>`) and deletes that ref when it ends
 - `~/dot-remote-src` (`src_root`) — the third-party clones `src` makes and
   analyzes; `src` creates the directory and writes nothing else there itself

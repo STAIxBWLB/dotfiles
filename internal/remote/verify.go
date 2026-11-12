@@ -3,6 +3,7 @@ package remote
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
@@ -100,9 +101,22 @@ func BareName(commonDir string) string {
 	return bareUnsafe.ReplaceAllString(name, "-") + "-" + hex.EncodeToString(sum[:])[:8]
 }
 
-// VerifyRef is the ref one checkout's commit is pushed to, and deleted from
-// after the job.
-func VerifyRef(rel string) string { return "refs/verify/" + MirrorKey(rel) }
+// VerifyRef is the ref one verify run pushes its commit to, and deletes after
+// the job. It is unique per run: two machines verifying the same path share a
+// mirror key, and a shared ref could be replaced between this run's push and
+// its container's fetch, so the container would test the other commit.
+func VerifyRef(rel, sha, nonce string) string {
+	return "refs/verify/" + MirrorKey(rel) + "/" + shortSHA(sha) + "-" + nonce
+}
+
+// verifyNonce is the random part of one run's ref.
+func verifyNonce() string {
+	var b [6]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b[:])
+}
 
 // VerifyContainer is the container a verify of one checkout runs in.
 func (h Host) VerifyContainer(rel string) string { return h.Prefix + "-verify-" + MirrorKey(rel) }
@@ -154,15 +168,22 @@ func resolveBase(ctx context.Context, checkout, configured string) (baseRef, err
 // the base branch fetched beside the target, then drops to that user with no
 // capabilities and runs CMD there.
 func verifyCheckout(ref string, base baseRef, command []string) string {
-	fetch := "git fetch -q origin +" + ref + ":refs/verify/target"
-	if base.Branch != "" {
-		fetch = "git fetch -q origin +refs/heads/" + base.Branch + ":refs/remotes/origin/" + base.Branch + " +" + ref + ":refs/verify/target"
-	}
-	inner := "git init -q /v/r && cd /v/r && git remote add origin /git/repo.git && " + fetch +
-		" && git checkout -q --detach refs/verify/target && " + CommandScript(command)
 	return `mkdir -p /v && chown "$U:$G" /v && home=$(getent passwd "$U" | cut -d: -f6); ` +
 		`exec setpriv --reuid="$U" --regid="$G" --init-groups --inh-caps=-all ` +
-		`env HOME="${home:-/tmp}" PATH="$PATH" bash -c ` + ShellQuote(inner)
+		`env HOME="${home:-/tmp}" PATH="$PATH" bash -c ` + ShellQuote(verifyInner(ref, base, command))
+}
+
+// verifyInner is the unprivileged part: the fresh checkout, then CMD.
+func verifyInner(ref string, base baseRef, command []string) string {
+	// Every refspec is one quoted word: a branch name may hold ';' or '$(',
+	// which git accepts, and this script is handed to a shell.
+	fetch := "git fetch -q origin " + ShellQuote("+"+ref+":refs/verify/target")
+	if base.Branch != "" {
+		fetch = "git fetch -q origin " + ShellQuote("+refs/heads/"+base.Branch+":refs/remotes/origin/"+base.Branch) +
+			" " + ShellQuote("+"+ref+":refs/verify/target")
+	}
+	return "git init -q /v/r && cd /v/r && git remote add origin /git/repo.git && " + fetch +
+		" && git checkout -q --detach refs/verify/target && " + CommandScript(command)
 }
 
 // VerifyCommand is the remote shell command a verify sends: the host user's
@@ -218,7 +239,6 @@ func (d Deps) Verify(ctx context.Context, cfg Config, opts VerifyOptions) error 
 		}
 		command = []string{project.Verify}
 	}
-	ref := VerifyRef(rel)
 	container := h.VerifyContainer(rel)
 	// The repository is read before the leases only for a dry run: a real job
 	// takes its leases and reads the host's load first, as a run does, so a
@@ -228,6 +248,7 @@ func (d Deps) Verify(ctx context.Context, cfg Config, opts VerifyOptions) error 
 		if err != nil {
 			return err
 		}
+		ref := VerifyRef(rel, "<sha>", "<nonce>")
 		fmt.Fprintf(d.out(), "would push %s (%s) to %s:%s as %s\n", checkout, map[bool]string{true: "working tree", false: "HEAD"}[opts.Dirty], h.SSH, path.Join(h.GitRoot, bare), ref)
 		if base.Branch != "" {
 			fmt.Fprintf(d.out(), "would send the base %s as %s\n", base.Local, base.Branch)
@@ -248,7 +269,6 @@ func (d Deps) Verify(ctx context.Context, cfg Config, opts VerifyOptions) error 
 	if err != nil {
 		return err
 	}
-	remoteCommand := VerifyCommand(h, container, bare, ref, base, command)
 	if err := d.prepareContainer(ctx, h, container, PathScope(checkout)); err != nil {
 		return err
 	}
@@ -257,6 +277,8 @@ func (d Deps) Verify(ctx context.Context, cfg Config, opts VerifyOptions) error 
 	if err != nil {
 		return err
 	}
+	ref := VerifyRef(rel, sha, d.nonce())
+	remoteCommand := VerifyCommand(h, container, bare, ref, base, command)
 	if _, err := d.capture(ctx, SSHArgv(h.SSH, bareInitScript(h, bare)), nil); err != nil {
 		return fmt.Errorf("creating the bare repo %s on %s: %w", path.Join(h.GitRoot, bare), h.Name, err)
 	}
@@ -300,8 +322,18 @@ func verifyTarget(ctx context.Context, checkout, configuredBase string) (string,
 func (d Deps) deleteVerifyRef(ctx context.Context, h Host, bare, ref string) {
 	script := `cd "$HOME" && git -C ` + ShellQuote(path.Join(h.GitRoot, bare)) + ` update-ref -d ` + ShellQuote(ref)
 	if _, err := d.capture(context.WithoutCancel(ctx), SSHArgv(h.SSH, script), nil); err != nil {
-		fmt.Fprintf(d.errOut(), "dot remote: could not delete %s in %s on %s (%v)\n", ref, path.Join(h.GitRoot, bare), h.Name, err)
+		fmt.Fprintf(d.errOut(), "dot remote: could not delete %s in %s on %s (%v); delete it with `%s`\n",
+			ref, path.Join(h.GitRoot, bare), h.Name, err,
+			sshCommand(h, `git -C "$HOME"/`+quotedWord(path.Join(h.GitRoot, bare))+" update-ref -d "+quotedWord(ref)))
 	}
+}
+
+// nonce is this run's random ref suffix; Deps.Nonce fixes it in tests.
+func (d Deps) nonce() string {
+	if d.Nonce != nil {
+		return d.Nonce()
+	}
+	return verifyNonce()
 }
 
 func shortSHA(sha string) string {

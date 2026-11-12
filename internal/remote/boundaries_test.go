@@ -50,7 +50,7 @@ func TestRemoteWritesAreInBoundaries(t *testing.T) {
 		"`<prefix>-<mirror key>`",
 		"`<prefix>-verify-<mirror key>`",
 		"`<prefix>-src-<name>`",
-		"`refs/verify/<mirror key>`",
+		"`refs/verify/<mirror key>/<sha>-<nonce>`",
 	} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("docs/BOUNDARIES.md does not name %s", want)
@@ -63,7 +63,7 @@ func TestRemoteWritesAreInBoundaries(t *testing.T) {
 	if got := host.SrcContainer("lib"); got != host.Prefix+"-src-lib" {
 		t.Errorf("SrcContainer = %q", got)
 	}
-	if got := VerifyRef("a"); got != "refs/verify/"+MirrorKey("a") {
+	if got := VerifyRef("a", "abc", "n"); got != "refs/verify/"+MirrorKey("a")+"/abc-n" {
 		t.Errorf("VerifyRef = %q", got)
 	}
 	// The sent listing is what a run writes on this machine, so the document

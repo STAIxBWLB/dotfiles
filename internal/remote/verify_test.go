@@ -191,6 +191,7 @@ func verifyFixture(t *testing.T) (*runFixture, string) {
 func (f *runFixture) verifyDeps() Deps {
 	d := f.deps()
 	d.Git = nil
+	d.Nonce = func() string { return "n1" }
 	// The push, the bare repo's creation and the ref's deletion succeed; the
 	// container run answers with the fixture's exit.
 	d.Exec = func(ctx context.Context, argv []string, stdin io.Reader, stdout, stderr io.Writer) (int, syscall.Signal, error) {
@@ -222,18 +223,59 @@ func TestVerifyPushesRunsAndDeletesTheRef(t *testing.T) {
 			del = argv
 		}
 	}
-	rel := "vrepo"
-	if push == nil || !hasArg(push, "+"+gitRun(t, repo, "rev-parse", "HEAD")+":"+VerifyRef(rel)) {
-		t.Errorf("push = %v, want HEAD to %s", push, VerifyRef(rel))
+	head := gitRun(t, repo, "rev-parse", "HEAD")
+	ref := VerifyRef("vrepo", head, "n1")
+	if push == nil || !hasArg(push, "+"+head+":"+ref) {
+		t.Errorf("push = %v, want HEAD to %s", push, ref)
 	}
-	if run == nil || !strings.Contains(run[len(run)-1], "scripts/check.sh") {
-		t.Errorf("container run = %v, want the project's verify command", run)
+	if run == nil || !strings.Contains(run[len(run)-1], "scripts/check.sh") || !strings.Contains(run[len(run)-1], ref+":refs/verify/target") {
+		t.Errorf("container run = %v, want the project's verify command fetching %s", run, ref)
 	}
-	if del == nil || !strings.Contains(del[len(del)-1], VerifyRef(rel)) {
+	if del == nil || !strings.Contains(del[len(del)-1], "update-ref -d "+ShellQuote(ref)) {
 		t.Errorf("the ref was not deleted: %v", del)
 	}
 	if held := f.leases(); len(held) != 0 {
 		t.Errorf("leases left: %+v", held)
+	}
+}
+
+// Two runs of one path, from one machine or two, push to different refs, so
+// neither can replace the commit the other's container is about to fetch.
+func TestVerifyRefIsUniquePerRun(t *testing.T) {
+	if VerifyRef("p", "abc", verifyNonce()) == VerifyRef("p", "abc", verifyNonce()) {
+		t.Error("two runs of one commit share a ref")
+	}
+	if !strings.HasPrefix(VerifyRef("p", "abc", "x"), "refs/verify/"+MirrorKey("p")+"/") {
+		t.Errorf("ref = %q", VerifyRef("p", "abc", "x"))
+	}
+}
+
+// A branch name git accepts may carry shell metacharacters; each refspec stays
+// one word of the inner script, so it can neither run a command nor skip the
+// checkout.
+func TestVerifyCheckoutQuotesRefspecs(t *testing.T) {
+	dir := t.TempDir()
+	for _, branch := range []string{"main;id", "x$(touch pwned)", "a`touch pwned`"} {
+		ref := "refs/verify/k/s-n"
+		inner := verifyInner(ref, baseRef{Local: "refs/remotes/origin/" + branch, Branch: branch}, []string{"echo ran"})
+		// git and cd are stubbed: each git call prints its argv on one line.
+		stub := `git(){ printf 'git'; printf ' [%s]' "$@"; printf '\n'; }; cd(){ :; }; `
+		cmd := osexec.Command("bash", "-c", stub+inner)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("branch %q: %v: %s", branch, err, out)
+		}
+		want := "git [fetch] [-q] [origin] [+refs/heads/" + branch + ":refs/remotes/origin/" + branch + "] [+" + ref + ":refs/verify/target]\n"
+		if !strings.Contains(string(out), want) {
+			t.Errorf("branch %q: fetch argv is not two whole refspecs:\n%s", branch, out)
+		}
+		if !strings.Contains(string(out), "git [checkout] [-q] [--detach] [refs/verify/target]") || !strings.HasSuffix(string(out), "ran\n") {
+			t.Errorf("branch %q skipped the checkout or the command:\n%s", branch, out)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "pwned")); err == nil {
+			t.Fatalf("branch %q ran a command", branch)
+		}
 	}
 }
 
