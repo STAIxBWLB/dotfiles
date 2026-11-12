@@ -949,16 +949,64 @@ func TestReplacedCandidatesAreOnlyWhatIsNewSinceTheRecord(t *testing.T) {
 		}
 	}
 	listing := []byte("a.go\x00b.go\x00dir/c.go\x00gone.go\x00dir\x00")
-	if got := string(replacedCandidates(src, listing, []byte("a.go\x00dir/c.go\x00"))); got != "b.go\x00" {
+	if got := string(replacedCandidates(src, listing, []byte("a.go\x00dir/c.go\x00"), nil)); got != "b.go\x00" {
 		t.Errorf("with a record the candidates are %q, want only the new file", got)
 	}
-	if got := string(replacedCandidates(src, listing, nil)); got != "a.go\x00b.go\x00dir/c.go\x00" {
+	if got := string(replacedCandidates(src, listing, nil, nil)); got != "a.go\x00b.go\x00dir/c.go\x00" {
 		t.Errorf("with no record the candidates are %q, want every listed file on disk and no directory", got)
 	}
-	if got := replacedCandidates(src, []byte("a.go\x00"), []byte("a.go\x00")); got != nil {
+	if got := replacedCandidates(src, []byte("a.go\x00"), []byte("a.go\x00"), nil); got != nil {
 		t.Errorf("an unchanged listing has candidates %q, want none", got)
 	}
 	if got := shipListing(src, []byte{}); got == nil {
 		t.Error("an empty listing became nil, which a run reads as a path that is not a checkout")
+	}
+}
+
+// A path the exclude list covers is never sent, so the host's copy is not this
+// run's to remove, whatever the checkout has there.
+func TestReplacedCandidatesLeaveExcludedPathsAlone(t *testing.T) {
+	src := t.TempDir()
+	for _, rel := range []string{"artifacts/report", "pkg/target/note", "a/.claude/worktrees/x", "keys/id.pem", "plain"} {
+		full := filepath.Join(src, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	listing := []byte("artifacts/report\x00pkg/target/note\x00a/.claude/worktrees/x\x00keys/id.pem\x00plain\x00")
+	excludes := (Config{ExcludeExtra: []string{"artifacts"}}).Excludes()
+	if got := string(replacedCandidates(src, listing, nil, excludes)); got != "plain\x00" {
+		t.Errorf("candidates are %q, want only the path no exclude covers", got)
+	}
+}
+
+// A parent that is a symlink on the mirror points outside it. The removal must
+// not follow it, even though the checkout now has a directory there.
+func TestTheReplacedDirectoryRemovalDoesNotFollowAParentSymlink(t *testing.T) {
+	f := newSyncFixture(t)
+	outside := filepath.Join(f.root, "shared-assets")
+	if err := os.MkdirAll(filepath.Join(outside, "icons"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outside, "icons", "keep.png"), []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(f.dest, "assets")); err != nil {
+		t.Fatal(err)
+	}
+	f.destFile("inside/icons/old.png", "old")
+
+	removed, err := f.clearReplaced([]byte("assets/icons\x00inside/icons\x00"))
+	if err != nil {
+		t.Fatalf("the removal command failed: %v", err)
+	}
+	if got := string(removed); got != "inside/icons\x00" {
+		t.Errorf("removed %q, want only the directory inside the mirror", got)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "icons", "keep.png")); err != nil {
+		t.Errorf("the directory outside the mirror was touched: %v", err)
 	}
 }

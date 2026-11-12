@@ -408,8 +408,9 @@ that is now a file has nowhere to live. `--force` acts only on the path being
 replaced; every other file the checkout left alone keeps the host's copy. Where
 that directory holds a name on the exclude list, rsync protects it on the
 receiving side as well, so the run removes the directory itself over ssh first,
-only for a listed file or symlink it did not send under that name last time and
-only when the mirror holds a real directory there. A
+only for a listed file or symlink it did not send under that name last time,
+never for a path the exclude list covers, never through a symlink on the mirror,
+and only when the mirror holds a real directory there. A
 directory the checkout deletes outright is the other shape, and there the files
 it sent go while a build output beside them stays, with rsync's "some files
 vanished" (24) accepted on that pass alone.

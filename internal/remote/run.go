@@ -350,16 +350,16 @@ func (d Deps) syncInput(ctx context.Context, h Host, mirror, rel, path string, i
 			mirror, h.Name)
 	case record.Found:
 		in.Deletes = withoutBlockedPaths(path, goneFromDisk(path, record.Listing, in.Listing))
-		return syncDecision{Input: in, Record: true, Replaced: replacedCandidates(path, in.Listing, record.Listing)}
+		return syncDecision{Input: in, Record: true, Replaced: replacedCandidates(path, in.Listing, record.Listing, in.Excludes)}
 	}
 	deletes, rerr := d.reconcile(ctx, h, mirror, path, in.Listing)
 	if rerr != nil {
 		fmt.Fprintf(d.errOut(), "dot remote: could not read what %s holds on %s (%v), so this run deletes nothing there and records nothing: the next run there reconciles the mirror again\n",
 			mirror, h.Name, rerr)
-		return syncDecision{Input: in, Replaced: replacedCandidates(path, in.Listing, nil)}
+		return syncDecision{Input: in, Replaced: replacedCandidates(path, in.Listing, nil, in.Excludes)}
 	}
 	in.Deletes = withoutBlockedPaths(path, deletes)
-	return syncDecision{Input: in, Record: true, Replaced: replacedCandidates(path, in.Listing, nil)}
+	return syncDecision{Input: in, Record: true, Replaced: replacedCandidates(path, in.Listing, nil, in.Excludes)}
 }
 
 // clearReplaced removes, on the host, each directory the checkout has replaced

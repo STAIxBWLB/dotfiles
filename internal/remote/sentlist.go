@@ -245,11 +245,13 @@ func shipListing(src string, listing []byte) []byte {
 // this machine did not send under that name last time. With no record that is
 // the whole listing, once per mirror; with one it is only what is new, which is
 // usually nothing.
-func replacedCandidates(src string, listing, sent []byte) []byte {
+func replacedCandidates(src string, listing, sent []byte, excludes []string) []byte {
 	before := listedPaths(sent)
 	var fresh []string
 	for rel := range listedPaths(listing) {
-		if before[rel] {
+		// A path the exclude list covers is never sent, so there is nothing to
+		// make way for, and what the host holds there is not this run's to remove.
+		if before[rel] || excludedPath(rel, excludes) {
 			continue
 		}
 		info, err := os.Lstat(filepath.Join(src, filepath.FromSlash(rel)))
@@ -265,14 +267,40 @@ func replacedCandidates(src string, listing, sent []byte) []byte {
 	return []byte(strings.Join(fresh, "\x00") + "\x00")
 }
 
+// excludedPath reports whether an exclude pattern covers rel the way rsync reads
+// it: a pattern without a slash matches any one path element, and one with a
+// slash matches a run of elements anywhere in the path. It errs towards
+// "excluded", because an excluded path is one a run leaves alone.
+func excludedPath(rel string, excludes []string) bool {
+	parts := strings.Split(rel, "/")
+	for _, pattern := range excludes {
+		pattern = strings.Trim(strings.TrimSpace(pattern), "/")
+		if pattern == "" {
+			continue
+		}
+		width := strings.Count(pattern, "/") + 1
+		for i := 0; i+width <= len(parts); i++ {
+			if ok, err := path.Match(pattern, strings.Join(parts[i:i+width], "/")); err != nil || ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // replacedDirsCommand removes, under one mirror, each path named on stdin
 // (NUL-separated) that is a real directory there, and prints the ones it
 // removed, NUL-separated. A path that is already a file or a symlink on the
-// mirror is left for the ship pass, and a mirror that does not exist yet has
-// nothing to remove.
+// mirror is left for the ship pass, a path under a symlink on the mirror is not
+// followed, and a mirror that does not exist yet has nothing to remove.
 func replacedDirsCommand(mirror string) string {
+	// A parent that is a symlink on the mirror would carry the test and the
+	// removal outside the mirror, so a path under one is skipped: every prefix
+	// is checked, not only the last element.
 	return `cd "$HOME"/` + quotedWord(mirror) + ` 2>/dev/null || exit 0; ` +
-		`xargs -0 sh -c 'for p; do if [ -d "./$p" ] && [ ! -L "./$p" ]; then rm -rf -- "./$p" || exit 1; printf "%s\\0" "$p"; fi; done' sh # replaced-dirs`
+		`xargs -0 sh -c 'for p; do q="$p"; linked=; ` +
+		`while :; do case "$q" in */*) q="${q%/*}"; if [ -L "./$q" ]; then linked=1; fi;; *) break;; esac; done; ` +
+		`if [ -z "$linked" ] && [ -d "./$p" ] && [ ! -L "./$p" ]; then rm -rf -- "./$p" || exit 1; printf "%s\\0" "$p"; fi; done' sh # replaced-dirs`
 }
 
 // blockedByNonDirectory reports whether some ancestor of rel exists on this
