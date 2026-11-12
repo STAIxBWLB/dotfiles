@@ -151,6 +151,7 @@ func ContainerArgvWith(h Host, name, rel string, command []string, extra RunExtr
 // owned by the image's user, and puts this shell in a leaf of it. Any failure
 // says what the host must allow and stops before CMD runs.
 const cgroupSetup = `set -e; c=/sys/fs/cgroup; ` +
+	`if [ -z "$DOT_REMOTE_USER" ] || ! id "$DOT_REMOTE_USER" >/dev/null 2>&1; then echo "dot remote: --cgroup needs the image to set a USER that has an /etc/passwd entry (got '$DOT_REMOTE_USER'); add one and rerun dot remote setup" >&2; exit 1; fi; ` +
 	`trap 'echo "dot remote: --cgroup setup failed (line $LINENO): the host must use cgroup v2 and the runtime must allow CAP_SYS_ADMIN with AppArmor unconfined; rerun without --cgroup if the command needs no delegated cgroup" >&2' ERR; ` +
 	`mount -o remount,rw "$c"; mkdir "$c/init"; ` +
 	`for pid in $(cat "$c/cgroup.procs"); do echo "$pid" > "$c/init/cgroup.procs" 2>/dev/null || true; done; ` +

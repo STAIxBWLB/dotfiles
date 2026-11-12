@@ -100,7 +100,7 @@ func TestPruneListsFirstAndRemovesOnlyWithYes(t *testing.T) {
 		"mirror\t" + MirrorKey("work/busy") + "\tclaimed\twork/busy",
 		"mirror\tdeadbeef0000\tfree\t../escape",
 		"ref\trepo-1.git\trefs/verify/abc/123-n",
-		"container\tme-rdev-0123\tExited (137) 2 hours ago",
+		"container\tme-rdev-0123456789ab\tExited (137) 2 hours ago",
 		"job\tmedia\t/data/jobs/broken",
 	}, "\n")}
 	d := f.deps(root)
@@ -112,7 +112,7 @@ func TestPruneListsFirstAndRemovesOnlyWithYes(t *testing.T) {
 	for _, item := range report.Items {
 		kinds[item.Kind] = item.Name
 	}
-	if kinds["mirror"] != "work/gone" || kinds["verify-ref"] != "repo-1.git refs/verify/abc/123-n" || kinds["container"] != "me-rdev-0123" || len(report.Items) != 3 {
+	if kinds["mirror"] != "work/gone" || kinds["verify-ref"] != "repo-1.git refs/verify/abc/123-n" || kinds["container"] != "me-rdev-0123456789ab" || len(report.Items) != 3 {
 		t.Errorf("items = %+v", report.Items)
 	}
 	if len(report.Skipped) != 2 || len(report.Kept) != 1 {
@@ -128,9 +128,9 @@ func TestPruneListsFirstAndRemovesOnlyWithYes(t *testing.T) {
 	}
 	joined := strings.Join(f.calls, "\n")
 	for _, want := range []string{
-		`mkdir "$lock"`, `target="$HOME"/'dot-remote/work/gone'`,
+		`mkdir "$lock"`, `rel='work/gone'`,
 		"update-ref -d 'refs/verify/abc/123-n'", "name=^me-rdev-verify-abc$",
-		"docker rm 'me-rdev-0123'",
+		"docker rm 'me-rdev-0123456789ab'",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("removals lack %q:\n%s", want, joined)
