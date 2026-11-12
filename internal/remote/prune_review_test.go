@@ -268,6 +268,40 @@ func TestPruneRefusesASymlinkedRecordsDirectory(t *testing.T) {
 	}
 }
 
+// #430.1: a plain directory under git_root whose .git points at another
+// repository (a symlink or a gitdir file) is refused, and the ref there
+// survives.
+func TestPruneRefRefusesARepoThatPointsElsewhere(t *testing.T) {
+	h := testHost()
+	for _, how := range []string{"symlink", "gitdir"} {
+		home := gitRootHome(t, h, "real.git")
+		outside := filepath.Join(home, "elsewhere.git")
+		if err := os.Rename(filepath.Join(home, h.GitRoot, "real.git"), outside); err != nil {
+			t.Fatal(err)
+		}
+		dir := filepath.Join(home, h.GitRoot, "r.git")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		var err error
+		if how == "symlink" {
+			err = os.Symlink(outside, filepath.Join(dir, ".git"))
+		} else {
+			err = os.WriteFile(filepath.Join(dir, ".git"), []byte("gitdir: "+outside+"\n"), 0o644)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, code := runAt(t, home, ":;", pruneRefScript(h, "r.git", "refs/verify/0123456789ab/a-n"))
+		if code != 4 || !strings.Contains(out, "refused") {
+			t.Errorf("%s: %d %s", how, code, out)
+		}
+		if !refExists(t, outside) {
+			t.Errorf("%s: the ref in the outside repository was deleted", how)
+		}
+	}
+}
+
 // #430.3: a running verify of the same key under another prefix keeps the ref.
 func TestPruneRefWaitsForAnotherPrefixesVerify(t *testing.T) {
 	h := testHost()

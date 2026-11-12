@@ -135,9 +135,12 @@ if [ -L "$repo" ]; then echo "refused: $repo is a symlink, so it may not be a ba
 if ! real=$(cd -P "$repo" 2>/dev/null && pwd -P) || ! rootreal=$(cd -P "$gitroot" 2>/dev/null && pwd -P) || [ "${real%%/*}" != "$rootreal" ]; then
   echo "refused: $repo does not resolve to a directory directly under git_root; check it and remove the ref by hand" >&2; exit 4
 fi
+if ! common=$(git --git-dir="$real" rev-parse --git-common-dir 2>/dev/null) || ! commonreal=$(cd "$real" 2>/dev/null && cd -P "$common" 2>/dev/null && pwd -P) || [ "$commonreal" != "$real" ]; then
+  echo "refused: $repo is not a bare repository of its own (it points at another repository's git dir); check it and remove the ref by hand" >&2; exit 4
+fi
 if ! running=$(%s ps --filter %s --format '{{.Names}}' 2>&1); then echo "cannot tell whether that verify is running ($running); run dot remote prune again once the runtime answers" >&2; exit 3; fi
 if [ -n "$running" ]; then echo "busy: a verify of this checkout is still running ($running), possibly under another prefix; run dot remote prune again after it ends" >&2; exit 3; fi
-git -C "$real" update-ref -d %s`
+git --git-dir="$real" update-ref -d %s`
 
 // pruneContainerTemplate removes one stopped container, unless it was
 // restarted since the listing.
