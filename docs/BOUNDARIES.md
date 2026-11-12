@@ -503,8 +503,8 @@ path is either anchored at the remote user's `$HOME` or carries the host's
   and holding the mirror's relative path, so `dot remote status` can size a
   mirror whose path is nested rather than guessing from the root's top-level
   directories; plus one `<mirror key>.claim` directory per mirror while a run
-  holds it, whose `owner` file holds the machine name, pid and start time of
-  that run
+  holds it, whose `owner` file holds the machine name, pid, start time and the
+  local checkout path of that run
 - `~/dot-remote-git` (`git_root`) — reserved for the bare repositories the
   `verify` command pushes commits into
 - `~/dot-remote-src` (`src_root`) — reserved for the third-party clones the
@@ -523,10 +523,11 @@ dot, or another machine left under that mirror's name, before it syncs.
 The exclusion two machines need is the claim directory, not those checks. A run
 takes `<mirror key>.claim` with a `mkdir` before it syncs and releases it on
 every exit path, so the winner of a race is the only machine allowed into that
-mirror. A claim carrying another machine's name defers the run; one carrying
-this machine's own name is a leftover of a dead run - the local path lease this
-run holds proves that - so it is replaced and the container under the mirror's
-name is removed.
+mirror. A claim whose owner record names another machine, or another checkout,
+defers the run; one that names this machine *and* this checkout is a leftover of
+a dead run - the local path lease this run holds proves that - so it is replaced
+and the container under the mirror's name is removed. A container that cannot be
+removed keeps the claim in place, since that mirror still has a container in it.
 
 ## dotfiles Must Not Write Directly
 

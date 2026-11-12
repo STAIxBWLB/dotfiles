@@ -60,6 +60,7 @@ cleanup() {
   fi
   rm -rf "$tmpdir" "$HOME/remote-work" "$HOME/dot-remote" "$HOME/dot-remote-git" "$HOME/dot-remote-src" \
     "$HOME/bin/docker" "$HOME/stub-hold" "$HOME/stub.log" "$HOME/stub-containers" "$HOME/stub-running" \
+    "$HOME/stub-remove-fail" \
     "$HOME/.config/dotfiles/config.yaml"
 }
 trap 'cleanup' EXIT
@@ -147,6 +148,12 @@ case "$1" in
     if [ -n "$name" ]; then forget "$name"; fi
     ;;
   rm)
+    # stub-remove-fail makes the runtime refuse a removal, which is what a run
+    # that keeps its claim has to notice.
+    if [ -f "$HOME/stub-remove-fail" ]; then
+      echo "Error response from daemon: container is in use" >&2
+      exit 1
+    fi
     name=""
     previous=""
     for arg in "$@"; do
@@ -188,8 +195,19 @@ chmod +x "$STUB"
 sudo mkdir -p /run/sshd
 sudo ssh-keygen -A >/dev/null
 
+# UsePAM=no has a consequence beyond skipping jammy's pam_loginuid.so: sshd
+# then runs its own account check, `allowed_user()`, which treats a shadow field
+# equal to `*` or beginning with `!` as a locked account and refuses the login
+# before pubkey auth is attempted - the client shows only "Permission denied
+# (publickey)" and nothing says why. The image's `useradd -m -s /bin/bash
+# testuser` grants no password, so the field is `!`. `*NP*` is neither of those
+# forms and no crypt(3) output can equal it, so no password authenticates;
+# PasswordAuthentication=no keeps that property regardless.
+sudo usermod -p '*NP*' "$(id -un)"
+
 # Port before ListenAddress: sshd applies a bare ListenAddress against the Port
-# directives seen so far.
+# directives seen so far. One array, so the daemon and the `-T` dump below are
+# the same configuration.
 #
 # UsePAM=no          jammy's /etc/pam.d/sshd has pam_loginuid.so as `required`
 #                    and it fails in a container. Throwaway daemon in an
@@ -199,14 +217,45 @@ sudo ssh-keygen -A >/dev/null
 # ListenAddress=127.0.0.1  the socket must not leave the container.
 # SetEnv=PATH        a non-login, non-interactive shell gets sshd's own PATH,
 #                    which does not carry the stub's directory.
-sudo "$SSHD_BIN" \
-  -o "Port=$SSH_PORT" \
-  -o UsePAM=no \
-  -o PasswordAuthentication=no \
-  -o PermitRootLogin=no \
-  -o ListenAddress=127.0.0.1 \
-  -o "PidFile=$PIDFILE" \
+# -E                 sshd's own log, so a refused login says why instead of
+#                    leaving the client's one line as the only evidence.
+SSHD_LOG="$tmpdir/sshd.log"
+SSHD_OPTS=(
+  -o "Port=$SSH_PORT"
+  -o UsePAM=no
+  -o PasswordAuthentication=no
+  -o PermitRootLogin=no
+  -o ListenAddress=127.0.0.1
+  -o "PidFile=$PIDFILE"
   -o "SetEnv=PATH=$HOME/bin:/usr/local/bin:/usr/bin:/bin"
+  -E "$SSHD_LOG"
+)
+sudo "$SSHD_BIN" "${SSHD_OPTS[@]}"
+
+# sshd reads AuthorizedKeysFile and StrictModes from its effective config, not
+# from what this script meant to pass, so both are read back here. The path is
+# absolute and named by the dump, which is also what makes an sshd_config that
+# overrides AuthorizedKeysFile unable to hide.
+sshd_effective=$(sudo "$SSHD_BIN" -T "${SSHD_OPTS[@]}" 2>&1 |
+  grep -Ei '^(authorizedkeysfile|strictmodes|usepam|pubkeyauthentication|passwordauthentication)' |
+  tr '\n' ';')
+
+# sshd resolves the login user's home from passwd, not from this script's $HOME,
+# so the key goes where that user's entry points. It is the same directory in
+# this image; naming it keeps the two from drifting apart silently.
+login_home=$(getent passwd "$(id -un)" | cut -d: -f6)
+if [ -z "$login_home" ]; then
+  ABORT "fixture: $(id -un) has no home in passwd, so sshd has nowhere to read authorized_keys from"
+fi
+
+sshd_diagnostics() {
+  echo "  sshd effective: $sshd_effective"
+  echo "  login home: $login_home (this script's \$HOME is $HOME)"
+  echo "  modes: $(ls -ld "$login_home" "$login_home/.ssh" "$login_home/.ssh/authorized_keys" 2>&1 | tr '\n' ';')"
+  echo "  passwd: $(getent passwd "$(id -un)")"
+  echo "  shadow field: '$(sudo getent shadow "$(id -un)" 2>/dev/null | cut -d: -f2)'"
+  echo "  sshd log: $(sudo tail -20 "$SSHD_LOG" 2>&1 | tr '\n' ';')"
+}
 
 sshd_ready=""
 attempt=0
@@ -218,12 +267,14 @@ while [ "$attempt" -lt 20 ]; do
   attempt=$((attempt + 1))
   sleep 0.5
 done
-[ -n "$sshd_ready" ] || ABORT "fixture: sshd never accepted a connection on port $SSH_PORT"
+if [ -z "$sshd_ready" ]; then
+  sshd_diagnostics
+  ABORT "fixture: sshd never accepted a connection on port $SSH_PORT"
+fi
 
 ssh-keygen -t ed25519 -N '' -C ssh-remote-scenario -f "$tmpdir/id_ed25519" >/dev/null
-install -d -m 700 "$HOME/.ssh"
-cat "$tmpdir/id_ed25519.pub" >>"$HOME/.ssh/authorized_keys"
-chmod 600 "$HOME/.ssh/authorized_keys"
+sudo install -d -m 700 -o "$(id -un)" -g "$(id -gn)" "$login_home/.ssh"
+sudo install -m 600 -o "$(id -un)" -g "$(id -gn)" "$tmpdir/id_ed25519.pub" "$login_home/.ssh/authorized_keys"
 
 # An ssh alias is what the config block names, so the scenario exercises the
 # same indirection a person's `Host buildbox` entry uses.
@@ -243,17 +294,25 @@ EOF
 chmod 600 "$HOME/.ssh/config"
 
 SSH_ERR="$tmpdir/ssh.err"
+ssh_verbose="$tmpdir/ssh.verbose"
 remote_user=$(ssh remotehost 'id -un' 2>"$SSH_ERR" || true)
 if [ "$remote_user" = "$(id -un)" ]; then
   pass "ssh to the alias works and answers as $(id -un)"
 else
+  sshd_diagnostics
+  # A second attempt with -v, only on failure: the config's LogLevel ERROR keeps
+  # the success path quiet, and what a refused login needs is the client's own
+  # account of what it offered and what the server said.
+  ssh -v remotehost 'id -un' >/dev/null 2>"$ssh_verbose" || true
+  echo "  ssh -v: $(grep -Ei 'offering|server accepts|authentications that can continue|denied|error' "$ssh_verbose" | tail -12 | tr '\n' ';')"
   ABORT "fixture: ssh remotehost failed: got '$remote_user' [ssh: $(tr '\n' ' ' <"$SSH_ERR")]"
 fi
 remote_docker=$(ssh remotehost 'command -v docker' 2>"$SSH_ERR" || true)
 if [ "$remote_docker" = "$STUB" ]; then
   pass "a non-interactive ssh session resolves the stub runtime at $STUB"
 else
-  ABORT "fixture: the ssh session's PATH does not reach the stub: got '$remote_docker'"
+  sshd_diagnostics
+  ABORT "fixture: the ssh session's PATH does not reach the stub: got '$remote_docker' [ssh: $(tr '\n' ' ' <"$SSH_ERR")]"
 fi
 
 # ── the workspace and its config ─────────────────────────────────────────────
@@ -484,10 +543,11 @@ else
 fi
 if [ "$(printf '%s' "$claim_owner" | cut -f1)" = "$(uname -n)" ] &&
   [ -n "$(printf '%s' "$claim_owner" | cut -f2)" ] &&
-  [ -n "$(printf '%s' "$claim_owner" | cut -f3)" ]; then
-  pass "the claim names this machine, its pid and when it started: $claim_owner"
+  [ -n "$(printf '%s' "$claim_owner" | cut -f3)" ] &&
+  [ "$(printf '%s' "$claim_owner" | cut -f4)" = "$HOME/remote-work/one" ]; then
+  pass "the claim names this machine, its pid, when it started and the checkout: $claim_owner"
 else
-  fail "the claim's owner line is not machine/pid/start: '$claim_owner'"
+  fail "the claim's owner line is not machine/pid/start/checkout: '$claim_owner'"
 fi
 set +e
 wait "$claim_pid"
@@ -508,7 +568,7 @@ fi
 # A claim another machine holds is not this run's to break: it defers, names the
 # owner, and hands over the command that clears it once that run is gone.
 mkdir -p "$claim_dir"
-printf 'another-box\t4242\t2026-01-01T00:00:00Z\n' >"$claim_dir/owner"
+printf 'another-box\t4242\t2026-01-01T00:00:00Z\t%s\n' "$HOME/remote-work/one" >"$claim_dir/owner"
 : >"$HOME/stub.log"
 set +e
 "$BIN" remote run "$HOME/remote-work/one" -- true >"$tmpdir/foreign.out" 2>"$tmpdir/foreign.err"
@@ -519,7 +579,7 @@ if [ "$foreign_rc" -eq 75 ]; then
 else
   fail "a foreign claim exited $foreign_rc, want 75: $(cat "$tmpdir/foreign.err")"
 fi
-if grep -q "another machine holds the claim on dot-remote/one on remotehost (another-box" \
+if grep -q "the claim on dot-remote/one on remotehost belongs to another-box" \
   "$tmpdir/foreign.out" "$tmpdir/foreign.err"; then
   pass "the defer reason names the machine that holds the claim"
 else
@@ -536,11 +596,12 @@ else
   pass "nothing is synced or run past another machine's claim"
 fi
 
-# The same claim, now carrying this machine's own name, plus the container a
-# killed run left: the local path lease this run holds proves that owner is
-# dead, so the leftover is reclaimed instead of reported as another machine
-# forever.
-printf '%s\t99999\t2026-01-01T00:00:00Z\n' "$(uname -n)" >"$claim_dir/owner"
+# The same claim, now carrying this machine's own name AND this checkout, plus
+# the container a killed run left: the local path lease this run holds proves
+# that owner is dead, so the leftover is reclaimed instead of reported as
+# another machine's forever. A claim naming this machine and another checkout
+# would defer here instead, which is what the owner record's fourth field is for.
+printf '%s\t99999\t2026-01-01T00:00:00Z\t%s\n' "$(uname -n)" "$HOME/remote-work/one" >"$claim_dir/owner"
 printf '%s\n' "$left_container" >"$HOME/stub-containers"
 : >"$HOME/stub-running"
 : >"$HOME/stub.log"
@@ -564,6 +625,66 @@ if [ -e "$claim_dir" ]; then
   fail "the takeover left the replaced claim behind"
 else
   pass "the takeover's own claim is released at the end of the run"
+fi
+
+# The same machine name with another checkout in the record is NOT a takeover:
+# the local path lease this run holds proves one path's previous run dead, not
+# that one, so the run defers like it would for a foreign machine.
+mkdir -p "$claim_dir"
+printf '%s\t99999\t2026-01-01T00:00:00Z\t%s\n' "$(uname -n)" "$HOME/remote-work/two" >"$claim_dir/owner"
+: >"$HOME/stub.log"
+set +e
+"$BIN" remote run "$HOME/remote-work/one" -- true >"$tmpdir/otherpath.out" 2>"$tmpdir/otherpath.err"
+otherpath_rc=$?
+set -e
+if [ "$otherpath_rc" -eq 75 ]; then
+  pass "a claim for another checkout of this machine defers the run"
+else
+  fail "another checkout's claim exited $otherpath_rc, want 75: $(cat "$tmpdir/otherpath.err")"
+fi
+if grep -q "belongs to $(uname -n) 99999" "$tmpdir/otherpath.out" "$tmpdir/otherpath.err"; then
+  pass "the defer reason quotes the owner record of the other checkout"
+else
+  fail "the defer reason does not quote the record: $(cat "$tmpdir/otherpath.err")"
+fi
+if grep -qx "rm -f $left_container" "$HOME/stub.log" 2>/dev/null; then
+  fail "a run that deferred removed the container anyway"
+else
+  pass "another checkout's claim is left untouched, container included"
+fi
+
+# A removal the runtime refuses has not freed the name, so the run stops saying
+# "could not remove" and keeps its claim: releasing it would invite another
+# machine into a mirror that still has that container in it.
+printf '%s\n' "$left_container" >"$HOME/stub-containers"
+: >"$HOME/stub-running"
+printf '%s\t99999\t2026-01-01T00:00:00Z\t%s\n' "$(uname -n)" "$HOME/remote-work/one" >"$claim_dir/owner"
+touch "$HOME/stub-remove-fail"
+: >"$HOME/stub.log"
+set +e
+"$BIN" remote run "$HOME/remote-work/one" -- true >"$tmpdir/nofree.out" 2>"$tmpdir/nofree.err"
+nofree_rc=$?
+set -e
+rm -f "$HOME/stub-remove-fail"
+if [ "$nofree_rc" -ne 0 ] && grep -q "could not remove the container $left_container" "$tmpdir/nofree.err"; then
+  pass "a removal the runtime refuses stops the run with could not remove"
+else
+  fail "a refused removal exited $nofree_rc without saying it could not remove: $(cat "$tmpdir/nofree.err")"
+fi
+if grep -q "removed the container" "$tmpdir/nofree.err"; then
+  fail "the run reported a removal that did not happen: $(cat "$tmpdir/nofree.err")"
+else
+  pass "the run does not claim to have removed what is still there"
+fi
+if [ -f "$claim_dir/owner" ]; then
+  pass "the claim stays while its container could not be removed"
+else
+  fail "the claim was released although its container is still there"
+fi
+if grep -q '^run --rm ' "$HOME/stub.log" 2>/dev/null; then
+  fail "a run whose container could not be removed still started"
+else
+  pass "nothing was synced or run past a container the runtime would not remove"
 fi
 
 # ── leases: one per path, one per host ───────────────────────────────────────

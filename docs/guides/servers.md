@@ -148,23 +148,31 @@ the container may still be running there.
 
 One run per mirror is enforced on the host, not by a check. Before it syncs, a
 run takes a claim directory, `<root>/.dot-remote/<mirror key>.claim`, whose
-`owner` file names the machine, the pid and the start time; it removes the claim
-on every exit path, including an interrupt and a dropped connection. The
-`mkdir` is atomic, so two machines racing the same mirror cannot both get in.
+`owner` file names the machine, the pid, the start time and the local checkout;
+it removes the claim on every exit path, including an interrupt and a dropped
+connection. The `mkdir` is atomic, so two machines racing the same mirror cannot
+both get in.
 
-- A claim carrying another machine's name defers the run with exit 75 and names
-  that owner. Wait for it, or, once you know that run is gone, remove it:
-  `ssh <host> rm -rf <root>/.dot-remote/<mirror key>.claim`.
-- A claim carrying this machine's name is a leftover: the local path lease this
-  run holds proves the run that took it is dead, so the claim is replaced and
-  the container under the mirror's name is removed. A SIGKILLed run therefore
-  heals on the next run of the same checkout, from the same machine.
+- A claim naming another machine, or another checkout, defers the run with exit
+  75 and quotes that owner record. Wait for it, or, once you know that run is
+  gone, remove it: `ssh <host> rm -rf <root>/.dot-remote/<mirror key>.claim`.
+- A claim naming this machine *and* this checkout is a leftover: the local path
+  lease this run holds proves the run that took it is dead, so the claim is
+  replaced and the container under the mirror's name is removed. A SIGKILLed run
+  therefore heals on the next run of the same checkout, from the same machine. A
+  second clone of your own is a different checkout, so its claim defers like
+  anyone else's.
 - A container still running under the mirror's name without a claim (an older
   dot, or a machine that never wrote one) defers the same way; one left stopped
   is removed before the sync.
 - A runtime that cannot answer `ps` stops the run instead of reading as "no
   container": the reason names the runtime's own error, nothing is synced and
   nothing is removed.
+- A container that cannot be removed stops the run with `could not remove`, and
+  the claim stays on the host: that mirror still has a container in it, so
+  releasing the claim would let another machine into it. Your next run of the
+  same checkout takes the claim over and retries, and the message carries the
+  two `ssh` commands that clear both by hand.
 
 Cross-machine `max_runs` is not enforced: two machines pointing at one host can
 each start `max_runs` jobs. The one run per mirror is, because the claim and the

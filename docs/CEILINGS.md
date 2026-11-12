@@ -351,13 +351,14 @@ the same relative checkout to one host contend for one claim and one container
 name, and a different local path landing on the same relative path is one mirror
 on that host, by design.
 
-A claim is only reclaimed by the machine that left it. This machine's own name
-in the owner file, plus the local path lease the new run holds, is what proves
-the previous owner dead, so that case is taken over automatically. A claim or a
-container left by a SIGKILLed run on another machine is reported rather than
-removed, because nothing here can prove that run is gone; a person clears it
-with the command the defer prints. Revisit this when two machines sharing one
-host regularly collide: move the liveness proof onto the host itself (an owner
-pid there and a heartbeat file under `<root>`), which also gives the load probe a
-place to record what it saw, and let the claim's own staleness decide a takeover
-instead of a person's judgement.
+A claim is only reclaimed by the machine that left it, and only for the same
+checkout. The machine name and the checkout path in the owner record, plus the
+local path lease the new run holds, are what prove the previous owner dead, so
+that case is taken over automatically and every other claim - another machine's,
+or another clone's on this machine - is reported instead of removed: nothing here
+can prove that run is gone. A person clears it with the command the defer prints.
+Revisit this when two machines sharing one host regularly collide: move the
+liveness proof onto the host itself (an owner pid there and a heartbeat file
+under `<root>`), which also gives the load probe a place to record what it saw,
+and let the claim's own staleness decide a takeover instead of a person's
+judgement.

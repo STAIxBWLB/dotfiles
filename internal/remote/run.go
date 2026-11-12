@@ -143,7 +143,7 @@ func (d Deps) Run(ctx context.Context, cfg Config, opts RunOptions) error {
 		}
 	}
 
-	seen, err := d.inspect(ctx, h, rel, container)
+	seen, err := d.inspect(ctx, h, rel, path, container)
 	if err != nil {
 		return err
 	}
@@ -158,28 +158,40 @@ func (d Deps) Run(ctx context.Context, cfg Config, opts RunOptions) error {
 			h.Name, mirror, seen.ContainerDetail, h.Runtime, h.Name)
 	}
 	// The host-side claim is the exclusion the local leases cannot give: two
-	// machines pointing at one host hold independent lease counts.
+	// machines pointing at one host hold independent lease counts. A claim is
+	// only this run's to take over when its owner record names this machine AND
+	// this checkout: the local path lease proves exactly one previous run dead,
+	// and only the record says which one.
 	switch seen.Claim {
 	case claimForeign:
-		return deferFor(PathScope(path), fmt.Sprintf("another machine holds the claim on %s on %s (%s), so this mirror is in use elsewhere; wait for it, or remove it once that run is gone with `ssh %s rm -rf %s`",
-			mirror, h.Name, seen.Detail, h.SSH, h.claimPath(rel)), time.Minute)
+		return deferFor(PathScope(path), claimHeldElsewhere(h.MirrorDir(rel), h, rel, seen.Detail), time.Minute)
 	case claimUnreadable:
-		return deferFor(PathScope(path), fmt.Sprintf("the claim on %s on %s cannot be read (%s), so this run will not guess whether another machine is using the mirror; inspect it with `ssh %s ls -la %s`",
+		return deferFor(PathScope(path), fmt.Sprintf("the claim on %s on %s cannot be read (%s), so this run will not guess whether another run is using the mirror; inspect it with `ssh %s ls -la %s`",
 			mirror, h.Name, seen.Detail, h.SSH, h.claimPath(rel)), time.Minute)
 	}
 	stale := seen.Claim == claimOurs
 	if err := d.claimMirror(ctx, h, rel, path, stale); err != nil {
 		return err
 	}
-	// Held from here to the end of the run, on every exit path.
-	defer d.releaseClaim(ctx, h, rel)
+	// Held from here to the end of the run, on every exit path - except one
+	// where a container could not be removed: then the claim is the only thing
+	// keeping another run out of a mirror that still has that container in it,
+	// and this machine's next run takes it over and retries.
+	keepClaim := false
+	defer func() {
+		if keepClaim {
+			return
+		}
+		d.releaseClaim(ctx, h, rel, path)
+	}()
 	if stale {
-		// The claim was this machine's own leftover, and the local path lease
-		// this run holds proves the owner is dead - so whatever is still under
-		// this name belongs to that dead run.
+		// The claim was this machine's own leftover for this same checkout, and
+		// the local path lease this run holds proves the owner is dead - so
+		// whatever is still under this name belongs to that dead run.
 		fmt.Fprintf(d.errOut(), "dot remote: took over the claim an earlier run of %s left on %s\n", mirror, h.Name)
 		if err := d.removeContainerStrict(ctx, h, container); err != nil {
-			return err
+			keepClaim = true
+			return claimKept(err, mirror, h, rel, container)
 		}
 		if seen.Container != containerAbsent {
 			fmt.Fprintf(d.errOut(), "dot remote: removed the container %s that run left behind\n", container)
@@ -193,7 +205,8 @@ func (d Deps) Run(ctx context.Context, cfg Config, opts RunOptions) error {
 				mirror, h.Name, container, h.SSH, h.Runtime, container), time.Minute)
 		case containerStopped:
 			if err := d.removeContainerStrict(ctx, h, container); err != nil {
-				return err
+				keepClaim = true
+				return claimKept(err, mirror, h, rel, container)
 			}
 			fmt.Fprintf(d.errOut(), "dot remote: removed the stopped container %s left on %s\n", container, h.Name)
 		}
@@ -241,6 +254,23 @@ func (d Deps) Run(ctx context.Context, cfg Config, opts RunOptions) error {
 		return &ExitCode{Code: exit, Err: fmt.Errorf("remote command exited with status %d", exit)}
 	}
 	return nil
+}
+
+// claimHeldElsewhere is why a claim this run may not take defers it. The owner
+// record is quoted whole - machine, pid, start and checkout - because it is what
+// tells another machine's run from a different checkout of this one, and only
+// the record carries that.
+func claimHeldElsewhere(mirror string, h Host, rel, owner string) string {
+	return fmt.Sprintf("the claim on %s on %s belongs to %s, so this mirror is in use elsewhere; wait for it, or remove it once that run is gone with `ssh %s rm -rf %s`",
+		mirror, h.Name, owner, h.SSH, h.claimPath(rel))
+}
+
+// claimKept is a container removal that did not happen, with what keeps the
+// run from going on: the claim stays, so no other machine can sync into a
+// mirror that may still have that container in it.
+func claimKept(err error, mirror string, h Host, rel, container string) error {
+	return fmt.Errorf("%w, so this run stops here and keeps the claim on %s on %s: another machine cannot sync into a mirror that may still have %s in it, and this machine's next run of that checkout takes the claim over and retries the removal (or clear both with `ssh %s %s rm -f %s` and `ssh %s rm -rf %s`)",
+		err, mirror, h.Name, container, h.SSH, h.Runtime, container, h.SSH, h.claimPath(rel))
 }
 
 // removeContainer removes one container by name, ignoring a failure: this is the
@@ -462,15 +492,16 @@ runtime=%s
 records="$HOME"/%s/.dot-remote
 lock="$records"/%s.claim
 me=%s
+checkout=%s
 if mkdir -p "$records" 2>/dev/null && printf '%%s\n' %s >"$records/%s" 2>/dev/null; then :; else printf 'record\tfailed\n'; fi
 if [ -d "$lock" ]; then
   owner=$(cat "$lock/owner" 2>/dev/null)
   if [ -z "$owner" ]; then
     printf 'claim\tunreadable\tno readable %%s/owner\n' "$lock"
-  elif [ "$(printf '%%s' "$owner" | cut -f1)" = "$me" ]; then
-    printf 'claim\tours\t%%s\n' "$owner"
-  else
+  elif [ "$(printf '%%s' "$owner" | cut -f1)" != "$me" ] || [ "$(printf '%%s' "$owner" | cut -f4)" != "$checkout" ]; then
     printf 'claim\tforeign\t%%s\n' "$owner"
+  else
+    printf 'claim\tours\t%%s\n' "$owner"
   fi
 else
   printf 'claim\tfree\n'
@@ -498,30 +529,64 @@ fi`
 
 // claimTemplate takes this mirror's claim with a mkdir, which is atomic on the
 // host: the winner of a race is the only run that gets the directory, so two
-// machines cannot both pass a check and then sync into one mirror. replace says
-// the claim on the host is this machine's own leftover, which the local path
-// lease this run holds has just proved dead.
+// machines cannot both pass a check and then sync into one mirror.
+//
+// replace says the claim found on the host is this run's own predecessor, and
+// even then it is re-checked here rather than trusted from the earlier round
+// trip: the owner must still name this machine and this checkout, or the run
+// defers instead of removing a claim that changed hands in between.
+//
+// Every step reports its own failure with the reason the host gave. A failed
+// mkdir that is not "someone else got there first" is a failure, never a lost
+// race, and a failed removal is never success: the run has to stop and say what
+// to look at.
 const claimTemplate = `# claim: take
-lock="$HOME"/%s/.dot-remote/%s.claim
-if [ %s = replace ]; then rm -rf "$lock" 2>/dev/null; fi
-if mkdir "$lock" 2>/dev/null; then
-  if printf '%%s\t%%s\t%%s\n' %s %d %s >"$lock/owner" 2>/dev/null; then
-    printf 'claim\tacquired\n'
-  else
-    rm -rf "$lock" 2>/dev/null
-    printf 'claim\tfailed\tcannot write the owner file under %%s\n' "$lock"
+records="$HOME"/%s/.dot-remote
+lock="$records"/%s.claim
+me=%s
+checkout=%s
+mode=%s
+if [ "$mode" = replace ]; then
+  owner=$(cat "$lock/owner" 2>/dev/null)
+  if [ "$(printf '%%s' "$owner" | cut -f1)" != "$me" ] || [ "$(printf '%%s' "$owner" | cut -f4)" != "$checkout" ]; then
+    printf 'claim\tforeign\t%%s\n' "$owner"
+    exit 0
   fi
+  if ! err=$(rm -rf "$lock" 2>&1); then
+    printf 'claim\tfailed\tthe leftover claim under %%s could not be removed (%%s)\n' "$lock" "$err"
+    exit 0
+  fi
+fi
+if err=$(mkdir "$lock" 2>&1); then :; else
+  if [ -d "$lock" ]; then
+    printf 'claim\tlost-race\n'
+  else
+    printf 'claim\tfailed\tcannot create the claim under %%s (%%s)\n' "$lock" "$err"
+  fi
+  exit 0
+fi
+if err=$(printf '%%s\t%%s\t%%s\t%%s\n' "$me" %d %s "$checkout" >"$lock/owner" 2>&1); then
+  printf 'claim\tacquired\n'
 else
-  printf 'claim\tlost-race\n'
+  rm -rf "$lock" 2>/dev/null
+  printf 'claim\tfailed\tthe owner file under %%s could not be written (%%s)\n' "$lock" "$err"
 fi`
 
-// releaseTemplate drops this mirror's claim, and only when the owner line is
-// still this machine's: a claim that changed hands is not this run's to remove.
+// releaseTemplate drops this mirror's claim, and only while the owner line is
+// still this machine's and this checkout's: a claim that changed hands is not
+// this run's to remove. A removal that fails says so with the host's own
+// reason, because the next run of this checkout then takes over a claim that
+// was supposed to be gone.
 const releaseTemplate = `# claim: release
-lock="$HOME"/%s/.dot-remote/%s.claim
+records="$HOME"/%s/.dot-remote
+lock="$records"/%s.claim
+me=%s
+checkout=%s
+if [ ! -d "$lock" ]; then exit 0; fi
 owner=$(cat "$lock/owner" 2>/dev/null)
-if [ -d "$lock" ] && [ "$(printf '%%s' "$owner" | cut -f1)" = %s ]; then
-  rm -rf "$lock" 2>/dev/null || printf 'release\tfailed\t%%s\n' "$lock"
+if [ "$(printf '%%s' "$owner" | cut -f1)" != "$me" ] || [ "$(printf '%%s' "$owner" | cut -f4)" != "$checkout" ]; then exit 0; fi
+if ! err=$(rm -rf "$lock" 2>&1); then
+  printf 'release\tfailed\tthe claim under %%s could not be removed (%%s)\n' "$lock" "$err"
 fi`
 
 // claimPath is the claim directory of one mirror, in the form a person can type
@@ -530,12 +595,37 @@ func (h Host) claimPath(rel string) string {
 	return "$HOME/" + h.Root + "/.dot-remote/" + MirrorKey(rel) + ".claim"
 }
 
-// inspect asks the host about this mirror's claim, container and image before
-// anything is sent.
-func (d Deps) inspect(ctx context.Context, h Host, rel, container string) (inspection, error) {
-	script := fmt.Sprintf(inspectTemplate,
+// claimScript is the shell one run's claim becomes. It is built here rather
+// than at the call site so the tests can drive the same text through a shell.
+func claimScript(h Host, rel, path string, d Deps, replace bool) string {
+	mode := "take"
+	if replace {
+		mode = "replace"
+	}
+	return fmt.Sprintf(claimTemplate, ShellQuote(h.Root), MirrorKey(rel),
+		ShellQuote(d.machine()), ShellQuote(path), mode, os.Getpid(), ShellQuote(d.started()))
+}
+
+// inspectScript is the read-only round trip a run makes before anything is sent.
+func inspectScript(h Host, rel, path, container string, d Deps) string {
+	return fmt.Sprintf(inspectTemplate,
 		ShellQuote(container), ShellQuote(h.Runtime), ShellQuote(h.Root), MirrorKey(rel),
-		ShellQuote(d.machine()), ShellQuote(rel), MirrorKey(rel), ShellQuote(h.Image()))
+		ShellQuote(d.machine()), ShellQuote(path), ShellQuote(rel), MirrorKey(rel), ShellQuote(h.Image()))
+}
+
+// releaseScript is the shell that drops this run's claim, if it is still this
+// run's.
+func releaseScript(h Host, rel, path string, d Deps) string {
+	return fmt.Sprintf(releaseTemplate, ShellQuote(h.Root), MirrorKey(rel),
+		ShellQuote(d.machine()), ShellQuote(path))
+}
+
+// inspect asks the host about this mirror's claim, container and image before
+// anything is sent. path is this run's checkout, which is what the claim's owner
+// record is compared against: a claim naming this machine and a different
+// checkout is not this run's predecessor.
+func (d Deps) inspect(ctx context.Context, h Host, rel, path, container string) (inspection, error) {
+	script := inspectScript(h, rel, path, container, d)
 	out, err := d.capture(ctx, SSHArgv(h.SSH, script), nil)
 	if err != nil {
 		return inspection{}, fmt.Errorf("checking %s on %s: %w", rel, h.Name, err)
@@ -572,12 +662,7 @@ func (d Deps) inspect(ctx context.Context, h Host, rel, container string) (inspe
 // protocol: mkdir is atomic, the owner file says who holds it, and the removal
 // on every exit path is what makes a leftover mean a dead run.
 func (d Deps) claimMirror(ctx context.Context, h Host, rel, path string, replace bool) error {
-	mode := "take"
-	if replace {
-		mode = "replace"
-	}
-	script := fmt.Sprintf(claimTemplate, ShellQuote(h.Root), MirrorKey(rel), mode,
-		ShellQuote(d.machine()), os.Getpid(), ShellQuote(d.started()))
+	script := claimScript(h, rel, path, d, replace)
 	out, err := d.capture(ctx, SSHArgv(h.SSH, script), nil)
 	if err != nil {
 		return fmt.Errorf("claiming the mirror %s on %s: %w", rel, h.Name, err)
@@ -589,18 +674,28 @@ func (d Deps) claimMirror(ctx context.Context, h Host, rel, path string, replace
 	case claimLostRace:
 		return deferFor(PathScope(path), fmt.Sprintf("another run took the claim on %s on %s while this run was checking it, so that run is using the mirror; wait for it or remove it with `ssh %s rm -rf %s`",
 			h.MirrorDir(rel), h.Name, h.SSH, h.claimPath(rel)), time.Minute)
+	case claimForeign:
+		// The claim changed hands between the check and the take: the owner is
+		// read again inside the take, so this is the record it found.
+		return deferFor(PathScope(path), claimHeldElsewhere(h.MirrorDir(rel), h, rel, detail), time.Minute)
 	default:
-		return fmt.Errorf("claiming the mirror %s on %s failed: %s", rel, h.Name, detail)
+		return fmt.Errorf("claiming the mirror %s on %s failed: %s; nothing was synced, so look at the claim with `ssh %s ls -la %s` before trying again",
+			rel, h.Name, detail, h.SSH, h.claimPath(rel))
 	}
 }
 
 // releaseClaim drops this mirror's claim, and reports rather than hides a
-// failure: the next run of this machine takes its own leftovers over, so the
+// failure: the next run of this checkout takes its own leftovers over, so the
 // text says which case a person is looking at.
-func (d Deps) releaseClaim(ctx context.Context, h Host, rel string) {
-	script := fmt.Sprintf(releaseTemplate, ShellQuote(h.Root), MirrorKey(rel), ShellQuote(d.machine()))
-	if _, err := d.capture(context.WithoutCancel(ctx), SSHArgv(h.SSH, script), nil); err != nil {
-		fmt.Fprintf(d.errOut(), "dot remote: could not release the claim on %s on %s (%v); this machine's next run of that mirror takes it over\n", rel, h.Name, err)
+func (d Deps) releaseClaim(ctx context.Context, h Host, rel, path string) {
+	script := releaseScript(h, rel, path, d)
+	out, err := d.capture(context.WithoutCancel(ctx), SSHArgv(h.SSH, script), nil)
+	detail, failed := parseReleaseAnswer(out)
+	switch {
+	case err != nil:
+		fmt.Fprintf(d.errOut(), "dot remote: could not release the claim on %s on %s (%v); this machine's next run of that checkout takes it over\n", rel, h.Name, err)
+	case failed:
+		fmt.Fprintf(d.errOut(), "dot remote: could not release the claim on %s on %s (%s); this machine's next run of that checkout takes it over\n", rel, h.Name, detail)
 	}
 }
 
@@ -620,12 +715,24 @@ func parseClaimAnswer(out string) (string, string) {
 	return "", "the host printed no claim answer"
 }
 
+// parseReleaseAnswer reads the failure a release script printed, if any.
+func parseReleaseAnswer(out string) (string, bool) {
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Split(strings.TrimSpace(line), "\t")
+		if len(fields) >= 2 && fields[0] == "release" && fields[1] == "failed" {
+			return strings.Join(fields[2:], " "), true
+		}
+	}
+	return "", false
+}
+
 // removeContainerStrict removes one container and reports a failure. The
 // best-effort removeContainer is for a path that is already reporting a worse
-// problem; this one guards the sync, so it has to work.
+// problem; this one guards the sync, so it has to work, and a failure says
+// "could not remove" rather than anything that reads as removal.
 func (d Deps) removeContainerStrict(ctx context.Context, h Host, container string) error {
 	if _, err := d.capture(ctx, SSHArgv(h.SSH, h.Runtime+" rm -f "+ShellQuote(container)), nil); err != nil {
-		return fmt.Errorf("removing the container %s on %s: %w", container, h.Name, err)
+		return fmt.Errorf("could not remove the container %s on %s (%v)", container, h.Name, err)
 	}
 	return nil
 }

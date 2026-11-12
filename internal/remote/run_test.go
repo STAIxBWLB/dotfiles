@@ -753,6 +753,8 @@ func TestARunningContainerForTheMirrorDefersTheRun(t *testing.T) {
 
 // A container the host cannot remove holds the name the run needs, so the run
 // stops with the cause rather than syncing into a mirror it cannot guarantee.
+// It also keeps its claim: releasing it would let another machine into a mirror
+// that still has that container in it.
 func TestAFailedContainerRemovalStopsTheRun(t *testing.T) {
 	f := newRunFixture(t)
 	f.exec.preflight = "claim\tfree\ncontainer\tstopped\nimage\tknown\nuser\tdev\n"
@@ -761,14 +763,22 @@ func TestAFailedContainerRemovalStopsTheRun(t *testing.T) {
 	if err == nil {
 		t.Fatal("a run whose container could not be removed was accepted")
 	}
-	if !strings.Contains(err.Error(), "removing the container") {
-		t.Errorf("error = %q, want it to name the removal", err)
+	for _, want := range []string{"could not remove the container", "keeps the claim"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not name %q", err, want)
+		}
+	}
+	if strings.Contains(err.Error(), "removed the stopped container") {
+		t.Errorf("error %q reads as a removal that happened", err)
 	}
 	if got := len(f.exec.transfers()); got != 0 {
 		t.Errorf("%d rsync calls after a failed removal, want none", got)
 	}
 	if f.exec.runArgv() != nil {
 		t.Error("the run started despite the failed removal")
+	}
+	if release := f.exec.order("claim: release"); release >= 0 {
+		t.Errorf("the claim was released at call %d after a removal that did not happen", release)
 	}
 }
 
@@ -787,11 +797,14 @@ func TestTheMirrorIsClaimedBeforeTheSyncAndReleasedAtTheEnd(t *testing.T) {
 		t.Errorf("claim at %d, ship pass at %d: the claim has to come first", claim, transfer)
 	}
 	take := f.exec.calls[claim][len(f.exec.calls[claim])-1]
-	if !strings.Contains(take, "[ take = replace ]") {
+	if !strings.Contains(take, "mode=take") {
 		t.Errorf("a fresh claim was taken as a replacement:\n%s", take)
 	}
 	if !strings.Contains(take, "mkdir") {
 		t.Errorf("the claim is not a mkdir, so it is not atomic:\n%s", take)
+	}
+	if !strings.Contains(take, f.checkout) {
+		t.Errorf("the claim's owner record does not name this checkout, so a later run cannot tell whose leftover it is:\n%s", take)
 	}
 }
 
@@ -800,7 +813,7 @@ func TestTheMirrorIsClaimedBeforeTheSyncAndReleasedAtTheEnd(t *testing.T) {
 // that clears the claim once that run is gone.
 func TestAClaimAnotherMachineHoldsDefersTheRun(t *testing.T) {
 	f := newRunFixture(t)
-	f.exec.preflight = "claim\tforeign\totherbox\t4242\t2026-01-01T00:00:00Z\ncontainer\tabsent\nimage\tknown\nuser\tdev\n"
+	f.exec.preflight = "claim\tforeign\totherbox\t4242\t2026-01-01T00:00:00Z\t/elsewhere/repo\ncontainer\tabsent\nimage\tknown\nuser\tdev\n"
 	err := f.run(RunOptions{Command: []string{"true"}})
 	var deferred *Deferred
 	if !errors.As(err, &deferred) {
@@ -809,7 +822,7 @@ func TestAClaimAnotherMachineHoldsDefersTheRun(t *testing.T) {
 	if deferred.Outcome.Scope != PathScope(f.checkout) {
 		t.Errorf("scope = %q, want the path scope", deferred.Outcome.Scope)
 	}
-	for _, want := range []string{"another machine holds the claim", "otherbox", "ssh buildbox rm -rf", ".claim"} {
+	for _, want := range []string{"belongs to", "otherbox", "ssh buildbox rm -rf", ".claim"} {
 		if !strings.Contains(deferred.Outcome.Reason, want) {
 			t.Errorf("reason %q does not name %q", deferred.Outcome.Reason, want)
 		}
@@ -822,6 +835,30 @@ func TestAClaimAnotherMachineHoldsDefersTheRun(t *testing.T) {
 	}
 	if f.exec.runArgv() != nil {
 		t.Error("the container started while another machine holds the claim")
+	}
+}
+
+// The same machine name with a different checkout is not this run's predecessor:
+// the local path lease this run holds proves only that one path's run is dead,
+// so a claim for another checkout of this machine defers like any other.
+func TestAClaimForAnotherCheckoutOfThisMachineDefersTheRun(t *testing.T) {
+	f := newRunFixture(t)
+	f.exec.preflight = "claim\tforeign\t" + f.deps().machine() + "\t4242\t2026-01-01T00:00:00Z\t/home/u/other-clone/repo\ncontainer\trunning\nimage\tknown\nuser\tdev\n"
+	err := f.run(RunOptions{Command: []string{"true"}})
+	var deferred *Deferred
+	if !errors.As(err, &deferred) {
+		t.Fatalf("Run = %v, want a defer for another checkout's claim", err)
+	}
+	for _, want := range []string{"belongs to", "other-clone", "ssh buildbox rm -rf"} {
+		if !strings.Contains(deferred.Outcome.Reason, want) {
+			t.Errorf("reason %q does not name %q", deferred.Outcome.Reason, want)
+		}
+	}
+	if f.exec.order("claim: take") >= 0 {
+		t.Error("a run took over a claim that names a different checkout")
+	}
+	if removals := f.exec.removals(); len(removals) != 0 {
+		t.Errorf("removals = %v, want none while another checkout's claim stands", removals)
 	}
 }
 
@@ -843,14 +880,14 @@ func TestAnUnreadableClaimDefersTheRun(t *testing.T) {
 	}
 }
 
-// The claim a SIGKILLed run leaves has this machine's name in it, and the local
-// path lease this run holds proves that owner dead - so the container it left
-// running is removed and the claim taken over, instead of being reported as
+// The claim a SIGKILLed run leaves names this machine and this checkout, and the
+// local path lease this run holds proves that owner dead - so the container it
+// left running is removed and the claim taken over, instead of being reported as
 // another machine's forever.
 func TestAClaimThisMachineLeftIsTakenOver(t *testing.T) {
 	f := newRunFixture(t)
 	container := f.container()
-	f.exec.preflight = "claim\tours\t" + f.deps().machine() + "\t4242\t2026-01-01T00:00:00Z\ncontainer\trunning\nimage\tknown\nuser\tdev\n"
+	f.exec.preflight = "claim\tours\t" + f.deps().machine() + "\t4242\t2026-01-01T00:00:00Z\t" + f.checkout + "\ncontainer\trunning\nimage\tknown\nuser\tdev\n"
 	if err := f.run(RunOptions{Command: []string{"true"}}); err != nil {
 		t.Fatalf("Run over this machine's own leftover = %v", err)
 	}
@@ -860,7 +897,7 @@ func TestAClaimThisMachineLeftIsTakenOver(t *testing.T) {
 			take = command
 		}
 	}
-	if !strings.Contains(take, "[ replace = replace ]") || !strings.Contains(take, "rm -rf") {
+	if !strings.Contains(take, "mode=replace") || !strings.Contains(take, "rm -rf") {
 		t.Errorf("the leftover claim was not replaced:\n%s", take)
 	}
 	removals := f.exec.removals()
@@ -872,6 +909,37 @@ func TestAClaimThisMachineLeftIsTakenOver(t *testing.T) {
 	}
 	if f.exec.runArgv() == nil {
 		t.Error("the run did not start after the takeover")
+	}
+}
+
+// A takeover that cannot remove the dead run's container has not freed the name,
+// so the run stops, says "could not remove" and keeps the claim it just took:
+// releasing it would invite another machine into a mirror that still holds that
+// container.
+func TestATakeoverWhoseRemovalFailsKeepsTheClaim(t *testing.T) {
+	f := newRunFixture(t)
+	f.exec.preflight = "claim\tours\t" + f.deps().machine() + "\t4242\t2026-01-01T00:00:00Z\t" + f.checkout + "\ncontainer\trunning\nimage\tknown\nuser\tdev\n"
+	f.exec.removeErr = errors.New("Error response from daemon: container is in use")
+	err := f.run(RunOptions{Command: []string{"true"}})
+	if err == nil {
+		t.Fatal("a takeover whose removal failed was accepted")
+	}
+	for _, want := range []string{"could not remove the container", "keeps the claim"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not name %q", err, want)
+		}
+	}
+	if strings.Contains(f.errOut.String(), "removed the container") {
+		t.Errorf("stderr reads as a removal that happened:\n%s", f.errOut.String())
+	}
+	if release := f.exec.order("claim: release"); release >= 0 {
+		t.Errorf("the claim was released at call %d after a removal that did not happen", release)
+	}
+	if got := len(f.exec.transfers()); got != 0 {
+		t.Errorf("%d rsync calls after the failed takeover, want none", got)
+	}
+	if f.exec.runArgv() != nil {
+		t.Error("the run started after the failed takeover")
 	}
 }
 
