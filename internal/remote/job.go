@@ -353,16 +353,25 @@ func (d Deps) describeJob(h Host, p JobProfile, name string, inputs []string, ou
 func (d Deps) runRemoteJob(ctx context.Context, h Host, p JobProfile, name string, inputs []string, outDir string, command []string) error {
 	dir := jobDirExpr(p, name)
 	label := jobDirLabel(h, p, name)
-	if _, err := d.capture(ctx, jobSSH(h, "mkdir -p "+dir+"/in "+dir+"/out"), nil); err != nil {
-		return fmt.Errorf("creating %s: %w", label, err)
-	}
+	// rsync first: a missing client must fail before anything exists there.
 	rsyncPath, err := d.localRsync(ctx)
 	if err != nil {
 		return err
 	}
+	// The job directory is made exclusively: a reused name (a kept failed job,
+	// or two jobs started in one second) must not share or delete another's.
+	out, err := d.capture(ctx, jobSSH(h, jobCreateScript(p, name)), nil)
+	if err != nil {
+		return fmt.Errorf("creating %s: %w", label, err)
+	}
+	if strings.Contains(out, "exists") {
+		return fmt.Errorf("job %s already exists at %s: pass another --name or remove it", name, label)
+	}
 	remoteDir := path.Join(p.Root, name)
 	if len(inputs) > 0 {
-		argv := append([]string{rsyncPath, "-a", "-s", "-e", jobRSH}, inputs...)
+		// -L sends a symlinked input's contents under the link's own name; a
+		// link would dangle on the host.
+		argv := append([]string{rsyncPath, "-a", "-L", "-s", "-e", jobRSH}, inputs...)
 		argv = append(argv, h.SSH+":"+remoteDir+"/in/")
 		if _, err := d.capture(ctx, argv, nil); err != nil {
 			fmt.Fprintf(d.errOut(), "dot remote: job kept at %s\n", label)
@@ -410,18 +419,25 @@ func (d Deps) runRemoteJob(ctx context.Context, h Host, p JobProfile, name strin
 // symlinks, through `dot admit` as an ordinary heavy job.
 func (d Deps) runLocalJob(ctx context.Context, p JobProfile, name string, inputs []string, outDir string, opts JobOptions) error {
 	work := filepath.Join(p.LocalRoot, name)
-	if err := os.MkdirAll(filepath.Join(work, "in"), 0o755); err != nil {
+	if inside(resolveNearest(outDir), resolveNearest(work)) {
+		return fmt.Errorf("-o %s is inside the local job directory %s, which is removed after a successful job: collect into a directory outside it", outDir, work)
+	}
+	if err := os.MkdirAll(p.LocalRoot, 0o755); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Join(work, "out"), 0o755); err != nil {
+	if err := os.Mkdir(work, 0o755); err != nil {
+		if os.IsExist(err) {
+			return fmt.Errorf("job %s already exists at %s: pass another --name or remove it", name, work)
+		}
 		return err
+	}
+	for _, sub := range []string{"in", "out"} {
+		if err := os.Mkdir(filepath.Join(work, sub), 0o755); err != nil {
+			return err
+		}
 	}
 	for _, input := range inputs {
-		link := filepath.Join(work, "in", filepath.Base(input))
-		if _, err := os.Lstat(link); err == nil {
-			continue
-		}
-		if err := os.Symlink(input, link); err != nil {
+		if err := os.Symlink(input, filepath.Join(work, "in", filepath.Base(input))); err != nil {
 			return err
 		}
 	}
@@ -490,8 +506,43 @@ func localJobEnv(p JobProfile) []string {
 	return out
 }
 
-// copyTree copies src into dst: files with the same names are overwritten,
-// others in dst are left alone. Symlinks are copied as links.
+// jobCreateScript makes one job's directory exclusively under its root and
+// prints "exists" when the name is taken.
+func jobCreateScript(p JobProfile, name string) string {
+	dir := jobDirExpr(p, name)
+	return "mkdir -p " + rootExpr(p.Root) + " && if mkdir " + dir + " 2>/dev/null; then mkdir " + dir + "/in " + dir +
+		"/out; elif [ -e " + dir + " ]; then echo exists; else mkdir " + dir + "; fi"
+}
+
+// resolveNearest resolves a path's symlinks through its nearest existing
+// ancestor, so a directory that does not exist yet is compared as it will be.
+func resolveNearest(p string) string {
+	p = filepath.Clean(p)
+	rest := ""
+	for {
+		if resolved, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(resolved, rest)
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return filepath.Join(p, rest)
+		}
+		rest = filepath.Join(filepath.Base(p), rest)
+		p = parent
+	}
+}
+
+// inside reports whether p is dir or below it.
+func inside(p, dir string) bool {
+	rel, err := filepath.Rel(dir, p)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, "../") && !filepath.IsAbs(rel)
+}
+
+// copyTree copies src into dst the way rsync replaces: files with the same
+// names are replaced, others in dst are left alone, and nothing already in
+// dst is followed. A symlink or file where a directory is needed, or a
+// symlink where a file goes, is removed first, and files are created with
+// O_EXCL, so no write lands outside dst.
 func copyTree(src, dst string) error {
 	if err := os.MkdirAll(dst, 0o755); err != nil {
 		return err
@@ -504,36 +555,55 @@ func copyTree(src, dst string) error {
 		if err != nil {
 			return err
 		}
+		if rel == "." {
+			return nil
+		}
 		target := filepath.Join(dst, rel)
 		info, err := entry.Info()
 		if err != nil {
 			return err
 		}
-		switch {
-		case entry.IsDir():
-			return os.MkdirAll(target, 0o755)
-		case info.Mode()&os.ModeSymlink != 0:
+		existing, lerr := os.Lstat(target)
+		if entry.IsDir() {
+			if lerr == nil && existing.IsDir() {
+				return nil
+			}
+			if lerr == nil {
+				if err := os.Remove(target); err != nil {
+					return err
+				}
+			}
+			return os.Mkdir(target, 0o755)
+		}
+		if lerr == nil {
+			if existing.IsDir() {
+				if err := os.RemoveAll(target); err != nil {
+					return err
+				}
+			} else if err := os.Remove(target); err != nil {
+				return err
+			}
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
 			link, err := os.Readlink(p)
 			if err != nil {
 				return err
 			}
-			_ = os.Remove(target)
 			return os.Symlink(link, target)
-		default:
-			in, err := os.Open(p)
-			if err != nil {
-				return err
-			}
-			defer in.Close()
-			out, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, info.Mode().Perm())
-			if err != nil {
-				return err
-			}
-			if _, err := io.Copy(out, in); err != nil {
-				out.Close()
-				return err
-			}
-			return out.Close()
 		}
+		in, err := os.Open(p)
+		if err != nil {
+			return err
+		}
+		defer in.Close()
+		out, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, info.Mode().Perm())
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(out, in); err != nil {
+			out.Close()
+			return err
+		}
+		return out.Close()
 	})
 }

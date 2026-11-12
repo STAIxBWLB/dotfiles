@@ -206,6 +206,7 @@ type jobFixture struct {
 	sig      syscall.Signal
 	pullErr  error
 	local    int
+	exists   bool
 	calls    []string
 	localArg []string
 	localDir string
@@ -239,6 +240,10 @@ func (f *jobFixture) deps() Deps {
 					return 255, 0, f.checkErr
 				}
 				fmt.Fprint(stdout, f.check)
+			case strings.Contains(last, "echo exists"):
+				if f.exists {
+					fmt.Fprintln(stdout, "exists")
+				}
 			case argv[0] == "rsync" && strings.HasSuffix(last, "/") && strings.Contains(argv[len(argv)-2], "/out/"):
 				if f.pullErr != nil {
 					return 23, 0, f.pullErr
@@ -376,5 +381,104 @@ func TestSecondJobDefersWith75(t *testing.T) {
 	var deferred *Deferred
 	if !errors.As(err, &deferred) || deferred.Outcome.Scope != JobScope(h, "media") || len(f.calls) != 0 {
 		t.Errorf("second job = %v, calls %v", err, f.calls)
+	}
+}
+
+// Collecting into DIR never follows what DIR already holds: a symlinked file
+// or directory there is replaced, as rsync replaces it, and nothing outside
+// DIR is written.
+func TestCopyTreeDoesNotFollowSymlinksInTheDestination(t *testing.T) {
+	root := t.TempDir()
+	src, dst, outside := filepath.Join(root, "src"), filepath.Join(root, "dst"), filepath.Join(root, "outside")
+	write(t, filepath.Join(src, "result.txt"), "new")
+	write(t, filepath.Join(src, "sub", "f.txt"), "new")
+	write(t, filepath.Join(outside, "victim.txt"), "keep")
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "victim.txt"), filepath.Join(dst, "result.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dst, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(dst, "other.txt"), "left alone")
+	if err := copyTree(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(outside, "victim.txt")); string(got) != "keep" {
+		t.Errorf("a file outside DIR was overwritten: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "f.txt")); err == nil {
+		t.Error("a file landed outside DIR through a symlinked directory")
+	}
+	for rel, want := range map[string]string{"result.txt": "new", "sub/f.txt": "new", "other.txt": "left alone"} {
+		info, err := os.Lstat(filepath.Join(dst, rel))
+		got, _ := os.ReadFile(filepath.Join(dst, rel))
+		if err != nil || info.Mode()&os.ModeSymlink != 0 || string(got) != want {
+			t.Errorf("%s = %q (%v)", rel, got, err)
+		}
+	}
+}
+
+func TestLocalJobRefusesAnOutputInsideItsDirectory(t *testing.T) {
+	f := newJobFixture(t)
+	work := filepath.Join(f.root, "local", "j1")
+	for _, out := range []string{work, filepath.Join(work, "out"), filepath.Join(work, "x", "y")} {
+		err := f.run(JobOptions{LocalOnly: true, OutDir: out})
+		if err == nil || !strings.Contains(err.Error(), "inside the local job directory") || f.localArg != nil {
+			t.Errorf("-o %s = %v", out, err)
+		}
+	}
+}
+
+func TestAnExistingJobNameIsRefused(t *testing.T) {
+	f := newJobFixture(t)
+	f.exists = true
+	err := f.run(JobOptions{})
+	if err == nil || !strings.Contains(err.Error(), "job j1 already exists at buildbox:~/jobs/j1") || f.called(" run --rm ") || f.called("rm -rf") {
+		t.Errorf("remote reuse = %v, calls %v", err, f.calls)
+	}
+	f = newJobFixture(t)
+	if err := os.MkdirAll(filepath.Join(f.root, "local", "j1", "out"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err = f.run(JobOptions{LocalOnly: true})
+	if err == nil || !strings.Contains(err.Error(), "already exists") || f.localArg != nil {
+		t.Errorf("local reuse = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(f.root, "local", "j1", "out")); err != nil {
+		t.Errorf("the existing job directory was touched: %v", err)
+	}
+}
+
+func TestJobCreateScriptIsExclusive(t *testing.T) {
+	root := t.TempDir()
+	p := JobProfile{Root: filepath.Join(root, "jobs")}
+	for i, want := range []string{"", "exists"} {
+		out, err := shellRun(jobCreateScript(p, "j"))
+		if err != nil || strings.TrimSpace(out) != want {
+			t.Errorf("run %d: %q %v", i, out, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "jobs", "j", "in")); err != nil {
+		t.Error(err)
+	}
+}
+
+// A symlinked input travels as its contents under the link's own name.
+func TestSymlinkedInputIsSentAsContents(t *testing.T) {
+	f := newJobFixture(t)
+	real := filepath.Join(f.root, "data", "real.wav")
+	write(t, real, "x")
+	link := filepath.Join(f.root, "clip.wav")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.run(JobOptions{Inputs: []string{link}}); err != nil {
+		t.Fatal(err)
+	}
+	if !f.called("rsync -a -L -s -e ") || !f.called(" "+link+" buildbox:jobs/j1/in/") {
+		t.Errorf("staging: %v", f.calls)
 	}
 }

@@ -146,15 +146,17 @@ case "$1" in
     # A job mounts its directory at /job: run its command there for real, so
     # the round trip of in/ and out/ is what the assertions read.
     jobdir=""
+    jobenv=()
     previous=""
     for arg in "$@"; do
       if [ "$previous" = "-v" ] && [ "${arg%:/job}" != "$arg" ]; then jobdir="${arg%:/job}"; fi
+      if [ "$previous" = "-e" ]; then jobenv+=("$arg"); fi
       previous="$arg"
     done
     if [ -n "$jobdir" ]; then
       script="${*: -1}"
       set +e
-      (cd "$jobdir" && bash -c "$script")
+      (cd "$jobdir" && env "${jobenv[@]}" bash -c "$script")
       code=$?
       if [ -n "$name" ]; then forget "$name"; fi
       exit "$code"
