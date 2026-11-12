@@ -64,6 +64,18 @@ type Deps struct {
 	ClearReplaced func(ctx context.Context, h Host, mirror string, paths []byte) ([]byte, error)
 	// Nonce is the random suffix of a verify run's ref. Empty means random.
 	Nonce func() string
+	// ExecLocal runs a job's local fallback. Empty means the real process.
+	ExecLocal LocalExecer
+	// DotBinary is the dot the local fallback runs `dot admit` from. Empty
+	// means this executable.
+	DotBinary string
+}
+
+func (d Deps) exLocal() LocalExecer {
+	if d.ExecLocal != nil {
+		return d.ExecLocal
+	}
+	return execAttachedIn
 }
 
 // DefaultDeps wires the real terminal, git and the invoking user's admission
@@ -174,10 +186,19 @@ func (d Deps) captureExit(ctx context.Context, argv []string, stdin []byte) (str
 // container may be left running on the host and "255" is not an answer a person
 // can act on.
 func execAttached(ctx context.Context, argv []string, stdin io.Reader, stdout, stderr io.Writer) (int, syscall.Signal, error) {
+	return execAttachedIn(ctx, argv, "", nil, stdin, stdout, stderr)
+}
+
+// LocalExecer runs one attached command on this machine in dir with env (nil
+// means this process's env); it is execAttached with a working directory.
+type LocalExecer func(ctx context.Context, argv []string, dir string, env []string, stdin io.Reader, stdout, stderr io.Writer) (int, syscall.Signal, error)
+
+func execAttachedIn(ctx context.Context, argv []string, dir string, env []string, stdin io.Reader, stdout, stderr io.Writer) (int, syscall.Signal, error) {
 	if len(argv) == 0 {
 		return 0, 0, errors.New("no command to run")
 	}
 	cmd := osexec.Command(argv[0], argv[1:]...) // #nosec G204 -- argv is this package's own construction
+	cmd.Dir, cmd.Env = dir, env
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {

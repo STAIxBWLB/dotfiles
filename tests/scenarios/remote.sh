@@ -60,7 +60,7 @@ cleanup() {
   fi
   rm -rf "$tmpdir" "$HOME/remote-work" "$HOME/dot-remote" "$HOME/dot-remote-git" "$HOME/dot-remote-src" \
     "$HOME/bin/docker" "$HOME/stub-hold" "$HOME/stub.log" "$HOME/stub-containers" "$HOME/stub-running" \
-    "$HOME/stub-remove-fail" \
+    "$HOME/stub-remove-fail" "$HOME/e2e-jobs" "$HOME/e2e-jobs-full" "$HOME/e2e-local-jobs" \
     "$HOME/.config/dotfiles/config.yaml"
 }
 trap 'cleanup' EXIT
@@ -142,6 +142,24 @@ case "$1" in
     fi
     if [ -f "$HOME/stub-hold" ]; then
       sleep "$(cat "$HOME/stub-hold")"
+    fi
+    # A job mounts its directory at /job: run its command there for real, so
+    # the round trip of in/ and out/ is what the assertions read.
+    jobdir=""
+    jobenv=()
+    previous=""
+    for arg in "$@"; do
+      if [ "$previous" = "-v" ] && [ "${arg%:/job}" != "$arg" ]; then jobdir="${arg%:/job}"; fi
+      if [ "$previous" = "-e" ]; then jobenv+=("$arg"); fi
+      previous="$arg"
+    done
+    if [ -n "$jobdir" ]; then
+      script="${*: -1}"
+      set +e
+      (cd "$jobdir" && env "${jobenv[@]}" bash -c "$script")
+      code=$?
+      if [ -n "$name" ]; then forget "$name"; fi
+      exit "$code"
     fi
     echo "stub-container-ran"
     # --rm: nothing is left once the command returns.
@@ -346,6 +364,29 @@ remote:
       image:
         ref: example.invalid/e2e:1
       max_load_ratio: 0.000001
+    jobhost:
+      ssh: remotehost
+      prefix: e2e-job
+      image:
+        ref: example.invalid/e2e:1
+      jobs:
+        media:
+          root: $HOME/e2e-jobs
+          image:
+            ref: example.invalid/media:1
+          cpus: 2
+          memory: 1g
+          env:
+            THREADS: "{half_cpus}"
+          local:
+            root: $HOME/e2e-local-jobs
+        full:
+          root: e2e-jobs-full
+          image:
+            ref: example.invalid/media:1
+          min_free_gb: 999999999
+          local:
+            root: $HOME/e2e-local-jobs
 EOF
 
 # ── setup ────────────────────────────────────────────────────────────────────
@@ -1001,6 +1042,90 @@ if grep -q -- '--name e2e-rdev-src-root' "$HOME/stub.log" && ! grep -q -- '-v e2
   pass "src mounts no cache volume"
 else
   fail "src argv: $(grep '^run ' "$HOME/stub.log" | tail -1)"
+fi
+
+# ── dot remote job ───────────────────────────────────────────────────────────
+jobin="$tmpdir/job-in"
+mkdir -p "$jobin"
+printf 'payload\n' >"$jobin/a.txt"
+if "$BIN" remote job check --host jobhost --profile media >/dev/null 2>"$tmpdir/jobcheck.err"; then
+  pass "job check: the host can take a media job"
+else
+  fail "job check failed: $(cat "$tmpdir/jobcheck.err")"
+fi
+set +e
+"$BIN" remote job check --host jobhost --profile full >/dev/null 2>&1
+code=$?
+set -e
+if [ "$code" -eq 69 ]; then pass "job check exits 69 when the disk is too full"; else fail "job check on a full disk exited $code"; fi
+
+# shellcheck disable=SC2016 # $THREADS expands inside the job, not here
+if "$BIN" remote job run --host jobhost --profile media --name rt -o "$tmpdir/job-out" -i "$jobin/a.txt" \
+  -- 'mkdir -p out && cp in/a.txt out/b.txt && echo "$THREADS" > out/threads' >/dev/null 2>"$tmpdir/job.err"; then
+  pass "a job round trip exited 0"
+else
+  fail "job round trip failed: $(cat "$tmpdir/job.err")"
+fi
+if [ "$(cat "$tmpdir/job-out/b.txt" 2>/dev/null)" = "payload" ] && [ "$(cat "$tmpdir/job-out/threads" 2>/dev/null)" = "1" ]; then
+  pass "out/ came back with the file and the templated env"
+else
+  fail "out/ did not come back: $(ls -A "$tmpdir/job-out" 2>&1 | tr '\n' ' ')"
+fi
+if [ ! -e "$HOME/e2e-jobs/rt" ]; then pass "a successful job's directory is deleted"; else fail "the job directory was kept after success"; fi
+
+set +e
+"$BIN" remote job run --host jobhost --profile media --name broken -o "$tmpdir/job-out2" -- 'exit 7' >/dev/null 2>"$tmpdir/job2.err"
+code=$?
+set -e
+if [ "$code" -eq 7 ] && [ -d "$HOME/e2e-jobs/broken" ] && grep -q 'job kept at' "$tmpdir/job2.err"; then
+  pass "a failed job exits with its status and keeps its directory"
+else
+  fail "failed job: exit $code, $(cat "$tmpdir/job2.err")"
+fi
+
+set +e
+"$BIN" remote job run --host jobhost --profile full --remote-only --name nope -o "$tmpdir/job-out3" -- true >/dev/null 2>&1
+code=$?
+set -e
+if [ "$code" -eq 69 ]; then pass "--remote-only exits 69 when the host cannot take the job"; else fail "--remote-only exited $code"; fi
+
+if DOT_ADMISSION_IGNORE=pressure,uncovered "$BIN" remote job run --host jobhost --profile full --name fb -o "$tmpdir/job-out4" -i "$jobin/a.txt" \
+  -- 'mkdir -p out && cp in/a.txt out/local.txt' >/dev/null 2>"$tmpdir/job4.err"; then
+  if [ "$(cat "$tmpdir/job-out4/local.txt" 2>/dev/null)" = "payload" ] && grep -q 'running it locally' "$tmpdir/job4.err" && [ ! -e "$HOME/e2e-local-jobs/fb" ]; then
+    pass "the job fell back to this machine, collected out/ and cleaned up"
+  else
+    fail "fallback output wrong: $(cat "$tmpdir/job4.err")"
+  fi
+else
+  fail "fallback job failed: $(cat "$tmpdir/job4.err")"
+fi
+
+# A second job of a max_jobs=1 profile defers with 75 while the first holds it;
+# then the held one is interrupted and its container removed.
+printf '8\n' >"$HOME/stub-hold"
+"$BIN" remote job run --host jobhost --profile media --name held -o "$tmpdir/job-out5" -- true >/dev/null 2>"$tmpdir/held.err" &
+held_pid=$!
+attempt=0
+while [ "$attempt" -lt 40 ] && ! grep -qx 'e2e-job-job-media_held' "$HOME/stub-running" 2>/dev/null; do
+  attempt=$((attempt + 1))
+  sleep 0.25
+done
+set +e
+"$BIN" remote job run --host jobhost --profile media --name second -o "$tmpdir/job-out6" -- true >/dev/null 2>&1
+code=$?
+set -e
+if [ "$code" -eq 75 ]; then pass "a second job of the profile defers with 75"; else fail "second job exited $code"; fi
+# TERM, because a background job of a non-interactive shell starts with SIGINT ignored.
+kill -TERM "$held_pid" 2>/dev/null || true
+set +e
+wait "$held_pid"
+code=$?
+set -e
+rm -f "$HOME/stub-hold"
+if [ "$code" -eq 143 ] && grep -q '^rm -f e2e-job-job-media_held' "$HOME/stub.log"; then
+  pass "an interrupted job exits 128+signal and removes its container"
+else
+  fail "interrupt: exit $code, $(cat "$tmpdir/held.err")"
 fi
 
 # D-10: `report` alone returns success on zero assertions, so the verdict

@@ -87,6 +87,8 @@ type Host struct {
 	Ref        string
 	Caches     []Cache
 	Env        []EnvPair
+	// Jobs are the host's `dot remote job` profiles, by name.
+	Jobs map[string]JobProfile
 }
 
 // Cache is one named volume mounted into the container.
@@ -410,6 +412,11 @@ func resolveHost(name string, in config.UserRemoteHost, home string) (Host, erro
 		}
 		host.Env = append(host.Env, EnvPair{Key: envKey, Value: in.Env[envKey]})
 	}
+	jobs, err := resolveJobs(key, host, in.Jobs, home)
+	if err != nil {
+		return Host{}, err
+	}
+	host.Jobs = jobs
 	return host, nil
 }
 

@@ -291,6 +291,96 @@ your local path. A claim left by another machine is reported rather than
 reclaimed, since nothing here can prove that run is gone. See the ceiling in
 [CEILINGS](../CEILINGS.md).
 
+### Remote jobs
+
+`dot remote job` is the file-in, file-out side of the same hosts: named input
+files go up, a command runs in an isolated job directory in a profile's own
+container, and the files it wrote come back. When the host cannot take the job
+the same command runs on this machine under `dot admit`. Nothing about it is
+specific to one tool; a profile is config only.
+
+```yaml
+remote:
+  hosts:
+    buildbox:
+      # ... the host keys above ...
+      jobs:
+        media:                        # --profile defaults to the only one
+          root: /data/me/jobs         # absolute, or relative to the remote $HOME
+          image:
+            dockerfile: ~/images/media.Dockerfile   # or ref:
+          cpus: 16
+          memory: 32g
+          max_jobs: 1                 # concurrent jobs of this profile from this machine
+          max_load_ratio: 0.7
+          min_free_gb: 50             # free space required under root
+          env:
+            WORKER_THREADS: "{half_cpus}"   # {cpus} and {half_cpus} are filled in
+          fallback: local             # local (default) | none
+          local:
+            root: ~/scratch/jobs      # default ~/.local/state/dot/remote-jobs/<profile>
+            path: [~/tools/qa/.venv/bin]
+            env: {QA_OFFLINE: "1"}
+```
+
+A starter media profile image (unprivileged user, as for the dev image):
+
+```dockerfile
+FROM debian:12-slim
+ARG UID=1000
+ARG GID=1000
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends bash ca-certificates ffmpeg \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd -g "${GID}" dev \
+ && useradd -m -u "${UID}" -g "${GID}" -s /bin/bash dev
+USER dev
+```
+
+```bash
+dot remote setup --profile media     # build or pull the profile's image
+dot remote job check                 # exit 0 if the host can take a job now, 69 if not
+dot remote job run -o renders -i clip.wav -- 'ffmpeg -i in/clip.wav out/clip.mp3'
+dot remote job run --remote-only -o out -i a.wav -- ./qa.sh   # 69 instead of running here
+dot remote job run --local-only -o out -- make-thumbs         # skip the host
+```
+
+A built profile image is `<prefix>-<profile>:latest`, next to the dev image.
+Write the command with relative paths (`in/...`, `out/...`): it runs with the
+job directory as its working directory, on the host or here. Inputs are a flat
+list of files whose names must be unique, and a missing one fails before
+anything is sent. `--name` (default a timestamp) must match
+`[a-z0-9][a-z0-9-]{0,63}`.
+
+- `check` is one ssh round trip, 30 seconds at most with a 5-second connect: the
+  profile's image is present and not root, load1 is under `max_load_ratio` x
+  CPUs, and more than `min_free_gb` is free under `root`. A timeout or an
+  unreadable value counts as unavailable.
+- On the host, inputs go up with rsync into `<root>/<name>/in/`; the container
+  mounts the job directory at `/job`, runs as the image's user with the
+  profile's CPU and memory limits and no cache volume, and `out/` comes back
+  with rsync into the `-o` directory (created if missing; files with the same
+  names are overwritten, others left alone). Only `in/` goes up and only `out/`
+  comes back.
+- The job directory is deleted when the command and the collection both
+  succeed; otherwise it is kept and its location printed. An interrupt removes
+  the container by name.
+- When `check` fails and the profile's `fallback` is `local` (and no
+  `--remote-only`), the command runs here in `<local.root>/<name>` with `in/`
+  holding symlinks to the inputs, `local.path` ahead of `PATH` and `local.env`
+  set, through `dot admit` as an ordinary heavy job (the pressure gate and the
+  local slot apply). stderr says it ran locally and why; `out/` is copied to
+  the `-o` directory, and the directory is removed on success and kept on
+  failure.
+- One lease per profile and host, capacity `max_jobs`, is taken before `check`
+  and held through collection or the local run; it shows in `dot admit status`
+  and `dot remote status`.
+
+Exit status: the command's own; 75 when the profile's `max_jobs` are already
+active from this machine; 69 when the host cannot take the job and
+`--remote-only` (or `fallback: none`) keeps it off this machine; 128+signal
+when interrupted.
+
 ### Where it writes, and cleanup
 
 Mirrors live under `~/dot-remote` on the host (configurable), one directory per

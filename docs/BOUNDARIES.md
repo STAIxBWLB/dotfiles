@@ -529,6 +529,19 @@ configurable in the `remote:` block:
   containers `<prefix>-<mirror key>` a run creates and removes,
   `<prefix>-verify-<mirror key>` a verify does, and `<prefix>-src-<name>`
   (`<prefix>-src-root` without a name) a src job does
+- `<jobs root>/<name>` for each `dot remote job` (`jobs.<profile>.root`,
+  absolute or under the remote `$HOME`, default `~/dot-remote-jobs/<profile>`):
+  `in/` fed by rsync with the job's input files and `out/` written by the job,
+  deleted once the command and the collection both succeed and kept otherwise;
+  the profile image `<prefix>-<profile>:latest` (or its `image.ref`) and the
+  job containers `<prefix>-job-<profile>_<name>`
+
+`dot remote job` writes on this machine only the `-o` directory it collects
+`out/` into (same-named files are overwritten, others left alone),
+`<local.root>/<name>` for a job that falls back to running here (default
+`~/.local/state/dot/remote-jobs/<profile>/<name>`: `in/` holds symlinks to the
+inputs; removed on success, kept on failure), and its `remote-job:<host>/<profile>`
+lease under the admission state root.
 
 A run never copies anything back, and it removes the container it started on
 every exit path except a SIGKILL: after a kill the next run of that path

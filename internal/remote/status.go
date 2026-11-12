@@ -198,6 +198,8 @@ func activeRuns(cfg Config, h Host, leases []admission.Lease, now time.Time) []A
 			run.Kind = "host"
 		} else if strings.HasPrefix(lease.Scope, "remote-src:") {
 			run.Kind = "src"
+		} else if strings.HasPrefix(lease.Scope, "remote-job:") {
+			run.Kind = "job"
 		} else if rel, err := cfg.Rel(lease.Scope); err == nil {
 			run.Container = h.ContainerName(rel)
 		}

@@ -1,0 +1,6 @@
+{
+  "host": "buildbox",
+  "profile": "media",
+  "available": false,
+  "reason": "ssh failed: starting ssh: exec: \"ssh\": executable file not found in $PATH"
+}

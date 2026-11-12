@@ -554,6 +554,9 @@ type UserRemoteHost struct {
 	Image        UserRemoteImage   `yaml:"image,omitempty"`
 	Caches       map[string]string `yaml:"caches,omitempty"` // named volume (prefix added) -> container path
 	Env          map[string]string `yaml:"env,omitempty"`    // extra container env
+	// Jobs are the file-in, file-out job profiles this host serves (#422),
+	// each with its own image next to the dev image.
+	Jobs map[string]UserRemoteJob `yaml:"jobs,omitempty"`
 }
 
 // IsZero lets yaml.v3 omit an unset host from rendered output.
@@ -561,7 +564,43 @@ func (h UserRemoteHost) IsZero() bool {
 	return h.SSH == "" && h.Runtime == "" && h.Prefix == "" && h.Root == "" &&
 		h.GitRoot == "" && h.SrcRoot == "" && h.CPUs == 0 && h.Memory == "" &&
 		h.MaxRuns == nil && h.MaxLoadRatio == nil && h.Image.IsZero() &&
-		len(h.Caches) == 0 && len(h.Env) == 0
+		len(h.Caches) == 0 && len(h.Env) == 0 && len(h.Jobs) == 0
+}
+
+// UserRemoteJob is one `dot remote job` profile: where its job directories
+// live, the image it runs in, its limits, and how it falls back to this
+// machine. Pointers keep an explicit 0 apart from unset.
+type UserRemoteJob struct {
+	Root         string             `yaml:"root,omitempty"` // absolute, or relative to the remote $HOME
+	Image        UserRemoteImage    `yaml:"image,omitempty"`
+	CPUs         int                `yaml:"cpus,omitempty"`
+	Memory       string             `yaml:"memory,omitempty"`
+	MaxJobs      *int               `yaml:"max_jobs,omitempty"`
+	MaxLoadRatio *float64           `yaml:"max_load_ratio,omitempty"`
+	MinFreeGB    *int               `yaml:"min_free_gb,omitempty"`
+	Env          map[string]string  `yaml:"env,omitempty"`      // values may use {cpus} and {half_cpus}
+	Fallback     string             `yaml:"fallback,omitempty"` // local (default) | none
+	Local        UserRemoteJobLocal `yaml:"local,omitempty"`
+}
+
+// IsZero lets yaml.v3 omit an unset profile from rendered output.
+func (j UserRemoteJob) IsZero() bool {
+	return j.Root == "" && j.Image.IsZero() && j.CPUs == 0 && j.Memory == "" &&
+		j.MaxJobs == nil && j.MaxLoadRatio == nil && j.MinFreeGB == nil &&
+		len(j.Env) == 0 && j.Fallback == "" && j.Local.IsZero()
+}
+
+// UserRemoteJobLocal is how a profile's job runs on this machine when the host
+// cannot take it.
+type UserRemoteJobLocal struct {
+	Root string            `yaml:"root,omitempty"` // local job directories
+	Path []string          `yaml:"path,omitempty"` // prepended to PATH
+	Env  map[string]string `yaml:"env,omitempty"`
+}
+
+// IsZero lets yaml.v3 omit an unset local block from rendered output.
+func (l UserRemoteJobLocal) IsZero() bool {
+	return l.Root == "" && len(l.Path) == 0 && len(l.Env) == 0
 }
 
 // UserRemoteImage names the dev image exactly one way: built on the host from

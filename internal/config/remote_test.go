@@ -35,6 +35,11 @@ func TestRemoteBlockRoundTripsThroughTheStateDocument(t *testing.T) {
 					Image:        UserRemoteImage{Dockerfile: "~/images/dev.Dockerfile"},
 					Caches:       map[string]string{"cargo-registry": "/usr/local/cargo/registry"},
 					Env:          map[string]string{"LANG": "C.UTF-8"},
+					Jobs: map[string]UserRemoteJob{"media": {
+						Root: "/data/me/jobs", Image: UserRemoteImage{Ref: "ghcr.io/org/media:1"}, MaxJobs: &maxRuns,
+						Env: map[string]string{"WORKER_THREADS": "{half_cpus}"}, Fallback: "local",
+						Local: UserRemoteJobLocal{Root: "~/scratch/jobs", Path: []string{"~/tools/bin"}},
+					}},
 				},
 			},
 			Projects: map[string]UserRemoteProject{
@@ -76,6 +81,10 @@ func TestRemoteBlockRoundTripsThroughTheStateDocument(t *testing.T) {
 		t.Errorf("dockerfile = %q", host.Image.Dockerfile)
 	}
 	project := back.Remote.Projects["~/workspace/work/dev/one"]
+	if job := host.Jobs["media"]; job.Root != "/data/me/jobs" || job.MaxJobs == nil || *job.MaxJobs != 2 ||
+		job.Env["WORKER_THREADS"] != "{half_cpus}" || job.Local.Root != "~/scratch/jobs" || len(job.Local.Path) != 1 {
+		t.Errorf("job profile did not survive: %+v", job)
+	}
 	if project.Verify != "make check" || project.Host != "buildbox" {
 		t.Errorf("project = %+v", project)
 	}

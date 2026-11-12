@@ -210,6 +210,18 @@ then that entry's `host`, then `remote.default`. The block is carried by `dot
 config export` like the rest of the state document. See [Remote
 hosts](servers.md#remote-hosts) for the workflow.
 
+`hosts.<name>.jobs.<profile>` configures a `dot remote job` profile (see
+[Remote jobs](servers.md#remote-jobs)). The profile name matches
+`[a-z0-9][a-z0-9-]{0,63}`. Each profile needs exactly one of `image.dockerfile`
+and `image.ref`; `root` (default `dot-remote-jobs/<profile>`) is absolute or
+relative to the remote `$HOME` and may not contain `..`; `cpus` and `memory`
+default to the host's; `max_jobs` is 1-8 (default 1); `max_load_ratio` must be
+above zero (unset skips the load check); `min_free_gb` must not be negative;
+`env` keys are variable names and values may use only `{cpus}` and
+`{half_cpus}`; `fallback` is `local` (default) or `none`; `local.root` (default
+`~/.local/state/dot/remote-jobs/<profile>`) and each `local.path` entry are
+absolute or `~/` paths. A refused value names its key, as above.
+
 A first run sends what `git ls-files` names (tracked files plus untracked ones
 no ignore rule covers) and then prunes the mirror of what the checkout no longer
 has. Later runs prune from the listing this machine sent to that mirror last

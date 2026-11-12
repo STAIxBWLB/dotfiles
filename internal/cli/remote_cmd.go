@@ -52,6 +52,7 @@ same path removes the one left behind.
 	cmd.AddCommand(newRemoteVerifyCmd())
 	cmd.AddCommand(newRemoteSrcCmd())
 	cmd.AddCommand(newRemoteStatusCmd())
+	cmd.AddCommand(newRemoteJobCmd())
 	return cmd
 }
 
@@ -153,6 +154,7 @@ image. dot ships no image of its own; the servers guide carries a starter.`,
 		SilenceUsage: true,
 	}
 	cmd.Flags().Bool("json", false, "print the report as JSON")
+	cmd.Flags().String("profile", "", "build or pull a job profile's image instead of the dev image (remote.hosts.<host>.jobs.<profile>)")
 	return cmd
 }
 
@@ -160,6 +162,14 @@ func runRemoteSetup(cmd *cobra.Command, _ []string) error {
 	_, host, deps, err := remoteSession(cmd, "")
 	if err != nil {
 		return err
+	}
+	if cmd.Flags().Changed("profile") {
+		name, _ := cmd.Flags().GetString("profile")
+		profile, perr := host.Profile(name)
+		if perr != nil {
+			return perr
+		}
+		host = profile.ImageHost(host)
 	}
 	p := printerFrom(cmd)
 	dryRun, _ := cmd.Flags().GetBool("dry-run")

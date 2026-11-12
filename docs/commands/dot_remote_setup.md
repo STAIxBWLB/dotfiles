@@ -17,8 +17,9 @@ dot remote setup [flags]
 ### Options
 
 ```
-  -h, --help   help for setup
-      --json   print the report as JSON
+  -h, --help             help for setup
+      --json             print the report as JSON
+      --profile string   build or pull a job profile's image instead of the dev image (remote.hosts.<host>.jobs.<profile>)
 ```
 
 ### Options inherited from parent commands
