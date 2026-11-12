@@ -125,7 +125,7 @@ func TestJobContainerArgvHasNoCachesAndMountsTheJob(t *testing.T) {
 	h.Caches = []Cache{{Name: "cargo", Target: "/c"}}
 	p := JobProfile{Name: "media", Root: "/data/jobs", Ref: "img:1", CPUs: 8, Memory: "16g", Env: []EnvPair{{Key: "T", Value: "{half_cpus}"}}}
 	cmd := JobRunCommand(h, p, "j1", []string{"ffmpeg -i in/a out/b"})
-	for _, want := range []string{"run --rm -v '/data/jobs/j1':/job", "--name me-rdev-media-j1", "--cpus 8", "--memory 16g", "-w /job", "-e T=4", "img:1", "'ffmpeg -i in/a out/b'"} {
+	for _, want := range []string{"run --rm -v '/data/jobs/j1':/job", "--name me-rdev-job-media-j1", "--cpus 8", "--memory 16g", "-w /job", "-e T=4", "img:1", "'ffmpeg -i in/a out/b'"} {
 		if !strings.Contains(cmd, want) {
 			t.Errorf("job command lacks %q:\n%s", want, cmd)
 		}
@@ -312,7 +312,7 @@ func TestRemoteJobInterruptRemovesTheContainer(t *testing.T) {
 	f.exit, f.sig = 130, syscall.SIGINT
 	err := f.run(JobOptions{})
 	var code *ExitCode
-	if !errors.As(err, &code) || code.Code != 130 || !f.called("docker rm -f 'me-rdev-media-j1'") {
+	if !errors.As(err, &code) || code.Code != 130 || !f.called("docker rm -f 'me-rdev-job-media-j1'") {
 		t.Errorf("interrupt: %v, %v", err, f.calls)
 	}
 }
@@ -618,5 +618,23 @@ func TestCopyTreeRefusesTargetsInsideTheJobDirectory(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(filepath.Join(f.root, "local", "other.txt")); string(got) != "ok" {
 		t.Errorf("collected = %q", got)
+	}
+}
+
+// Job containers live in their own namespace: a profile called src or verify
+// can never name another job type's container, which an interrupt removes.
+func TestJobContainerNeverCollidesWithSrcOrVerify(t *testing.T) {
+	h := testHost()
+	for _, profile := range []string{"src", "verify"} {
+		p := JobProfile{Name: profile}
+		for _, name := range []string{"root", "lib", MirrorKey("a/b")} {
+			job := JobContainer(h, p, name)
+			if job == h.SrcContainer(name) || job == h.SrcContainer("") || job == h.VerifyContainer("a/b") || job == h.ContainerName("a/b") {
+				t.Errorf("profile %s job %s = %s collides", profile, name, job)
+			}
+			if !strings.HasPrefix(job, h.Prefix+"-job-") {
+				t.Errorf("job container %s is outside the job namespace", job)
+			}
+		}
 	}
 }

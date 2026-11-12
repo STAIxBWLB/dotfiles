@@ -1106,7 +1106,7 @@ printf '8\n' >"$HOME/stub-hold"
 "$BIN" remote job run --host jobhost --profile media --name held -o "$tmpdir/job-out5" -- true >/dev/null 2>"$tmpdir/held.err" &
 held_pid=$!
 attempt=0
-while [ "$attempt" -lt 40 ] && ! grep -qx 'e2e-job-media-held' "$HOME/stub-running" 2>/dev/null; do
+while [ "$attempt" -lt 40 ] && ! grep -qx 'e2e-job-job-media-held' "$HOME/stub-running" 2>/dev/null; do
   attempt=$((attempt + 1))
   sleep 0.25
 done
@@ -1122,7 +1122,7 @@ wait "$held_pid"
 code=$?
 set -e
 rm -f "$HOME/stub-hold"
-if [ "$code" -eq 143 ] && grep -q '^rm -f e2e-job-media-held' "$HOME/stub.log"; then
+if [ "$code" -eq 143 ] && grep -q '^rm -f e2e-job-job-media-held' "$HOME/stub.log"; then
   pass "an interrupted job exits 128+signal and removes its container"
 else
   fail "interrupt: exit $code, $(cat "$tmpdir/held.err")"

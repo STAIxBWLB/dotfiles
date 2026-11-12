@@ -59,7 +59,7 @@ func (u *Unavailable) ExitCode() int { return ExitUnavailable }
 
 // JobContainer is the container one remote job runs in.
 func JobContainer(h Host, p JobProfile, name string) string {
-	return h.Prefix + "-" + p.Name + "-" + name
+	return h.Prefix + "-job-" + p.Name + "-" + name
 }
 
 // JobName returns the job's name: the one given, checked, or a timestamp.

@@ -534,7 +534,7 @@ configurable in the `remote:` block:
   `in/` fed by rsync with the job's input files and `out/` written by the job,
   deleted once the command and the collection both succeed and kept otherwise;
   the profile image `<prefix>-<profile>:latest` (or its `image.ref`) and the
-  job containers `<prefix>-<profile>-<name>`
+  job containers `<prefix>-job-<profile>-<name>`
 
 `dot remote job` writes on this machine only the `-o` directory it collects
 `out/` into (same-named files are overwritten, others left alone),
