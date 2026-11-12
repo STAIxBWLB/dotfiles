@@ -754,6 +754,33 @@ func TestAnInterruptedRunWhoseRemovalFailsKeepsTheClaim(t *testing.T) {
 	}
 }
 
+// A dropped ssh connection removes the container too, and that path has to
+// report a removal it could not do the same way the interrupt does.
+func TestAnSSHFailureWhoseRemovalFailsKeepsTheClaim(t *testing.T) {
+	f := newRunFixture(t)
+	f.exec.exit = sshFailureStatus
+	f.exec.removeErr = errors.New("Error response from daemon: container is in use")
+	err := f.run(RunOptions{Command: []string{"make", "test"}})
+	var exit *ExitCode
+	if !errors.As(err, &exit) {
+		t.Fatalf("Run = %v, want an ssh failure", err)
+	}
+	if exit.Code != sshFailureStatus {
+		t.Errorf("exit = %d, want %d", exit.Code, sshFailureStatus)
+	}
+	for _, want := range []string{"exited 255", "could not remove the container", "keeps the claim"} {
+		if !strings.Contains(exit.Error(), want) {
+			t.Errorf("error = %q, want it to say %q", exit.Error(), want)
+		}
+	}
+	if strings.Contains(exit.Error(), "removed "+f.container()) {
+		t.Errorf("error = %q, claims a removal that did not happen", exit.Error())
+	}
+	if at := f.exec.order("claim: release"); at >= 0 {
+		t.Errorf("the claim was released at call %d over a container that could not be removed", at)
+	}
+}
+
 // A container the runtime no longer has is not a failed removal: --rm reaps it
 // when the command finishes, so an rm answered with "no such container" is
 // settled by asking the host, and the run still releases its claim.
