@@ -207,6 +207,7 @@ type jobFixture struct {
 	pullErr  error
 	local    int
 	exists   bool
+	outLink  bool
 	calls    []string
 	localArg []string
 	localDir string
@@ -240,6 +241,10 @@ func (f *jobFixture) deps() Deps {
 					return 255, 0, f.checkErr
 				}
 				fmt.Fprint(stdout, f.check)
+			case strings.Contains(last, "then echo dir; fi"):
+				if !f.outLink {
+					fmt.Fprintln(stdout, "dir")
+				}
 			case strings.Contains(last, "echo exists"):
 				if f.exists {
 					fmt.Fprintln(stdout, "exists")
@@ -480,5 +485,69 @@ func TestSymlinkedInputIsSentAsContents(t *testing.T) {
 	}
 	if !f.called("rsync -a -L -s -e ") || !f.called(" "+link+" buildbox:jobs/j1/in/") {
 		t.Errorf("staging: %v", f.calls)
+	}
+}
+
+// A directory already in DIR where the job wrote a file is never removed: the
+// collection stops, names it, and the job stays.
+func TestCopyTreeKeepsADirectoryWhereTheJobWroteAFile(t *testing.T) {
+	root := t.TempDir()
+	src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+	write(t, filepath.Join(src, "report"), "job")
+	write(t, filepath.Join(dst, "report", "notes.txt"), "mine")
+	err := copyTree(src, dst)
+	if err == nil || !strings.Contains(err.Error(), "is a directory, the job wrote a file there") {
+		t.Fatalf("copyTree = %v", err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dst, "report", "notes.txt")); string(got) != "mine" {
+		t.Errorf("a user file was deleted: %q", got)
+	}
+
+	f := newJobFixture(t)
+	write(t, filepath.Join(f.root, "result", "result.txt", "notes.txt"), "mine")
+	if err := f.run(JobOptions{LocalOnly: true}); err == nil {
+		t.Error("the collection conflict was not reported")
+	}
+	if _, err := os.Stat(f.localDir); err != nil {
+		t.Errorf("the job was not kept: %v", err)
+	}
+}
+
+// A job that replaced out/ with a symlink collects nothing.
+func TestRemoteJobRefusesASymlinkedOut(t *testing.T) {
+	f := newJobFixture(t)
+	f.outLink = true
+	err := f.run(JobOptions{})
+	if err == nil || !strings.Contains(err.Error(), "is not a directory (a symlink?)") || f.called("/out/ ") || f.called("rm -rf") {
+		t.Errorf("symlinked out: %v, %v", err, f.calls)
+	}
+	if script := outIsDirScript(JobProfile{Root: "jobs"}, "j"); !strings.Contains(script, `[ ! -L "$HOME"/'jobs/j'/out ]`) {
+		t.Errorf("probe = %s", script)
+	}
+	dir := t.TempDir()
+	p := JobProfile{Root: dir}
+	if err := os.MkdirAll(filepath.Join(dir, "real"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "j"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "real"), filepath.Join(dir, "j", "out")); err != nil {
+		t.Fatal(err)
+	}
+	if out, _ := shellRun(outIsDirScript(p, "j")); strings.TrimSpace(out) == "dir" {
+		t.Error("a symlinked out/ passed the probe")
+	}
+}
+
+// A failed command's own status wins over a collection error.
+func TestLocalJobKeepsTheCommandStatus(t *testing.T) {
+	f := newJobFixture(t)
+	f.local = 7
+	write(t, filepath.Join(f.root, "result", "result.txt", "x"), "mine")
+	err := f.run(JobOptions{LocalOnly: true})
+	var code *ExitCode
+	if !errors.As(err, &code) || code.Code != 7 || !strings.Contains(f.err.String(), "copying out/") {
+		t.Errorf("err = %v, stderr %s", err, f.err.String())
 	}
 }

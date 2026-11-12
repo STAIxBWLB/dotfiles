@@ -401,6 +401,12 @@ func (d Deps) runRemoteJob(ctx context.Context, h Host, p JobProfile, name strin
 	}
 	// From the host's $HOME, which is where rsync's remote side starts, so a
 	// relative root needs no expansion.
+	// The job could have replaced out with a symlink to anything on the host,
+	// and rsync's source would follow it: out has to be a real directory.
+	if check, cerr := d.capture(context.WithoutCancel(ctx), jobSSH(h, outIsDirScript(p, name)), nil); cerr != nil || strings.TrimSpace(check) != "dir" {
+		fmt.Fprintf(d.errOut(), "dot remote: job kept at %s\n", label)
+		return &ExitCode{Code: nonZero(exit), Err: fmt.Errorf("out/ in %s is not a directory (a symlink?): nothing collected, job kept at %s", label, label)}
+	}
 	_, pullErr := d.capture(context.WithoutCancel(ctx), []string{rsyncPath, "-a", "-s", "-e", jobRSH, h.SSH + ":" + remoteDir + "/out/", outDir + "/"}, nil)
 	if exit == 0 && pullErr == nil {
 		if _, err := d.capture(context.WithoutCancel(ctx), jobSSH(h, "rm -rf "+dir), nil); err != nil {
@@ -453,7 +459,15 @@ func (d Deps) runLocalJob(ctx context.Context, p JobProfile, name string, inputs
 	}
 	if err := copyTree(filepath.Join(work, "out"), outDir); err != nil {
 		fmt.Fprintf(d.errOut(), "dot remote: local job kept at %s\n", work)
-		return fmt.Errorf("copying out/ into %s: %w", outDir, err)
+		collect := fmt.Errorf("copying out/ into %s: %w", outDir, err)
+		if exit != 0 || sig != 0 {
+			fmt.Fprintf(d.errOut(), "dot remote: %v\n", collect)
+			if sig != 0 && exit == 0 {
+				exit = 128 + int(sig)
+			}
+			return &ExitCode{Code: exit, Err: fmt.Errorf("the local job exited with status %d", exit)}
+		}
+		return collect
 	}
 	if exit == 0 && sig == 0 {
 		if err := os.RemoveAll(work); err != nil {
@@ -504,6 +518,20 @@ func localJobEnv(p JobProfile) []string {
 		out = append(out, k+"="+set[k])
 	}
 	return out
+}
+
+// outIsDirScript prints "dir" when a job's out/ is a real directory, not a
+// symlink.
+func outIsDirScript(p JobProfile, name string) string {
+	out := jobDirExpr(p, name) + "/out"
+	return "if [ -d " + out + " ] && [ ! -L " + out + " ]; then echo dir; fi"
+}
+
+func nonZero(code int) int {
+	if code == 0 {
+		return 1
+	}
+	return code
 }
 
 // jobCreateScript makes one job's directory exclusively under its root and
@@ -577,10 +605,9 @@ func copyTree(src, dst string) error {
 		}
 		if lerr == nil {
 			if existing.IsDir() {
-				if err := os.RemoveAll(target); err != nil {
-					return err
-				}
-			} else if err := os.Remove(target); err != nil {
+				return fmt.Errorf("%s is a directory, the job wrote a file there: move it and collect again from %s", target, src)
+			}
+			if err := os.Remove(target); err != nil {
 				return err
 			}
 		}
