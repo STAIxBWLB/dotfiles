@@ -139,7 +139,7 @@ func TestVerifyCommandMountsTheBareRepoReadOnlyAndDropsRoot(t *testing.T) {
 		`-v "$HOME"/'dot-remote-git/r-1234abcd.git':/git/repo.git:ro`,
 		"--user 0", "--name me-rdev-verify-k", "--cpus 16", "-v me-rdev-home:/home/dev",
 		"setpriv", "--inh-caps=-all",
-		"+refs/heads/main:refs/remotes/origin/main", "+refs/verify/k:refs/verify/target",
+		"+refs/verify/k-base:refs/remotes/origin/main", "+refs/verify/k:refs/verify/target",
 		"checkout -q --detach refs/verify/target", "make check",
 	} {
 		if !strings.Contains(cmd, want) {
@@ -207,11 +207,14 @@ func (f *runFixture) verifyDeps() Deps {
 
 func TestVerifyPushesRunsAndDeletesTheRef(t *testing.T) {
 	f, repo := verifyFixture(t)
+	// The checkout has a base branch, so the base travels as a per-run ref too.
+	f.cfg.Projects[0].Base = "main"
 	err := f.verifyDeps().Verify(context.Background(), f.cfg, VerifyOptions{Path: repo, HostName: f.host.Name})
 	if err != nil {
 		t.Fatalf("Verify = %v\nstderr: %s", err, f.errOut.String())
 	}
-	var push, run, del []string
+	var push, run []string
+	var dels []string
 	for _, argv := range f.exec.calls {
 		last := argv[len(argv)-1]
 		switch {
@@ -220,19 +223,30 @@ func TestVerifyPushesRunsAndDeletesTheRef(t *testing.T) {
 		case strings.Contains(last, "/git/repo.git:ro"):
 			run = argv
 		case strings.Contains(last, "update-ref -d"):
-			del = argv
+			dels = append(dels, last)
 		}
 	}
 	head := gitRun(t, repo, "rev-parse", "HEAD")
 	ref := VerifyRef("vrepo", head, "n1")
-	if push == nil || !hasArg(push, "+"+head+":"+ref) {
-		t.Errorf("push = %v, want HEAD to %s", push, ref)
+	baseRef := VerifyBaseRef(ref)
+	if push == nil || !hasArg(push, "+"+head+":"+ref) || !hasArg(push, "+refs/heads/main:"+baseRef) {
+		t.Errorf("push = %v, want HEAD to %s and main to %s", push, ref, baseRef)
 	}
-	if run == nil || !strings.Contains(run[len(run)-1], "scripts/check.sh") || !strings.Contains(run[len(run)-1], ref+":refs/verify/target") {
-		t.Errorf("container run = %v, want the project's verify command fetching %s", run, ref)
+	for _, a := range push {
+		if strings.Contains(a, ":refs/heads/") {
+			t.Errorf("push still writes a shared branch: %v", push)
+		}
 	}
-	if del == nil || !strings.Contains(del[len(del)-1], "update-ref -d "+ShellQuote(ref)) {
-		t.Errorf("the ref was not deleted: %v", del)
+	if run == nil || !strings.Contains(run[len(run)-1], "scripts/check.sh") || !strings.Contains(run[len(run)-1], ref+":refs/verify/target") ||
+		!strings.Contains(run[len(run)-1], baseRef+":refs/remotes/origin/main") {
+		t.Errorf("container run = %v, want the project's verify command fetching %s and %s", run, ref, baseRef)
+	}
+	joined := strings.Join(dels, "\n")
+	if !strings.Contains(joined, "update-ref -d "+ShellQuote(ref)+"\n") && !strings.HasSuffix(joined, "update-ref -d "+ShellQuote(ref)) {
+		t.Errorf("the target ref was not deleted: %v", dels)
+	}
+	if !strings.Contains(joined, "update-ref -d "+ShellQuote(baseRef)) {
+		t.Errorf("the base ref was not deleted: %v", dels)
 	}
 	if held := f.leases(); len(held) != 0 {
 		t.Errorf("leases left: %+v", held)
@@ -267,7 +281,7 @@ func TestVerifyCheckoutQuotesRefspecs(t *testing.T) {
 		if err != nil {
 			t.Fatalf("branch %q: %v: %s", branch, err, out)
 		}
-		want := "git [fetch] [-q] [origin] [+refs/heads/" + branch + ":refs/remotes/origin/" + branch + "] [+" + ref + ":refs/verify/target]\n"
+		want := "git [fetch] [-q] [origin] [+" + ref + "-base:refs/remotes/origin/" + branch + "] [+" + ref + ":refs/verify/target]\n"
 		if !strings.Contains(string(out), want) {
 			t.Errorf("branch %q: fetch argv is not two whole refspecs:\n%s", branch, out)
 		}

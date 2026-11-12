@@ -179,7 +179,7 @@ func verifyInner(ref string, base baseRef, command []string) string {
 	// which git accepts, and this script is handed to a shell.
 	fetch := "git fetch -q origin " + ShellQuote("+"+ref+":refs/verify/target")
 	if base.Branch != "" {
-		fetch = "git fetch -q origin " + ShellQuote("+refs/heads/"+base.Branch+":refs/remotes/origin/"+base.Branch) +
+		fetch = "git fetch -q origin " + ShellQuote("+"+VerifyBaseRef(ref)+":refs/remotes/origin/"+base.Branch) +
 			" " + ShellQuote("+"+ref+":refs/verify/target")
 	}
 	return "git init -q /v/r && cd /v/r && git remote add origin /git/repo.git && " + fetch +
@@ -284,12 +284,12 @@ func (d Deps) Verify(ctx context.Context, cfg Config, opts VerifyOptions) error 
 	}
 	refspecs := []string{"+" + sha + ":" + ref}
 	if base.Branch != "" {
-		refspecs = append(refspecs, "+"+base.Local+":refs/heads/"+base.Branch)
+		refspecs = append(refspecs, "+"+base.Local+":"+VerifyBaseRef(ref))
 	}
 	push := append([]string{"env", "GIT_SSH_COMMAND=ssh -o BatchMode=yes", "git", "-C", checkout, "push", "-q", "--no-verify",
 		h.SSH + ":" + path.Join(h.GitRoot, bare)}, refspecs...)
 	// From here the ref may be on the host, so every path deletes it.
-	defer d.deleteVerifyRef(ctx, h, bare, ref)
+	defer d.deleteVerifyRefs(ctx, h, bare, ref, base.Branch != "")
 	if _, err := d.capture(ctx, push, nil); err != nil {
 		return fmt.Errorf("pushing %s to %s: %w", shortSHA(sha), h.Name, err)
 	}
@@ -317,8 +317,25 @@ func verifyTarget(ctx context.Context, checkout, configuredBase string) (string,
 	return BareName(common) + ".git", base, nil
 }
 
-// deleteVerifyRef removes the pushed ref, reporting rather than hiding a
-// failure. The context is detached: an interrupted verify still cleans up.
+// VerifyBaseRef is the per-run ref the base branch is pushed to, beside the
+// target: a shared refs/heads/<branch> could be replaced by another machine's
+// verify between this run's push and its fetch.
+func VerifyBaseRef(ref string) string { return ref + "-base" }
+
+// deleteVerifyRefs removes this run's target ref and, when one was pushed, its
+// base ref, reporting rather than hiding a failure. The context is detached: an
+// interrupted verify still cleans up.
+func (d Deps) deleteVerifyRefs(ctx context.Context, h Host, bare, ref string, withBase bool) {
+	refs := []string{ref}
+	if withBase {
+		refs = append(refs, VerifyBaseRef(ref))
+	}
+	for _, r := range refs {
+		d.deleteVerifyRef(ctx, h, bare, r)
+	}
+}
+
+// deleteVerifyRef removes one pushed ref.
 func (d Deps) deleteVerifyRef(ctx context.Context, h Host, bare, ref string) {
 	script := `cd "$HOME" && git -C ` + ShellQuote(path.Join(h.GitRoot, bare)) + ` update-ref -d ` + ShellQuote(ref)
 	if _, err := d.capture(context.WithoutCancel(ctx), SSHArgv(h.SSH, script), nil); err != nil {

@@ -518,8 +518,9 @@ configurable in the `remote:` block:
   local checkout path of that run
 - `~/dot-remote-git` (`git_root`, mode 700) — one bare repository per
   repository, `<name>-<hash>.git`, created once by `verify`; a verify pushes
-  its commit to `refs/verify/<mirror key>/<sha>-<nonce>`, one ref per run (and the base branch to
-  `refs/heads/<branch>`) and deletes that ref when it ends
+  its commit to `refs/verify/<mirror key>/<sha>-<nonce>`, one ref per run, and
+  the base branch beside it to that ref plus `-base`, and deletes both when it
+  ends; no branch in the bare repository is written
 - `~/dot-remote-src` (`src_root`) — the third-party clones `src` makes and
   analyzes; `src` creates the directory and writes nothing else there itself
 - the image, named `<prefix>:latest` for a Dockerfile the host builds or the
