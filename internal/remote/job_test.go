@@ -408,7 +408,7 @@ func TestCopyTreeDoesNotFollowSymlinksInTheDestination(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(dst, "other.txt"), "left alone")
-	if err := copyTree(src, dst); err != nil {
+	if err := copyTree(src, dst, ""); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := os.ReadFile(filepath.Join(outside, "victim.txt")); string(got) != "keep" {
@@ -495,7 +495,7 @@ func TestCopyTreeKeepsADirectoryWhereTheJobWroteAFile(t *testing.T) {
 	src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
 	write(t, filepath.Join(src, "report"), "job")
 	write(t, filepath.Join(dst, "report", "notes.txt"), "mine")
-	err := copyTree(src, dst)
+	err := copyTree(src, dst, "")
 	if err == nil || !strings.Contains(err.Error(), "is a directory, the job wrote a file there") {
 		t.Fatalf("copyTree = %v", err)
 	}
@@ -549,5 +549,84 @@ func TestLocalJobKeepsTheCommandStatus(t *testing.T) {
 	var code *ExitCode
 	if !errors.As(err, &code) || code.Code != 7 || !strings.Contains(f.err.String(), "copying out/") {
 		t.Errorf("err = %v, stderr %s", err, f.err.String())
+	}
+}
+
+// runLocal runs a --local-only job whose command is fn, run in the job dir.
+func (f *jobFixture) runLocal(t *testing.T, outDir string, fn func(work string)) error {
+	t.Helper()
+	d := f.deps()
+	d.ExecLocal = func(_ context.Context, _ []string, dir string, _ []string, _ io.Reader, _, _ io.Writer) (int, syscall.Signal, error) {
+		f.localDir = dir
+		fn(dir)
+		return 0, 0, nil
+	}
+	return d.RunJob(context.Background(), f.cfg, JobOptions{LocalOnly: true, Name: "j1", OutDir: outDir, Command: []string{"x"}})
+}
+
+// A job that leaves out as a symlink collects nothing and is kept, so the
+// directory it points into is not deleted with the job.
+func TestLocalJobRefusesASymlinkedOut(t *testing.T) {
+	f := newJobFixture(t)
+	err := f.runLocal(t, filepath.Join(f.root, "result"), func(work string) {
+		write(t, filepath.Join(work, "generated", "r.txt"), "made")
+		_ = os.RemoveAll(filepath.Join(work, "out"))
+		_ = os.Symlink(filepath.Join(work, "generated"), filepath.Join(work, "out"))
+	})
+	if err == nil || !strings.Contains(err.Error(), "is not a directory (a symlink?)") {
+		t.Fatalf("err = %v", err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(f.localDir, "generated", "r.txt")); string(got) != "made" {
+		t.Error("the job and what it made were deleted")
+	}
+}
+
+// An unreadable output never costs the old file in DIR.
+func TestCopyTreeKeepsTheOldFileWhenTheNewOneCannotBeRead(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a 000 file")
+	}
+	root := t.TempDir()
+	src, dst := filepath.Join(root, "src"), filepath.Join(root, "dst")
+	write(t, filepath.Join(src, "r.txt"), "new")
+	if err := os.Chmod(filepath.Join(src, "r.txt"), 0); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(dst, "r.txt"), "old")
+	if err := copyTree(src, dst, ""); err == nil {
+		t.Error("an unreadable output was collected")
+	}
+	if got, _ := os.ReadFile(filepath.Join(dst, "r.txt")); string(got) != "old" {
+		t.Errorf("the old file was lost: %q", got)
+	}
+	entries, _ := os.ReadDir(dst)
+	if len(entries) != 1 {
+		t.Errorf("a temporary file was left: %v", entries)
+	}
+}
+
+// -o at the local job root (an ancestor of the job dir) still works, but a
+// job that writes out/<its own name>/ would merge into itself: refused, kept.
+func TestCopyTreeRefusesTargetsInsideTheJobDirectory(t *testing.T) {
+	f := newJobFixture(t)
+	localRoot := filepath.Join(f.root, "local")
+	err := f.runLocal(t, localRoot, func(work string) {
+		write(t, filepath.Join(work, "out", "j1", "r.txt"), "made")
+	})
+	if err == nil || !strings.Contains(err.Error(), "resolves into the job directory") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(f.localDir, "out", "j1", "r.txt")); err != nil {
+		t.Errorf("the job was not kept: %v", err)
+	}
+
+	f = newJobFixture(t)
+	if err := f.runLocal(t, filepath.Join(f.root, "local"), func(work string) {
+		write(t, filepath.Join(work, "out", "other.txt"), "ok")
+	}); err != nil {
+		t.Fatalf("-o at the local root: %v", err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(f.root, "local", "other.txt")); string(got) != "ok" {
+		t.Errorf("collected = %q", got)
 	}
 }

@@ -405,7 +405,11 @@ func (d Deps) runRemoteJob(ctx context.Context, h Host, p JobProfile, name strin
 	// and rsync's source would follow it: out has to be a real directory.
 	if check, cerr := d.capture(context.WithoutCancel(ctx), jobSSH(h, outIsDirScript(p, name)), nil); cerr != nil || strings.TrimSpace(check) != "dir" {
 		fmt.Fprintf(d.errOut(), "dot remote: job kept at %s\n", label)
-		return &ExitCode{Code: nonZero(exit), Err: fmt.Errorf("out/ in %s is not a directory (a symlink?): nothing collected, job kept at %s", label, label)}
+		why := "is not a directory (a symlink?)"
+		if cerr != nil {
+			why = fmt.Sprintf("could not be checked (%v)", cerr)
+		}
+		return &ExitCode{Code: nonZero(exit), Err: fmt.Errorf("out/ in %s %s: nothing collected; collect from the kept job at %s", label, why, label)}
 	}
 	_, pullErr := d.capture(context.WithoutCancel(ctx), []string{rsyncPath, "-a", "-s", "-e", jobRSH, h.SSH + ":" + remoteDir + "/out/", outDir + "/"}, nil)
 	if exit == 0 && pullErr == nil {
@@ -457,7 +461,7 @@ func (d Deps) runLocalJob(ctx context.Context, p JobProfile, name string, inputs
 		fmt.Fprintf(d.errOut(), "dot remote: local job kept at %s\n", work)
 		return runErr
 	}
-	if err := copyTree(filepath.Join(work, "out"), outDir); err != nil {
+	if err := copyTree(filepath.Join(work, "out"), outDir, work); err != nil {
 		fmt.Fprintf(d.errOut(), "dot remote: local job kept at %s\n", work)
 		collect := fmt.Errorf("copying out/ into %s: %w", outDir, err)
 		if exit != 0 || sig != 0 {
@@ -568,10 +572,20 @@ func inside(p, dir string) bool {
 
 // copyTree copies src into dst the way rsync replaces: files with the same
 // names are replaced, others in dst are left alone, and nothing already in
-// dst is followed. A symlink or file where a directory is needed, or a
-// symlink where a file goes, is removed first, and files are created with
-// O_EXCL, so no write lands outside dst.
-func copyTree(src, dst string) error {
+// dst is followed or lost.
+//
+//   - src must be a real directory; a symlink or file there collects nothing.
+//   - A directory in dst is never removed; a job file over one is an error.
+//   - A file is written to a temporary name beside the target and renamed over
+//     it, so an unreadable output never costs the old file.
+//   - No target may resolve to guard or below it (the job's own directory,
+//     which is removed after a successful job).
+func copyTree(src, dst, guard string) error {
+	root, err := os.Lstat(src)
+	if err != nil || !root.IsDir() {
+		return fmt.Errorf("out/ in %s is not a directory (a symlink?): nothing collected", filepath.Dir(src))
+	}
+	resolvedGuard := resolveNearest(guard)
 	if err := os.MkdirAll(dst, 0o755); err != nil {
 		return err
 	}
@@ -583,10 +597,13 @@ func copyTree(src, dst string) error {
 		if err != nil {
 			return err
 		}
+		target := filepath.Join(dst, rel)
+		if guard != "" && inside(resolveNearest(target), resolvedGuard) {
+			return fmt.Errorf("%s resolves into the job directory %s, which is removed after the job: collect into another directory", target, guard)
+		}
 		if rel == "." {
 			return nil
 		}
-		target := filepath.Join(dst, rel)
 		info, err := entry.Info()
 		if err != nil {
 			return err
@@ -603,34 +620,57 @@ func copyTree(src, dst string) error {
 			}
 			return os.Mkdir(target, 0o755)
 		}
-		if lerr == nil {
-			if existing.IsDir() {
-				return fmt.Errorf("%s is a directory, the job wrote a file there: move it and collect again from %s", target, src)
-			}
-			if err := os.Remove(target); err != nil {
-				return err
-			}
+		if lerr == nil && existing.IsDir() {
+			return fmt.Errorf("%s is a directory, the job wrote a file there: move it and collect again from %s", target, src)
 		}
+		var tmp string
 		if info.Mode()&os.ModeSymlink != 0 {
 			link, err := os.Readlink(p)
 			if err != nil {
 				return err
 			}
-			return os.Symlink(link, target)
+			// A fresh name from CreateTemp, freed for the link.
+			placeholder, err := os.CreateTemp(filepath.Dir(target), ".dot-collect-*")
+			if err != nil {
+				return err
+			}
+			tmp = placeholder.Name()
+			placeholder.Close()
+			os.Remove(tmp)
+			if err := os.Symlink(link, tmp); err != nil {
+				return err
+			}
+		} else {
+			in, err := os.Open(p)
+			if err != nil {
+				return err
+			}
+			defer in.Close()
+			// CreateTemp opens with O_EXCL beside the target.
+			out, err := os.CreateTemp(filepath.Dir(target), ".dot-collect-*")
+			if err != nil {
+				return err
+			}
+			tmp = out.Name()
+			if err := out.Chmod(info.Mode().Perm()); err != nil {
+				out.Close()
+				os.Remove(tmp)
+				return err
+			}
+			if _, err := io.Copy(out, in); err != nil {
+				out.Close()
+				os.Remove(tmp)
+				return err
+			}
+			if err := out.Close(); err != nil {
+				os.Remove(tmp)
+				return err
+			}
 		}
-		in, err := os.Open(p)
-		if err != nil {
+		if err := os.Rename(tmp, target); err != nil {
+			os.Remove(tmp)
 			return err
 		}
-		defer in.Close()
-		out, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, info.Mode().Perm())
-		if err != nil {
-			return err
-		}
-		if _, err := io.Copy(out, in); err != nil {
-			out.Close()
-			return err
-		}
-		return out.Close()
+		return nil
 	})
 }
