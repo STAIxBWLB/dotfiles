@@ -311,6 +311,7 @@ func TestRemoteRefusesTheConfigFlag(t *testing.T) {
 	for _, args := range [][]string{
 		{"remote", "setup", "--config", other},
 		{"remote", "status", "--config", other},
+		{"remote", "run", "--config", other, f.checkout, "--", "true"},
 	} {
 		_, _, err := runDotForTest(args...)
 		if err == nil {
