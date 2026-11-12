@@ -351,7 +351,11 @@ EOF
 # ── setup ────────────────────────────────────────────────────────────────────
 setup_err="$tmpdir/setup.err"
 if "$BIN" remote setup >"$tmpdir/setup.out" 2>"$setup_err"; then
-  if grep -q "pull 'example.invalid/e2e:1'" "$HOME/stub.log"; then
+  # The argv the runtime received, not the quoted command string this machine
+  # sent: the far side's shell consumes ShellQuote's quotes, so the stub logs
+  # `pull example.invalid/e2e:1`. The quotes stay optional here so the
+  # assertion does not break if ShellQuote starts quoting a safe ref.
+  if grep -qE "^pull '?example\.invalid/e2e:1'?$" "$HOME/stub.log"; then
     pass "setup pulled the configured image through the host's runtime"
   else
     fail "setup did not pull the image: $(cat "$HOME/stub.log" 2>/dev/null)"
