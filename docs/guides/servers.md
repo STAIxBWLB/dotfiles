@@ -73,6 +73,11 @@ Every key, including `prefix`, `root`, `git_root`, `src_root` and
 existing mirror tree and image from another tool can be adopted by setting
 those names; nothing has to be rebuilt.
 
+The block lives in the user state, so `--home` (or `DOTFILES_HOME`) picks whose
+state the commands read. `--config` names a sync config, which has no `remote`
+block, so `dot remote` refuses it by name rather than addressing the default
+state's host while you are reading another file.
+
 ### A starter Dockerfile
 
 ```dockerfile

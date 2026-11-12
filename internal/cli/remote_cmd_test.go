@@ -299,6 +299,36 @@ func (f remoteCLIFixture) writeConfig(t *testing.T, body string) {
 	writeCLITestFile(t, filepath.Join(f.home, ".config", "dotfiles", "config.yaml"), body)
 }
 
+// --config names a sync config, and the remote block lives in the user state, so
+// `dot remote` refuses the flag instead of addressing the default state's host
+// while the person reads another file. The fixture's state and the named file
+// name different hosts, which is what makes a silent ignore visible here.
+func TestRemoteRefusesTheConfigFlag(t *testing.T) {
+	f := newRemoteCLIFixture(t)
+	f.writeConfig(t, "remote:\n  default: buildbox\n  hosts:\n    buildbox:\n      image:\n        ref: example.invalid/dev:1\n")
+	other := filepath.Join(f.home, "other.yaml")
+	writeCLITestFile(t, other, "remote:\n  default: elsewhere\n  hosts:\n    elsewhere:\n      image:\n        ref: example.invalid/dev:2\n")
+	for _, args := range [][]string{
+		{"remote", "setup", "--config", other},
+		{"remote", "status", "--config", other},
+	} {
+		_, _, err := runDotForTest(args...)
+		if err == nil {
+			t.Fatalf("dot %s succeeded, want a refusal naming --config", strings.Join(args, " "))
+		}
+		for _, want := range []string{"--config", "user state", "--home"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("dot %s = %v, want it to carry %q", strings.Join(args, " "), err, want)
+			}
+		}
+	}
+	// Without the flag the state's own host is used, so the refusal does not
+	// block ordinary use.
+	if _, errOut, err := runDotForTest("remote", "status"); err != nil {
+		t.Fatalf("remote status without --config: %v\nstderr:\n%s", err, errOut)
+	}
+}
+
 // `setup --json` has to be one document on stdout even when the runtime
 // narrates the pull: a wrapper that parses the report cannot skip past a
 // progress line, and the whole stdout is what it decodes.

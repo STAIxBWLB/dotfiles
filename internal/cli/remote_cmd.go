@@ -69,7 +69,16 @@ func remoteSession(cmd *cobra.Command, checkout string) (remote.Config, remote.H
 // remoteBase loads the config and wires the seams, without choosing a host.
 // A run needs it that way round: the checkout it targets is what selects the
 // project's host, and resolving the checkout needs the deps.
+//
+// --config is refused rather than ignored: it names a sync config (profile,
+// packages, modules) and the remote block lives in the user state, so reading it
+// as the state path would decode a document of the wrong shape, and ignoring it
+// would build or pull on the default file's host while the person is reading
+// another file. --home is the flag that picks a different state document.
 func remoteBase(cmd *cobra.Command) (remote.Config, remote.Deps, error) {
+	if configPath, _ := cmd.Flags().GetString("config"); configPath != "" {
+		return remote.Config{}, remote.Deps{}, fmt.Errorf("dot remote reads its hosts from the user state, and --config names a sync config, which has no remote block (%s): drop --config, or pass --home (or DOTFILES_HOME) to read another home's state", configPath)
+	}
 	home := homeFor(cmd)
 	var state *config.UserState
 	var err error
