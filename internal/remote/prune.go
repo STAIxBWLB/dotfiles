@@ -88,7 +88,7 @@ if [ -d "$HOME"/%s ]; then
   done
 fi
 if ! listed=$(%s ps -a --filter %s --format '{{.Names}}\t{{.Status}}' 2>&1); then
-  printf 'error\tcannot list containers (%%s)\n' "$listed"
+  printf 'error\tcannot list containers (%%s): check that %s works for this user on this host (ssh %s %s ps), then rerun dot remote prune\n' "$listed"
 else
   printf '%%s\n' "$listed" | while IFS='	' read -r name status; do
     [ -n "$name" ] || continue
@@ -117,6 +117,8 @@ done
 unset IFS
 set +f
 if ! mkdir "$lock" 2>/dev/null; then echo 'busy: a run holds the claim on this mirror; run dot remote prune again after it ends' >&2; exit 3; fi
+if ! running=$(%s ps --filter %s --format '{{.Names}}' 2>&1); then rmdir "$lock"; echo "cannot tell whether a run is using this mirror ($running); run dot remote prune again once the runtime answers" >&2; exit 3; fi
+if [ -n "$running" ]; then rmdir "$lock"; echo 'busy: a container is running in this mirror without a claim; run dot remote prune again after it ends' >&2; exit 3; fi
 rm -rf "$target" "$records"/%s
 status=$?
 rmdir "$lock"
@@ -140,13 +142,14 @@ func PruneListScript(h Host) string { return pruneListScriptFor(h) }
 // pruneListScriptFor is the read-only listing for one host.
 func pruneListScriptFor(h Host) string {
 	return fmt.Sprintf(pruneListTemplate, ShellQuote(h.Root), ShellQuote(h.GitRoot), ShellQuote(h.GitRoot),
-		h.Runtime, ShellQuote("name="+h.Prefix+"-"), jobListScript(h))
+		h.Runtime, ShellQuote("name="+regexp.QuoteMeta(h.Prefix+"-")), h.Runtime, h.SSH, h.Runtime, jobListScript(h))
 }
 
 // pruneMirrorScript removes one mirror under its own claim.
 func pruneMirrorScript(h Host, rel string) string {
 	key := MirrorKey(rel)
-	return fmt.Sprintf(pruneMirrorTemplate, ShellQuote(h.Root), key, ShellQuote(h.Root), ShellQuote(rel), key)
+	return fmt.Sprintf(pruneMirrorTemplate, ShellQuote(h.Root), key, ShellQuote(h.Root), ShellQuote(rel),
+		h.Runtime, ShellQuote("name=^"+regexp.QuoteMeta(h.ContainerName(rel))+"$"), key)
 }
 
 var (
@@ -217,14 +220,17 @@ func (d Deps) Prune(ctx context.Context, cfg Config, h Host, opts PruneOptions) 
 	// ref of a held key may belong to a verify that is about to fetch it.
 	heldRels := map[string]bool{}
 	heldKeys := map[string]bool{}
-	if d.Store != nil {
-		if leases, lerr := d.Store.ListLeases(); lerr == nil {
-			for _, lease := range leases {
-				if rel, rerr := cfg.Rel(lease.Scope); rerr == nil {
-					heldRels[rel] = true
-					heldKeys[MirrorKey(rel)] = true
-				}
-			}
+	if d.Store == nil {
+		return report, fmt.Errorf("the admission store is unavailable, so prune cannot tell which mirrors this machine is using: run dot admit status to check it, then rerun dot remote prune")
+	}
+	leases, lerr := d.Store.ListLeases()
+	if lerr != nil {
+		return report, fmt.Errorf("reading this machine's leases (%w), so prune cannot tell which mirrors are in use: run dot admit status to check the store, then rerun dot remote prune", lerr)
+	}
+	for _, lease := range leases {
+		if rel, rerr := cfg.Rel(lease.Scope); rerr == nil {
+			heldRels[rel] = true
+			heldKeys[MirrorKey(rel)] = true
 		}
 	}
 	var mirrors []mirrorRecord
@@ -290,7 +296,7 @@ func (d Deps) Prune(ctx context.Context, cfg Config, h Host, opts PruneOptions) 
 		}
 		holder := ""
 		for rel := range busy {
-			if rel == m.rel || strings.HasPrefix(rel, m.rel+"/") {
+			if rel == m.rel || strings.HasPrefix(rel, m.rel+"/") || strings.HasPrefix(m.rel, rel+"/") {
 				holder = rel
 				break
 			}
@@ -320,10 +326,10 @@ func (d Deps) Prune(ctx context.Context, cfg Config, h Host, opts PruneOptions) 
 		case "verify-ref":
 			ref := strings.TrimPrefix(item.Name, item.key+" ")
 			key := strings.SplitN(strings.TrimPrefix(ref, "refs/verify/"), "/", 2)[0]
-			script = fmt.Sprintf(pruneRefTemplate, h.Runtime, ShellQuote("name=^"+h.Prefix+"-verify-"+key+"$"),
+			script = fmt.Sprintf(pruneRefTemplate, h.Runtime, ShellQuote("name=^"+regexp.QuoteMeta(h.Prefix+"-verify-"+key)+"$"),
 				ShellQuote(path.Join(h.GitRoot, item.key)), ShellQuote(ref))
 		case "container":
-			script = fmt.Sprintf(pruneContainerTemplate, h.Runtime, ShellQuote("name=^"+item.Name+"$"), h.Runtime, ShellQuote(item.Name))
+			script = fmt.Sprintf(pruneContainerTemplate, h.Runtime, ShellQuote("name=^"+regexp.QuoteMeta(item.Name)+"$"), h.Runtime, ShellQuote(item.Name))
 		}
 		if _, err := d.capture(ctx, SSHArgv(h.SSH, script), nil); err != nil {
 			item.Error = err.Error()

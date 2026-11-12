@@ -176,3 +176,56 @@ func TestPruneVerifyRefFailsClosed(t *testing.T) {
 		t.Errorf("ps failure: %d %s", code, out)
 	}
 }
+
+// F6: a mirror nested in a held parent is kept too.
+func TestPruneKeepsAMirrorInsideAHeldParent(t *testing.T) {
+	root := t.TempDir()
+	f := &pruneFixture{listing: strings.Join([]string{
+		"mirror\t" + MirrorKey("repo") + "\tclaimed\trepo",
+		"mirror\t" + MirrorKey("repo/sub") + "\tfree\trepo/sub",
+	}, "\n")}
+	report, err := f.deps(root).Prune(context.Background(), Config{LocalRoot: root}, testHost(), PruneOptions{})
+	if err != nil || len(report.Items) != 0 || len(report.Skipped) != 2 {
+		t.Errorf("%v items %+v skipped %v", err, report.Items, report.Skipped)
+	}
+}
+
+// F7: no store means no prune.
+func TestPruneRefusesWithoutTheLeaseStore(t *testing.T) {
+	root := t.TempDir()
+	f := &pruneFixture{listing: ""}
+	d := f.deps(root)
+	d.Store = nil
+	if _, err := d.Prune(context.Background(), Config{LocalRoot: root}, testHost(), PruneOptions{}); err == nil || !strings.Contains(err.Error(), "dot admit status") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+// F9: a running mirror container, or a runtime that cannot answer, stops the
+// mirror removal and gives the claim back.
+func TestPruneMirrorChecksForARunningContainer(t *testing.T) {
+	h := testHost()
+	for body, wantMsg := range map[string]string{
+		"echo " + h.ContainerName("work/gone") + ";": "busy: a container is running",
+		"echo down >&2; return 1;":                   "cannot tell whether a run",
+	} {
+		home := t.TempDir()
+		records := filepath.Join(home, h.Root, ".dot-remote")
+		if err := os.MkdirAll(filepath.Join(home, h.Root, "work", "gone"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(records, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		out, code := runAt(t, home, body, pruneMirrorScript(h, "work/gone"))
+		if code != 3 || !strings.Contains(out, wantMsg) {
+			t.Errorf("%q: %d %s", body, code, out)
+		}
+		if _, err := os.Stat(filepath.Join(home, h.Root, "work", "gone")); err != nil {
+			t.Error("the mirror was removed")
+		}
+		if _, err := os.Stat(filepath.Join(records, MirrorKey("work/gone")+".claim")); err == nil {
+			t.Error("the claim was left behind")
+		}
+	}
+}

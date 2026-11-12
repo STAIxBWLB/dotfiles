@@ -200,7 +200,7 @@ func goldenRemoteFixture(t *testing.T) (home, root string) {
 		t.Fatal(err)
 	}
 	writeCLITestFile(t, filepath.Join(home, ".config", "dotfiles", "config.yaml"),
-		"remote:\n  local_root: "+filepath.Dir(root)+"\n  hosts:\n    buildbox:\n      image:\n        ref: golden.invalid/dev:1\n      max_load_ratio: 0.7\n      jobs:\n        media:\n          image:\n            ref: golden.invalid/media:1\n")
+		"remote:\n  local_root: "+filepath.Dir(root)+"\n  hosts:\n    buildbox:\n      prefix: golden-rdev\n      image:\n        ref: golden.invalid/dev:1\n      max_load_ratio: 0.7\n      jobs:\n        media:\n          image:\n            ref: golden.invalid/media:1\n")
 	bin := filepath.Join(home, "bin")
 	if err := os.MkdirAll(bin, 0o755); err != nil {
 		t.Fatal(err)

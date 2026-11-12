@@ -554,6 +554,10 @@ one of dot's own forms (`<prefix>-<mirror key>`, `<prefix>-verify-<mirror key>`,
 `<prefix>-src-<name>`, `<prefix>-job-<profile>_<name>`). On this machine it
 removes the sent listing of each mirror it removed. Kept job directories under
 a profile's `root` are listed and never removed.
+Because those forms are told apart by their text, two hosts entries that reach
+one host must not use prefixes where one is the other plus `-verify`, `-src` or
+`-job` (for example `a` and `a-verify`): prune for `a` could not tell `a`'s
+verify containers from `a-verify`'s run containers.
 
 A run never copies anything back, and it removes the container it started on
 every exit path except a SIGKILL: after a kill the next run of that path
