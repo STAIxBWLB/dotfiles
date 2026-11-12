@@ -24,16 +24,6 @@ func jobState(job config.UserRemoteJob) config.UserRemoteState {
 	return stateWith(host)
 }
 
-func write(t *testing.T, p, content string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func shellRun(script string) (string, error) {
 	out, err := osexec.Command("bash", "-c", script).CombinedOutput()
 	return string(out), err
