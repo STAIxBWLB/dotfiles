@@ -236,7 +236,8 @@ func (f *syncFixture) runAsRunExcludes(excludes []string, listing []byte) {
 		Excludes: excludes,
 		Listing:  listing,
 	})
-	if err := f.deps.clearReplaced(context.Background(), f.host, f.dest, decision.Replaced); err != nil {
+	replaced := f.deps.sendable(context.Background(), f.rsync, f.source, excludes, decision.Replaced)
+	if err := f.deps.clearReplaced(context.Background(), f.host, f.dest, replaced); err != nil {
 		f.t.Fatalf("removing the directories the checkout replaced: %v", err)
 	}
 	f.runPlan(decision.Input)
@@ -949,13 +950,13 @@ func TestReplacedCandidatesAreOnlyWhatIsNewSinceTheRecord(t *testing.T) {
 		}
 	}
 	listing := []byte("a.go\x00b.go\x00dir/c.go\x00gone.go\x00dir\x00")
-	if got := string(replacedCandidates(src, listing, []byte("a.go\x00dir/c.go\x00"), nil)); got != "b.go\x00" {
+	if got := string(replacedCandidates(src, listing, []byte("a.go\x00dir/c.go\x00"))); got != "b.go\x00" {
 		t.Errorf("with a record the candidates are %q, want only the new file", got)
 	}
-	if got := string(replacedCandidates(src, listing, nil, nil)); got != "a.go\x00b.go\x00dir/c.go\x00" {
+	if got := string(replacedCandidates(src, listing, nil)); got != "a.go\x00b.go\x00dir/c.go\x00" {
 		t.Errorf("with no record the candidates are %q, want every listed file on disk and no directory", got)
 	}
-	if got := replacedCandidates(src, []byte("a.go\x00"), []byte("a.go\x00"), nil); got != nil {
+	if got := replacedCandidates(src, []byte("a.go\x00"), []byte("a.go\x00")); got != nil {
 		t.Errorf("an unchanged listing has candidates %q, want none", got)
 	}
 	if got := shipListing(src, []byte{}); got == nil {
@@ -964,22 +965,41 @@ func TestReplacedCandidatesAreOnlyWhatIsNewSinceTheRecord(t *testing.T) {
 }
 
 // A path the exclude list covers is never sent, so the host's copy is not this
-// run's to remove, whatever the checkout has there.
-func TestReplacedCandidatesLeaveExcludedPathsAlone(t *testing.T) {
-	src := t.TempDir()
-	for _, rel := range []string{"artifacts/report", "pkg/target/note", "a/.claude/worktrees/x", "keys/id.pem", "plain"} {
-		full := filepath.Join(src, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(full, []byte("x"), 0o644); err != nil {
-			t.Fatal(err)
-		}
+// run's to remove. rsync itself answers which candidates it sends, so anchors,
+// `**` and the template include mean here what they mean in the send pass.
+func TestOnlyPathsRsyncWouldSendAreClearedOnTheHost(t *testing.T) {
+	f := newSyncFixture(t)
+	for _, rel := range []string{"artifacts/a/b/report", "pkg/target/note", "keys/id.pem", "pkg/build", "plain", ".env.example"} {
+		f.sourceFile(rel, "x")
 	}
-	listing := []byte("artifacts/report\x00pkg/target/note\x00a/.claude/worktrees/x\x00keys/id.pem\x00plain\x00")
-	excludes := (Config{ExcludeExtra: []string{"artifacts"}}).Excludes()
-	if got := string(replacedCandidates(src, listing, nil, excludes)); got != "plain\x00" {
-		t.Errorf("candidates are %q, want only the path no exclude covers", got)
+	candidates := []byte("artifacts/a/b/report\x00pkg/target/note\x00keys/id.pem\x00pkg/build\x00plain\x00.env.example\x00")
+	excludes := (Config{ExcludeExtra: []string{"artifacts/**/report", "/build"}}).Excludes()
+
+	got := string(f.deps.sendable(context.Background(), f.rsync, f.source, excludes, candidates))
+
+	// pkg/target/note is in: with a file list rsync tests the listed name, not
+	// the directories above it, which is also how the send pass ships a tracked
+	// file under a directory the exclude list names.
+	if want := "pkg/target/note\x00pkg/build\x00plain\x00.env.example\x00"; got != want {
+		t.Errorf("rsync would send %q, want %q: a recursive glob and a key stay out, an anchored /build does not cover pkg/build, and the template is included", got, want)
+	}
+}
+
+// An excluded directory on the host survives a checkout that grows a file of
+// the same name, end to end.
+func TestAnExcludedDirectoryOnTheHostSurvivesAFileOfTheSameName(t *testing.T) {
+	f := newSyncFixture(t)
+	f.sourceFile("main.go", "package main\n")
+	f.gitInit()
+	excludes := (Config{ExcludeExtra: []string{"artifacts/**/report"}}).Excludes()
+	f.runAsRunExcludes(excludes, f.gitList())
+	f.destFile("artifacts/a/b/report/results.bin", "results\n")
+
+	f.sourceFile("artifacts/a/b/report", "now a file here\n")
+	f.runAsRunExcludes(excludes, f.gitList())
+
+	if got := f.read("artifacts/a/b/report/results.bin"); got != "results\n" {
+		t.Errorf("the excluded directory on the host holds %q, want it untouched", got)
 	}
 }
 

@@ -225,7 +225,7 @@ func (d Deps) Run(ctx context.Context, cfg Config, opts RunOptions) error {
 		return err
 	}
 	decision := d.syncInput(ctx, h, mirror, rel, path, SyncInput{Excludes: cfg.Excludes(), Listing: listing})
-	if err := d.clearReplaced(ctx, h, mirror, decision.Replaced); err != nil {
+	if err := d.clearReplaced(ctx, h, mirror, d.sendable(ctx, rsyncPath, path, decision.Input.Excludes, decision.Replaced)); err != nil {
 		return err
 	}
 	if err := d.sync(ctx, h, mirror, rsyncPath, path, decision.Input); err != nil {
@@ -350,16 +350,55 @@ func (d Deps) syncInput(ctx context.Context, h Host, mirror, rel, path string, i
 			mirror, h.Name)
 	case record.Found:
 		in.Deletes = withoutBlockedPaths(path, goneFromDisk(path, record.Listing, in.Listing))
-		return syncDecision{Input: in, Record: true, Replaced: replacedCandidates(path, in.Listing, record.Listing, in.Excludes)}
+		return syncDecision{Input: in, Record: true, Replaced: replacedCandidates(path, in.Listing, record.Listing)}
 	}
 	deletes, rerr := d.reconcile(ctx, h, mirror, path, in.Listing)
 	if rerr != nil {
 		fmt.Fprintf(d.errOut(), "dot remote: could not read what %s holds on %s (%v), so this run deletes nothing there and records nothing: the next run there reconciles the mirror again\n",
 			mirror, h.Name, rerr)
-		return syncDecision{Input: in, Replaced: replacedCandidates(path, in.Listing, nil, in.Excludes)}
+		return syncDecision{Input: in, Replaced: replacedCandidates(path, in.Listing, nil)}
 	}
 	in.Deletes = withoutBlockedPaths(path, deletes)
-	return syncDecision{Input: in, Record: true, Replaced: replacedCandidates(path, in.Listing, nil, in.Excludes)}
+	return syncDecision{Input: in, Record: true, Replaced: replacedCandidates(path, in.Listing, nil)}
+}
+
+// sendable keeps the candidates the send pass would really send, by asking
+// rsync itself: a dry run of the same file list under the same filter rules,
+// against an empty directory. A path the exclude list covers is never sent, so
+// there is nothing to make way for and what the host holds there is not this
+// run's to remove - and rsync's own answer is the only one that agrees with
+// rsync on anchors, `**`, the .env.example include and rule order.
+//
+// A dry run that fails keeps nothing, which removes nothing.
+func (d Deps) sendable(ctx context.Context, rsyncPath, src string, excludes []string, candidates []byte) []byte {
+	if len(candidates) == 0 {
+		return nil
+	}
+	empty, err := os.MkdirTemp("", "dot-remote-dry-")
+	if err != nil {
+		fmt.Fprintf(d.errOut(), "dot remote: could not check which replaced paths this run sends (%v), so it removes no directory on the host first\n", err)
+		return nil
+	}
+	defer os.RemoveAll(empty)
+	argv := append([]string{rsyncPath, "-a", "-n", "--out-format=%n"}, ExcludeArgs(excludes)...)
+	argv = append(argv, "--files-from=-", "--from0", "--ignore-missing-args", src+"/", empty+"/")
+	out, err := d.capture(ctx, argv, candidates)
+	if err != nil {
+		fmt.Fprintf(d.errOut(), "dot remote: could not check which replaced paths this run sends (%v), so it removes no directory on the host first\n", err)
+		return nil
+	}
+	sent := map[string]bool{}
+	for _, line := range strings.Split(out, "\n") {
+		sent[line] = true
+	}
+	var kept []byte
+	for _, rel := range strings.Split(string(candidates), "\x00") {
+		if rel != "" && sent[rel] {
+			kept = append(kept, rel...)
+			kept = append(kept, 0)
+		}
+	}
+	return kept
 }
 
 // clearReplaced removes, on the host, each directory the checkout has replaced

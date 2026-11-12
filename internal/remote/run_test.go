@@ -77,6 +77,10 @@ func (f *fakeExec) execute(_ context.Context, argv []string, stdin io.Reader, st
 		command = argv[len(argv)-1]
 	}
 	switch {
+	case len(argv) > 1 && argv[0] == "rsync" && slices.Contains(argv, "--out-format=%n"):
+		// The dry run that asks rsync what it would send: every name it was fed.
+		fmt.Fprint(stdout, strings.ReplaceAll(string(fed), "\x00", "\n"))
+		return 0, 0, nil
 	case len(argv) > 0 && argv[0] == "rsync":
 		return 0, 0, nil
 	case strings.Contains(command, "loadavg"):
@@ -163,7 +167,8 @@ func (f *fakeExec) probed() int {
 func (f *fakeExec) transfers() [][]string {
 	var out [][]string
 	for _, argv := range f.calls {
-		if len(argv) > 0 && argv[0] == "rsync" {
+		// The dry run that asks rsync what it would send transfers nothing.
+		if len(argv) > 0 && argv[0] == "rsync" && !slices.Contains(argv, "--out-format=%n") {
 			out = append(out, argv)
 		}
 	}
@@ -415,7 +420,7 @@ func TestRunSyncsAndThenRuns(t *testing.T) {
 	}
 	// A first run has no record, so it asks the host to clear any directory the
 	// checkout now has as a file, before anything is sent.
-	if clear, transfer := f.exec.order("# replaced-dirs"), f.exec.order("--files-from=-"); clear < 0 || clear > transfer {
+	if clear, transfer := f.exec.order("# replaced-dirs"), f.exec.order("--force"); clear < 0 || clear > transfer {
 		t.Errorf("replaced-directory removal at %d, ship pass at %d: it has to run, and first", clear, transfer)
 	}
 	// The mirror in this fixture holds nothing, so reconciling it names nothing

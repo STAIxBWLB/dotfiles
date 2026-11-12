@@ -245,13 +245,11 @@ func shipListing(src string, listing []byte) []byte {
 // this machine did not send under that name last time. With no record that is
 // the whole listing, once per mirror; with one it is only what is new, which is
 // usually nothing.
-func replacedCandidates(src string, listing, sent []byte, excludes []string) []byte {
+func replacedCandidates(src string, listing, sent []byte) []byte {
 	before := listedPaths(sent)
 	var fresh []string
 	for rel := range listedPaths(listing) {
-		// A path the exclude list covers is never sent, so there is nothing to
-		// make way for, and what the host holds there is not this run's to remove.
-		if before[rel] || excludedPath(rel, excludes) {
+		if before[rel] {
 			continue
 		}
 		info, err := os.Lstat(filepath.Join(src, filepath.FromSlash(rel)))
@@ -265,27 +263,6 @@ func replacedCandidates(src string, listing, sent []byte, excludes []string) []b
 	}
 	sort.Strings(fresh)
 	return []byte(strings.Join(fresh, "\x00") + "\x00")
-}
-
-// excludedPath reports whether an exclude pattern covers rel the way rsync reads
-// it: a pattern without a slash matches any one path element, and one with a
-// slash matches a run of elements anywhere in the path. It errs towards
-// "excluded", because an excluded path is one a run leaves alone.
-func excludedPath(rel string, excludes []string) bool {
-	parts := strings.Split(rel, "/")
-	for _, pattern := range excludes {
-		pattern = strings.Trim(strings.TrimSpace(pattern), "/")
-		if pattern == "" {
-			continue
-		}
-		width := strings.Count(pattern, "/") + 1
-		for i := 0; i+width <= len(parts); i++ {
-			if ok, err := path.Match(pattern, strings.Join(parts[i:i+width], "/")); err != nil || ok {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // replacedDirsCommand removes, under one mirror, each path named on stdin

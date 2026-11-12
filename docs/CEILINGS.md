@@ -409,7 +409,8 @@ replaced; every other file the checkout left alone keeps the host's copy. Where
 that directory holds a name on the exclude list, rsync protects it on the
 receiving side as well, so the run removes the directory itself over ssh first,
 only for a listed file or symlink it did not send under that name last time,
-never for a path the exclude list covers, never through a symlink on the mirror,
+never for a path rsync itself would not send under the exclude list (a dry run
+answers that), never through a symlink on the mirror,
 and only when the mirror holds a real directory there. A
 directory the checkout deletes outright is the other shape, and there the files
 it sent go while a build output beside them stays, with rsync's "some files
