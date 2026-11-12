@@ -129,7 +129,7 @@ func TestPruneListsFirstAndRemovesOnlyWithYes(t *testing.T) {
 	joined := strings.Join(f.calls, "\n")
 	for _, want := range []string{
 		`mkdir "$lock"`, `rel='work/gone'`,
-		"update-ref -d 'refs/verify/0123456789ab/123-n'", "name=^me-rdev-verify-0123456789ab$",
+		"update-ref -d 'refs/verify/0123456789ab/123-n'", "name=-verify-0123456789ab$",
 		"docker rm 'me-rdev-0123456789ab'",
 	} {
 		if !strings.Contains(joined, want) {
@@ -228,7 +228,7 @@ func TestPruneHandlesPerRunVerifyRefs(t *testing.T) {
 		t.Fatalf("%v %+v", err, report.Items)
 	}
 	joined := strings.Join(f.calls, "\n")
-	for _, want := range []string{"'refs/verify/aaaaaaaaaaaa/abc-n'", "'refs/verify/aaaaaaaaaaaa/abc-n-base'", "name=^me-rdev-verify-aaaaaaaaaaaa$"} {
+	for _, want := range []string{"'refs/verify/aaaaaaaaaaaa/abc-n'", "'refs/verify/aaaaaaaaaaaa/abc-n-base'", "name=-verify-aaaaaaaaaaaa$"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("lacks %s:\n%s", want, joined)
 		}

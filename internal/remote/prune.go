@@ -69,7 +69,9 @@ func jobListScript(h Host) string {
 // claimed, the leftover verify refs, and this prefix's containers that are not
 // running.
 const pruneListTemplate = `records="$HOME"/%s/.dot-remote
-if [ -d "$records" ]; then
+if [ -L "$records" ]; then
+  printf 'error\t%%s is a symlink, so its claims and records would live outside the mirror root: replace it with a directory, then rerun dot remote prune\n' "$records"
+elif [ -d "$records" ]; then
   for record in "$records"/*; do
     [ -f "$record" ] || continue
     key=${record##*/}
@@ -104,6 +106,7 @@ exit 0`
 // into a directory being deleted.
 const pruneMirrorTemplate = `records="$HOME"/%s/.dot-remote
 lock="$records"/%s.claim
+if [ -L "$records" ]; then echo "refused: $records is a symlink, so the claim and the record would be outside the mirror root; replace it with a directory, then rerun dot remote prune" >&2; exit 4; fi
 root="$HOME"/%s
 rel=%s
 target="$root/$rel"
@@ -126,15 +129,30 @@ exit $status`
 
 // pruneRefTemplate deletes one leftover verify ref, unless the verify that
 // pushed it is still running.
-const pruneRefTemplate = `if ! running=$(%s ps --filter %s --format '{{.Names}}' 2>&1); then echo "cannot tell whether that verify is running ($running); run dot remote prune again once the runtime answers" >&2; exit 3; fi
-if [ -n "$running" ]; then echo 'busy: that verify is still running; run dot remote prune again after it ends' >&2; exit 3; fi
-git -C "$HOME"/%s update-ref -d %s`
+const pruneRefTemplate = `gitroot="$HOME"/%s
+repo="$gitroot"/%s
+if [ -L "$repo" ]; then echo "refused: $repo is a symlink, so it may not be a bare repo dot made under git_root; check it and remove the ref by hand" >&2; exit 4; fi
+if ! real=$(cd -P "$repo" 2>/dev/null && pwd -P) || ! rootreal=$(cd -P "$gitroot" 2>/dev/null && pwd -P) || [ "${real%%/*}" != "$rootreal" ]; then
+  echo "refused: $repo does not resolve to a directory directly under git_root; check it and remove the ref by hand" >&2; exit 4
+fi
+if ! running=$(%s ps --filter %s --format '{{.Names}}' 2>&1); then echo "cannot tell whether that verify is running ($running); run dot remote prune again once the runtime answers" >&2; exit 3; fi
+if [ -n "$running" ]; then echo "busy: a verify of this checkout is still running ($running), possibly under another prefix; run dot remote prune again after it ends" >&2; exit 3; fi
+git -C "$real" update-ref -d %s`
 
 // pruneContainerTemplate removes one stopped container, unless it was
 // restarted since the listing.
 const pruneContainerTemplate = `if ! running=$(%s ps --filter %s --format '{{.Names}}' 2>&1); then echo "cannot tell whether the container is running ($running); run dot remote prune again once the runtime answers" >&2; exit 3; fi
 if [ -n "$running" ]; then echo 'busy: the container is running again; leave it, or stop it and run dot remote prune again' >&2; exit 3; fi
 %s rm %s`
+
+// pruneRefScript deletes one verify ref of a bare repo under git_root. Any
+// prefix's running verify of the ref's key keeps it: two prefixes on one
+// account share git_root, and a ref is named by the mirror key alone.
+func pruneRefScript(h Host, repo, ref string) string {
+	key := strings.SplitN(strings.TrimPrefix(ref, "refs/verify/"), "/", 2)[0]
+	return fmt.Sprintf(pruneRefTemplate, ShellQuote(h.GitRoot), ShellQuote(repo), h.Runtime,
+		ShellQuote("name=-verify-"+regexp.QuoteMeta(key)+"$"), ShellQuote(ref))
+}
 
 // PruneListScript is the read-only listing prune runs on a host.
 func PruneListScript(h Host) string { return pruneListScriptFor(h) }
@@ -336,10 +354,7 @@ func (d Deps) Prune(ctx context.Context, cfg Config, h Host, opts PruneOptions) 
 		case "mirror":
 			script = pruneMirrorScript(h, item.Name)
 		case "verify-ref":
-			ref := strings.TrimPrefix(item.Name, item.key+" ")
-			key := strings.SplitN(strings.TrimPrefix(ref, "refs/verify/"), "/", 2)[0]
-			script = fmt.Sprintf(pruneRefTemplate, h.Runtime, ShellQuote("name=^"+regexp.QuoteMeta(h.Prefix+"-verify-"+key)+"$"),
-				ShellQuote(path.Join(h.GitRoot, item.key)), ShellQuote(ref))
+			script = pruneRefScript(h, item.key, strings.TrimPrefix(item.Name, item.key+" "))
 		case "container":
 			script = fmt.Sprintf(pruneContainerTemplate, h.Runtime, ShellQuote("name=^"+regexp.QuoteMeta(item.Name)+"$"), h.Runtime, ShellQuote(item.Name))
 		}
