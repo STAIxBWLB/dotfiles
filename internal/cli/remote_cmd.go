@@ -38,13 +38,19 @@ lease first, and DOT_ADMISSION_IGNORE=remote-load (or a
 one run without relaxing anything local.
 
 Interrupting a run removes its container. After a kill the next run of the
-same path removes the one left behind.`,
+same path removes the one left behind.
+
+'dot remote verify' runs a repo's own gate on the exact commit (or, with
+--dirty, the working tree as it is) in a fresh checkout on the host, and
+'dot remote src' clones and analyzes third-party code only on the host.`,
 		SilenceUsage: true,
 	}
 	cmd.PersistentFlags().String("host", "", "remote host to use (default: the matching project's host, then remote.default)")
 	cmd.PersistentFlags().Duration("wait", 0, "retry a held lease for this long before deferring (default 0: defer at once)")
 	cmd.AddCommand(newRemoteSetupCmd())
 	cmd.AddCommand(newRemoteRunCmd())
+	cmd.AddCommand(newRemoteVerifyCmd())
+	cmd.AddCommand(newRemoteSrcCmd())
 	cmd.AddCommand(newRemoteStatusCmd())
 	return cmd
 }
@@ -256,6 +262,135 @@ func runRemoteRun(cmd *cobra.Command, _ []string) error {
 	return err
 }
 
+func newRemoteVerifyCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "verify [PATH] [--dirty] [-- COMMAND [ARG...]]",
+		Short: "Run a repo's gate on its exact commit in a fresh checkout on the host",
+		Long: `Push PATH's exact commit (HEAD, or with --dirty a throwaway commit of the
+working tree) to an owner-only bare repository on the host, check it out fresh
+in a container next to the base branch, and run COMMAND there. Without a
+command, the matching remote.projects entry's 'verify' runs. The real git
+history lets a repo's own gate (diff against main, commit checks) run unchanged.
+
+--dirty stages the working tree (tracked files plus untracked ones no ignore
+rule covers) in a throwaway index and writes a commit object on top of HEAD:
+the checkout's index, branches and refs are untouched. The base is
+remote.projects.<path>.base, or the remote's default branch. The pushed ref is
+deleted when the job ends. verify and run of one checkout exclude each other.`,
+		Args:         cobra.ArbitraryArgs,
+		RunE:         runRemoteVerify,
+		SilenceUsage: true,
+	}
+	cmd.Flags().Bool("dirty", false, "verify the working tree as it is, not HEAD (index and refs untouched)")
+	cmd.Flags().Bool("json", false, "print the defer record as JSON")
+	return cmd
+}
+
+func runRemoteVerify(cmd *cobra.Command, _ []string) error {
+	p := printerFrom(cmd)
+	args := cmd.Flags().Args()
+	dash := cmd.ArgsLenAtDash()
+	var path string
+	var command []string
+	switch {
+	case dash < 0 && len(args) > 1:
+		return fmt.Errorf("pass the command after --: dot remote verify [PATH] -- COMMAND")
+	case dash < 0 && len(args) == 1:
+		path = args[0]
+	case dash > 1:
+		return fmt.Errorf("pass at most one PATH before --: %s", strings.Join(args[:dash], " "))
+	case dash >= 0:
+		if dash == 1 {
+			path = args[0]
+		}
+		command = args[dash:]
+	}
+	cfg, deps, err := remoteBase(cmd)
+	if err != nil {
+		return err
+	}
+	checkout, err := remote.ResolveCheckout(cmd.Context(), deps, path)
+	if err != nil {
+		return err
+	}
+	opts, err := remoteJobFlags(cmd, deps)
+	if err != nil {
+		return err
+	}
+	dirty, _ := cmd.Flags().GetBool("dirty")
+	opts.Path, opts.Command, opts.Dirty, opts.Home = checkout, command, dirty, homeFor(cmd)
+	return remoteDeferred(cmd, p, deps.Verify(cmd.Context(), cfg, opts))
+}
+
+func newRemoteSrcCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "src [NAME] -- COMMAND [ARG...]",
+		Short: "Clone or analyze third-party source on the host, never on this machine",
+		Long: `Run COMMAND in a container in the host's third-party source area: src_root
+(default ~/dot-remote-src) without NAME, which is where a clone is made, or
+src_root/NAME with it. Untrusted code is cloned and analyzed only on the host:
+nothing local is sent, nothing comes back but output, and no cache volume is
+mounted, so it cannot reach the caches trusted builds reuse.
+
+  dot remote src -- git clone https://example.com/x.git x
+  dot remote src x -- rg -n unsafe
+
+A NAME the host has no clone of exits 66 (EX_NOINPUT).`,
+		Args:         cobra.ArbitraryArgs,
+		RunE:         runRemoteSrc,
+		SilenceUsage: true,
+	}
+	cmd.Flags().Bool("json", false, "print the defer record as JSON")
+	return cmd
+}
+
+func runRemoteSrc(cmd *cobra.Command, _ []string) error {
+	p := printerFrom(cmd)
+	name, command, err := splitRemoteArgs(cmd)
+	if err != nil {
+		return fmt.Errorf("%s", strings.Replace(err.Error(), "dot remote run [PATH]", "dot remote src [NAME]", 1))
+	}
+	cfg, deps, err := remoteBase(cmd)
+	if err != nil {
+		return err
+	}
+	job, err := remoteJobFlags(cmd, deps)
+	if err != nil {
+		return err
+	}
+	cwd, _ := os.Getwd()
+	err = deps.Src(cmd.Context(), cfg, remote.SrcOptions{
+		Name: name, HostName: job.HostName, Command: command, Wait: job.Wait,
+		Ignore: job.Ignore, IgnoreSrc: job.IgnoreSrc, DryRun: job.DryRun, Cwd: cwd,
+	})
+	return remoteDeferred(cmd, p, err)
+}
+
+// remoteJobFlags reads the flags every remote job shares.
+func remoteJobFlags(cmd *cobra.Command, deps remote.Deps) (remote.VerifyOptions, error) {
+	hostName, _ := cmd.Flags().GetString("host")
+	ignore, source, err := remoteIgnore(deps.Store)
+	if err != nil {
+		return remote.VerifyOptions{}, err
+	}
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	wait, _ := cmd.Flags().GetDuration("wait")
+	if wait < 0 {
+		return remote.VerifyOptions{}, fmt.Errorf("--wait must not be negative")
+	}
+	return remote.VerifyOptions{HostName: hostName, Wait: wait, Ignore: ignore, IgnoreSrc: source, DryRun: dryRun}, nil
+}
+
+// remoteDeferred turns a deferred job into exit 75 and passes anything else on.
+func remoteDeferred(cmd *cobra.Command, p *Printer, err error) error {
+	var deferred *remote.Deferred
+	if errors.As(err, &deferred) {
+		asJSON, _ := cmd.Flags().GetBool("json")
+		return remoteDeferExit(p, deferred, asJSON)
+	}
+	return err
+}
+
 // splitRemoteArgs separates PATH from CMD at the first `--`. Without one the
 // whole argument list is CMD and the path is the current directory, because a
 // bare first argument is far more often a command than a checkout.
@@ -345,7 +480,7 @@ func runRemoteStatus(cmd *cobra.Command, _ []string) error {
 	} else {
 		p.KV("Gate", "admitting")
 	}
-	p.KV("Runs", fmt.Sprintf("%d held, at most %d", countRuns(status.Active, "path"), status.MaxRuns))
+	p.KV("Runs", fmt.Sprintf("%d held, at most %d", countRuns(status.Active, "host"), status.MaxRuns))
 	for _, run := range status.Active {
 		line := fmt.Sprintf("  [%s] %s %s pid %d since %s", run.Kind, run.Scope, run.Owner, run.PID, run.Since.Format("2006-01-02 15:04"))
 		if run.Container != "" {

@@ -12,8 +12,9 @@ import (
 
 // ActiveRun is one lease this host holds from this machine.
 type ActiveRun struct {
-	// Kind is "path" for a run's own mirror path or "host" for the shared
-	// per-host lease.
+	// Kind is "path" for a run's or verify's own mirror path, "src" for a
+	// `dot remote src` clone, or "host" for the shared per-host lease every job
+	// also holds.
 	Kind      string    `json:"kind"`
 	Scope     string    `json:"scope"`
 	Owner     string    `json:"owner"`
@@ -195,6 +196,8 @@ func activeRuns(cfg Config, h Host, leases []admission.Lease, now time.Time) []A
 		}
 		if strings.HasPrefix(lease.Scope, "remote-host:") {
 			run.Kind = "host"
+		} else if strings.HasPrefix(lease.Scope, "remote-src:") {
+			run.Kind = "src"
 		} else if rel, err := cfg.Rel(lease.Scope); err == nil {
 			run.Container = h.ContainerName(rel)
 		}

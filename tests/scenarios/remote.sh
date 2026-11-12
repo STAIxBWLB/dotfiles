@@ -943,6 +943,66 @@ wait "$hold2_pid"
 set -e
 rm -f "$HOME/stub-hold"
 
+# ── verify of a dirty tree ───────────────────────────────────────────────────
+# The push and the bare repo are real (git over the ssh alias); only the
+# container is the stub, so the assertions read the bare repo and the stub log.
+vrepo="$HOME/remote-work/one"
+git -C "$vrepo" -c user.name=t -c user.email=t@x add -A >/dev/null 2>&1 || true
+git -C "$vrepo" -c user.name=t -c user.email=t@x commit -q -m base >/dev/null 2>&1 || true
+printf 'uncommitted\n' >"$vrepo/dirty.txt"
+index_before=$(sha1sum "$vrepo/.git/index" | cut -d' ' -f1)
+head_before=$(git -C "$vrepo" rev-parse HEAD)
+: >"$HOME/stub.log"
+if "$BIN" remote verify --dirty "$vrepo" -- make check >"$tmpdir/verify.out" 2>"$tmpdir/verify.err"; then
+  pass "verify --dirty of a checkout exited 0"
+else
+  fail "verify --dirty failed: $(cat "$tmpdir/verify.err")"
+fi
+bare=$(find "$HOME/dot-remote-git" -maxdepth 1 -name '*.git' -type d | head -1)
+if [ -n "$bare" ] && [ "$(stat -c %a "$HOME/dot-remote-git")" = "700" ]; then
+  pass "verify created an owner-only bare repo: $(basename "$bare")"
+else
+  fail "no owner-only bare repo under ~/dot-remote-git: $(ls -la "$HOME/dot-remote-git" 2>&1 | tr '\n' ';')"
+fi
+if [ -n "$bare" ] && [ -z "$(git -C "$bare" for-each-ref refs/verify)" ]; then
+  pass "the verify ref is deleted after the job"
+else
+  fail "a verify ref is left: $(git -C "$bare" for-each-ref 2>&1 | tr '\n' ';')"
+fi
+if grep -q -- '/git/repo.git:ro' "$HOME/stub.log" && grep -q -- '--name e2e-rdev-verify-' "$HOME/stub.log" && grep -q 'make check' "$HOME/stub.log"; then
+  pass "the runtime received the read-only bare mount, the verify container and the command"
+else
+  fail "verify container argv: $(grep '^run ' "$HOME/stub.log" | tail -1)"
+fi
+if [ "$(sha1sum "$vrepo/.git/index" | cut -d' ' -f1)" = "$index_before" ] && [ "$(git -C "$vrepo" rev-parse HEAD)" = "$head_before" ]; then
+  pass "verify --dirty left the index and HEAD untouched"
+else
+  fail "verify --dirty changed the index or HEAD"
+fi
+rm -f "$vrepo/dirty.txt"
+
+# ── src ──────────────────────────────────────────────────────────────────────
+set +e
+"$BIN" remote src nope -- ls >/dev/null 2>"$tmpdir/src.err"
+src_code=$?
+set -e
+if [ "$src_code" -eq 66 ] && grep -q 'no clone nope' "$tmpdir/src.err"; then
+  pass "src NAME with no clone exits 66 and says so"
+else
+  fail "src of a missing clone exited $src_code: $(cat "$tmpdir/src.err")"
+fi
+: >"$HOME/stub.log"
+if "$BIN" remote src -- echo hi >/dev/null 2>"$tmpdir/src2.err" && [ -d "$HOME/dot-remote-src" ]; then
+  pass "src without NAME runs in a created src_root"
+else
+  fail "src without NAME failed: $(cat "$tmpdir/src2.err")"
+fi
+if grep -q -- '--name e2e-rdev-src-root' "$HOME/stub.log" && ! grep -q -- '-v e2e-rdev-' "$HOME/stub.log"; then
+  pass "src mounts no cache volume"
+else
+  fail "src argv: $(grep '^run ' "$HOME/stub.log" | tail -1)"
+fi
+
 # D-10: `report` alone returns success on zero assertions, so the verdict
 # conjoins a positive pass count on its own line.
 report

@@ -48,10 +48,23 @@ func TestRemoteWritesAreInBoundaries(t *testing.T) {
 		"`image.ref`",
 		"`<prefix>-<cache>`",
 		"`<prefix>-<mirror key>`",
+		"`<prefix>-verify-<mirror key>`",
+		"`<prefix>-src-<name>`",
+		"`refs/verify/<mirror key>/<sha>-<nonce>`",
 	} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("docs/BOUNDARIES.md does not name %s", want)
 		}
+	}
+	// The names the code builds must match the shapes the document spells.
+	if got := host.VerifyContainer("a"); got != host.Prefix+"-verify-"+MirrorKey("a") {
+		t.Errorf("VerifyContainer = %q", got)
+	}
+	if got := host.SrcContainer("lib"); got != host.Prefix+"-src-lib" {
+		t.Errorf("SrcContainer = %q", got)
+	}
+	if got := VerifyRef("a", "abc", "n"); got != "refs/verify/"+MirrorKey("a")+"/abc-n" {
+		t.Errorf("VerifyRef = %q", got)
 	}
 	// The sent listing is what a run writes on this machine, so the document
 	// names that too, and a rename has to reach it.

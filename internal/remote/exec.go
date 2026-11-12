@@ -62,6 +62,8 @@ type Deps struct {
 	// of one mirror and returns the ones it removed, NUL-separated. Empty means
 	// the removal runs over ssh.
 	ClearReplaced func(ctx context.Context, h Host, mirror string, paths []byte) ([]byte, error)
+	// Nonce is the random suffix of a verify run's ref. Empty means random.
+	Nonce func() string
 }
 
 // DefaultDeps wires the real terminal, git and the invoking user's admission

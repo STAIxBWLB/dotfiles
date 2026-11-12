@@ -23,6 +23,10 @@ one run without relaxing anything local.
 Interrupting a run removes its container. After a kill the next run of the
 same path removes the one left behind.
 
+'dot remote verify' runs a repo's own gate on the exact commit (or, with
+--dirty, the working tree as it is) in a fresh checkout on the host, and
+'dot remote src' clones and analyzes third-party code only on the host.
+
 ### Options
 
 ```
@@ -45,5 +49,7 @@ same path removes the one left behind.
 * [dot](dot.md)	 - User environment & workspace management tool
 * [dot remote run](dot_remote_run.md)	 - Mirror a checkout to the host and run a command in a container there
 * [dot remote setup](dot_remote_setup.md)	 - Check the host and build or pull the dev image
+* [dot remote src](dot_remote_src.md)	 - Clone or analyze third-party source on the host, never on this machine
 * [dot remote status](dot_remote_status.md)	 - Show the host's load, this machine's runs there, mirror sizes and image age
+* [dot remote verify](dot_remote_verify.md)	 - Run a repo's gate on its exact commit in a fresh checkout on the host
 
