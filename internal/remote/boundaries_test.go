@@ -53,7 +53,7 @@ func TestRemoteWritesAreInBoundaries(t *testing.T) {
 		"`refs/verify/<mirror key>/<sha>-<nonce>`",
 		"`<jobs root>/<name>`",
 		"`<prefix>-<profile>:latest`",
-		"`<prefix>-job-<profile>-<name>`",
+		"`<prefix>-job-<profile>_<name>`",
 		"`<local.root>/<name>`",
 		"`~/dot-remote-jobs/<profile>`",
 		"`~/.local/state/dot/remote-jobs/<profile>/<name>`",
@@ -79,7 +79,7 @@ func TestRemoteWritesAreInBoundaries(t *testing.T) {
 	if got := p.ImageHost(host).Image(); got != host.Prefix+"-media:latest" {
 		t.Errorf("profile image = %q", got)
 	}
-	if got := JobContainer(host, p, "j"); got != host.Prefix+"-job-media-j" {
+	if got := JobContainer(host, p, "j"); got != host.Prefix+"-job-media_j" {
 		t.Errorf("job container = %q", got)
 	}
 	if got := JobScope(host, "media"); got != "remote-job:"+host.Name+"/media" {

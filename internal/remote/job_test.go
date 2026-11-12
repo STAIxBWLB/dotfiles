@@ -125,7 +125,7 @@ func TestJobContainerArgvHasNoCachesAndMountsTheJob(t *testing.T) {
 	h.Caches = []Cache{{Name: "cargo", Target: "/c"}}
 	p := JobProfile{Name: "media", Root: "/data/jobs", Ref: "img:1", CPUs: 8, Memory: "16g", Env: []EnvPair{{Key: "T", Value: "{half_cpus}"}}}
 	cmd := JobRunCommand(h, p, "j1", []string{"ffmpeg -i in/a out/b"})
-	for _, want := range []string{"run --rm -v '/data/jobs/j1':/job", "--name me-rdev-job-media-j1", "--cpus 8", "--memory 16g", "-w /job", "-e T=4", "img:1", "'ffmpeg -i in/a out/b'"} {
+	for _, want := range []string{"run --rm -v '/data/jobs/j1':/job", "--name me-rdev-job-media_j1", "--cpus 8", "--memory 16g", "-w /job", "-e T=4", "img:1", "'ffmpeg -i in/a out/b'"} {
 		if !strings.Contains(cmd, want) {
 			t.Errorf("job command lacks %q:\n%s", want, cmd)
 		}
@@ -312,7 +312,7 @@ func TestRemoteJobInterruptRemovesTheContainer(t *testing.T) {
 	f.exit, f.sig = 130, syscall.SIGINT
 	err := f.run(JobOptions{})
 	var code *ExitCode
-	if !errors.As(err, &code) || code.Code != 130 || !f.called("docker rm -f 'me-rdev-job-media-j1'") {
+	if !errors.As(err, &code) || code.Code != 130 || !f.called("docker rm -f 'me-rdev-job-media_j1'") {
 		t.Errorf("interrupt: %v, %v", err, f.calls)
 	}
 }
@@ -636,5 +636,16 @@ func TestJobContainerNeverCollidesWithSrcOrVerify(t *testing.T) {
 				t.Errorf("job container %s is outside the job namespace", job)
 			}
 		}
+	}
+}
+
+// Profile and job name are joined by '_', which neither may hold, so two
+// profiles' jobs never share a container name.
+func TestJobContainerSeparatesProfileFromName(t *testing.T) {
+	h := testHost()
+	a := JobContainer(h, JobProfile{Name: "a-b"}, "c")
+	b := JobContainer(h, JobProfile{Name: "a"}, "b-c")
+	if a == b {
+		t.Errorf("profile a-b job c and profile a job b-c share %s", a)
 	}
 }
