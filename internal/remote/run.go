@@ -695,17 +695,22 @@ func (d Deps) claimMirror(ctx context.Context, h Host, rel, path string, replace
 }
 
 // releaseClaim drops this mirror's claim, and reports rather than hides a
-// failure: the next run of this checkout takes its own leftovers over, so the
-// text says which case a person is looking at.
+// failure. The text names the claim and the two commands that clear it: a
+// removal that failed may have taken the owner file and left the directory, and
+// a later run reads that as a claim it cannot read and defers instead of taking
+// it over, so promising a takeover here would be wrong for exactly the failure
+// this message is about.
 func (d Deps) releaseClaim(ctx context.Context, h Host, rel, path string) {
 	script := releaseScript(h, rel, path, d)
 	out, err := d.capture(context.WithoutCancel(ctx), SSHArgv(h.SSH, script), nil)
 	detail, failed := parseReleaseAnswer(out)
 	switch {
 	case err != nil:
-		fmt.Fprintf(d.errOut(), "dot remote: could not release the claim on %s on %s (%v); this machine's next run of that checkout takes it over\n", rel, h.Name, err)
+		fmt.Fprintf(d.errOut(), "dot remote: could not release the claim on %s on %s (%v); it is at %s, so look at it with `ssh %s ls -la %s` and clear it with `ssh %s rm -rf %s`\n",
+			rel, h.Name, err, h.claimPath(rel), h.SSH, h.claimPath(rel), h.SSH, h.claimPath(rel))
 	case failed:
-		fmt.Fprintf(d.errOut(), "dot remote: could not release the claim on %s on %s (%s); this machine's next run of that checkout takes it over\n", rel, h.Name, detail)
+		fmt.Fprintf(d.errOut(), "dot remote: could not release the claim on %s on %s (%s); it is at %s, so look at it with `ssh %s ls -la %s` and clear it with `ssh %s rm -rf %s`\n",
+			rel, h.Name, detail, h.claimPath(rel), h.SSH, h.claimPath(rel), h.SSH, h.claimPath(rel))
 	}
 }
 

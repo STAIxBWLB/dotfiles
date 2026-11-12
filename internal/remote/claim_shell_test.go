@@ -361,6 +361,48 @@ func TestTheReleaseScriptReportsAFailedRemoval(t *testing.T) {
 	}
 }
 
+// A release whose rm fails can take the owner file and leave the directory, and
+// the next run has to read that as a claim it cannot read - it defers, it does
+// not take the claim over. That is why the release warning names the claim and
+// the commands that clear it instead of promising a takeover.
+func TestAClaimAPartialRemovalLeftBehindIsUnreadableToTheNextRun(t *testing.T) {
+	s := newClaimSandbox(t)
+	s.plant(s.ownerRecord() + "\n")
+	if err := os.Chmod(s.records(), 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(s.records(), 0o755) })
+	if out := s.run(releaseScript(s.host, s.rel, s.path, s.deps)); !strings.Contains(out, "release\tfailed") {
+		t.Fatalf("the release printed %q, want a reported failure", out)
+	}
+	if err := os.Chmod(s.records(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// What a failed rm -rf leaves: it empties the directory, then cannot unlink
+	// it because the record directory above it is not writable.
+	if !s.exists() {
+		t.Fatal("the claim directory is gone, so this is not the partial removal the test is about")
+	}
+	if got := s.owner(); got != "" {
+		t.Fatalf("owner = %q, want the owner file gone and the directory left", got)
+	}
+	out := s.run(inspectScript(s.host, s.rel, s.path, s.claimContainer(), s.deps))
+	if !strings.Contains(out, "claim\tunreadable") {
+		t.Fatalf("the inspection printed %q, want the claim read as unreadable", out)
+	}
+	if strings.Contains(out, "claim\tours") {
+		t.Errorf("the inspection read a partially removed claim as this run's own leftover: %q", out)
+	}
+	// The takeover path agrees: it will not adopt a claim whose record it cannot
+	// read, so the leftover needs a person.
+	if out := s.run(claimScript(s.host, s.rel, s.path, s.deps, true)); strings.Contains(out, "claim\tacquired") {
+		t.Errorf("the takeover adopted a claim with no record: %q", out)
+	}
+	if !s.exists() {
+		t.Error("the takeover removed a claim it could not read")
+	}
+}
+
 // claimContainer is the name the run derives for this sandbox's mirror, so the
 // inspection asks about the container it would use.
 func (s *claimSandbox) claimContainer() string { return s.host.ContainerName(s.rel) }

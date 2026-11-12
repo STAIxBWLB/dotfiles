@@ -46,6 +46,9 @@ type fakeExec struct {
 	containerGone bool
 	// presentErr makes that settling query fail too.
 	presentErr error
+	// releaseOut is what the release script prints, so a failed release can be
+	// driven without a shell.
+	releaseOut string
 	// imageUser is what the image reports for its own user; empty means an
 	// unprivileged "dev".
 	imageUser string
@@ -96,6 +99,7 @@ func (f *fakeExec) execute(_ context.Context, argv []string, stdin io.Reader, st
 		}
 		return 0, 0, nil
 	case strings.Contains(command, "claim: release"):
+		fmt.Fprint(stdout, f.releaseOut)
 		return 0, 0, nil
 	case strings.Contains(command, "claim: take"):
 		if f.claimExit != 0 {
@@ -824,6 +828,27 @@ func TestAnUnconfirmedRemovalNamesBothFailures(t *testing.T) {
 	}
 	if at := f.exec.order("claim: release"); at >= 0 {
 		t.Errorf("the claim was released at call %d over an unconfirmed removal", at)
+	}
+}
+
+// A failed release names the claim and the two commands that clear it. It must
+// not promise a takeover: the failure can be a partial rm that took the owner
+// file and left the directory, and the next run reads that as a claim it cannot
+// read and defers.
+func TestAFailedReleaseNamesTheClaimAndTheCommandsToClearIt(t *testing.T) {
+	f := newRunFixture(t)
+	f.exec.releaseOut = "release\tfailed\tthe claim under $HOME/dot-remote/.dot-remote/x.claim could not be removed (Permission denied)\n"
+	if err := f.run(RunOptions{Command: []string{"true"}}); err != nil {
+		t.Fatalf("Run = %v", err)
+	}
+	msg := f.errOut.String()
+	for _, want := range []string{"could not release the claim", "Permission denied", "ls -la", "rm -rf", ".claim"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("stderr = %q, want it to carry %q", msg, want)
+		}
+	}
+	if strings.Contains(msg, "takes it over") {
+		t.Errorf("stderr = %q, promises a takeover a partial removal may not allow", msg)
 	}
 }
 
