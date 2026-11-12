@@ -543,6 +543,22 @@ configurable in the `remote:` block:
 inputs; removed on success, kept on failure), and its `remote-job:<host>/<profile>`
 lease under the admission state root.
 
+`dot remote prune` deletes only with `--yes`; without it it lists. With `--yes`
+it removes, on the host: a mirror directory under `root` and its record in
+`<root>/.dot-remote`, under the mirror's own claim and only when the local
+checkout is gone, no run holds that mirror or one nested in it, and no path
+component below `root` is a symlink; leftover `refs/verify/` refs in the bare
+repositories under `git_root`, unless that verify's container runs or this
+machine holds a lease on the checkout; and stopped containers whose names are
+one of dot's own forms (`<prefix>-<mirror key>`, `<prefix>-verify-<mirror key>`,
+`<prefix>-src-<name>`, `<prefix>-job-<profile>_<name>`). On this machine it
+removes the sent listing of each mirror it removed. Kept job directories under
+a profile's `root` are listed and never removed.
+Because those forms are told apart by their text, two hosts entries that reach
+one host must not use prefixes where one is the other plus `-verify`, `-src` or
+`-job` (for example `a` and `a-verify`): prune for `a` could not tell `a`'s
+verify containers from `a-verify`'s run containers.
+
 A run never copies anything back, and it removes the container it started on
 every exit path except a SIGKILL: after a kill the next run of that path
 removes the container left behind. The container name is derived from the

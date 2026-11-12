@@ -109,6 +109,21 @@ func SSHArgv(dest, remoteCommand string) []string {
 // which has to expand on the host rather than here, so RunCommand splices it in
 // after --rm. Everything else is quoted here.
 func ContainerArgv(h Host, name, rel string, command []string) []string {
+	return ContainerArgvWith(h, name, rel, command, RunExtras{})
+}
+
+// RunExtras are a run's optional container settings (#421 phase C).
+type RunExtras struct {
+	// Ports are published on the host loopback only, 127.0.0.1:PORT:PORT.
+	Ports []int
+	// Cgroup starts the container as root with CAP_SYS_ADMIN and a private
+	// cgroup namespace, delegates a writable cgroup v2 subtree, then drops to the
+	// image's user with no capabilities before CMD runs.
+	Cgroup bool
+}
+
+// ContainerArgvWith is ContainerArgv with the run's extras.
+func ContainerArgvWith(h Host, name, rel string, command []string, extra RunExtras) []string {
 	argv := []string{"run", "--rm", "--init", "-i", "--name", name}
 	if h.CPUs > 0 {
 		argv = append(argv, "--cpus", strconv.Itoa(h.CPUs))
@@ -120,18 +135,70 @@ func ContainerArgv(h Host, name, rel string, command []string) []string {
 	for _, pair := range h.EnvPairs() {
 		argv = append(argv, "-e", pair.Key+"="+pair.Value)
 	}
+	for _, port := range extra.Ports {
+		argv = append(argv, "-p", fmt.Sprintf("127.0.0.1:%d:%d", port, port))
+	}
+	if extra.Cgroup {
+		argv = append(argv, "--user", "0", "--cap-add", "SYS_ADMIN", "--security-opt", "apparmor=unconfined", "--cgroupns", "private")
+		return append(argv, h.Image(), "bash", "-c", CgroupScript(command))
+	}
 	argv = append(argv, h.Image(), "bash", "-c", CommandScript(command))
 	return argv
+}
+
+// cgroupSetup runs as root inside the container: it moves every process into
+// an init leaf, enables the memory controller, creates the delegated subtree
+// owned by the image's user, and puts this shell in a leaf of it. Any failure
+// says what the host must allow and stops before CMD runs.
+const cgroupSetup = `set -e; c=/sys/fs/cgroup; ` +
+	`if [ -z "$DOT_REMOTE_USER" ] || ! id "$DOT_REMOTE_USER" >/dev/null 2>&1; then echo "dot remote: --cgroup needs the image to set a USER that has an /etc/passwd entry (got '$DOT_REMOTE_USER'); add one and rerun dot remote setup" >&2; exit 1; fi; ` +
+	`trap 'echo "dot remote: --cgroup setup failed (line $LINENO): the host must use cgroup v2 and the runtime must allow CAP_SYS_ADMIN with AppArmor unconfined; rerun without --cgroup if the command needs no delegated cgroup" >&2' ERR; ` +
+	`mount -o remount,rw "$c"; mkdir "$c/init"; ` +
+	`for pid in $(cat "$c/cgroup.procs"); do echo "$pid" > "$c/init/cgroup.procs" 2>/dev/null || true; done; ` +
+	`echo +memory > "$c/cgroup.subtree_control"; mkdir -p "$c/delegated/harness"; ` +
+	`echo +memory > "$c/delegated/cgroup.subtree_control"; chown -R "$DOT_REMOTE_USER" "$c/delegated"; ` +
+	`echo $$ > "$c/delegated/harness/cgroup.procs"; trap - ERR; set +e; export DOT_REMOTE_CGROUP="$c/delegated"; `
+
+// CgroupScript is the root-side script of a --cgroup run: the delegation, then
+// CMD as the image's own user (read on the host into DOT_REMOTE_USER) with
+// every capability dropped from the inheritable and bounding sets.
+func CgroupScript(command []string) string {
+	return cgroupSetup + `home=$(getent passwd "$DOT_REMOTE_USER" | cut -d: -f6); ` +
+		`exec setpriv --reuid="$DOT_REMOTE_USER" --regid="$(id -g "$DOT_REMOTE_USER")" --init-groups --inh-caps=-all --bounding-set=-all ` +
+		`env HOME="${home:-/tmp}" PATH="$PATH" DOT_REMOTE_CGROUP="$DOT_REMOTE_CGROUP" bash -c ` + ShellQuote(CommandScript(command))
+}
+
+// RunSSHArgv is the ssh argv of one run. With ports, each is forwarded from
+// local 127.0.0.1:PORT to the host's 127.0.0.1:PORT over this same connection
+// for the life of the run; a port already taken locally fails the run rather
+// than running without its forward.
+func RunSSHArgv(h Host, ports []int, remoteCommand string) []string {
+	argv := []string{"ssh", "-o", "BatchMode=yes"}
+	if len(ports) > 0 {
+		argv = append(argv, "-o", "ExitOnForwardFailure=yes")
+		for _, port := range ports {
+			argv = append(argv, "-L", fmt.Sprintf("127.0.0.1:%d:127.0.0.1:%d", port, port))
+		}
+	}
+	return append(argv, h.SSH, remoteCommand)
 }
 
 // RunCommand is the whole remote shell command a run sends: the runtime, the
 // $HOME-relative mirror mount and the container argv.
 func RunCommand(h Host, name, rel string, command []string) string {
-	argv := ContainerArgv(h, name, rel, command)
-	if len(argv) < 2 {
-		return h.Runtime + " " + ShellJoin(argv)
-	}
+	return RunCommandWith(h, name, rel, command, RunExtras{})
+}
+
+// RunCommandWith is RunCommand with the run's extras. A --cgroup run starts as
+// root, so the image's own user is read on the host first and handed in as
+// DOT_REMOTE_USER for the drop.
+func RunCommandWith(h Host, name, rel string, command []string, extra RunExtras) string {
+	argv := ContainerArgvWith(h, name, rel, command, extra)
 	mount := `-v "$HOME"/` + ShellQuote(h.MirrorDir(rel)) + ":" + ShellQuote(h.WorkDir(rel))
+	if extra.Cgroup {
+		user := `DOT_REMOTE_USER=$(` + h.Runtime + ` image inspect -f '{{.Config.User}}' ` + ShellQuote(h.Image()) + `) && DOT_REMOTE_USER=${DOT_REMOTE_USER%%:*} && `
+		return user + h.Runtime + ` run --rm -e DOT_REMOTE_USER="$DOT_REMOTE_USER" ` + mount + " " + ShellJoin(argv[2:])
+	}
 	return h.Runtime + " run --rm " + mount + " " + ShellJoin(argv[2:])
 }
 

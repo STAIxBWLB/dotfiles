@@ -38,7 +38,15 @@ type RunOptions struct {
 	DryRun    bool
 	// Home is the local home, so a run can refuse to mirror it.
 	Home string
+	// Ports are published on the host's loopback and forwarded to the same
+	// local port over the run's own ssh connection.
+	Ports []int
+	// Cgroup delegates a writable cgroup v2 subtree to the command.
+	Cgroup bool
 }
+
+// Extras are the run options that change the container and the ssh argv.
+func (o RunOptions) Extras() RunExtras { return RunExtras{Ports: o.Ports, Cgroup: o.Cgroup} }
 
 // ExitCode is a command's own status, which becomes dot's.
 type ExitCode struct {
@@ -252,7 +260,7 @@ func (d Deps) Run(ctx context.Context, cfg Config, opts RunOptions) error {
 		}
 	}
 	fmt.Fprintf(d.errOut(), "dot remote: running in %s on %s (mirror %s)\n", container, h.Name, mirror)
-	exit, sig, runErr := d.ex()(ctx, SSHArgv(h.SSH, RunCommand(h, container, rel, opts.Command)), d.in(), d.out(), d.errOut())
+	exit, sig, runErr := d.ex()(ctx, RunSSHArgv(h, opts.Ports, RunCommandWith(h, container, rel, opts.Command, opts.Extras())), d.in(), d.out(), d.errOut())
 	if runErr != nil {
 		return runErr
 	}
@@ -634,7 +642,7 @@ func stepError(step Step, exit int, err error) error {
 func (d Deps) describe(opts RunOptions, h Host, path, rel, mirror, container string) {
 	fmt.Fprintf(d.out(), "would mirror %s to %s:%s (container %s)\n", path, h.SSH, mirror, container)
 	fmt.Fprintf(d.out(), "would run in %s on %s:\n  %s\n",
-		container, h.Name, strings.Join(SSHArgv(h.SSH, RunCommand(h, container, rel, opts.Command)), " "))
+		container, h.Name, strings.Join(RunSSHArgv(h, opts.Ports, RunCommandWith(h, container, rel, opts.Command, opts.Extras())), " "))
 	if opts.Ignore.Slot {
 		fmt.Fprintln(d.out(), "would take a lease past the host's max_runs (--ignore slot)")
 	}

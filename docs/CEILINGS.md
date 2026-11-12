@@ -415,3 +415,22 @@ and only when the mirror holds a real directory there. A
 directory the checkout deletes outright is the other shape, and there the files
 it sent go while a build output beside them stays, with rsync's "some files
 vanished" (24) accepted on that pass alone.
+
+## Prune and another machine's verify
+
+`internal/remote/prune.go` removes a leftover `refs/verify/<key>/...` ref only
+while no `<prefix>-verify-<key>` container runs on the host and this machine
+holds no lease on that checkout. A verify pushes its refs before its container
+starts, so a verify started by another machine in that gap (push done,
+container not yet running) can have its ref removed, and that verify then fails
+at its fetch. Nothing is lost: the commit is still in the checkout, and the
+verify is simply run again.
+
+Accepted because the gap is a few seconds, two machines verifying one checkout
+on one host is rare, and closing it needs a host-side claim for verify like the
+one `run` takes. Revisit if a verify is reported failing at its fetch while a
+prune ran, by having verify take the mirror claim around push and fetch.
+
+The same window covers mirrors: claims are per exact mirror path, so a run of a
+nested or parent mirror that another machine starts between prune's listing and
+its `rm -rf` is not excluded either. Same cause, same revisit trigger.

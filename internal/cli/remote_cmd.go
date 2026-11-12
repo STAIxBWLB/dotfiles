@@ -52,6 +52,7 @@ same path removes the one left behind.
 	cmd.AddCommand(newRemoteVerifyCmd())
 	cmd.AddCommand(newRemoteSrcCmd())
 	cmd.AddCommand(newRemoteStatusCmd())
+	cmd.AddCommand(newRemotePruneCmd())
 	cmd.AddCommand(newRemoteJobCmd())
 	return cmd
 }
@@ -216,12 +217,24 @@ CMD argument is a shell script; several are an argv. Caches named in the host's
 
 Everything the command writes stays on the host: the mirror keeps build
 outputs between runs and nothing comes back. PATH must be below
-remote.local_root, and may not be that root or $HOME.`,
+remote.local_root, and may not be that root or $HOME.
+
+-p PORT publishes the container's PORT on the host's 127.0.0.1 only and
+forwards local 127.0.0.1:PORT to it over the run's own ssh connection, for the
+life of the run (repeatable). A port already taken here fails the run.
+
+--cgroup gives the command a writable cgroup v2 subtree, its path in
+DOT_REMOTE_CGROUP: the container starts as root with CAP_SYS_ADMIN and a private
+cgroup namespace only to set the subtree up, then drops to the image's own user
+with every capability removed before the command runs. The host must use
+cgroup v2 and let the runtime grant CAP_SYS_ADMIN with AppArmor unconfined.`,
 		Args:         cobra.ArbitraryArgs,
 		RunE:         runRemoteRun,
 		SilenceUsage: true,
 	}
 	cmd.Flags().Bool("json", false, "print the defer record as JSON")
+	cmd.Flags().IntSliceP("port", "p", nil, "publish PORT on the host loopback and forward it to local 127.0.0.1:PORT (repeatable)")
+	cmd.Flags().Bool("cgroup", false, "delegate a writable cgroup v2 subtree to the command (path in DOT_REMOTE_CGROUP)")
 	return cmd
 }
 
@@ -254,6 +267,13 @@ func runRemoteRun(cmd *cobra.Command, _ []string) error {
 	if wait < 0 {
 		return fmt.Errorf("--wait must not be negative")
 	}
+	ports, _ := cmd.Flags().GetIntSlice("port")
+	for _, port := range ports {
+		if port < 1 || port > 65535 {
+			return fmt.Errorf("-p %d is not a TCP port (1-65535)", port)
+		}
+	}
+	cgroup, _ := cmd.Flags().GetBool("cgroup")
 	err = deps.Run(cmd.Context(), cfg, remote.RunOptions{
 		Path:      checkout,
 		HostName:  hostName,
@@ -263,6 +283,8 @@ func runRemoteRun(cmd *cobra.Command, _ []string) error {
 		IgnoreSrc: source,
 		DryRun:    dryRun,
 		Home:      homeFor(cmd),
+		Ports:     ports,
+		Cgroup:    cgroup,
 	})
 	var deferred *remote.Deferred
 	if errors.As(err, &deferred) {

@@ -13,6 +13,16 @@ Everything the command writes stays on the host: the mirror keeps build
 outputs between runs and nothing comes back. PATH must be below
 remote.local_root, and may not be that root or $HOME.
 
+-p PORT publishes the container's PORT on the host's 127.0.0.1 only and
+forwards local 127.0.0.1:PORT to it over the run's own ssh connection, for the
+life of the run (repeatable). A port already taken here fails the run.
+
+--cgroup gives the command a writable cgroup v2 subtree, its path in
+DOT_REMOTE_CGROUP: the container starts as root with CAP_SYS_ADMIN and a private
+cgroup namespace only to set the subtree up, then drops to the image's own user
+with every capability removed before the command runs. The host must use
+cgroup v2 and let the runtime grant CAP_SYS_ADMIN with AppArmor unconfined.
+
 ```
 dot remote run [PATH] -- COMMAND [ARG...] [flags]
 ```
@@ -20,8 +30,10 @@ dot remote run [PATH] -- COMMAND [ARG...] [flags]
 ### Options
 
 ```
-  -h, --help   help for run
-      --json   print the defer record as JSON
+      --cgroup      delegate a writable cgroup v2 subtree to the command (path in DOT_REMOTE_CGROUP)
+  -h, --help        help for run
+      --json        print the defer record as JSON
+  -p, --port ints   publish PORT on the host loopback and forward it to local 127.0.0.1:PORT (repeatable)
 ```
 
 ### Options inherited from parent commands
