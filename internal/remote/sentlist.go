@@ -274,7 +274,11 @@ func replacedDirsCommand(mirror string) string {
 	// A parent that is a symlink on the mirror would carry the test and the
 	// removal outside the mirror, so a path under one is skipped: every prefix
 	// is checked, not only the last element.
-	return `cd "$HOME"/` + quotedWord(mirror) + ` 2>/dev/null || exit 0; ` +
+	// The mirror's own path below the remote home is walked the same way first:
+	// a mirror that is, or sits under, a symlink is left to rsync alone.
+	return `m=` + ShellQuote(mirror) + `; q="$m"; ` +
+		`while :; do if [ -L "$HOME/$q" ]; then exit 0; fi; case "$q" in */*) q="${q%/*}";; *) break;; esac; done; ` +
+		`cd "$HOME/$m" 2>/dev/null || exit 0; ` +
 		`xargs -0 sh -c 'for p; do q="$p"; linked=; ` +
 		`while :; do case "$q" in */*) q="${q%/*}"; if [ -L "./$q" ]; then linked=1; fi;; *) break;; esac; done; ` +
 		`if [ -z "$linked" ] && [ -d "./$p" ] && [ ! -L "./$p" ]; then rm -rf -- "./$p" || exit 1; printf "%s\\0" "$p"; fi; done' sh # replaced-dirs`

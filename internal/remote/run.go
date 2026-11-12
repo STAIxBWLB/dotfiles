@@ -224,6 +224,16 @@ func (d Deps) Run(ctx context.Context, cfg Config, opts RunOptions) error {
 	if err != nil {
 		return err
 	}
+	if isCheckout {
+		// git lists a file wherever it is tracked or simply not ignored, and a
+		// file list makes rsync test only the listed name, so a file under a
+		// directory the exclude list names (.maru, node_modules, target) would
+		// travel. Those directories never leave this machine, tracked or not.
+		listing, err = d.withoutExcludedParents(ctx, rsyncPath, path, cfg.Excludes(), listing)
+		if err != nil {
+			return err
+		}
+	}
 	decision := d.syncInput(ctx, h, mirror, rel, path, SyncInput{Excludes: cfg.Excludes(), Listing: listing})
 	if err := d.clearReplaced(ctx, h, mirror, d.sendable(ctx, rsyncPath, path, decision.Input.Excludes, decision.Replaced)); err != nil {
 		return err
@@ -362,43 +372,138 @@ func (d Deps) syncInput(ctx context.Context, h Host, mirror, rel, path string, i
 	return syncDecision{Input: in, Record: true, Replaced: replacedCandidates(path, in.Listing, nil)}
 }
 
-// sendable keeps the candidates the send pass would really send, by asking
-// rsync itself: a dry run of the same file list under the same filter rules,
-// against an empty directory. A path the exclude list covers is never sent, so
-// there is nothing to make way for and what the host holds there is not this
-// run's to remove - and rsync's own answer is the only one that agrees with
-// rsync on anchors, `**`, the .env.example include and rule order.
+// rsyncKeeps asks rsync itself which of the given names (NUL-separated, files
+// or directories under src) its filter rules let through: a dry run of that
+// list under the send pass's own exclude arguments, against an empty
+// directory. rsync's own answer is the only one that agrees with rsync on
+// anchors, `**`, directory-only patterns, the .env.example include and rule
+// order.
 //
-// A dry run that fails keeps nothing, which removes nothing.
-func (d Deps) sendable(ctx context.Context, rsyncPath, src string, excludes []string, candidates []byte) []byte {
-	if len(candidates) == 0 {
-		return nil
+// A name rsync would have to escape in its output (a control character or a
+// backslash) is never reported as kept: its printed form could be another
+// file's real name.
+func (d Deps) rsyncKeeps(ctx context.Context, rsyncPath, src string, excludes []string, names []byte) (map[string]bool, error) {
+	kept := map[string]bool{}
+	if len(names) == 0 {
+		return kept, nil
 	}
 	empty, err := os.MkdirTemp("", "dot-remote-dry-")
 	if err != nil {
-		fmt.Fprintf(d.errOut(), "dot remote: could not check which replaced paths this run sends (%v), so it removes no directory on the host first\n", err)
-		return nil
+		return nil, err
 	}
 	defer os.RemoveAll(empty)
-	argv := append([]string{rsyncPath, "-a", "-n", "--out-format=%n"}, ExcludeArgs(excludes)...)
+	// --no-implied-dirs: every name is judged as itself. With implied
+	// directories rsync prints a directory that another listed path sits under
+	// even when a rule excludes it, which would hide exactly the answer wanted.
+	argv := append([]string{rsyncPath, "-a", "-n", "--no-implied-dirs", "--out-format=%n"}, ExcludeArgs(excludes)...)
 	argv = append(argv, "--files-from=-", "--from0", "--ignore-missing-args", src+"/", empty+"/")
-	out, err := d.capture(ctx, argv, candidates)
+	out, err := d.capture(ctx, argv, names)
+	if err != nil {
+		return nil, err
+	}
+	printed := map[string]bool{}
+	for _, line := range strings.Split(out, "\n") {
+		printed[strings.TrimSuffix(line, "/")] = true
+	}
+	for _, name := range strings.Split(string(names), "\x00") {
+		if name != "" && plainName(name) && printed[strings.TrimSuffix(name, "/")] {
+			kept[name] = true
+		}
+	}
+	return kept, nil
+}
+
+// plainName reports whether rsync prints a name as it is.
+func plainName(name string) bool {
+	for _, r := range name {
+		if r < 0x20 || r == 0x7f || r == '\\' {
+			return false
+		}
+	}
+	return true
+}
+
+// sendable keeps the candidates the send pass would really send. A path the
+// exclude list covers is never sent, so there is nothing to make way for and
+// what the host holds there is not this run's to remove. A dry run that fails
+// keeps nothing, which removes nothing.
+func (d Deps) sendable(ctx context.Context, rsyncPath, src string, excludes []string, candidates []byte) []byte {
+	kept, err := d.rsyncKeeps(ctx, rsyncPath, src, excludes, candidates)
 	if err != nil {
 		fmt.Fprintf(d.errOut(), "dot remote: could not check which replaced paths this run sends (%v), so it removes no directory on the host first\n", err)
 		return nil
 	}
-	sent := map[string]bool{}
-	for _, line := range strings.Split(out, "\n") {
-		sent[line] = true
-	}
-	var kept []byte
+	var out []byte
 	for _, rel := range strings.Split(string(candidates), "\x00") {
-		if rel != "" && sent[rel] {
-			kept = append(kept, rel...)
-			kept = append(kept, 0)
+		if kept[rel] {
+			out = append(out, rel...)
+			out = append(out, 0)
 		}
 	}
-	return kept
+	return out
+}
+
+// withoutExcludedParents drops every listed path that lies under a directory
+// the exclude list covers. The directories above the listed paths go through
+// the same rsync dry run, so "covered" means what it means to rsync; a failure
+// stops the run, because sending the unfiltered list could send a secret.
+func (d Deps) withoutExcludedParents(ctx context.Context, rsyncPath, src string, excludes []string, listing []byte) ([]byte, error) {
+	seen := map[string]bool{}
+	var dirs []string
+	for _, rel := range strings.Split(string(listing), "\x00") {
+		for i := strings.IndexByte(rel, '/'); i >= 0; {
+			dir := rel[:i]
+			if !seen[dir] {
+				seen[dir] = true
+				dirs = append(dirs, dir)
+			}
+			next := strings.IndexByte(rel[i+1:], '/')
+			if next < 0 {
+				break
+			}
+			i += next + 1
+		}
+	}
+	if len(dirs) == 0 {
+		return listing, nil
+	}
+	kept, err := d.rsyncKeeps(ctx, rsyncPath, src, excludes, []byte(strings.Join(dirs, "\x00")+"\x00"))
+	if err != nil {
+		return nil, fmt.Errorf("could not check the listed paths of %s against the exclude list (%w), so nothing is sent: run `%s --version` and retry", src, err, rsyncPath)
+	}
+	out := make([]byte, 0, len(listing))
+	var dropped int
+	for _, rel := range strings.Split(string(listing), "\x00") {
+		if rel == "" {
+			continue
+		}
+		excluded := false
+		for i := strings.IndexByte(rel, '/'); i >= 0; {
+			// A directory that is gone from disk is not printed either; its
+			// files are gone with it and the send pass skips them anyway.
+			if dir := rel[:i]; !kept[dir] {
+				if _, serr := os.Lstat(filepath.Join(src, filepath.FromSlash(dir))); serr == nil {
+					excluded = true
+					break
+				}
+			}
+			next := strings.IndexByte(rel[i+1:], '/')
+			if next < 0 {
+				break
+			}
+			i += next + 1
+		}
+		if excluded {
+			dropped++
+			continue
+		}
+		out = append(out, rel...)
+		out = append(out, 0)
+	}
+	if dropped > 0 {
+		fmt.Fprintf(d.errOut(), "dot remote: left %d listed file(s) at home: they are under a directory the exclude list names\n", dropped)
+	}
+	return out, nil
 }
 
 // clearReplaced removes, on the host, each directory the checkout has replaced

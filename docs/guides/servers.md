@@ -169,7 +169,11 @@ run asks only about files it did not send under that name last time, so an
 ordinary run asks about nothing. It asks only about paths the send pass would
 really send, which it learns from a dry run of rsync under the same exclude
 list, and on the host it does not follow a symlink in the path, so nothing
-outside the mirror and nothing the run would not send is removed. A file git still lists under a directory that
+outside the mirror and nothing the run would not send is removed; a mirror that
+is itself a symlink, or sits under one, is left to rsync alone. A file under a
+directory the exclude list names stays home even when git tracks it: the
+directories above each listed file go through the same dry run, and the run
+says how many files it left. A file git still lists under a directory that
 is now a file here (the replacement is not staged yet) is left out of the send
 list, since rsync cannot read a path under a file. A
 directory the checkout deleted outright loses the files it sent, while a build

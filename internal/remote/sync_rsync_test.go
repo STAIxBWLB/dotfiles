@@ -232,6 +232,13 @@ func (f *syncFixture) runAsRun(listing []byte) {
 // runAsRunExcludes is the same, with an operator exclude list.
 func (f *syncFixture) runAsRunExcludes(excludes []string, listing []byte) {
 	f.t.Helper()
+	if listing != nil {
+		kept, err := f.deps.withoutExcludedParents(context.Background(), f.rsync, f.source, excludes, listing)
+		if err != nil {
+			f.t.Fatalf("filtering the listing: %v", err)
+		}
+		listing = kept
+	}
 	decision := f.deps.syncInput(context.Background(), f.host, f.dest, f.rel, f.source, SyncInput{
 		Excludes: excludes,
 		Listing:  listing,
@@ -1028,5 +1035,78 @@ func TestTheReplacedDirectoryRemovalDoesNotFollowAParentSymlink(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(outside, "icons", "keep.png")); err != nil {
 		t.Errorf("the directory outside the mirror was touched: %v", err)
+	}
+}
+
+// git lists a file wherever it is tracked, and a file list makes rsync test only
+// the listed name. A tracked file under a directory the exclude list names must
+// stay home all the same: that is where secrets and agent state live.
+func TestATrackedFileUnderAnExcludedDirectoryStaysHome(t *testing.T) {
+	f := newSyncFixture(t)
+	f.sourceFile("main.go", "package main\n")
+	f.sourceFile(".maru/secrets/token.json", "secret\n")
+	f.sourceFile("pkg/node_modules/dep/index.js", "dep\n")
+	f.sourceFile("pkg/keep.go", "package pkg\n")
+	f.gitInit()
+	f.gitRun("add", "-A", "-f")
+	listing := f.gitList()
+	if !strings.Contains(string(listing), ".maru/secrets/token.json") {
+		t.Fatalf("the fixture is wrong: git does not list the tracked secret:\n%q", listing)
+	}
+
+	f.runAsRun(listing)
+
+	f.missing(".maru/secrets/token.json")
+	f.missing("pkg/node_modules/dep/index.js")
+	if got := f.read("pkg/keep.go"); got != "package pkg\n" {
+		t.Errorf("pkg/keep.go on the mirror is %q", got)
+	}
+	if !strings.Contains(f.errs.String(), "under a directory the exclude list names") {
+		t.Errorf("stderr does not say files stayed home:\n%s", f.errs.String())
+	}
+}
+
+// A mirror that is itself a symlink resolves somewhere else, and the removal
+// must not act there.
+func TestTheReplacedDirectoryRemovalLeavesASymlinkedMirrorAlone(t *testing.T) {
+	f := newSyncFixture(t)
+	elsewhere := filepath.Join(f.root, "elsewhere")
+	if err := os.MkdirAll(filepath.Join(elsewhere, "item"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(elsewhere, "item", "keep.txt"), []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(f.dest); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, f.dest); err != nil {
+		t.Fatal(err)
+	}
+
+	removed, err := f.clearReplaced([]byte("item\x00"))
+	if err != nil {
+		t.Fatalf("the removal command failed: %v", err)
+	}
+	if len(removed) != 0 {
+		t.Errorf("removed %q through a symlinked mirror, want nothing", removed)
+	}
+	if _, err := os.Stat(filepath.Join(elsewhere, "item", "keep.txt")); err != nil {
+		t.Errorf("the directory behind the symlink was touched: %v", err)
+	}
+}
+
+// rsync prints a newline in a name as \#012, which is also a name a file can
+// really have. Neither may be reported as kept on the other's evidence.
+func TestANameRsyncEscapesIsNeverReportedAsKept(t *testing.T) {
+	f := newSyncFixture(t)
+	f.sourceFile("a\nb", "x")
+	f.sourceFile("plain", "x")
+	kept, err := f.deps.rsyncKeeps(context.Background(), f.rsync, f.source, nil, []byte("a\nb\x00a\\#012b\x00plain\x00"))
+	if err != nil {
+		t.Fatalf("rsyncKeeps: %v", err)
+	}
+	if len(kept) != 1 || !kept["plain"] {
+		t.Errorf("kept %v, want only the plain name", kept)
 	}
 }
