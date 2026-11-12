@@ -39,6 +39,23 @@ func TestGoneFromDiskIsSortedAndEmptyWhenNothingLeft(t *testing.T) {
 	}
 }
 
+// The delete pass takes one list, and a first run has two reasons to name a path:
+// the mirror holds it and this checkout neither lists nor has it, or git still
+// lists it and it is gone from disk.
+func TestNulUnionMergesBothKindsOfDeletion(t *testing.T) {
+	if got := nulUnion(nil, nil, []byte{}); got != nil {
+		t.Errorf("nulUnion of nothing = %q, want nothing", got)
+	}
+	got := nulUnion([]byte("stale.txt\x00docs/old.md\x00"), []byte("main.go\x00docs/old.md\x00"))
+	if want := []string{"docs/old.md", "main.go", "stale.txt"}; !slices.Equal(nulList(got), want) {
+		t.Errorf("nulUnion = %v, want %v", nulList(got), want)
+	}
+	// One list is returned as it stands, which is what the no-candidate case gets.
+	if got := nulUnion(nil, []byte("gone.go\x00")); string(got) != "gone.go\x00" {
+		t.Errorf("nulUnion = %q, want the one list", got)
+	}
+}
+
 // A listing is git's own output, but a delete pass still only names a path that
 // stays under the checkout: rsync would resolve anything else against the
 // source it was given.

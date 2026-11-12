@@ -224,13 +224,15 @@ func (d Deps) Run(ctx context.Context, cfg Config, opts RunOptions) error {
 	if err != nil {
 		return err
 	}
-	in := d.syncInput(ctx, h, mirror, rel, path, SyncInput{Excludes: cfg.Excludes(), Listing: listing})
-	if err := d.sync(ctx, h, mirror, rsyncPath, path, in); err != nil {
+	decision := d.syncInput(ctx, h, mirror, rel, path, SyncInput{Excludes: cfg.Excludes(), Listing: listing})
+	if err := d.sync(ctx, h, mirror, rsyncPath, path, decision.Input); err != nil {
 		return err
 	}
-	if isCheckout {
-		// Recorded only after the mirror took the tree: a listing saved for a sync
-		// that failed would let the next run delete files this one never sent.
+	// Recorded only after the mirror took the tree, and only when the decision
+	// was reached: a listing saved for a sync that failed, or for a reconcile
+	// that did not complete, would let the next run subtract from a record that
+	// never described what is on the mirror.
+	if isCheckout && decision.Record {
 		if err := d.writeSent(h, rel, path, listing); err != nil {
 			fmt.Fprintf(d.errOut(), "dot remote: could not record what this run sent to %s on %s (%v), so the next run there reconciles the mirror instead\n",
 				mirror, h.Name, err)
@@ -293,6 +295,21 @@ func containerPresentScript(h Host, container string) string {
 	return h.Runtime + " ps -a --filter " + ShellQuote("name=^"+container+"$") + " --format '{{.Names}}' # container-present"
 }
 
+// syncDecision is what one sync of a checkout decided: the plan's input, and
+// whether this run may record what it sent.
+//
+// I record only a run that either subtracted from its own record or reconciled
+// the mirror completely. A run that could not reconcile deletes nothing there,
+// and recording it anyway would spend the one chance: the next run would subtract
+// from a listing that never covered the stale tree, and the file this one failed
+// to see would never be a candidate again.
+type syncDecision struct {
+	Input SyncInput
+	// Record is false when the reconcile did not complete, or when the path is
+	// not a checkout and has no listing to record.
+	Record bool
+}
+
 // syncInput decides what one sync of a checkout removes.
 //
 // git's listing says what the tree holds now; what this machine sent to this
@@ -304,11 +321,13 @@ func containerPresentScript(h Host, container string) string {
 // describes another mirror - is reconciled against its own contents instead:
 // what it holds, this checkout neither lists nor has, and git does not ignore is
 // gone, so an adopted mirror loses the tree an older checkout left while its own
-// build outputs stay. The run records its listing afterwards either way.
-func (d Deps) syncInput(ctx context.Context, h Host, mirror, rel, path string, in SyncInput) SyncInput {
+// build outputs stay. A path git still lists but this machine no longer has on
+// disk is gone too - `rm old.go` without staging leaves it listed, and the ship
+// pass skips it rather than sending it.
+func (d Deps) syncInput(ctx context.Context, h Host, mirror, rel, path string, in SyncInput) syncDecision {
 	if in.Listing == nil {
 		fmt.Fprintf(d.errOut(), "dot remote: %s is not a git checkout, mirroring it with the exclude list\n", path)
-		return in
+		return syncDecision{Input: in}
 	}
 	record, err := d.readSent(h, rel, path)
 	switch {
@@ -320,35 +339,36 @@ func (d Deps) syncInput(ctx context.Context, h Host, mirror, rel, path string, i
 			mirror, h.Name)
 	case record.Found:
 		in.Deletes = goneFromDisk(path, record.Listing, in.Listing)
-		return in
+		return syncDecision{Input: in, Record: true}
 	}
 	deletes, rerr := d.reconcile(ctx, h, mirror, path, in.Listing)
 	if rerr != nil {
-		fmt.Fprintf(d.errOut(), "dot remote: could not read what %s holds on %s (%v), so this run deletes nothing there; the run records its listing, and the next one there deletes from that\n",
+		fmt.Fprintf(d.errOut(), "dot remote: could not read what %s holds on %s (%v), so this run deletes nothing there and records nothing: the next run there reconciles the mirror again\n",
 			mirror, h.Name, rerr)
-		return in
+		return syncDecision{Input: in}
 	}
 	in.Deletes = deletes
-	return in
+	return syncDecision{Input: in, Record: true}
 }
 
 // reconcile is the deletion set for a mirror this machine has no record of: what
 // the mirror holds that this checkout neither lists nor has, minus what git's
-// ignore rules cover.
+// ignore rules cover, together with what git still lists and this machine no
+// longer has on disk.
 func (d Deps) reconcile(ctx context.Context, h Host, mirror, path string, listing []byte) ([]byte, error) {
 	held, err := d.mirrorFiles(ctx, h, mirror)
 	if err != nil {
 		return nil, err
 	}
 	candidates := mirrorCandidates(path, held, listing)
-	if len(candidates) == 0 {
-		return nil, nil
+	var ignored map[string]bool
+	if len(candidates) > 0 {
+		ignored, err = d.gitIgnored(ctx, path, candidates)
+		if err != nil {
+			return nil, err
+		}
 	}
-	ignored, err := d.gitIgnored(ctx, path, candidates)
-	if err != nil {
-		return nil, err
-	}
-	return deletionSet(candidates, ignored), nil
+	return nulUnion(deletionSet(candidates, ignored), goneFromDisk(path, listing)), nil
 }
 
 // mirrorFiles lists every file one mirror holds, NUL-separated and relative to

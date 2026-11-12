@@ -217,9 +217,11 @@ time, so nothing is inferred from the exclude list. A mirror this machine has no
 record of is reconciled against git's own rules instead: every file it holds and
 this checkout neither lists nor has is deleted unless `git check-ignore` reports
 it as ignored (`.gitignore`, `.git/info/exclude` and the global excludes file,
-negations included), so a build output the host made survives. A checkout git
-cannot list is an error rather than a fallback to the exclude list, because the
-exclude list is not a substitute for git's own view.
+negations included), together with every path git still lists but this machine
+no longer has on disk, so a build output the host made survives. A run that could
+not read the mirror deletes nothing and records nothing, and reconciles again
+next time. A checkout git cannot list is an error rather than a fallback to the
+exclude list, because the exclude list is not a substitute for git's own view.
 
 ### Environment Variables
 

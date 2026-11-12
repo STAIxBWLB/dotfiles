@@ -77,15 +77,20 @@ func (f *syncFixture) pinGitEnv() {
 	f.t.Setenv("XDG_CONFIG_HOME", filepath.Join(f.root, "xdg"))
 }
 
-// mirrorFiles is what `find` on the host would print: every file the mirror
-// holds, NUL-separated and relative to it, in the "./" form find writes.
+// mirrorFiles is what the host would print, using the production listing
+// command with HOME pointed at the fixture's home rather than a walk of its own:
+// what the reconcile sees is then exactly what `find` on the host reports,
+// pruning and symlinks included.
 func (f *syncFixture) mirrorFiles() []byte {
 	f.t.Helper()
-	var found []string
-	for _, rel := range f.present() {
-		found = append(found, "./"+rel)
+	command := mirrorFindCommand(filepath.ToSlash(filepath.Join(f.host.Root, f.rel)))
+	cmd := exec.Command("/bin/sh", "-c", command)
+	cmd.Env = append(os.Environ(), "HOME="+filepath.Join(f.root, "home"))
+	out, err := cmd.Output()
+	if err != nil {
+		f.t.Fatalf("listing the mirror with %q: %v", command, err)
 	}
-	return []byte(strings.Join(found, "\x00"))
+	return out
 }
 
 func (f *syncFixture) write(root, rel, content string) {
@@ -211,14 +216,14 @@ func (f *syncFixture) runAsRun(listing []byte) {
 // runAsRunExcludes is the same, with an operator exclude list.
 func (f *syncFixture) runAsRunExcludes(excludes []string, listing []byte) {
 	f.t.Helper()
-	in := f.deps.syncInput(context.Background(), f.host, f.dest, f.rel, f.source, SyncInput{
+	decision := f.deps.syncInput(context.Background(), f.host, f.dest, f.rel, f.source, SyncInput{
 		Excludes: excludes,
 		Listing:  listing,
 	})
-	f.runPlan(in)
-	if listing == nil {
-		// A path that is not a checkout has no listing to record, which is what
-		// Run does too.
+	f.runPlan(decision.Input)
+	if !decision.Record {
+		// A path that is not a checkout has no listing to record, and a run that
+		// could not reconcile writes none either, which is what Run does too.
 		return
 	}
 	if err := f.deps.writeSent(f.host, f.rel, f.source, listing); err != nil {
@@ -478,6 +483,61 @@ func TestAFirstRunDeletesAStaleFileGitDoesNotIgnore(t *testing.T) {
 	f.missing("Cargo.lock")
 	if got := f.read("build/app.o"); got != "compiled there\n" {
 		t.Errorf("the reconcile removed the host's build output: %q", got)
+	}
+}
+
+// A path git still lists but this machine no longer has on disk is gone: `rm
+// old.go` without staging the deletion leaves it in `git ls-files --cached`, so
+// the ship pass skips it with --ignore-missing-args and the mirror keeps the
+// copy an earlier checkout sent. On a first run nothing else names it either,
+// because a candidate is a path this checkout does not list.
+func TestAFirstRunDeletesATrackedFileThatIsGoneFromDisk(t *testing.T) {
+	f := newSyncFixture(t)
+	f.sourceFile("main.go", "package main\n")
+	f.sourceFile("old.go", "package main\n")
+	f.gitInit()
+	f.gitRun("add", "old.go", "main.go")
+	if listing := f.gitList(); !slices.Contains(strings.Split(string(listing), "\x00"), "old.go") {
+		t.Fatalf("git does not list old.go, so the case under test is not here: %q", listing)
+	}
+
+	// The file leaves the disk and stays in git's listing.
+	if err := os.Remove(filepath.Join(f.source, "old.go")); err != nil {
+		t.Fatal(err)
+	}
+	f.destFile("old.go", "package main\n")
+	f.destFile("main.go", "package main\n")
+
+	f.runAsRun(f.gitList())
+
+	f.missing("old.go")
+	if got := f.read("main.go"); got != "package main\n" {
+		t.Errorf("the run removed a file this machine still has: %q", got)
+	}
+}
+
+// A symlink this checkout sent and then deleted leaves an adopted mirror too:
+// the listing has to ask for links as well as files, and has to leave them
+// un-followed so a mirror link pointing at a directory cannot walk the reconcile
+// somewhere else.
+func TestAFirstRunDeletesAStaleSymlink(t *testing.T) {
+	f := newSyncFixture(t)
+	f.sourceFile("main.go", "package main\n")
+	f.gitInit()
+
+	link := filepath.Join(f.dest, "current")
+	if err := os.Symlink("releases/one", link); err != nil {
+		t.Skipf("symlinks unavailable here: %v", err)
+	}
+	f.destFile("main.go", "package main\n")
+
+	f.runAsRun(f.gitList())
+
+	if _, err := os.Lstat(link); !os.IsNotExist(err) {
+		t.Errorf("the reconcile left the stale symlink on the mirror: %v", err)
+	}
+	if got := f.read("main.go"); got != "package main\n" {
+		t.Errorf("the reconcile removed a file this machine still has: %q", got)
 	}
 }
 

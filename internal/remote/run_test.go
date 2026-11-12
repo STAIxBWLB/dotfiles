@@ -249,8 +249,10 @@ type runFixture struct {
 	gitToplevel    string
 	gitToplevelErr error
 	// mirrorHeld is what the mirror already holds, for a run that has no record
-	// of it, and ignored is what git answers for those paths.
+	// of it, ignored is what git answers for those paths, and mirrorErr makes the
+	// first listing of the mirror fail.
 	mirrorHeld []string
+	mirrorErr  error
 	ignored    map[string]bool
 	out        bytes.Buffer
 	errOut     bytes.Buffer
@@ -277,6 +279,18 @@ func newRunFixture(t *testing.T) *runFixture {
 		exec:     &fakeExec{t: t, loads: "0.50 0.40 0.30 1/100 4242\n4\n", preflight: preflightAbsent},
 		gitData:  []byte("main.go\x00docs/a.md\x00"),
 	}
+	// The checkout holds what its listing names: a run deletes a listed path that
+	// is gone from disk, so a fixture whose listing named files it does not have
+	// would put them on every delete pass and hide the one under test.
+	for _, rel := range nulList(f.gitData) {
+		path := filepath.Join(checkout, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("package main\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	f.cfg = Config{Hosts: map[string]Host{f.host.Name: f.host}, LocalRoot: root}
 	return f
 }
@@ -293,6 +307,11 @@ func (f *runFixture) deps() Deps {
 		// files come from the fixture, and git's answer about what it ignores is
 		// the fake here, so no real repository is needed.
 		MirrorFiles: func(_ context.Context, _ Host, _ string) ([]byte, error) {
+			if f.mirrorErr != nil {
+				err := f.mirrorErr
+				f.mirrorErr = nil
+				return nil, err
+			}
 			return []byte(strings.Join(f.mirrorHeld, "\x00")), nil
 		},
 		Ignored: func(_ context.Context, _ string, paths []string) (map[string]bool, error) {
@@ -476,6 +495,42 @@ func TestAFirstRunReconcilesTheMirrorItAdopted(t *testing.T) {
 	// instead of reading the mirror again.
 	if record, err := f.deps().readSent(f.host, "repo", f.checkout); err != nil || !record.Found {
 		t.Fatalf("readSent after the run = (%+v, %v), want the listing this run sent", record, err)
+	}
+}
+
+// A run whose reconcile could not complete deletes nothing there and records
+// nothing. Recording anyway would spend the one chance it has: the next run would
+// subtract from a listing that never covered the stale tree, so the file this
+// run failed to see would never be a candidate again.
+func TestARunThatCouldNotReconcileRecordsNothing(t *testing.T) {
+	f := newRunFixture(t)
+	f.mirrorHeld = []string{"./stale.txt"}
+	f.mirrorErr = errors.New("ssh: connect to host buildbox port 22: Connection refused")
+
+	if err := f.run(RunOptions{Command: []string{"true"}}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if transfers := f.exec.transfers(); len(transfers) != 1 {
+		t.Errorf("rsync calls = %d, want the ship pass alone: a run that could not read the mirror deletes nothing there", len(transfers))
+	}
+	if !strings.Contains(f.errOut.String(), "deletes nothing there and records nothing") {
+		t.Errorf("stderr does not say the run recorded nothing:\n%s", f.errOut.String())
+	}
+	if record, err := f.deps().readSent(f.host, "repo", f.checkout); err != nil || record.Found {
+		t.Fatalf("the run recorded a listing it could not reconcile against: %+v, %v", record, err)
+	}
+
+	// The next run reconciles again - the mirror answers this time - and the file
+	// an earlier checkout left finally goes.
+	if err := f.run(RunOptions{Command: []string{"true"}}); err != nil {
+		t.Fatalf("second Run: %v", err)
+	}
+	transfers := f.exec.transfers()
+	if len(transfers) != 3 {
+		t.Fatalf("rsync calls = %d, want the first run's ship pass and the second run's two", len(transfers))
+	}
+	if got := nulList(f.exec.stin(transfers[2])); !slices.Equal(got, []string{"stale.txt"}) {
+		t.Errorf("the second run's delete pass was fed %v, want the stale file", got)
 	}
 }
 

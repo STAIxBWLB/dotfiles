@@ -41,7 +41,9 @@ func mirrorPaths(found []byte) []string {
 // mirrorCandidates is what an adopted mirror holds that this checkout neither
 // lists nor has on disk, in path order. A path this checkout still has is left
 // alone whatever git says about it: deleting it would destroy a file that is
-// here, and naming it on the delete pass would send it.
+// here, and naming it on the delete pass would send it. A path git still lists
+// but that is gone from disk is not a candidate either - the ship pass skips it
+// with --ignore-missing-args, so it comes from goneFromDisk instead.
 func mirrorCandidates(src string, mirror, listing []byte) []string {
 	listed := listedPaths(listing)
 	var candidates []string
@@ -82,6 +84,11 @@ var prunableName = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 // and NUL-separated. A mirror that does not exist yet has nothing to list, and a
 // directory that cannot be entered is left to the caller as an empty answer
 // rather than an error: this list only ever decides what may be deleted.
+//
+// A symlink is listed as well as a file, and never followed: the ship pass sends
+// a git-tracked symlink as a symlink, so one this checkout dropped is only
+// visible here if `find` prints it, and `-type f` alone would leave it on an
+// adopted mirror for good.
 func mirrorFindCommand(mirror string) string {
 	var prune []string
 	for _, name := range builtinExcludes {
@@ -89,9 +96,9 @@ func mirrorFindCommand(mirror string) string {
 			prune = append(prune, "-name", ShellQuote(name), "-o")
 		}
 	}
-	list := "find . -type f -print0"
+	list := "find . \\( -type f -o -type l \\) -print0"
 	if len(prune) > 0 {
-		list = "find . \\( " + strings.TrimSuffix(strings.Join(prune, " "), " -o") + " \\) -prune -o -type f -print0"
+		list = "find . \\( " + strings.TrimSuffix(strings.Join(prune, " "), " -o") + " \\) -prune -o \\( -type f -o -type l \\) -print0"
 	}
 	return `cd "$HOME"/` + quotedWord(mirror) + ` 2>/dev/null || exit 0; ` + list
 }

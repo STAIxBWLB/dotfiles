@@ -178,6 +178,31 @@ func goneFromDisk(src string, listings ...[]byte) []byte {
 	return []byte(strings.Join(gone, "\x00") + "\x00")
 }
 
+// nulUnion merges NUL-separated path lists into one sorted list without
+// repeats, or nil when they name nothing. The delete pass takes one list, and
+// the two reasons a path leaves a mirror - it was sent and is gone from disk, or
+// the mirror holds it and this checkout neither lists nor has it - have to arrive
+// together.
+func nulUnion(lists ...[]byte) []byte {
+	seen := map[string]bool{}
+	for _, list := range lists {
+		for _, rel := range strings.Split(string(list), "\x00") {
+			if rel != "" {
+				seen[rel] = true
+			}
+		}
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	merged := make([]string, 0, len(seen))
+	for rel := range seen {
+		merged = append(merged, rel)
+	}
+	sort.Strings(merged)
+	return []byte(strings.Join(merged, "\x00") + "\x00")
+}
+
 // listedPaths reads a listing as a set of paths under the checkout, dropping
 // anything that is not one.
 func listedPaths(listing []byte) map[string]bool {

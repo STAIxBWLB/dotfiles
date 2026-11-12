@@ -384,14 +384,17 @@ negation is lost and a stale pattern protects a file git lists.
 
 Two limits follow. A mirror this machine has no record for - its first run, a
 state directory that was lost, or a record written for another mirror - is
-reconciled once instead of subtracted from: the run lists what the mirror holds,
-drops every path this checkout still has and everything `git check-ignore`
-covers, and deletes the rest, so the stale tree of an older checkout goes and
-the host's build outputs stay. That listing is over ssh and is the one part of a
-run that grows with the mirror's size; the built-in exclude names are pruned
-from the walk so `node_modules` and `target` are not read file by file. And the
-record is this machine's own view: a file another machine sent is not this
-machine's to delete, so a mirror shared by two machines is cleaned by each of
-them for its own files only. Revisit this when a mirror is written by something
-other than `dot remote`, or when the record has to be shared between machines:
-the subtraction then has to name the sending machine per path.
+reconciled once instead of subtracted from: the run lists what the mirror holds
+(files and symlinks, not following a link), drops every path this checkout still
+has and everything `git check-ignore` covers, and deletes the rest, so the stale
+tree of an older checkout goes and the host's build outputs stay. A run that
+cannot read that listing deletes nothing and records nothing, so the reconcile
+happens again next time rather than being spent on a record that never described
+the mirror. The listing is over ssh and is the one part of a run that grows with
+the mirror's size; the built-in exclude names are pruned from the walk so
+`node_modules` and `target` are not read file by file. And the record is this
+machine's own view: a file another machine sent is not this machine's to delete,
+so a mirror shared by two machines is cleaned by each of them for its own files
+only. Revisit this when a mirror is written by something other than `dot
+remote`, or when the record has to be shared between machines: the subtraction
+then has to name the sending machine per path.

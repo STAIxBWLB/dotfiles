@@ -142,15 +142,19 @@ rather than acted on.
 
 A mirror this machine has no record of, because it has never sent there or
 because the host's `root` or `ssh` changed, is reconciled once against its own
-contents: a run lists what the mirror holds, keeps every path the checkout still
-has on disk, and deletes the rest except what `git check-ignore` reports as
-ignored, so an adopted mirror loses the tree an older checkout left while its
-own build outputs (`node_modules`, `target` and the rest of the built-in
-excludes are not even walked) stay. If that listing cannot be read, the run
-deletes nothing there and says so; it records its own listing either way, so the
-next run subtracts from that instead. A path that is still on this machine is
-never deleted on the mirror, whether git lists it or not: `git rm --cached` on a
-build output leaves it here and the host's copy stays with it.
+contents: a run lists what the mirror holds (files and symlinks, never following
+a link), keeps every path the checkout still has on disk, and deletes the rest
+except what `git check-ignore` reports as ignored, so an adopted mirror loses the
+tree an older checkout left while its own build outputs (`node_modules`, `target`
+and the rest of the built-in excludes are not even walked) stay. A path git still
+lists but this machine no longer has goes too, since `rm old.go` without staging
+leaves it listed while the ship pass skips it. If that listing cannot be read,
+the run deletes nothing there, records nothing, and says so: the next run
+reconciles the mirror again, because a record written there would describe a
+mirror this machine never read and the file it missed would never be a candidate
+again. A path that is still on this machine is never deleted on the mirror,
+whether git lists it or not: `git rm --cached` on a build output leaves it here
+and the host's copy stays with it.
 
 ### Limits and interrupts
 

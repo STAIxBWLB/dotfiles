@@ -61,11 +61,19 @@ func TestMirrorFindCommandPrunesAndQuotes(t *testing.T) {
 		"-name 'target' -o",
 		"-name '.git' -o",
 		`\( `,
-		` \) -prune -o -type f -print0`,
+		` \) -prune -o \( -type f -o -type l \) -print0`,
 	} {
 		if !strings.Contains(command, want) {
 			t.Errorf("find command is missing %q:\n%s", want, command)
 		}
+	}
+	// A symlink is listed and never followed, so a link this checkout dropped is
+	// visible to the reconcile and one pointing elsewhere cannot widen the walk.
+	if strings.Contains(command, "-L") || strings.Contains(command, "-follow") {
+		t.Errorf("find command follows symlinks:\n%s", command)
+	}
+	if !strings.Contains(command, "-type l") {
+		t.Errorf("find command does not list symlinks:\n%s", command)
 	}
 	// A pattern with a glob or a slash cannot be pruned by name, so it is left to
 	// git's own answer instead of narrowing the walk.
