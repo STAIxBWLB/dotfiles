@@ -398,3 +398,14 @@ so a mirror shared by two machines is cleaned by each of them for its own files
 only. Revisit this when a mirror is written by something other than `dot
 remote`, or when the record has to be shared between machines: the subtraction
 then has to name the sending machine per path.
+
+One exception to that protection, accepted with it: a path the checkout turns
+from a directory into a file or a symlink is sent with `--force`, because rsync
+cannot otherwise replace a non-empty directory, and the previous behaviour was a
+run that failed on that change and on every run after it. Everything the host
+built under that path goes with the directory, since a build output under a path
+that is now a file has nowhere to live. `--force` acts only on the path being
+replaced; every other file the checkout left alone keeps the host's copy. A
+directory the checkout deletes outright is the other shape, and there the files
+it sent go while a build output beside them stays, with rsync's "some files
+vanished" (24) accepted on that pass alone.

@@ -480,9 +480,9 @@ func TestAFirstRunReconcilesTheMirrorItAdopted(t *testing.T) {
 	}
 	transfers := f.exec.transfers()
 	if len(transfers) != 2 {
-		t.Fatalf("rsync calls = %d, want the ship and the delete pass", len(transfers))
+		t.Fatalf("rsync calls = %d, want the delete and the ship pass", len(transfers))
 	}
-	drop := transfers[1]
+	drop := transfers[0]
 	for _, want := range []string{"--files-from=-", "--delete-missing-args"} {
 		if !slices.Contains(drop, want) {
 			t.Errorf("delete pass is missing %q: %v", want, drop)
@@ -490,6 +490,11 @@ func TestAFirstRunReconcilesTheMirrorItAdopted(t *testing.T) {
 	}
 	if got := nulList(f.exec.stin(drop)); !slices.Equal(got, []string{"Cargo.lock", "assets/logo.png"}) {
 		t.Errorf("delete pass was fed %v, want the paths git does not ignore", got)
+	}
+	// The ship pass replaces what contained a path that left the checkout, so it
+	// goes last and carries --force.
+	if !slices.Contains(transfers[1], "--force") {
+		t.Errorf("ship pass = %v, want --force", transfers[1])
 	}
 	// The run records what it sent, so the next run there subtracts from it
 	// instead of reading the mirror again.
@@ -529,7 +534,7 @@ func TestARunThatCouldNotReconcileRecordsNothing(t *testing.T) {
 	if len(transfers) != 3 {
 		t.Fatalf("rsync calls = %d, want the first run's ship pass and the second run's two", len(transfers))
 	}
-	if got := nulList(f.exec.stin(transfers[2])); !slices.Equal(got, []string{"stale.txt"}) {
+	if got := nulList(f.exec.stin(transfers[1])); !slices.Equal(got, []string{"stale.txt"}) {
 		t.Errorf("the second run's delete pass was fed %v, want the stale file", got)
 	}
 }

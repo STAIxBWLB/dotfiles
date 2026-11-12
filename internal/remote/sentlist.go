@@ -203,6 +203,46 @@ func nulUnion(lists ...[]byte) []byte {
 	return []byte(strings.Join(merged, "\x00") + "\x00")
 }
 
+// withoutBlockedPaths drops the paths rsync cannot stat under the source: one
+// whose parent is now a file or a symlink there. Naming it fails the whole
+// delete pass with "Not a directory" and deletes nothing, and it needs no entry
+// anyway - the ship pass sends that parent and replaces the old subtree with it,
+// which takes the path with it.
+func withoutBlockedPaths(src string, paths []byte) []byte {
+	var kept []string
+	for _, rel := range strings.Split(string(paths), "\x00") {
+		if rel != "" && !blockedByNonDirectory(src, rel) {
+			kept = append(kept, rel)
+		}
+	}
+	if len(kept) == 0 {
+		return nil
+	}
+	sort.Strings(kept)
+	return []byte(strings.Join(kept, "\x00") + "\x00")
+}
+
+// blockedByNonDirectory reports whether some ancestor of rel exists on this
+// machine as something other than a directory, which is a checkout that turned a
+// directory into a file or a symlink.
+func blockedByNonDirectory(src, rel string) bool {
+	parts := strings.Split(rel, "/")
+	dir := src
+	for _, part := range parts[:len(parts)-1] {
+		dir = filepath.Join(dir, part)
+		info, err := os.Lstat(dir)
+		if err != nil {
+			// A missing ancestor is the ordinary case: the path is gone with it,
+			// and --delete-missing-args removes it either way.
+			return false
+		}
+		if !info.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
 // listedPaths reads a listing as a set of paths under the checkout, dropping
 // anything that is not one.
 func listedPaths(listing []byte) map[string]bool {

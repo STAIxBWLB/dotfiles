@@ -56,6 +56,30 @@ func TestNulUnionMergesBothKindsOfDeletion(t *testing.T) {
 	}
 }
 
+// A path whose parent the checkout turned into a file or a symlink cannot be
+// named on the delete pass: rsync cannot stat it under the source, fails the
+// whole step, and deletes nothing. The ship pass replaces that parent and takes
+// the path with it, so the entry is dropped rather than the run failed.
+func TestWithoutBlockedPathsDropsOnlyWhatAParentBlocks(t *testing.T) {
+	src := t.TempDir()
+	writeTree(t, src, "repo/file-only", "now a file\n")
+	writeTree(t, src, "repo/kept/here.go", "package main\n")
+	if err := os.Symlink("here.go", filepath.Join(src, "repo", "kept", "link-only")); err != nil {
+		t.Skipf("symlinks unavailable here: %v", err)
+	}
+
+	paths := []byte("file-only/old.go\x00kept/here.go\x00kept/link-only/old.go\x00gone/deep/old.go\x00")
+	got := nulList(withoutBlockedPaths(filepath.Join(src, "repo"), paths))
+	// "kept/here.go" stays (its parent is a directory), and "gone/deep/old.go"
+	// stays too: a missing parent is the ordinary deletion and rsync removes it.
+	if want := []string{"gone/deep/old.go", "kept/here.go"}; !slices.Equal(got, want) {
+		t.Errorf("withoutBlockedPaths = %v, want %v", got, want)
+	}
+	if got := withoutBlockedPaths(filepath.Join(src, "repo"), []byte("file-only/old.go\x00")); got != nil {
+		t.Errorf("withoutBlockedPaths = %q, want nothing left", got)
+	}
+}
+
 // A listing is git's own output, but a delete pass still only names a path that
 // stays under the checkout: rsync would resolve anything else against the
 // source it was given.

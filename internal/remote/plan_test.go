@@ -38,15 +38,23 @@ func TestSyncPlanForAGitCheckout(t *testing.T) {
 		Deletes:  deletes,
 	})
 	if len(steps) != 2 {
-		t.Fatalf("steps = %d, want the ship pass and the delete pass", len(steps))
+		t.Fatalf("steps = %d, want the delete pass and the ship pass", len(steps))
 	}
-	ship, drop := steps[0], steps[1]
+	// The delete pass comes first: a path that left the checkout has to go before
+	// the ship pass replaces what contained it.
+	drop, ship := steps[0], steps[1]
 	for _, want := range []string{"-a", "-s", "--mkpath", "--files-from=-", "--from0", "--ignore-missing-args",
 		"--exclude=.git", "--exclude=node_modules", "--include=.env.example",
 		"/home/u/repo/", "buildbox:dot-remote/repo/"} {
 		if !slices.Contains(ship.Argv, want) {
 			t.Errorf("ship pass is missing %q: %v", want, ship.Argv)
 		}
+	}
+	// --force is what lets a directory the checkout turned into a file or a
+	// symlink be replaced when the host left a build output inside it, and it acts
+	// on nothing else: a path outside the file list is not considered.
+	if !slices.Contains(ship.Argv, "--force") {
+		t.Errorf("ship pass does not force a non-directory over a directory: %v", ship.Argv)
 	}
 	// -s keeps rsync from interpolating the paths into the remote shell's
 	// command line, where a space or a ';' in a mirror path would be parsed.
@@ -87,6 +95,14 @@ func TestSyncPlanForAGitCheckout(t *testing.T) {
 	if string(drop.Stdin) != string(deletes) {
 		t.Errorf("delete stdin = %q, want the paths gone from this machine", drop.Stdin)
 	}
+	// A path whose parent directory left the checkout with it makes rsync exit 24,
+	// which is the answer this step was built to get; every other status fails.
+	if drop.Tolerate != vanishedStatus {
+		t.Errorf("delete pass tolerates %d, want %d", drop.Tolerate, vanishedStatus)
+	}
+	if ship.Tolerate != 0 {
+		t.Errorf("ship pass tolerates %d, want nothing", ship.Tolerate)
+	}
 }
 
 func TestSyncPlanForAPathThatIsNotAGitCheckout(t *testing.T) {
@@ -115,9 +131,9 @@ func TestSyncPlanDeletesWhatTheSentListingNames(t *testing.T) {
 		Deletes:  deletes,
 	})
 	if len(steps) != 2 {
-		t.Fatalf("steps = %d, want the ship pass and the delete pass", len(steps))
+		t.Fatalf("steps = %d, want the delete pass and the ship pass", len(steps))
 	}
-	drop := steps[1]
+	drop := steps[0]
 	for _, want := range []string{"--files-from=-", "--from0", "--delete-missing-args", "/home/u/repo/", "buildbox:dot-remote/repo/"} {
 		if !slices.Contains(drop.Argv, want) {
 			t.Errorf("delete pass is missing %q: %v", want, drop.Argv)
@@ -153,13 +169,13 @@ func TestAnEmptyListingStillPlansBothPasses(t *testing.T) {
 		Deletes: []byte("fresh.go\x00"),
 	})
 	if len(steps) != 2 {
-		t.Fatalf("steps = %d, want the ship pass and the delete pass", len(steps))
+		t.Fatalf("steps = %d, want the delete pass and the ship pass", len(steps))
 	}
-	if string(steps[0].Stdin) != "" {
-		t.Errorf("ship stdin = %q, want no files", steps[0].Stdin)
+	if string(steps[1].Stdin) != "" {
+		t.Errorf("ship stdin = %q, want no files", steps[1].Stdin)
 	}
-	if !slices.Contains(steps[1].Argv, "--delete-missing-args") {
-		t.Errorf("delete pass = %v, want the named-path removal", steps[1].Argv)
+	if !slices.Contains(steps[0].Argv, "--delete-missing-args") {
+		t.Errorf("delete pass = %v, want the named-path removal", steps[0].Argv)
 	}
 }
 

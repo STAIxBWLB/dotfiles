@@ -17,12 +17,22 @@ func gitListArgs() []string {
 	return []string{"ls-files", "-z", "--cached", "--others", "--exclude-standard"}
 }
 
-// Step is one rsync invocation and the stdin it is fed. Pass one ships the
-// listed files; pass two only deletes.
+// Step is one rsync invocation and the stdin it is fed.
 type Step struct {
 	Argv  []string
 	Stdin []byte
+	// Tolerate is the one non-zero status this step's own meaning makes benign,
+	// or 0. The delete pass names paths the checkout no longer has, and rsync
+	// exits 24 ("some files vanished before they could be transferred") for a
+	// path whose parent directory is gone from the source: that is the answer it
+	// was given, and the deletion still happened. Every other status is a
+	// failure, and so is 24 anywhere else.
+	Tolerate int
 }
+
+// vanishedStatus is rsync's exit status for "some files vanished while the
+// transfer was running": a warning about the source, not a failed transfer.
+const vanishedStatus = 24
 
 // SyncInput is what one sync of a checkout was decided on.
 type SyncInput struct {
@@ -39,10 +49,14 @@ type SyncInput struct {
 
 // SyncPlan builds the transfer of src into dst.
 //
-// A git checkout gets two passes. The first sends exactly the files git lists,
-// so a file deleted locally is simply absent.
+// A git checkout gets two passes, deletes first. Naming the paths that left the
+// checkout before sending the new tree is what lets one of them be a directory
+// that became a file or a symlink: the ship pass cannot make way for a
+// non-directory over a non-empty directory, and it would fail before the delete
+// pass had run, leaving the mirror on the old tree with every later run failing
+// the same way.
 //
-// The second deletes the paths in SyncInput.Deletes, and only those:
+// The delete pass removes the paths in SyncInput.Deletes, and only those:
 // --delete-missing-args removes a named path the source no longer has and
 // leaves everything else, so a build output that was never sent is not a
 // candidate at all. That is the whole point of naming the set - a filter file
@@ -52,8 +66,15 @@ type SyncInput struct {
 // very pattern the negation was meant to override, and the mirror keeps a file
 // the checkout no longer has.
 //
+// The ship pass sends exactly the files git lists, so a file deleted locally is
+// simply absent, and carries --force: that is the only way rsync replaces a
+// directory holding something the delete pass did not name - a build output the
+// host made inside a directory the checkout turned into a file - and it acts on
+// nothing else, because a path it was not given is not considered for deletion.
+//
 // A path that is not a git checkout (Listing is nil) gets one plain mirroring
-// pass with the same exclude list and --delete.
+// pass with the same exclude list and --delete, which replaces a directory by
+// itself: everything under it is an extra and goes with the directory.
 func SyncPlan(rsyncPath, src, dst string, in SyncInput) []Step {
 	// -s (--secluded-args) sends the paths over rsync's own channel instead of
 	// interpolating them into the remote shell's command line. Without it a
@@ -64,15 +85,15 @@ func SyncPlan(rsyncPath, src, dst string, in SyncInput) []Step {
 		argv := append(append([]string{}, base...), "--delete", src+"/", dst+"/")
 		return []Step{{Argv: append([]string{rsyncPath}, argv...)}}
 	}
-	ship := append(append([]string{}, base...),
-		"--files-from=-", "--from0", "--ignore-missing-args", src+"/", dst+"/")
-	steps := []Step{{Argv: append([]string{rsyncPath}, ship...), Stdin: in.Listing}}
+	var steps []Step
 	if len(in.Deletes) > 0 {
 		drop := append(append([]string{}, base...),
 			"--files-from=-", "--from0", "--delete-missing-args", src+"/", dst+"/")
-		steps = append(steps, Step{Argv: append([]string{rsyncPath}, drop...), Stdin: in.Deletes})
+		steps = append(steps, Step{Argv: append([]string{rsyncPath}, drop...), Stdin: in.Deletes, Tolerate: vanishedStatus})
 	}
-	return steps
+	ship := append(append([]string{}, base...),
+		"--files-from=-", "--from0", "--ignore-missing-args", "--force", src+"/", dst+"/")
+	return append(steps, Step{Argv: append([]string{rsyncPath}, ship...), Stdin: in.Listing})
 }
 
 // SSHArgv is one remote command over ssh. BatchMode keeps a password or host

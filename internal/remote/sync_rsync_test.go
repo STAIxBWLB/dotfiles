@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -242,14 +243,23 @@ func (f *syncFixture) runPlan(in SyncInput) {
 	}
 }
 
+// runSyncStep runs one step against the local mirror and fails the test through
+// the same rule a run applies, so the tolerated status is whatever
+// stepError says it is rather than something this fixture decides.
 func runSyncStep(t *testing.T, step Step) {
 	t.Helper()
 	cmd := exec.Command(step.Argv[0], step.Argv[1:]...)
 	if step.Stdin != nil {
 		cmd.Stdin = strings.NewReader(string(step.Stdin))
 	}
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("rsync %v: %v\n%s", step.Argv[1:], err, out)
+	out, err := cmd.CombinedOutput()
+	var exitErr *exec.ExitError
+	exit := 0
+	if errors.As(err, &exitErr) {
+		exit = exitErr.ExitCode()
+	}
+	if ferr := stepError(step, exit, err); ferr != nil {
+		t.Fatalf("rsync %v: %v\n%s", step.Argv[1:], ferr, out)
 	}
 }
 
@@ -304,9 +314,9 @@ func TestTwoPassSyncShipsGitFilesAndPrunesTheMirror(t *testing.T) {
 	f.missing("stale.txt")
 }
 
-// Only the second pass deletes. The ship pass has to leave what the checkout
-// dropped in place, because that is the pass that cannot tell a stale file
-// from a build output the host made.
+// Only the ship pass sends. The delete pass has to leave what the checkout
+// dropped in place, because it is the pass that cannot tell a stale file from a
+// build output the host made.
 func TestTheShipPassAloneDeletesNothing(t *testing.T) {
 	f := newSyncFixture(t)
 	f.sourceFile("main.go", "package main\n")
@@ -317,9 +327,9 @@ func TestTheShipPassAloneDeletesNothing(t *testing.T) {
 		Deletes:  []byte("stale.txt\x00"),
 	})
 	if len(steps) != 2 {
-		t.Fatalf("steps = %d, want the ship pass and the delete pass", len(steps))
+		t.Fatalf("steps = %d, want the delete pass and the ship pass", len(steps))
 	}
-	runSyncStep(t, steps[0])
+	runSyncStep(t, steps[1])
 	want := []string{"main.go", "stale.txt"}
 	if got := f.present(); !slices.Equal(got, want) {
 		t.Errorf("after the ship pass the mirror holds %v, want %v", got, want)
@@ -689,5 +699,144 @@ func TestARecordWrittenForAnotherRootDoesNotDeleteFromThisMirror(t *testing.T) {
 	}
 	if !strings.Contains(f.errs.String(), "was written for another mirror") {
 		t.Errorf("stderr does not say the record describes another mirror:\n%s", f.errs.String())
+	}
+}
+
+// A directory the checkout turns into a file is an ordinary git change, and the
+// ship pass cannot make way for the file while the mirror still holds the old
+// directory: rsync fails with "could not make way for new regular file", and it
+// used to fail before the delete pass that would have run. --force replaces the
+// directory with the file the listing names.
+func TestADirectoryReplacedByAFileIsReplacedOnTheMirror(t *testing.T) {
+	f := newSyncFixture(t)
+	f.sourceFile("main.go", "package main\n")
+	f.sourceFile("item/old.txt", "old\n")
+	f.gitInit()
+	f.runAsRun(f.gitList())
+	if got := f.read("item/old.txt"); got != "old\n" {
+		t.Fatalf("the first run sent %q, want the file under the directory", got)
+	}
+
+	if err := os.RemoveAll(filepath.Join(f.source, "item")); err != nil {
+		t.Fatal(err)
+	}
+	f.sourceFile("item", "now a file\n")
+
+	f.runAsRun(f.gitList())
+
+	if got := f.read("item"); got != "now a file\n" {
+		t.Errorf("the mirror has %q at item, want the file", got)
+	}
+}
+
+// The same shape with a symlink, which the ship pass sends as a link.
+func TestADirectoryReplacedByASymlinkIsReplacedOnTheMirror(t *testing.T) {
+	f := newSyncFixture(t)
+	f.sourceFile("main.go", "package main\n")
+	f.sourceFile("item/old.txt", "old\n")
+	f.gitInit()
+	f.runAsRun(f.gitList())
+
+	if err := os.RemoveAll(filepath.Join(f.source, "item")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("main.go", filepath.Join(f.source, "item")); err != nil {
+		t.Skipf("symlinks unavailable here: %v", err)
+	}
+
+	f.runAsRun(f.gitList())
+
+	info, err := os.Lstat(filepath.Join(f.dest, "item"))
+	if err != nil {
+		t.Fatalf("stat the mirror's item: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("the mirror's item is %v, want a symlink", info.Mode())
+	}
+	target, err := os.Readlink(filepath.Join(f.dest, "item"))
+	if err != nil || target != "main.go" {
+		t.Errorf("the mirror's item points at %q (%v), want main.go", target, err)
+	}
+}
+
+// --force is what replaces a directory that still holds something the delete pass
+// did not name - a build output the host made inside it. That is the only case it
+// acts on: everything the checkout left alone keeps its files.
+func TestADirectoryReplacedByAFileGoesEvenWithABuildOutputInside(t *testing.T) {
+	f := newSyncFixture(t)
+	f.sourceFile("main.go", "package main\n")
+	f.sourceFile("item/old.txt", "old\n")
+	f.sourceFile("keep/kept.txt", "kept\n")
+	f.gitInit()
+	f.runAsRun(f.gitList())
+	f.destFile("item/build.o", "built on the host\n")
+	f.destFile("keep/built.o", "built on the host\n")
+
+	if err := os.RemoveAll(filepath.Join(f.source, "item")); err != nil {
+		t.Fatal(err)
+	}
+	f.sourceFile("item", "now a file\n")
+
+	f.runAsRun(f.gitList())
+
+	if got := f.read("item"); got != "now a file\n" {
+		t.Errorf("the mirror has %q at item, want the file", got)
+	}
+	if got := f.read("keep/built.o"); got != "built on the host\n" {
+		t.Errorf("--force reached outside the path it replaced: %q", got)
+	}
+}
+
+// The reverse shape, which has to keep working: a file the checkout turns into a
+// directory.
+func TestAFileReplacedByADirectoryIsReplacedOnTheMirror(t *testing.T) {
+	f := newSyncFixture(t)
+	f.sourceFile("main.go", "package main\n")
+	f.sourceFile("item", "was a file\n")
+	f.gitInit()
+	f.runAsRun(f.gitList())
+	if got := f.read("item"); got != "was a file\n" {
+		t.Fatalf("the first run sent %q, want the file", got)
+	}
+
+	if err := os.Remove(filepath.Join(f.source, "item")); err != nil {
+		t.Fatal(err)
+	}
+	f.sourceFile("item/a.txt", "now a directory\n")
+
+	f.runAsRun(f.gitList())
+
+	if got := f.read("item/a.txt"); got != "now a directory\n" {
+		t.Errorf("the mirror has %q under item, want the directory", got)
+	}
+}
+
+// A directory the checkout deletes outright names files whose parent went with
+// them, and rsync says 24 for that ("some files vanished"). The deletion happens,
+// so the run has to go on rather than fail and repeat itself forever - and the
+// host's own build output under the same directory is not named, so it stays.
+func TestADeletedDirectoryLosesItsFilesAndKeepsWhatTheHostBuilt(t *testing.T) {
+	f := newSyncFixture(t)
+	f.sourceFile("main.go", "package main\n")
+	f.sourceFile("item/one.txt", "one\n")
+	f.sourceFile("item/two.txt", "two\n")
+	f.gitInit()
+	f.runAsRun(f.gitList())
+	if got := f.read("item/one.txt"); got != "one\n" {
+		t.Fatalf("the first run sent %q", got)
+	}
+	f.destFile("item/build.o", "built on the host\n")
+
+	if err := os.RemoveAll(filepath.Join(f.source, "item")); err != nil {
+		t.Fatal(err)
+	}
+
+	// The run has to succeed: rsync's 24 is the answer this step asked for.
+	f.runAsRun(f.gitList())
+
+	f.missing("item/one.txt")
+	f.missing("item/two.txt")
+	if got := f.read("item/build.o"); got != "built on the host\n" {
+		t.Errorf("the delete pass removed the host's build output: %q", got)
 	}
 }

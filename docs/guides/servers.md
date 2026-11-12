@@ -156,6 +156,16 @@ again. A path that is still on this machine is never deleted on the mirror,
 whether git lists it or not: `git rm --cached` on a build output leaves it here
 and the host's copy stays with it.
 
+The two passes run deletes first, and the send pass carries `--force`, because a
+checkout can turn a directory into a file or a symlink: rsync cannot put a
+non-directory where the mirror still has a non-empty directory, and it used to
+fail there before anything removed the old tree, on that run and every one after
+it. A directory the checkout replaced therefore goes whole, including anything
+the host built inside it; nothing outside the path being replaced is touched. A
+directory the checkout deleted outright loses the files it sent, while a build
+output the host made under it stays, and the pass reports rsync's "some files
+vanished" as the answer it asked for rather than as a failure.
+
 ### Limits and interrupts
 
 A run holds two admission leases, both visible in `dot admit status`: one per

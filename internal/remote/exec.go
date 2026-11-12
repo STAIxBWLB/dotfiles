@@ -132,6 +132,13 @@ func (d Deps) git(ctx context.Context, dir string, args ...string) ([]byte, erro
 // capture runs one argv whose output is not the payload and returns its
 // stdout. A non-zero exit is an error carrying the stderr tail.
 func (d Deps) capture(ctx context.Context, argv []string, stdin []byte) (string, error) {
+	out, _, err := d.captureExit(ctx, argv, stdin)
+	return out, err
+}
+
+// captureExit is capture with the exit status its caller may have a use for.
+// Only a non-zero status is reported: a signal is an error like any other.
+func (d Deps) captureExit(ctx context.Context, argv []string, stdin []byte) (string, int, error) {
 	var stdout, stderr bytes.Buffer
 	var reader io.Reader
 	if stdin != nil {
@@ -139,15 +146,15 @@ func (d Deps) capture(ctx context.Context, argv []string, stdin []byte) (string,
 	}
 	exit, sig, err := d.ex()(ctx, argv, reader, &stdout, &stderr)
 	if err != nil {
-		return stdout.String(), err
+		return stdout.String(), exit, err
 	}
 	if sig != 0 {
-		return stdout.String(), fmt.Errorf("%s was interrupted by signal %d", strings.Join(argv[:1], " "), sig)
+		return stdout.String(), exit, fmt.Errorf("%s was interrupted by signal %d", strings.Join(argv[:1], " "), int(sig))
 	}
 	if exit != 0 {
-		return stdout.String(), fmt.Errorf("%s exited %d: %s", strings.Join(argv[:1], " "), exit, tail(stderr.String()))
+		return stdout.String(), exit, fmt.Errorf("%s exited %d: %s", strings.Join(argv[:1], " "), exit, tail(stderr.String()))
 	}
-	return stdout.String(), nil
+	return stdout.String(), 0, nil
 }
 
 // execAttached runs argv with attached stdio and forwards SIGINT, SIGTERM and

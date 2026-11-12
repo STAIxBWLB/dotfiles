@@ -338,7 +338,7 @@ func (d Deps) syncInput(ctx context.Context, h Host, mirror, rel, path string, i
 		fmt.Fprintf(d.errOut(), "dot remote: the record of what this machine sent to %s on %s was written for another mirror, so this run reconciles this one instead\n",
 			mirror, h.Name)
 	case record.Found:
-		in.Deletes = goneFromDisk(path, record.Listing, in.Listing)
+		in.Deletes = withoutBlockedPaths(path, goneFromDisk(path, record.Listing, in.Listing))
 		return syncDecision{Input: in, Record: true}
 	}
 	deletes, rerr := d.reconcile(ctx, h, mirror, path, in.Listing)
@@ -347,7 +347,7 @@ func (d Deps) syncInput(ctx context.Context, h Host, mirror, rel, path string, i
 			mirror, h.Name, rerr)
 		return syncDecision{Input: in}
 	}
-	in.Deletes = deletes
+	in.Deletes = withoutBlockedPaths(path, deletes)
 	return syncDecision{Input: in, Record: true}
 }
 
@@ -417,16 +417,29 @@ func (d Deps) gitIgnored(ctx context.Context, path string, candidates []string) 
 	return ignored, nil
 }
 
-// sync sends git's view of the tree and then removes what left the checkout,
+// sync removes what left the checkout and then sends git's view of the tree,
 // protecting the mirror's own build outputs by never naming them.
 func (d Deps) sync(ctx context.Context, h Host, mirror, rsyncPath, path string, in SyncInput) error {
 	target := h.SSH + ":" + mirror
 	for _, step := range SyncPlan(rsyncPath, path, target, in) {
-		if _, err := d.capture(ctx, step.Argv, step.Stdin); err != nil {
+		_, exit, err := d.captureExit(ctx, step.Argv, step.Stdin)
+		if err := stepError(step, exit, err); err != nil {
 			return fmt.Errorf("mirroring %s to %s: %w", path, h.Name, err)
 		}
 	}
 	return nil
+}
+
+// stepError is what one rsync step's outcome means: nothing when it succeeded or
+// exited with the status that step's own input makes benign, and its failure
+// otherwise. The delete pass names paths the checkout no longer has, so rsync's
+// "some files vanished" (24) is that step's expected answer when a parent
+// directory went with them; anywhere else the same status is a failure.
+func stepError(step Step, exit int, err error) error {
+	if err == nil || (step.Tolerate != 0 && exit == step.Tolerate) {
+		return nil
+	}
+	return err
 }
 
 // describe prints what a dry run would do, without touching the host.
