@@ -138,7 +138,12 @@ negation, so they could not decide this: with `*.lock` and `!Cargo.lock` in one
 of them, a `Cargo.lock` that was deleted here stayed on the mirror. The record
 also names the mirror it describes - ssh destination, remote root, relative
 path and the local checkout - and one written for another mirror is ignored
-rather than acted on.
+rather than acted on. A record that cannot be written makes the older one
+unusable rather than leaving it: the run discards it, empties it when the state
+directory refuses the removal, and says which happened, because the next run
+then reconciles the mirror instead of subtracting from a listing this run did
+not send. When both are refused it names the record file to delete before the
+next run, since nothing the run does can make that run reconcile.
 
 A mirror this machine has no record of, because it has never sent there or
 because the host's `root` or `ssh` changed, is reconciled once against its own
@@ -170,15 +175,25 @@ ordinary run asks about nothing. It asks only about paths the send pass would
 really send, which it learns from a dry run of rsync under the same exclude
 list, and on the host it does not follow a symlink in the path, so nothing
 outside the mirror and nothing the run would not send is removed; a mirror that
-is itself a symlink, or sits under one, is left to rsync alone. A file under a
-directory the exclude list names stays home even when git tracks it: the
-directories above each listed file go through the same dry run, and the run
-says how many files it left. A file git still lists under a directory that
+is itself a symlink, or sits under one, is left to rsync alone. A name that dry
+run cannot print as itself, because it holds a backslash or a control character,
+is asked about in a dry run of its own: such a name is told apart from an
+excluded one instead of being read as excluded. A file under a directory the
+exclude list names stays home even when git tracks it: the directories above
+each listed file go through the same dry run, and the run says how many files it
+left. A file git still lists under a directory that
 is now a file here (the replacement is not staged yet) is left out of the send
-list, since rsync cannot read a path under a file. A
-directory the checkout deleted outright loses the files it sent, while a build
+list, since rsync cannot read a path under a file. A directory the checkout
+deleted outright loses the files it sent, while a build
 output the host made under it stays, and the pass reports rsync's "some files
-vanished" as the answer it asked for rather than as a failure.
+vanished" as the answer it asked for rather than as a failure. A path that is
+not a checkout gets one plain `--delete` pass instead of the two, and it meets
+the same refusal: the directory rsync named goes by name the same way, once that
+path is a file or a symlink in the checkout, and the pass runs once more. A name
+rsync printed in its escaped form is not removable that way, so such a directory
+is left for `--dry-run` and a manual `rm`. A pass that fails reports the
+diagnostic lines above rsync's summary (five at most, never a page of them) and
+names what to do next: `--dry-run` prints the plan the pass would have sent.
 
 ### Verify a commit
 

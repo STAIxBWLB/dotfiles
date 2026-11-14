@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -253,9 +255,7 @@ func (f *syncFixture) runAsRunExcludes(excludes []string, listing []byte) {
 		// could not reconcile writes none either, which is what Run does too.
 		return
 	}
-	if err := f.deps.writeSent(f.host, f.rel, f.source, listing); err != nil {
-		f.t.Fatalf("recording what the run sent: %v", err)
-	}
+	f.deps.recordSent(f.host, f.dest, f.rel, f.source, listing)
 }
 
 func (f *syncFixture) runPlan(in SyncInput) {
@@ -936,7 +936,7 @@ func TestAReplacedDirectoryHoldingExcludedBuildOutputIsReplaced(t *testing.T) {
 			if got := f.read("other/keep.txt"); got != "keep\n" {
 				t.Errorf("other/keep.txt is %q", got)
 			}
-			if !strings.Contains(f.errs.String(), "which this checkout replaced with a file") {
+			if !strings.Contains(f.errs.String(), "which the mirrored path now has as a file") {
 				t.Errorf("stderr does not report the removed directory:\n%s", f.errs.String())
 			}
 		})
@@ -1097,8 +1097,9 @@ func TestTheReplacedDirectoryRemovalLeavesASymlinkedMirrorAlone(t *testing.T) {
 }
 
 // rsync prints a newline in a name as \#012, which is also a name a file can
-// really have. Neither may be reported as kept on the other's evidence.
-func TestANameRsyncEscapesIsNeverReportedAsKept(t *testing.T) {
+// really have. Each name is judged on its own, so the real one is kept and its
+// escaped twin is not.
+func TestANameRsyncEscapesIsJudgedOnItsOwn(t *testing.T) {
 	f := newSyncFixture(t)
 	f.sourceFile("a\nb", "x")
 	f.sourceFile("plain", "x")
@@ -1106,7 +1107,143 @@ func TestANameRsyncEscapesIsNeverReportedAsKept(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rsyncKeeps: %v", err)
 	}
-	if len(kept) != 1 || !kept["plain"] {
-		t.Errorf("kept %v, want only the plain name", kept)
+	if len(kept) != 2 || !kept["a\nb"] || !kept["plain"] || kept["a\\#012b"] {
+		t.Errorf("kept %v, want the real newline name and plain, and not the escaped twin", kept)
+	}
+}
+
+// A directory name rsync cannot print as itself is judged on its own, so its
+// files are sent rather than left home as if the exclude list covered them.
+func TestAFileUnderADirectoryNameRsyncCannotPrintIsSent(t *testing.T) {
+	f := newSyncFixture(t)
+	f.sourceFile(`back\slash/keep.txt`, "keep")
+	f.runAsRun(f.gitListing())
+	if got := f.present(); !slices.Equal(got, []string{`back\slash/keep.txt`}) {
+		t.Errorf("mirror holds %v, want the file under the backslash directory", got)
+	}
+}
+
+// A record this run could not save is made unusable: keeping it would leave the
+// next run subtracting from a listing that never reached the mirror, and a file
+// this run sent and the checkout lost before the next one would never enter a
+// deletion list.
+func TestAFailedRecordWriteMakesTheNextRunReconcile(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes into a read-only directory")
+	}
+	f := newSyncFixture(t)
+	f.sourceFile("keep.txt", "keep")
+	f.runAsRun(f.gitListing())
+	if got := f.present(); !slices.Equal(got, []string{"keep.txt"}) {
+		t.Fatalf("first run mirrored %v", got)
+	}
+
+	// The next run sends a new file and cannot save the record: the state
+	// directory is readable, so the record it has is used, but not writable.
+	f.sourceFile("n.txt", "new")
+	if err := os.Chmod(f.deps.SentRoot, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(f.deps.SentRoot, 0o755) })
+	f.runAsRun(f.gitList())
+	if !strings.Contains(f.errs.String(), "discarded the older record and the next run there reconciles the mirror instead") {
+		t.Fatalf("stderr does not say the record was discarded:\n%s", f.errs.String())
+	}
+
+	// The file leaves the checkout before the next run, which only a
+	// reconciliation can see.
+	if err := os.Remove(filepath.Join(f.source, "n.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(f.deps.SentRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f.runAsRun(f.gitList())
+	f.missing("n.txt")
+	if got := f.present(); !slices.Equal(got, []string{"keep.txt"}) {
+		t.Errorf("mirror holds %v, want only keep.txt", got)
+	}
+}
+
+// When the state directory refuses both the write and the discard, nothing this
+// run does can make the next run reconcile, so the warning has to name the file
+// a person removes instead.
+func TestARecordThatCannotBeDiscardedNamesTheFile(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes into a read-only directory and file")
+	}
+	f := newSyncFixture(t)
+	f.sourceFile("keep.txt", "keep")
+	f.runAsRun(f.gitListing())
+	sentPath := f.deps.sentPath(f.host, f.rel)
+	if _, err := os.Stat(sentPath); err != nil {
+		t.Fatalf("the first run recorded nothing at %s: %v", sentPath, err)
+	}
+
+	// Unwritable file in an unwritable directory: the temp write is refused, the
+	// removal is refused, and emptying the file is refused with it.
+	f.sourceFile("n.txt", "new")
+	if err := os.Chmod(sentPath, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(f.deps.SentRoot, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(sentPath, 0o644)
+		_ = os.Chmod(f.deps.SentRoot, 0o755)
+	})
+
+	f.runAsRun(f.gitList())
+	if !strings.Contains(f.errs.String(), "delete "+sentPath+" before the next run there") {
+		t.Fatalf("stderr does not name the record file to delete:\n%s", f.errs.String())
+	}
+}
+
+// localRsyncRunner runs a plan's argv the way the fixture's local host would:
+// rsync's `buildbox:<path>` destination becomes the fixture's own path.
+func localRsyncRunner() Execer {
+	return func(ctx context.Context, argv []string, stdin io.Reader, stdout, stderr io.Writer) (int, syscall.Signal, error) {
+		local := append([]string{}, argv...)
+		for i, arg := range local {
+			if rest, ok := strings.CutPrefix(arg, "buildbox:"); ok {
+				local[i] = rest
+			}
+		}
+		cmd := exec.CommandContext(ctx, local[0], local[1:]...)
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, stderr
+		err := cmd.Run()
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return exitErr.ExitCode(), 0, nil
+		}
+		return 0, 0, err
+	}
+}
+
+// A mirror of a path that is not a checkout, whose directory became a file: the
+// directory holds an excluded name, so --delete cannot make way for the file.
+// The directory goes by name, as the git path's delete pass removes it, and the
+// pass runs once more.
+func TestANonGitMirrorReplacesADirectoryHoldingAnExcludedName(t *testing.T) {
+	f := newSyncFixture(t)
+	f.sourceFile("pkg", "now a file")
+	f.write(f.dest, "pkg/node_modules/x/f", "old")
+	deps := f.deps
+	deps.Exec = localRsyncRunner()
+	err := deps.sync(context.Background(), f.host, f.dest, f.rsync, f.source, SyncInput{Excludes: []string{"node_modules"}})
+	if err != nil {
+		t.Fatalf("sync = %v\n%s", err, f.errs.String())
+	}
+	if got := f.read("pkg"); got != "now a file" {
+		t.Errorf("mirror holds %q at pkg", got)
+	}
+	// pkg is a file here, so the excluded name cannot be left behind: the stat
+	// fails because no path runs through a regular file.
+	if _, err := os.Stat(filepath.Join(f.dest, "pkg", "node_modules")); !errors.Is(err, syscall.ENOTDIR) && !os.IsNotExist(err) {
+		t.Errorf("the stale directory is still on the mirror: %v", err)
+	}
+	if !strings.Contains(f.errs.String(), "which the mirrored path now has as a file") {
+		t.Errorf("stderr does not report the removed directory:\n%s", f.errs.String())
 	}
 }
