@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -16,15 +17,15 @@ const kvKeyWidth = 22 // width of "Pull+intake scheduler:"
 // The title is rendered with a single space of horizontal padding so the
 // blue StyleHeader background frames the text cleanly.
 func WriteHeader(w io.Writer, title string) {
-	_, _ = lipgloss.Fprintln(w)
-	_, _ = lipgloss.Fprintln(w, StyleHeader.Render(" "+title+" "))
+	_, _ = fmt.Fprintln(Output(w))
+	_, _ = fmt.Fprintln(Output(w), StyleHeader.Render(" "+title+" "))
 }
 
 // WriteSection writes a section divider with one leading blank line and the
 // canonical "▸ " prefix. Callers pass the section name only.
 func WriteSection(w io.Writer, title string) {
-	_, _ = lipgloss.Fprintln(w)
-	_, _ = lipgloss.Fprintln(w, StyleSection.Render("▸ "+title))
+	_, _ = fmt.Fprintln(Output(w))
+	_, _ = fmt.Fprintln(Output(w), StyleSection.Render("▸ "+title))
 }
 
 // WriteKV writes a styled key/value row at the 2-space top-level indent.
@@ -40,7 +41,7 @@ func WriteKV(w io.Writer, key, value string) {
 	if labelWidth := lipgloss.Width(label); labelWidth > width {
 		width = labelWidth
 	}
-	_, _ = lipgloss.Fprintf(w, "  %s  %s\n", StyleKey.Width(width).Render(label), value)
+	_, _ = fmt.Fprintf(Output(w), "  %s  %s\n", StyleKey.Width(width).Render(label), value)
 }
 
 // printSection emits a section divider to os.Stdout. Ui-internal wrapper over
@@ -80,3 +81,6 @@ func pickBackupChoice(path string, detectedDrive bool) string {
 	}
 	return "local"
 }
+
+// printLine routes native UI text through the same stream policy as reports.
+func printLine(v ...any) { _, _ = fmt.Fprintln(Output(os.Stdout), v...) }

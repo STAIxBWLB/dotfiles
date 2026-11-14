@@ -24,6 +24,7 @@ dot sync filters reset [flags]
 ### Options inherited from parent commands
 
 ```
+      --color string         Color output: auto, always or never (default "auto")
       --config string        Path to custom config YAML
       --dry-run              Show what would be done without executing
       --filter-mode string   override config filter mode for this run: include or exclude

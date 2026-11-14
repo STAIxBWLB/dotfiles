@@ -39,11 +39,13 @@ dot remote job run -o DIR [-i FILE]... [--name N] [--remote-only | --local-only]
 ### Options inherited from parent commands
 
 ```
+      --color string     Color output: auto, always or never (default "auto")
       --config string    Path to custom config YAML
       --dry-run          Show what would be done without executing
       --home string      Override home directory (for admin setup of other users)
       --host string      remote host to use (default: the matching project's host, then remote.default)
       --profile string   job profile (default: the host's only one)
+      --verbose          Show library and debug logs on stderr
       --wait duration    retry a held lease for this long before deferring (default 0: defer at once)
       --yes              Unattended mode (skip all prompts)
 ```

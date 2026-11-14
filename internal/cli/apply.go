@@ -3,7 +3,6 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"strings"
 
@@ -154,9 +153,7 @@ func runApply(cmd *cobra.Command, _ []string) error {
 	config.ApplyEnvOverrides(cfg)
 
 	// Setup runner
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}))
+	logger := commandLogger(cmd)
 	runner := exec.NewRunner(dryRun, logger)
 	brew := exec.NewBrew(runner)
 	tmplEngine := template.NewEngine()

@@ -252,7 +252,25 @@ exclude list, because the exclude list is not a substitute for git's own view.
 
 ## Global flags
 
-All commands inherit `--config`, `--dry-run`, `--home` and `--yes`, with one
+All commands inherit `--color`, `--verbose`, `--config`, `--dry-run`, `--home`
+and `--yes`, with one
 exception: `dot remote` refuses `--config` by name, because its hosts come from
 the user state and that block has no place in a sync config, so `--home` (or
 `DOTFILES_HOME`) is what points it at another home's state. `--profile` (minimal, full, server) is taken by the commands that load a profile: `apply`, `diff`, `config`, `status`, `init` (which preselects it), `watchdog setup` and `notify`, and `container setup`. `--module` is taken by `apply` and `diff`. `dot sync` names its store with `--store`. Generated pages list each command's own options.
+
+
+`--color=auto|always|never` controls dot's human-output styling. In auto mode,
+color is decided independently for stdout and stderr: a non-empty `NO_COLOR`
+disables it; a non-empty, non-zero `FORCE_COLOR` or `CLICOLOR_FORCE` enables
+it; otherwise `FORCE_COLOR=0` or `CLICOLOR=0` disables it. With no matching
+override, only a TTY whose `TERM` is not `dumb` gets color. Explicit `always`
+and `never` take priority over these environment variables. JSON is always
+uncolored. This follows the [shared CLI output standard](https://github.com/STAIxBWLB/agent-hub/blob/main/docs/design/cli-output.md#color-policy).
+
+Library INFO and debug execution logs are silent by default; `--verbose` exposes
+them on stderr. `--dry-run` keeps INFO previews visible without `--verbose`,
+so commands and file operations that would run are still listed. Library Warn/Error and human warnings and errors remain
+visible on stderr without `--verbose`. Existing local
+`--verbose` options keep their command-specific behavior (for example, rsync
+progress under `dot sync`) and also enable library logs. Color filtering applies to dot's UI text, not to
+raw child-process output forwarded by commands such as `dot remote run`.

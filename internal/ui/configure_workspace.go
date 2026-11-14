@@ -165,7 +165,7 @@ func configureCloudMirror(state *config.UserState, yes bool) error {
 		return err
 	}
 	if previous != "" && state.Modules.Workspace.Gdrive != previous {
-		fmt.Println(StyleHint.Render(
+		printLine(StyleHint.Render(
 			"  Cloud changed: symlinks pointing at the previous cloud (old link, <workspace>/work/.gdrive)\n" +
 				"  are left in place; remove them manually so the next `dot apply` can repoint them."))
 	}
@@ -181,7 +181,7 @@ func configureWorkspaceSymlinkAndRepos(state *config.UserState, yes bool) error 
 		keepCurrent := false
 		currentTarget := readSymlinkTarget(expandedPath)
 		if currentTarget != "" {
-			fmt.Println(StyleHint.Render(fmt.Sprintf("  Current symlink: %s → %s", state.Modules.Workspace.Path, currentTarget)))
+			printLine(StyleHint.Render(fmt.Sprintf("  Current symlink: %s → %s", state.Modules.Workspace.Path, currentTarget)))
 
 			keepCurrent, err = ConfirmBool("Keep existing symlink?", true, false)
 			if err != nil {
@@ -197,7 +197,7 @@ func configureWorkspaceSymlinkAndRepos(state *config.UserState, yes bool) error 
 				// Only default to Gdrive when no separate GdriveSymlink is configured
 				symlinkDefault = state.Modules.Workspace.Gdrive
 			}
-			fmt.Println(StyleHint.Render(fmt.Sprintf(
+			printLine(StyleHint.Render(fmt.Sprintf(
 				"  Optional: make %s itself a symlink pointing elsewhere\n"+
 					"  (e.g. into cloud-storage). Leave blank to keep %s as a real directory.",
 				state.Modules.Workspace.Path, state.Modules.Workspace.Path)))
@@ -224,7 +224,7 @@ func configureWorkspaceSymlinkAndRepos(state *config.UserState, yes bool) error 
 			uiHome, _ := os.UserHomeDir()
 			for _, name := range []string{"work", "vault"} {
 				if name == "vault" && config.ResolveVaultPath(state.Modules.Workspace.Vault, state.Modules.Workspace.Path, uiHome) != topLevelVault {
-					fmt.Println(StyleHint.Render(fmt.Sprintf(
+					printLine(StyleHint.Render(fmt.Sprintf(
 						"  Vault location is %s — skipping the separate vault repo\n"+
 							"  (the vault is expected to arrive with work, e.g. as a submodule).",
 						state.Modules.Workspace.Vault)))
