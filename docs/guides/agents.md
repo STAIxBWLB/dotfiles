@@ -108,14 +108,18 @@ alone never auto-approves a new tool that writes.
 
 claude-mem is retired, and dot no longer carries a command that removes it: with
 `amem import claude-mem` the material worth keeping moves into amem, and the rest
-is the person's own step. Archive `~/.claude-mem` if you want to keep it (dot
-never deletes it), remove the `claude-mem` MCP entry with `claude mcp remove`
-and the plugin with `claude plugin uninstall` (`codex plugin remove` and
-`codex plugin marketplace remove` for the Codex ones), and delete
-`com.dotfiles.claude-mem-bridge.plist` and `com.dotfiles.claude-mem-sync.plist`
-from `~/Library/LaunchAgents` if an older dot wrote them. Claude Code owns its
-own `settings.json`, so the profile's lines are yours to edit too; the profile is
-`$CLAUDE_CONFIG_DIR` when set, else `~/.claude`.
+is the person's own step. Quiesce it first, or a live worker writes into the data
+directory and holds its database while you work: quit the Claude and Codex
+sessions that load the server, then stop the two LaunchAgents if an older dot
+installed them (`launchctl bootout gui/$(id -u)
+~/Library/LaunchAgents/com.dotfiles.claude-mem-bridge.plist`, and the same for
+`com.dotfiles.claude-mem-sync.plist`) before deleting those plist files. Only
+then archive `~/.claude-mem` if you want to keep it (dot never deletes it), and
+remove the `claude-mem` MCP entry with `claude mcp remove` and the plugin with
+`claude plugin uninstall` (`codex plugin remove` and `codex plugin marketplace
+remove` for the Codex ones). Claude Code owns its own `settings.json`, so the
+claude-mem keys in it are yours to edit; the profile is `$CLAUDE_CONFIG_DIR` when
+set, else `~/.claude`.
 
 Each agent also keeps its own native memory (Claude Code auto memory, Codex
 memories, Qwen memory, Grok memory-v2, jcode). `dot ai memory audit` reads them

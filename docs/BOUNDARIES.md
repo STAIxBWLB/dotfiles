@@ -190,7 +190,9 @@ tool):
 - `~/.claude-mem` — retired and no longer touched: dot reads and writes nothing
   there. Removing it, its plugins and its MCP entries is the person's own step;
   `dot` carries no command for it (docs/guides/agents.md carries the commands
-  the native CLIs take).
+  the native CLIs take). Archive it only once it is quiet: the bridge and sync
+  agents stopped and the sessions that load them quit, so no process writes
+  into the store while its data is being moved.
 - Agent native memory stores: `<Claude config dir>/projects/*/memory/**`,
   `$CODEX_HOME/memories/**`, `~/.qwen/memories/**`,
   `~/.qwen/projects/*/memory/**`, the `MEMORY.md` indexes under
@@ -208,18 +210,21 @@ tool):
   between machines by `dot peer` with the rest of `~/.config/dotfiles`.
 - `~/Library/LaunchAgents/com.dotfiles.claude-mem-bridge.plist` and
   `~/Library/LaunchAgents/com.dotfiles.claude-mem-sync.plist` — retired
-  LaunchAgents. dot no longer writes either, and removing an installed pair is
-  the person's own step. dot writes no LaunchAgent for amem, which has no
-  resident process.
+  LaunchAgents. dot no longer writes either. Removing an installed pair is the
+  person's own step, and the order matters: quit the Claude and Codex sessions
+  that load the bridge, then unload a loaded agent before deleting its plist
+  (`launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/<name>.plist`), so
+  no launchd job is left pointing at a file that is gone. dot writes no
+  LaunchAgent for amem, which has no resident process.
 - `~/.claude/plugins/marketplaces/thedotmack` — the claude-mem marketplace
   checkout. dot no longer refreshes it, and removing it is the person's own
   step: `claude plugin marketplace remove` and `claude plugin uninstall`, and
   the Codex ones through `codex plugin remove` and `codex plugin marketplace
-  remove`, never by editing their files directly. Lines in
-  the active Claude profile's `settings.json` (`$CLAUDE_CONFIG_DIR`, else
-  `~/.claude`) that name claude-mem are printed for the person to remove; dot
-  never writes that file, and never touches a Claude profile other than the
-  active one.
+  remove`, never by editing their files directly. dot prints no lines and
+  writes nothing in the active Claude profile's `settings.json`
+  (`$CLAUDE_CONFIG_DIR`, else `~/.claude`): that file is Claude Code's, the
+  claude-mem keys in it are the person's to clear, and dot never touches a
+  Claude profile other than the active one.
 - the Homebrew service `sh.brew.container`
   (`~/Library/LaunchAgents/sh.brew.container.plist`) — created by
   `brew services start container`, which `dot container setup` runs on macOS
