@@ -98,7 +98,7 @@ a missing file.`,
 			o.Show, _ = cmd.Flags().GetBool("show")
 			for _, a := range o.Agents {
 				if !contains(aimemory.Agents, a) {
-					return fmt.Errorf("unknown agent %q (one of %s)", a, strings.Join(aimemory.Agents, ", "))
+					return usageError(cmd, fmt.Errorf("unknown agent %q (one of %s)", a, strings.Join(aimemory.Agents, ", ")))
 				}
 			}
 			r, err := aimemory.Audit(o)
@@ -152,7 +152,7 @@ func printMemoryAudit(p *Printer, r aimemory.Report, show bool) {
 			p.Section(agent)
 		}
 		if s.Status != aimemory.StatusOK {
-			p.Bullet(ui.StyleHint.Render(ui.MarkAbsent), fmt.Sprintf("%s  unavailable (%s)", s.Path, s.Reason))
+			p.Bullet(ui.StyleHint.Render(ui.MarkUnknown), fmt.Sprintf("%s  unavailable (%s)", s.Path, s.Reason))
 			continue
 		}
 		marker := ui.StyleSuccess.Render(ui.MarkPresent)
@@ -227,9 +227,10 @@ func printMemoryAudit(p *Printer, r aimemory.Report, show bool) {
 	if len(r.Problems) > 0 {
 		p.Section("Problems")
 		for _, prob := range r.Problems {
-			p.Warn("  %s", prob)
+			p.Bullet(ui.MarkFail, prob)
 		}
 	}
+	p.Summary(memoryAuditSummary(r))
 }
 
 func truncate(s string, n int) string {
@@ -309,4 +310,31 @@ resolve outside it, the store's own index, and a destination that exists.`,
 	}
 	c.Flags().Bool("apply", false, "Move the files (default: preview)")
 	return c
+}
+
+func memoryAuditSummary(r aimemory.Report) ui.CheckSummary {
+	summary := ui.CheckSummary{Failed: len(r.Problems)}
+	if r.MarkersStatus != aimemory.StatusOK {
+		summary.Unknown++
+	} else {
+		summary.OK++
+	}
+	for _, store := range r.Stores {
+		if store.Status != aimemory.StatusOK {
+			summary.Unknown++
+			continue
+		}
+		if (store.Index == nil || !store.Index.Over) && len(store.Broken) == 0 && len(store.Unreadable) == 0 {
+			summary.OK++
+		}
+		if len(store.Orphans) > 0 {
+			summary.Warnings++
+		}
+		for _, hit := range store.Markers {
+			if len(hit.Hits) > 0 {
+				summary.Warnings++
+			}
+		}
+	}
+	return summary
 }

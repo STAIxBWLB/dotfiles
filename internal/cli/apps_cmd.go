@@ -168,7 +168,7 @@ func runAppsInstall(cmd *cobra.Command, args []string) error {
 	force, _ := cmd.Flags().GetBool("force")
 
 	if useDefaults && useRecommended {
-		return fmt.Errorf("--defaults and --recommended are mutually exclusive")
+		return usageError(cmd, fmt.Errorf("--defaults and --recommended are mutually exclusive"))
 	}
 
 	state, brew, _, err := appsBrewCtx(cmd)

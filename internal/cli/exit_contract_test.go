@@ -39,7 +39,7 @@ func buildDotForTest(t *testing.T) string {
 		t.Skip("go toolchain not on PATH; cannot build dot for the subprocess assertions")
 	}
 	bin := filepath.Join(t.TempDir(), "dot")
-	build := osexec.Command("go", "build", "-o", bin, "../../cmd/dot")
+	build := osexec.Command("go", "build", "-p", "2", "-o", bin, "../../cmd/dot")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("building dot failed: %v\n%s", err, out)
 	}
@@ -72,6 +72,7 @@ func runIsolated(t *testing.T, bin, home string, args ...string) (string, string
 // its error once, with no usage block, and the Check-error aggregation does not
 // turn any ordinary run into a non-zero exit.
 func TestExitContract(t *testing.T) {
+	bin := buildDotForTest(t)
 	t.Run("in-process failure prints no usage block", func(t *testing.T) {
 		home := t.TempDir()
 		out, errOut, err := runDotForTest(failingArgs(home)...)
@@ -83,7 +84,6 @@ func TestExitContract(t *testing.T) {
 	})
 
 	t.Run("minimal environment prints exactly one error line", func(t *testing.T) {
-		bin := buildDotForTest(t)
 		home := t.TempDir()
 		out, errOut, code := runIsolated(t, bin, home, failingArgs(home)...)
 
@@ -99,11 +99,33 @@ func TestExitContract(t *testing.T) {
 		if len(lines) != 1 {
 			t.Fatalf("stderr = %d line(s), want exactly 1:\n%s", len(lines), errOut)
 		}
-		if !strings.HasPrefix(lines[0], "Error:") {
-			t.Errorf("stderr line = %q, want it to start with %q", lines[0], "Error:")
+		if !strings.HasPrefix(lines[0], "dot:") {
+			t.Errorf("stderr line = %q, want it to start with %q", lines[0], "dot:")
 		}
 		assertNoUsageBlock(t, "stdout", out)
 		assertNoUsageBlock(t, "stderr", errOut)
+	})
+
+	t.Run("usage failures exit two with tool prefix", func(t *testing.T) {
+		home := t.TempDir()
+		for _, args := range [][]string{{"not-a-command"}, {"--color=never", "not-a-command"}, {"version", "--not-a-flag"}, {"open"}} {
+			out, stderr, code := runIsolated(t, bin, home, args...)
+			if code != 2 || out != "" || !strings.HasPrefix(stderr, "dot: ") {
+				t.Errorf("%v: exit=%d out=%q stderr=%q", args, code, out, stderr)
+			}
+		}
+	})
+
+	t.Run("help parses home value after help flag", func(t *testing.T) {
+		home := t.TempDir()
+		before := treeDigest(t, home)
+		out, stderr, code := runIsolated(t, bin, home, "--help", "--home", home)
+		if code != 0 || stderr != "" || !strings.Contains(out, "Usage:") {
+			t.Fatalf("help/home flag parsing: exit=%d stdout=%s stderr=%s", code, out, stderr)
+		}
+		if treeDigest(t, home) != before {
+			t.Fatal("help changed the target home")
+		}
 	})
 
 	// Aggregating Check errors turns a previously swallowed failure into a
@@ -111,7 +133,6 @@ func TestExitContract(t *testing.T) {
 	// assert exit 0 absolutely. Measure it here so a Check path that fires in a
 	// clean sandbox surfaces in this package rather than in CI's differential.
 	t.Run("read-only surfaces still exit zero", func(t *testing.T) {
-		bin := buildDotForTest(t)
 		home := t.TempDir()
 
 		runs := [][]string{{"diff", "--summary"}}

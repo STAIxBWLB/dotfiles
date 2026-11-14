@@ -265,12 +265,12 @@ func runRemoteRun(cmd *cobra.Command, _ []string) error {
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	wait, _ := cmd.Flags().GetDuration("wait")
 	if wait < 0 {
-		return fmt.Errorf("--wait must not be negative")
+		return usageError(cmd, fmt.Errorf("--wait must not be negative"))
 	}
 	ports, _ := cmd.Flags().GetIntSlice("port")
 	for _, port := range ports {
 		if port < 1 || port > 65535 {
-			return fmt.Errorf("-p %d is not a TCP port (1-65535)", port)
+			return usageError(cmd, fmt.Errorf("-p %d is not a TCP port (1-65535)", port))
 		}
 	}
 	cgroup, _ := cmd.Flags().GetBool("cgroup")

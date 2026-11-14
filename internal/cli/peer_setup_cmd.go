@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/STAIxBWLB/dotfiles/internal/syncer"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 func newPeerInitCmd() *cobra.Command {
@@ -266,86 +267,8 @@ would stop the coordinator's sync. The doctor writes nothing on either Mac.`,
 				return err
 			}
 
-			p.Section("peer")
-			p.KV("target", report.Target)
-
-			if report.LocalRsyncErr != nil {
-				p.Fail("local rsync: %v", report.LocalRsyncErr)
-			} else {
-				p.Success("local rsync: %s (%s)", report.LocalRsyncPath, report.LocalRsyncVersion)
-			}
-			p.KV("local dot", report.LocalDotPath+" ("+report.LocalDotVersion+")")
-
-			if report.Unreachable {
-				p.Warn("unreachable: %v", report.UnreachableErr)
-				p.Line("  A scheduled run would exit cleanly here; a manual one has nothing to do.")
-				if report.Problems > 0 {
-					return fmt.Errorf("%d peer precondition(s) need attention", report.Problems)
-				}
-				return nil
-			}
-			p.Success("reachable")
-			switch {
-			case report.RemoteDotErr != nil:
-				p.Fail("peer dot: %v", report.RemoteDotErr)
-			case report.DotMismatch:
-				p.Warn("peer dot: %s is a different release from this machine's; upgrade the older side", report.RemoteDot)
-			case report.DotUnreleased:
-				p.Warn("peer dot: %s is not a release build; install a release there, or pin it with remote_dot in the peer config", report.RemoteDot)
-			default:
-				p.Success("peer dot: %s", report.RemoteDot)
-			}
-			for _, passed := range report.RemoteDotPassed {
-				p.Line("  passed over: %s", passed)
-			}
-
-			switch {
-			case report.RemoteRsyncErr != nil:
-				p.Fail("remote rsync: %v", report.RemoteRsyncErr)
-			case report.RemoteRsyncPath == "":
-				p.Success("remote rsync: default is usable")
-			default:
-				p.Success("remote rsync: %s", report.RemoteRsyncPath)
-			}
-
-			switch {
-			case report.ClockSkewErr != nil:
-				p.Warn("clock skew: %v", report.ClockSkewErr)
-			case report.ClockSkewOK:
-				p.Success("clock skew: %s", report.ClockSkew)
-			default:
-				p.Warn("clock skew: %s — newer-wins comparisons get unreliable past a few seconds", report.ClockSkew)
-			}
-
-			if report.DiskKnown {
-				p.KV("peer disk", report.Disk)
-			}
-
-			p.Section("both machines")
-			switch {
-			case report.PeerFactsErr != nil:
-				p.Fail("the peer's facts are unavailable: %v", report.PeerFactsErr)
-			case report.Peer == nil:
-				p.Warn("not compared: the peer's dot did not resolve (see peer dot above)")
-			}
-			for _, check := range report.Checks {
-				switch check.Level {
-				case syncer.DoctorFail:
-					p.Fail("%s: %s", check.Name, check.Detail)
-				case syncer.DoctorWarn:
-					p.Warn("%s: %s", check.Name, check.Detail)
-				default:
-					p.Success("%s: %s", check.Name, check.Detail)
-				}
-				if check.Fix != "" {
-					p.Line("    fix: %s", check.Fix)
-				}
-			}
-
-			p.Blank()
-			p.Line("Reminder: keychain-backed tokens (gh, for one) cannot be synced by any file")
-			p.Line("copy, and cannot be verified over ssh — check them in a local terminal.")
-
+			verbose, _ := c.Flags().GetBool("verbose")
+			printPeerDoctorReport(p, report, verbose)
 			if report.Problems > 0 {
 				return fmt.Errorf("%d peer precondition(s) need attention", report.Problems)
 			}
@@ -355,4 +278,95 @@ would stop the coordinator's sync. The doctor writes nothing on either Mac.`,
 	cmd.Flags().BoolVar(&self, "self", false, "print this machine's facts as JSON (read by the other Mac's doctor)")
 	_ = cmd.Flags().MarkHidden("self")
 	return cmd
+}
+
+func printPeerDoctorReport(p *Printer, r *syncer.PeerDoctorReport, verbose bool) ui.CheckSummary {
+	p.Header("Peer Doctor")
+	p.KV("Target", r.Target)
+	p.KV("Local dot", r.LocalDotPath+" ("+r.LocalDotVersion+")")
+	var rows []ui.CheckRow
+	summary := ui.CheckSummary{}
+	add := func(marker, id, state, detail string) {
+		rows = append(rows, ui.CheckRow{Marker: marker, ID: id, State: state, Detail: detail})
+		switch marker {
+		case ui.MarkFail:
+			summary.Failed++
+		case ui.MarkWarn:
+			summary.Warnings++
+		case ui.MarkUnknown:
+			summary.Unknown++
+		default:
+			summary.OK++
+		}
+	}
+	if r.LocalRsyncErr != nil {
+		add(ui.MarkFail, "local rsync", "failed", r.LocalRsyncErr.Error())
+	} else {
+		add(ui.MarkPresent, "local rsync", "ok", r.LocalRsyncPath+" ("+r.LocalRsyncVersion+")")
+	}
+	if r.Unreachable {
+		add(ui.MarkWarn, "reachability", "warning", fmt.Sprint(r.UnreachableErr))
+		p.CheckRows(rows, verbose)
+		p.Line("A scheduled run would exit cleanly here; a manual one has nothing to do.")
+		p.Summary(summary)
+		return summary
+	}
+	add(ui.MarkPresent, "reachability", "ok", "reachable")
+	switch {
+	case r.RemoteDotErr != nil:
+		add(ui.MarkFail, "peer dot", "failed", r.RemoteDotErr.Error())
+	case r.DotMismatch:
+		add(ui.MarkWarn, "peer dot", "warning", r.RemoteDot+" differs from this release; upgrade the older side")
+	case r.DotUnreleased:
+		add(ui.MarkWarn, "peer dot", "warning", r.RemoteDot+" is not a release; install a release or pin remote_dot")
+	default:
+		add(ui.MarkPresent, "peer dot", "ok", r.RemoteDot)
+	}
+	if len(r.RemoteDotPassed) > 0 {
+		p.KV("Passed over", strings.Join(r.RemoteDotPassed, ", "))
+	}
+	if r.RemoteRsyncErr != nil {
+		add(ui.MarkFail, "remote rsync", "failed", r.RemoteRsyncErr.Error())
+	} else {
+		detail := r.RemoteRsyncPath
+		if detail == "" {
+			detail = "default is usable"
+		}
+		add(ui.MarkPresent, "remote rsync", "ok", detail)
+	}
+	switch {
+	case r.ClockSkewErr != nil:
+		add(ui.MarkUnknown, "clock skew", "unknown", r.ClockSkewErr.Error())
+	case !r.ClockSkewOK:
+		add(ui.MarkFail, "clock skew", "failed", fmt.Sprintf("%s: newer-wins comparisons exceed the allowed skew", r.ClockSkew))
+	default:
+		add(ui.MarkPresent, "clock skew", "ok", r.ClockSkew.String())
+	}
+	if r.DiskKnown {
+		p.KV("Peer disk", r.Disk)
+	}
+	switch {
+	case r.PeerFactsErr != nil:
+		add(ui.MarkFail, "peer facts", "failed", r.PeerFactsErr.Error())
+	case r.Peer == nil:
+		add(ui.MarkUnknown, "peer facts", "unknown", "not compared: peer dot did not resolve")
+	}
+	for _, check := range r.Checks {
+		marker, state := ui.MarkPresent, "ok"
+		switch check.Level {
+		case syncer.DoctorFail:
+			marker, state = ui.MarkFail, "failed"
+		case syncer.DoctorWarn:
+			marker, state = ui.MarkWarn, "warning"
+		}
+		detail := check.Detail
+		if check.Fix != "" {
+			detail += "\n" + ui.MarkNext + " " + check.Fix
+		}
+		add(marker, check.Name, state, detail)
+	}
+	p.CheckRows(rows, verbose)
+	p.Line("Reminder: keychain-backed tokens cannot be synced by file copy or verified over ssh; check them locally.")
+	p.Summary(summary)
+	return summary
 }

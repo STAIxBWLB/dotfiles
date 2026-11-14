@@ -267,10 +267,10 @@ before those candidates are compared, so it is judged with the commit there
 			// wins over --apply: under it nothing changes in .git or in
 			// either peer store (#99, #103).
 			if fetch && !apply {
-				return fmt.Errorf("--fetch only acts with --apply")
+				return usageError(c, fmt.Errorf("--fetch only acts with --apply"))
 			}
 			if noPush && !rescue {
-				return fmt.Errorf("--no-push only applies to --rescue")
+				return usageError(c, fmt.Errorf("--no-push only applies to --rescue"))
 			}
 			dryRun, _ := c.Flags().GetBool("dry-run")
 			apply = apply && !dryRun

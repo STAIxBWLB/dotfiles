@@ -398,7 +398,7 @@ func authToolBinary(cmd *cobra.Command) (string, error) {
 	case "codex":
 		return "codex", nil
 	default:
-		return "", fmt.Errorf("unknown tool %q (valid: claude, codex)", tool)
+		return "", usageError(cmd, fmt.Errorf("unknown tool %q (valid: claude, codex)", tool))
 	}
 }
 
@@ -410,15 +410,15 @@ func resolveAuthServers(cmd *cobra.Command, runner *execrun.Runner, args []strin
 	allNeeded, _ := cmd.Flags().GetBool("all-needed")
 	if !allNeeded {
 		if len(args) == 0 {
-			return nil, fmt.Errorf("specify at least one server name or pass --all-needed")
+			return nil, usageError(cmd, fmt.Errorf("specify at least one server name or pass --all-needed"))
 		}
 		return args, nil
 	}
 	if len(args) > 0 {
-		return nil, fmt.Errorf("--all-needed cannot be combined with explicit server names")
+		return nil, usageError(cmd, fmt.Errorf("--all-needed cannot be combined with explicit server names"))
 	}
 	if bin != "claude" {
-		return nil, fmt.Errorf("--all-needed is claude-only: %s reports no stale-credential state; run 'dot ai auth status --tool %s' then 'dot ai auth relogin --tool %s <server>'", bin, bin, bin)
+		return nil, usageError(cmd, fmt.Errorf("--all-needed is claude-only: %s reports no stale-credential state; run 'dot ai auth status --tool %s' then 'dot ai auth relogin --tool %s <server>'", bin, bin, bin))
 	}
 	data, err := runner.ReadFile(filepath.Join(homeFromCmd(cmd), ".claude", "mcp-needs-auth-cache.json"))
 	if err != nil {

@@ -225,7 +225,7 @@ func runAIPrune(cmd *cobra.Command, _ []string) error {
 	// Placed here, after host validation, so the first error a doubly-wrong
 	// run reports does not move.
 	if keep < 1 {
-		return fmt.Errorf("--keep must be at least 1 (got %d)", keep)
+		return usageError(cmd, fmt.Errorf("--keep must be at least 1 (got %d)", keep))
 	}
 
 	opts := aisettings.PruneOptions{Keep: keep}

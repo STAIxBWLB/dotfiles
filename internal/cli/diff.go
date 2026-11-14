@@ -159,14 +159,10 @@ func printPlanSummary(p *Printer, plan *modulePlan) {
 		}
 	}
 
-	p.Blank()
-	if pendingCount == 0 {
-		p.Success("All %d modules satisfied.", okCount)
-	} else {
-		p.Line("%d/%d modules satisfied, %d pending (%d change(s)).",
-			okCount, okCount+pendingCount, pendingCount, totalChanges)
-		p.Line("Run 'dot apply' to apply pending changes.")
+	if pendingCount > 0 {
+		p.Line("%s dot apply (%d pending change(s))", ui.RenderMarker(ui.MarkNext), totalChanges)
 	}
+	p.Summary(ui.CheckSummary{OK: okCount, Warnings: pendingCount})
 }
 
 func printPlanDiff(p *Printer, plan *modulePlan) {
@@ -194,10 +190,8 @@ func printPlanDiff(p *Printer, plan *modulePlan) {
 		}
 	}
 
-	p.Blank()
-	if pendingCount == 0 {
-		p.Success("Nothing to do — all modules satisfied.")
-	} else {
-		p.Line("%d module(s) have pending changes. Run 'dot apply' to apply them.", pendingCount)
+	if pendingCount > 0 {
+		p.Line("%s dot apply", ui.RenderMarker(ui.MarkNext))
 	}
+	p.Summary(ui.CheckSummary{OK: len(plan.modules) - pendingCount, Warnings: pendingCount})
 }

@@ -303,3 +303,37 @@ ASCII is used (the POSIX locale). `--ascii` forces these forms in a UTF-8
 locale too.
 The marker column reserves two cells, including `ok` and `->`. Marker
 selection changes UI markers, never user-provided values or raw child output.
+
+## Reports and exit status
+
+Check-style human reports finish with non-zero counts in this order: failed,
+warnings, ok, unknown. Unknown and warning rows never count as successful
+checks and do not by themselves make a check command fail.
+
+- `dot status` is a view: its final counts cover enabled module checks; the
+  other sections are context. A readable view exits 0 even when modules
+  need changes or checks are unavailable.
+- `dot diff` (including `--summary`) and `dot ws audit` are read-only plans or
+  views. Pending changes and structural mismatches are warnings; they exit
+  0 when the report is produced.
+- `dot layouts doctor` exits 1 when a required tool is missing. Optional
+  missing tools are warnings. `dot peer doctor` keeps its existing failed
+  precondition exit, including clock skew outside the allowed tolerance;
+  an offline peer alone is a warning.
+- `dot ai skills validate` exits 1 for invalid skills, strict legacy skills,
+  duplicate names or scan errors. `dot ai memory audit` keeps its existing
+  problem predicate (over-limit indexes, broken links, unreadable paths).
+- `dot remote job check` keeps its availability-probe contract: 0 when ready,
+  69 when unavailable. Its JSON format and the remote-command/admission
+  statuses, including 75 for temporary refusal, are unchanged.
+
+Reports and their findings go to stdout; invocation diagnostics go to stderr
+with a `dot: ` prefix. Parser, argument-validator and explicitly validated
+option errors exit 2. Ordinary operation failures exit 1; commands carrying
+an explicit status retain it. Library warnings and errors remain on stderr.
+
+On a terminal, owned report text wraps to its width. A pipe wraps only when
+`COLUMNS` requests it. Check tables cap identifier/state columns at 32 cells
+and wrap the finding column; `...` marks shortened identifiers. Use `--json`
+or `--verbose` to see full identifiers. JSON documents and raw child output
+are never wrapped or truncated by this policy.

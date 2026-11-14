@@ -116,6 +116,7 @@ Also available as 'dotfiles' for back-compat.`,
 	root.AddCommand(newWorkspaceDualCmd())
 
 	configurePresentation(root)
+	configureUsage(root)
 	return root
 }
 
@@ -167,7 +168,7 @@ func knownSubcommands(cmd *cobra.Command) map[string]bool {
 
 // unknownCommandGate inspects argv and decides whether the first argument
 // names a registered subcommand. On an unrecognized argument it writes the
-// six-line guidance to stderr and returns ErrUnknownCommand; otherwise it
+// six-line guidance to stderr and wraps ErrUnknownCommand as usage; otherwise it
 // returns nil. It never terminates the process, so every deferred function
 // registered by a caller between main and Execute still runs.
 //
@@ -186,13 +187,13 @@ func unknownCommandGate(cmd *cobra.Command, args []string, stderr io.Writer) err
 	if knownSubcommands(cmd)[first] {
 		return nil
 	}
-	fmt.Fprintf(stderr, "Unknown command %q\n", first)
+	fmt.Fprintf(stderr, "dot: unknown command %q\n", first)
 	fmt.Fprintln(stderr, "")
 	fmt.Fprintf(stderr, "If you meant to launch a workspace, use:\n")
 	fmt.Fprintf(stderr, "  dot open %s\n", first)
 	fmt.Fprintln(stderr, "")
 	fmt.Fprintln(stderr, "See 'dot help' for available commands, or 'dot usecase' for examples.")
-	return ErrUnknownCommand
+	return usageError(cmd, ErrUnknownCommand)
 }
 
 // Execute runs the root command.

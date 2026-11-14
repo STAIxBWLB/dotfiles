@@ -2,6 +2,11 @@
 
 Check the tools workspace layouts need
 
+### Synopsis
+
+Check required and optional workspace tools. The final summary counts their results.
+Exit 1 when a required tool is missing; optional tools produce warnings only.
+
 ```
 dot layouts doctor [flags]
 ```

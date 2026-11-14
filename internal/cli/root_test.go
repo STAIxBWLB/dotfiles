@@ -12,7 +12,7 @@ import (
 // unrecognized first argument is rejected with the ErrUnknownCommand sentinel
 // and the exact six-line guidance. Without this guarantee a typo could be
 // silently routed somewhere unexpected, or main could print a redundant
-// "Error:" line behind guidance the user already saw.
+// "dot: unknown command" line behind guidance the user already saw.
 func TestUnknownCommandGate_WritesGuidanceAndReturnsSentinel(t *testing.T) {
 	cmd := NewRootCmd("dev", "test")
 	var buf bytes.Buffer
@@ -21,13 +21,16 @@ func TestUnknownCommandGate_WritesGuidanceAndReturnsSentinel(t *testing.T) {
 	if !errors.Is(err, ErrUnknownCommand) {
 		t.Fatalf("err = %v, want errors.Is(err, ErrUnknownCommand)", err)
 	}
+	if got := ErrorExitCode(err); got != 2 {
+		t.Fatalf("unknown command exit=%d, want 2", got)
+	}
 
 	out := buf.String()
 	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
 	if len(lines) != 6 {
 		t.Fatalf("guidance = %d lines, want 6:\n%s", len(lines), out)
 	}
-	if want := `Unknown command "definitely-not-a-command"`; lines[0] != want {
+	if want := `dot: unknown command "definitely-not-a-command"`; lines[0] != want {
 		t.Errorf("first line = %q, want %q", lines[0], want)
 	}
 	if !strings.Contains(out, "  dot open definitely-not-a-command") {

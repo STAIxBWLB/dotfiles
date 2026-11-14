@@ -21,11 +21,14 @@ import (
 	"github.com/STAIxBWLB/dotfiles/internal/workspace"
 )
 
+var statusDetectSystem = config.DetectSystem
+var statusCheckModules = module.CheckAll
+
 func newStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Show full environment status at a glance",
-		Long:  "Unified dashboard: system, user, modules, secrets, sync, and workspace projects.",
+		Long:  "Unified dashboard: system, user, modules, secrets, sync, and workspace projects.\nThe final summary counts enabled module checks; other sections are context.\nThis view exits 0 when it can produce the report, even when modules need changes.",
 		RunE:  runStatus,
 	}
 }
@@ -59,7 +62,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("loading state: %w", err)
 	}
 
-	sysInfo, _ := config.DetectSystem()
+	sysInfo, _ := statusDetectSystem()
 
 	// ── System ─────────────────────────────────────────────────────────
 	p.Section("System")
@@ -94,7 +97,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	p.KV("Config", statePath)
 
 	// ── Modules ────────────────────────────────────────────────────────
-	statusPrintModules(p, cmd, state, sysInfo, home)
+	summary := statusPrintModules(p, cmd, state, sysInfo, home)
 
 	// ── Secrets ────────────────────────────────────────────────────────
 	statusPrintSecrets(p, state, home)
@@ -103,16 +106,17 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	statusPrintSync(p, state, home)
 
 	// ── Workspace ──────────────────────────────────────────────────────
-	statusPrintWorkspace(p, home)
+	verbose, _ := cmd.Flags().GetBool("verbose")
+	statusPrintWorkspace(p, home, verbose)
 
-	p.Blank()
+	p.Summary(summary)
 	return nil
 }
 
 // statusPrintModules checks all enabled modules and prints a compact summary.
 // home is the caller's resolved --home target: the RunContext every module
 // check reads must point at it, not at the invoking user.
-func statusPrintModules(p *Printer, cmd *cobra.Command, state *config.UserState, sysInfo *config.SystemInfo, home string) {
+func statusPrintModules(p *Printer, cmd *cobra.Command, state *config.UserState, sysInfo *config.SystemInfo, home string) ui.CheckSummary {
 	profileName, _ := cmd.Flags().GetString("profile")
 	configPath, _ := cmd.Flags().GetString("config")
 	if profileName == "" {
@@ -129,7 +133,7 @@ func statusPrintModules(p *Printer, cmd *cobra.Command, state *config.UserState,
 	if err != nil {
 		p.Section("Modules")
 		p.Line("  %s", ui.StyleHint.Render("(could not load config: "+err.Error()+")"))
-		return
+		return ui.CheckSummary{Unknown: 1}
 	}
 	config.ApplyStateToConfig(cfg, state)
 	config.ApplyEnvOverrides(cfg)
@@ -153,11 +157,11 @@ func statusPrintModules(p *Printer, cmd *cobra.Command, state *config.UserState,
 		HomeDir:  home,
 	}
 
-	results, err := module.CheckAll(ctx, modules, rc)
+	results, err := statusCheckModules(ctx, modules, rc)
 	if err != nil {
 		p.Section("Modules")
 		p.Line("  %s", ui.StyleHint.Render("(check failed: "+err.Error()+")"))
-		return
+		return ui.CheckSummary{Unknown: 1}
 	}
 
 	satisfied := 0
@@ -171,7 +175,7 @@ func statusPrintModules(p *Printer, cmd *cobra.Command, state *config.UserState,
 	p.Section(fmt.Sprintf("Modules (%d/%d satisfied)", satisfied, total))
 	for _, m := range modules {
 		r := results[m.Name()]
-		marker := ui.StyleHint.Render(ui.MarkAbsent)
+		marker := ui.StyleError.Render(ui.MarkFail)
 		if r != nil && r.Satisfied {
 			marker = ui.StyleSuccess.Render(ui.MarkPresent)
 		}
@@ -179,10 +183,12 @@ func statusPrintModules(p *Printer, cmd *cobra.Command, state *config.UserState,
 	}
 
 	if pending := total - satisfied; pending > 0 {
-		p.Blank()
-		p.Line("  %s", ui.StyleHint.Render(
-			fmt.Sprintf("%d module(s) need attention — run 'dot diff --summary' for details.", pending)))
+		p.Line("    %s dot diff --summary", ui.RenderMarker(ui.MarkNext))
 	}
+	if total == 0 {
+		return ui.CheckSummary{Unknown: 1}
+	}
+	return ui.CheckSummary{Failed: total - satisfied, OK: satisfied}
 }
 
 // statusPrintSecrets prints a compact secrets summary for the given home.
@@ -280,7 +286,7 @@ func statusPrintSync(p *Printer, state *config.UserState, home string) {
 
 // statusPrintWorkspace lists the given home's registered projects and the
 // active tmux sessions.
-func statusPrintWorkspace(p *Printer, home string) {
+func statusPrintWorkspace(p *Printer, home string, verbose bool) {
 	cfg, err := workspace.LoadConfigForHome(home)
 	if err != nil {
 		p.Section("Workspace")
@@ -307,13 +313,13 @@ func statusPrintWorkspace(p *Printer, home string) {
 		}
 	}
 
+	rows := make([]ui.CheckRow, 0, len(cfg.Projects))
 	for _, proj := range cfg.Projects {
-		marker := ui.StyleHint.Render(ui.MarkPartial)
+		marker, state := ui.MarkPartial, "registered"
 		if active[proj.Name] {
-			marker = ui.StyleSuccess.Render(ui.MarkStarred)
+			marker, state = ui.MarkStarred, "active"
 		}
-		p.Bullet(marker, fmt.Sprintf("%s  %s",
-			ui.StyleValue.Render(fmt.Sprintf("%-18s", proj.Name)),
-			ui.StyleHint.Render(proj.Path)))
+		rows = append(rows, ui.CheckRow{Marker: marker, ID: proj.Name, State: state, Detail: proj.Path})
 	}
+	p.CheckRows(rows, verbose)
 }

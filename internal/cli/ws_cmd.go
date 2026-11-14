@@ -285,6 +285,7 @@ func newWsAuditCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "audit [scope]",
 		Short: "Report structural mismatches between workspaces",
+		Long:  "Read-only structure report. Mismatches are warnings in the final summary.\nExit 0 when the report can be read, even when the trees differ.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE:  runWsAudit,
 	}
@@ -315,7 +316,7 @@ func runWsAudit(cmd *cobra.Command, args []string) error {
 
 	if len(mismatches) == 0 {
 		p.Blank()
-		p.Success("%s Trees are in sync.", ui.MarkPresent)
+		p.Summary(ui.CheckSummary{OK: 1})
 		return nil
 	}
 
@@ -341,7 +342,8 @@ func runWsAudit(cmd *cobra.Command, args []string) error {
 		}
 	}
 	p.Blank()
-	p.Line("  %d mismatch(es). Run 'dot ws reconcile' to resolve.", len(mismatches))
+	p.Line("%s dot ws reconcile", ui.RenderMarker(ui.MarkNext))
+	p.Summary(ui.CheckSummary{Warnings: len(mismatches)})
 	return nil
 }
 

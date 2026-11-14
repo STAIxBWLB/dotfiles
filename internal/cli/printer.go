@@ -46,7 +46,7 @@ func printerFrom(cmd *cobra.Command) *Printer {
 
 // Line prints a formatted line to Out with a trailing newline.
 func (p *Printer) Line(format string, a ...any) {
-	p.Raw(format+"\n", a...)
+	ui.WriteReportLine(p.Out, fmt.Sprintf(format, a...))
 }
 
 // Blank emits a single blank line. Prefer this over p.Line("") at call sites.
@@ -90,12 +90,23 @@ func (p *Printer) Success(format string, a ...any) {
 // Warn prints a formatted line to Err styled with StyleWarning (orange).
 // Use for recoverable / attention-needed conditions.
 func (p *Printer) Warn(format string, a ...any) {
-	_, _ = fmt.Fprintln(ui.Output(p.Err), ui.StyleWarning.Render(fmt.Sprintf(format, a...)))
+	ui.WriteReportLine(p.Err, ui.StyleWarning.Render(fmt.Sprintf(format, a...)))
 }
 
 // Fail prints a formatted line to Err styled with StyleError (red).
 // Use for hard failures that precede a non-zero exit. Named Fail rather
 // than Err to avoid collision with the Err field.
 func (p *Printer) Fail(format string, a ...any) {
-	_, _ = fmt.Fprintln(ui.Output(p.Err), ui.StyleError.Render(fmt.Sprintf(format, a...)))
+	ui.WriteReportLine(p.Err, ui.StyleError.Render(fmt.Sprintf(format, a...)))
+}
+
+// Summary is the last stdout line of a check-style human report. Zero counts
+// are omitted; no checks means no synthetic passing row.
+func (p *Printer) Summary(summary ui.CheckSummary) {
+	if text := summary.Render(); text != "" {
+		p.Line("%s", text)
+	}
+}
+func (p *Printer) CheckRows(rows []ui.CheckRow, verbose bool) {
+	ui.WriteCheckRows(p.Out, rows, verbose)
 }

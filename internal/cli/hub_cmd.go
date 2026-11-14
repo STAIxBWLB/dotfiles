@@ -59,7 +59,7 @@ func runHub(cmd *cobra.Command, args []string) error {
 	}
 	slot, isSlot := hubSlots[action]
 	if !isSlot && action != "status" && action != "ui" {
-		return fmt.Errorf("unknown action %q; use console, status, ui, git or files", action)
+		return usageError(cmd, fmt.Errorf("unknown action %q; use console, status, ui, git or files", action))
 	}
 	if err := workspace.ValidateSessionName(name); err != nil {
 		return err

@@ -113,13 +113,13 @@ func runAdmit(cmd *cobra.Command, args []string) error {
 	ignoreSpec, _ := cmd.Flags().GetString("ignore")
 	ignoreFlag, err := admission.ParseIgnoreSet(ignoreSpec)
 	if err != nil {
-		return fmt.Errorf("--ignore %q: %w", ignoreSpec, err)
+		return usageError(cmd, fmt.Errorf("--ignore %q: %w", ignoreSpec, err))
 	}
 	if class != admission.ClassHeavy && class != admission.ClassMaintenance {
-		return fmt.Errorf("--class must be %q or %q, got %q", admission.ClassHeavy, admission.ClassMaintenance, class)
+		return usageError(cmd, fmt.Errorf("--class must be %q or %q, got %q", admission.ClassHeavy, admission.ClassMaintenance, class))
 	}
 	if wait < 0 {
-		return fmt.Errorf("--wait must not be negative")
+		return usageError(cmd, fmt.Errorf("--wait must not be negative"))
 	}
 	if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
 		p.Line("Would acquire repository resource slot and run %q (no probes or writes)", args)

@@ -38,7 +38,8 @@ func newAISkillsListCmd() *cobra.Command {
 			if asJSON {
 				return printJSON(cmd, report)
 			}
-			printSkillReport(printerFrom(cmd), report, false)
+			verbose, _ := cmd.Flags().GetBool("verbose")
+			printSkillReport(printerFrom(cmd), report, false, verbose)
 			return nil
 		},
 	}
@@ -62,7 +63,10 @@ func newAISkillsValidateCmd() *cobra.Command {
 					return err
 				}
 			} else {
-				printSkillReport(printerFrom(cmd), report, strict)
+				p := printerFrom(cmd)
+				verbose, _ := cmd.Flags().GetBool("verbose")
+				printSkillReport(p, report, strict, verbose)
+				p.Summary(skillValidationSummary(report, strict))
 			}
 			if len(errs) > 0 {
 				return fmt.Errorf("skill validation failed: %s", strings.Join(errs, "; "))
@@ -113,7 +117,8 @@ func newAISkillsStatusCmd() *cobra.Command {
 			if asJSON {
 				return printJSON(cmd, report)
 			}
-			printSkillsStatus(printerFrom(cmd), report)
+			verbose, _ := cmd.Flags().GetBool("verbose")
+			printSkillsStatus(printerFrom(cmd), report, verbose)
 			return nil
 		},
 	}
@@ -229,27 +234,30 @@ func newSkillsManagerFromCmd(cmd *cobra.Command) *aisettings.SkillsManager {
 	return mgr
 }
 
-func printSkillsStatus(p *Printer, report *aisettings.SkillsStatusReport) {
+func printSkillsStatus(p *Printer, report *aisettings.SkillsStatusReport, verbose bool) {
 	p.Header("AI Skills Status")
 	p.Line("%s", ui.StyleHint.Render("read-only diagnosis; runtime symlinks are managed by the Maru app (sync via Maru)"))
 	printSkillsStatusSummary(p, report)
 	if len(report.Items) > 0 {
 		p.Section("Targets")
+		var rows []ui.CheckRow
 		for _, item := range report.Items {
-			marker, style := skillLinkStatusMarker(item.Status)
+			marker, _ := skillLinkStatusMarker(item.Status)
 			if item.ToolID == "" {
-				p.Bullet(style.Render(marker), item.Message)
+				p.Bullet(marker, item.Message)
 				continue
 			}
-			line := fmt.Sprintf("%-12s %-24s %-12s %s", ui.StyleValue.Render(item.ToolID), item.SkillName, item.Status, item.TargetPath)
-			p.Bullet(style.Render(marker), line)
+			detail := item.ToolID + " " + item.TargetPath
 			if item.Message != "" {
-				p.Line("      %s", item.Message)
+				detail += "\n" + item.Message
 			}
+			rows = append(rows, ui.CheckRow{Marker: marker, ID: item.SkillName, State: item.Status, Detail: detail})
 		}
+		p.CheckRows(rows, verbose)
 	}
+
 	for _, warning := range report.Warnings {
-		p.Warn("%s", warning)
+		p.Bullet(ui.MarkWarn, warning)
 	}
 }
 
@@ -276,7 +284,7 @@ func skillLinkStatusMarker(status string) (string, interface{ Render(...string) 
 	}
 }
 
-func printSkillReport(p *Printer, report *aisettings.SkillScanReport, strict bool) {
+func printSkillReport(p *Printer, report *aisettings.SkillScanReport, strict, verbose bool) {
 	p.Header("AI Skills")
 	p.KV("Roots", fmt.Sprintf("%d", len(report.Roots)))
 	p.KV("Skills", fmt.Sprintf("%d", len(report.Items)))
@@ -292,26 +300,33 @@ func printSkillReport(p *Printer, report *aisettings.SkillScanReport, strict boo
 	}
 	if len(report.Items) > 0 {
 		p.Section("Skills")
+		rows := make([]ui.CheckRow, 0, len(report.Items))
 		for _, item := range report.Items {
-			marker, style := skillStatusMarker(item.Status)
+			marker, _ := skillStatusMarker(item.Status)
+			if strict && item.Status == aisettings.SkillStatusLegacy {
+				marker = ui.MarkFail
+			}
 			name := item.Frontmatter.Name
 			if name == "" {
 				name = "(unnamed)"
 			}
-			p.Bullet(style.Render(marker), fmt.Sprintf("%-8s %-8s %-20s %s", ui.StyleValue.Render(item.Tool), item.Status, name, item.Path))
+			detail := item.Tool + " " + item.Path
 			if len(item.Errors) > 0 {
-				p.Line("      %s", strings.Join(item.Errors, "; "))
+				detail += "\n" + strings.Join(item.Errors, "; ")
 			}
+			rows = append(rows, ui.CheckRow{Marker: marker, ID: name, State: item.Status, Detail: detail})
 		}
+		p.CheckRows(rows, verbose)
 	}
+
 	if len(report.Duplicates) > 0 {
 		p.Section("Duplicates")
 		for _, dup := range report.Duplicates {
-			p.Bullet(ui.StyleWarning.Render(ui.MarkWarn), fmt.Sprintf("%s: %s", dup.Name, strings.Join(dup.Paths, ", ")))
+			p.Bullet(ui.MarkFail, fmt.Sprintf("%s: %s", dup.Name, strings.Join(dup.Paths, ", ")))
 		}
 	}
 	for _, err := range report.Errors {
-		p.Warn("%s", err)
+		p.Bullet(ui.MarkFail, err)
 	}
 }
 
@@ -348,7 +363,7 @@ func newAIAuditTailCmd() *cobra.Command {
 			if len(args) == 1 {
 				parsed, err := strconv.Atoi(args[0])
 				if err != nil || parsed < 1 {
-					return fmt.Errorf("argument must be a positive integer")
+					return usageError(cmd, fmt.Errorf("argument must be a positive integer"))
 				}
 				n = parsed
 			}
@@ -522,4 +537,28 @@ func printJSON(cmd *cobra.Command, value any) error {
 	enc := json.NewEncoder(cmd.OutOrStdout())
 	enc.SetIndent("", "  ")
 	return enc.Encode(value)
+}
+
+func skillValidationSummary(report *aisettings.SkillScanReport, strict bool) ui.CheckSummary {
+	summary := ui.CheckSummary{Failed: len(report.Errors) + len(report.Duplicates)}
+	for _, item := range report.Items {
+		switch item.Status {
+		case aisettings.SkillStatusValid:
+			summary.OK++
+		case aisettings.SkillStatusInvalid:
+			summary.Failed++
+		case aisettings.SkillStatusLegacy:
+			if strict {
+				summary.Failed++
+			} else {
+				summary.Warnings++
+			}
+		default:
+			summary.Unknown++
+		}
+	}
+	if summary.Failed+summary.Warnings+summary.OK+summary.Unknown == 0 {
+		summary.Unknown = 1
+	}
+	return summary
 }

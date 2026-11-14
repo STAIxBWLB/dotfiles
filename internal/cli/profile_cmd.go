@@ -457,7 +457,7 @@ func runProfilePrune(cmd *cobra.Command, _ []string) error {
 	// len(all)-keep from the raw flag. Placed after host validation so the
 	// first error a doubly-wrong run reports does not move.
 	if keep < 1 {
-		return fmt.Errorf("--keep must be at least 1 (got %d)", keep)
+		return usageError(cmd, fmt.Errorf("--keep must be at least 1 (got %d)", keep))
 	}
 	p := printerFrom(cmd)
 

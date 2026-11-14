@@ -118,7 +118,7 @@ func runSyncPush(cmd *cobra.Command, _ []string) error {
 	case syncer.PushAborted:
 		p.Line("Aborted.")
 	case syncer.PushComplete:
-		p.Line(ui.MarkPresent + " Push complete.")
+		p.Line("%s", ui.MarkPresent+" Push complete.")
 	case syncer.PushPlanned:
 	}
 	return nil

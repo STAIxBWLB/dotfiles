@@ -53,7 +53,7 @@ func runAISessionStart(cmd *cobra.Command, _ []string) error {
 	var input io.Reader
 	if inputPath != "" {
 		if req.Task != "" {
-			return fmt.Errorf("--task and --input are mutually exclusive")
+			return usageError(cmd, fmt.Errorf("--task and --input are mutually exclusive"))
 		}
 		input = cmd.InOrStdin()
 		if inputPath != "-" {
@@ -80,7 +80,7 @@ func runAISessionStart(cmd *cobra.Command, _ []string) error {
 		input = io.MultiReader(strings.NewReader(string(line)), reader)
 		req.Unattended = true
 	} else if strings.TrimSpace(req.Task) == "" {
-		return fmt.Errorf("provide --task or --input")
+		return usageError(cmd, fmt.Errorf("provide --task or --input"))
 	}
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

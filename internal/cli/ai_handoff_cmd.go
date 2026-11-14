@@ -50,7 +50,7 @@ func newAIHandoffCmd() *cobra.Command {
 		result, _ := cmd.Flags().GetString("result")
 		dry, _ := cmd.Flags().GetBool("dry-run")
 		if summaryPath == "" {
-			return fmt.Errorf("--summary-file is required; provide a curated note, not raw transcripts or credentials")
+			return usageError(cmd, fmt.Errorf("--summary-file is required; provide a curated note, not raw transcripts or credentials"))
 		}
 		summary, err := aihandoff.ReadSummaryFile(cmd.Context(), summaryPath)
 		if err != nil {

@@ -35,6 +35,7 @@ dot [flags]
 * [dot apps](dot_apps.md)	 - macOS app install and settings backup/restore
 * [dot backup](dot_backup.md)	 - One-stop interactive backup (profile, apps, AI, secrets)
 * [dot clean](dot_clean.md)	 - Remove junk directories (node_modules, caches, venvs) from workspace
+* [dot completion](dot_completion.md)	 - Generate the autocompletion script for the specified shell
 * [dot config](dot_config.md)	 - Show current configuration
 * [dot container](dot_container.md)	 - Shared container command (apple/container on macOS, docker or podman on Linux)
 * [dot diff](dot_diff.md)	 - Show pending changes without applying
