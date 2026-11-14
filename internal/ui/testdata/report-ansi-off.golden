@@ -1,15 +1,18 @@
-
-  dot Report  
-
-▸ State
-  Profile:                minimal
-  ✓  ready
-  ✗  failed
-  ⚠  warning
-  -  absent
-  ?  unknown
-  ~  pending
-  *  active
-  →  dot status
-  :  partial
-  +  preferred
+[
+  "\n",
+  "  dot Report  \n",
+  "\n",
+  "▸ State\n",
+  "  Profile:                minimal\n",
+  "  ✓  ready\n",
+  "  ✗  failed\n",
+  "  ⚠  warning\n",
+  "  -  absent\n",
+  "  ?  unknown\n",
+  "  ~  pending\n",
+  "  *  active\n",
+  "  →  dot status\n",
+  "  :  partial\n",
+  "  +  preferred\n",
+  ""
+]

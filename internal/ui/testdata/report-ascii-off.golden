@@ -1,15 +1,18 @@
-
-  dot Report  
-
-> State
-  Profile:                minimal
-  ok ready
-  x  failed
-  !  warning
-  -  absent
-  ?  unknown
-  ~  pending
-  *  active
-  -> dot status
-  :  partial
-  +  preferred
+[
+  "\n",
+  "  dot Report  \n",
+  "\n",
+  "> State\n",
+  "  Profile:                minimal\n",
+  "  ok ready\n",
+  "  x  failed\n",
+  "  !  warning\n",
+  "  -  absent\n",
+  "  ?  unknown\n",
+  "  ~  pending\n",
+  "  *  active\n",
+  "  -> dot status\n",
+  "  :  partial\n",
+  "  +  preferred\n",
+  ""
+]
