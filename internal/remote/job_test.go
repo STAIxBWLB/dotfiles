@@ -184,6 +184,52 @@ func TestJobCheckScriptOnAShell(t *testing.T) {
 	}
 }
 
+// A check writes nothing: a root that does not exist yet is measured through
+// its nearest existing ancestor, and stays absent.
+func TestJobCheckScriptCreatesNoRoot(t *testing.T) {
+	h := testHost()
+	root := filepath.Join(t.TempDir(), "not", "yet")
+	// Far beyond any test machine: the disk reason proves df read an existing
+	// ancestor, since a missing path is unreadable instead.
+	p := JobProfile{Name: "media", Root: root, Ref: "img:1", MinFreeGB: 1 << 40}
+	out, err := shellRun("docker(){ echo dev; }; " + JobCheckScript(h, p))
+	if err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	if ok, why := ParseJobCheck(out); ok || !strings.Contains(why, "GB free") {
+		t.Errorf("missing root: %v %q", ok, why)
+	}
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Errorf("check created the job root: %v", err)
+	}
+}
+
+// An ancestor a job could not create the root in is still reported, without
+// trying to create anything.
+func TestJobCheckScriptRefusesAnUnwritableAncestor(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root creates a directory anywhere")
+	}
+	parent := t.TempDir()
+	if err := os.Chmod(parent, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(parent, 0o755) })
+	h := testHost()
+	root := filepath.Join(parent, "jobs")
+	p := JobProfile{Name: "media", Root: root, Ref: "img:1"}
+	out, err := shellRun("docker(){ echo dev; }; " + JobCheckScript(h, p))
+	if err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	if ok, why := ParseJobCheck(out); ok || !strings.Contains(why, "cannot create the job root") {
+		t.Errorf("unwritable ancestor: %v %q", ok, why)
+	}
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Errorf("check created the job root: %v", err)
+	}
+}
+
 // jobFixture fakes ssh, rsync and the runtime for one job.
 type jobFixture struct {
 	t        *testing.T
@@ -539,6 +585,40 @@ func TestLocalJobKeepsTheCommandStatus(t *testing.T) {
 	var code *ExitCode
 	if !errors.As(err, &code) || code.Code != 7 || !strings.Contains(f.err.String(), "copying out/") {
 		t.Errorf("err = %v, stderr %s", err, f.err.String())
+	}
+}
+
+// The remote side keeps a failed command's status the same way: when -o DIR
+// cannot be created, the job is kept, the collection error is printed beside
+// the command's status, and that status is what the CLI exits with.
+func TestRemoteJobKeepsTheCommandStatus(t *testing.T) {
+	f := newJobFixture(t)
+	f.exit = 7
+	blocked := filepath.Join(f.root, "result")
+	write(t, blocked, "a file where -o DIR should be")
+	err := f.run(JobOptions{OutDir: blocked})
+	var code *ExitCode
+	if !errors.As(err, &code) || code.Code != 7 {
+		t.Fatalf("err = %v, want exit 7", err)
+	}
+	for _, want := range []string{"job kept at buildbox:~/jobs/j1", "collecting out/ into " + blocked} {
+		if !strings.Contains(f.err.String(), want) {
+			t.Errorf("stderr lacks %q: %s", want, f.err.String())
+		}
+	}
+	if f.called("rm -rf") {
+		t.Errorf("a job whose -o could not be created was deleted: %v", f.calls)
+	}
+
+	// The command succeeded, so the collection failure alone is the error, and
+	// the CLI's generic status applies.
+	f = newJobFixture(t)
+	blocked = filepath.Join(f.root, "result")
+	write(t, blocked, "a file where -o DIR should be")
+	err = f.run(JobOptions{OutDir: blocked})
+	var failed *ExitCode
+	if err == nil || errors.As(err, &failed) || !strings.Contains(err.Error(), "collecting out/ into "+blocked) {
+		t.Errorf("a successful command's collection failure = %v", err)
 	}
 }
 

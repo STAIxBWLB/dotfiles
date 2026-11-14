@@ -367,7 +367,9 @@ anything is sent. `--name` (default a timestamp) must match
 - `check` is one ssh round trip, 30 seconds at most with a 5-second connect: the
   profile's image is present and not root, load1 is under `max_load_ratio` x
   CPUs, and more than `min_free_gb` is free under `root`. A timeout or an
-  unreadable value counts as unavailable.
+  unreadable value counts as unavailable. It writes nothing on the host: free
+  space is measured on the root's nearest existing ancestor, so a profile whose
+  root does not exist yet can be checked.
 - On the host, inputs go up with rsync into `<root>/<name>/in/`; the container
   mounts the job directory at `/job`, runs as the image's user with the
   profile's CPU and memory limits and no cache volume, and `out/` comes back
