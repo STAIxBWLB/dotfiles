@@ -12,8 +12,9 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/STAIxBWLB/dotfiles/internal/ui"
 	"github.com/spf13/cobra"
+
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // ErrUnknownCommand is returned by Execute when argv names no registered

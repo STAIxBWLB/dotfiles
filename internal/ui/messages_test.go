@@ -56,6 +56,7 @@ func TestMessageHelperGoldens(t *testing.T) {
 				WriteWarning(w, "cache is unavailable", "dot status", "", "DOT_CACHE=local")
 			}
 			WriteNext(w, "dot apply --yes")
+			WriteNextIndented(w, 4, "dot diff --summary")
 			WriteDryRun(w, "write profile")
 			WriteNote(w, "using default profile")
 			var snapshot bytes.Buffer
@@ -79,7 +80,7 @@ func TestMessageHelperGoldens(t *testing.T) {
 	}
 }
 
-func TestWarningMarkerFollowsPrefixOnlyOnTTY(t *testing.T) {
+func TestWarningMarkerPrecedesPrefixOnlyOnTTY(t *testing.T) {
 	for _, tc := range []struct{ locale, marker, next string }{
 		{"en_US.UTF-8", CanonicalMarkerGlyph("warn"), CanonicalMarkerGlyph("next")}, {"C", "!", "->"},
 	} {
@@ -92,7 +93,7 @@ func TestWarningMarkerFollowsPrefixOnlyOnTTY(t *testing.T) {
 			if got, want := pipe.String(), "dot: warning: needs attention\n  "+tc.next+" dot status\n"; got != want {
 				t.Fatalf("pipe warning=%q,want %q", got, want)
 			}
-			if got, want := tty.String(), "dot: warning: "+tc.marker+"  needs attention\n  "+tc.next+" dot status\n"; got != want {
+			if got, want := tty.String(), tc.marker+"  dot: warning: needs attention\n  "+tc.next+" dot status\n"; got != want {
 				t.Fatalf("TTY warning=%q,want %q", got, want)
 			}
 		})
@@ -109,7 +110,7 @@ func TestMessageJSONSinkStripsEscapesEvenWhenColorForced(t *testing.T) {
 	WriteDryRun(w, StyleSuccess.Render("write profile"))
 	note := strings.Repeat("x", 120)
 	WriteNote(w, StyleHint.Render(note))
-	want := "dot: warning: ⚠  cache is unavailable\n  → dot status\n  ~  would write profile\ndot: " + note + "\n"
+	want := "⚠  dot: warning: cache is unavailable\n  → dot status\n  ~  would write profile\ndot: " + note + "\n"
 	if got := out.String(); got != want || strings.ContainsRune(got, 27) {
 		t.Fatalf("JSON diagnostic sink changed payload or retained ESC: %q", got)
 	}

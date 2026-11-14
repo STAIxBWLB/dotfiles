@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
 	"github.com/STAIxBWLB/dotfiles/internal/ui"
@@ -130,6 +131,6 @@ func InstallOptional(ctx context.Context, runner *exec.Runner, brew *exec.Brew, 
 
 	fmt.Fprintf(out, "  Installing optional tools: %v\n", formulas)
 	if err := brew.Install(ctx, formulas); err != nil {
-		ui.WriteWarning(errOut, fmt.Sprintf("some optional tools failed to install: %v", err))
+		ui.WriteWarning(errOut, fmt.Sprintf("some optional tools failed to install: %v", err), "brew install "+strings.Join(formulas, " "))
 	}
 }

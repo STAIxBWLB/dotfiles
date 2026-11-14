@@ -2,6 +2,7 @@ package ui
 
 import (
 	"io"
+	"strings"
 
 	"github.com/charmbracelet/x/term"
 )
@@ -18,10 +19,11 @@ func WriteWarning(w io.Writer, msg string, next ...string) {
 }
 
 func writeWarning(w io.Writer, msg string, tty bool, next ...string) {
+	msg = "dot: warning: " + msg
 	if tty {
 		msg = MarkerColumn(MarkWarn) + " " + msg
 	}
-	WriteReportLine(w, StyleWarning.Render("dot: warning: "+msg))
+	WriteReportLine(w, StyleWarning.Render(msg))
 	for _, command := range next {
 		if command != "" {
 			WriteNext(w, command)
@@ -32,7 +34,13 @@ func writeWarning(w io.Writer, msg string, tty bool, next ...string) {
 // WriteNext writes a complete command or setting in the accent role.
 // Callers choose the stream: a warning's next step belongs on stderr.
 func WriteNext(w io.Writer, command string) {
-	WriteReportLine(w, "  "+StyleAccent.Render(MarkNext+" "+command))
+	WriteNextIndented(w, 2, command)
+}
+
+// WriteNextIndented writes a next step with indent leading spaces. Report rows
+// use four spaces below a bullet; WriteNext uses two for a top-level step.
+func WriteNextIndented(w io.Writer, indent int, command string) {
+	WriteReportLine(w, strings.Repeat(" ", max(0, indent))+StyleAccent.Render(MarkNext+" "+command))
 }
 
 // WriteDryRun writes an action that would run, without performing it.

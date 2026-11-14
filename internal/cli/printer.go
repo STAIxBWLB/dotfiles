@@ -5,8 +5,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/STAIxBWLB/dotfiles/internal/ui"
 	"github.com/spf13/cobra"
+
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // Printer routes CLI output to writable sinks so tests can capture output.
@@ -20,8 +21,10 @@ import (
 //     `p.Line("")` around them; use Blank() when an explicit separator is
 //     needed mid-section.
 //  2. Indent policy. KV() and Bullet() lead with two spaces — the canonical
-//     top-level indent. Nested detail uses four spaces written by the caller.
-//  3. Stream policy. Line / Header / Section / Bullet / KV / Success / Raw
+//     top-level indent. Next() uses two spaces; NextNested() uses four spaces
+//     below a Bullet. Other nested detail uses four spaces written by the caller.
+//  3. Stream policy. Line / Header / Section / Bullet / KV / Success / Raw / Next /
+//     NextNested / DryRun
 //     go to Out. Warn (yellow) and Fail (red) go to Err.
 type Printer struct {
 	Out io.Writer
@@ -92,9 +95,15 @@ func (p *Printer) Warn(format string, a ...any) {
 	ui.WriteWarning(p.Err, fmt.Sprintf(format, a...))
 }
 
-// Next prints a complete next step to Err in the accent role.
+// Next prints a top-level report next step to Out at two-space indent.
+// Warning next steps use ui.WriteWarning on Err instead.
 func (p *Printer) Next(format string, a ...any) {
-	ui.WriteNext(p.Err, fmt.Sprintf(format, a...))
+	ui.WriteNext(p.Out, fmt.Sprintf(format, a...))
+}
+
+// NextNested prints a report next step to Out at four-space indent below a bullet.
+func (p *Printer) NextNested(format string, a ...any) {
+	ui.WriteNextIndented(p.Out, 4, fmt.Sprintf(format, a...))
 }
 
 // DryRun prints an action that would run to Out with the pending marker.

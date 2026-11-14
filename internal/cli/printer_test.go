@@ -201,10 +201,12 @@ func TestPrinterNextAndDryRunStreams(t *testing.T) {
 	p := &Printer{Out: ui.NewColorWriter(&out, ui.ColorNever, false), Err: ui.NewColorWriter(&errb, ui.ColorNever, false)}
 	p.DryRun("install %s", "tool")
 	p.Next("dot %s", "update")
-	if got := out.String(); got != "  ~  would install tool\n" {
+	p.NextNested("dot %s", "diff --summary")
+	p.Warn("disk is low")
+	if got := out.String(); got != "  ~  would install tool\n  → dot update\n    → dot diff --summary\n" {
 		t.Fatalf("stdout=%q", got)
 	}
-	if got := errb.String(); got != "  → dot update\n" {
+	if got := errb.String(); got != "dot: warning: disk is low\n" {
 		t.Fatalf("stderr=%q", got)
 	}
 }
