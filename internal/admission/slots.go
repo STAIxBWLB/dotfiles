@@ -82,6 +82,8 @@ type Lease struct {
 	// status --host` can tell one host's runs from another's. Empty for every
 	// other class, and omitted then, so no existing lease file changes.
 	Host string `json:"host,omitempty"`
+	// Container is the actual container of a remote path/src lease.
+	Container string `json:"container,omitempty"`
 }
 
 // Store owns the admission state root (~/.local/state/dot/admission/): the

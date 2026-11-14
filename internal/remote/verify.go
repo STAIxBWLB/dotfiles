@@ -44,8 +44,9 @@ var verifyAuthor = []string{
 
 // SnapshotCommit returns the commit verify sends: HEAD, or with dirty a commit
 // object of the working tree as it is (tracked plus untracked-not-ignored
-// files) whose parent is HEAD. The tree is staged in a throwaway index, so the
-// checkout's own index is untouched, and commit-tree moves no ref.
+// files), with built-in excludes applied, whose parent is HEAD. The tree is
+// staged in a throwaway index, so the checkout's own index is untouched, and
+// commit-tree moves no ref.
 func SnapshotCommit(ctx context.Context, checkout string, dirty bool) (string, error) {
 	head, err := gitIn(ctx, checkout, nil, "rev-parse", "--verify", "HEAD^{commit}")
 	if err != nil {
@@ -66,6 +67,24 @@ func SnapshotCommit(ctx context.Context, checkout string, dirty bool) (string, e
 	if _, err := gitIn(ctx, checkout, env, "add", "-A"); err != nil {
 		return "", err
 	}
+	// Filter the throwaway index, including tracked paths. Excluded blobs staged
+	// above are unreachable from this commit and are never pushed with it.
+	listing, err := gitInInput(ctx, checkout, env, nil, "ls-files", "-z")
+	if err != nil {
+		return "", err
+	}
+	var excluded []byte
+	for _, rel := range strings.Split(string(listing), "\x00") {
+		if snapshotExcluded(rel) {
+			excluded = append(excluded, rel...)
+			excluded = append(excluded, 0)
+		}
+	}
+	if len(excluded) > 0 {
+		if _, err := gitInInput(ctx, checkout, env, excluded, "update-index", "--force-remove", "-z", "--stdin"); err != nil {
+			return "", err
+		}
+	}
 	tree, err := gitIn(ctx, checkout, env, "write-tree")
 	if err != nil {
 		return "", err
@@ -76,15 +95,44 @@ func SnapshotCommit(ctx context.Context, checkout string, dirty bool) (string, e
 // gitIn runs one git command in dir with extra environment and returns its
 // trimmed stdout.
 func gitIn(ctx context.Context, dir string, env []string, args ...string) (string, error) {
+	out, err := gitInInput(ctx, dir, env, nil, args...)
+	return strings.TrimSpace(string(out)), err
+}
+
+// gitInInput preserves NUL-separated filenames byte for byte.
+func gitInInput(ctx context.Context, dir string, env []string, input []byte, args ...string) ([]byte, error) {
 	cmd := osexec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	cmd.Env = append(append(os.Environ(), "LC_ALL=C", "LANG=C"), env...)
+	if input != nil {
+		cmd.Stdin = bytes.NewReader(input)
+	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
-	return strings.TrimSpace(string(out)), nil
+	return out, nil
+}
+
+// snapshotExcluded applies run's built-in patterns to every path component,
+// including excluded parent directories and the env template exception.
+func snapshotExcluded(rel string) bool {
+	parts := strings.Split(rel, "/")
+	for start := range parts {
+		for end := start + 1; end <= len(parts); end++ {
+			candidate := strings.Join(parts[start:end], "/")
+			if candidate == envTemplateInclude {
+				continue
+			}
+			for _, pattern := range builtinExcludes {
+				if matched, _ := path.Match(pattern, candidate); matched {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 var bareUnsafe = regexp.MustCompile(`[^A-Za-z0-9._-]`)
@@ -189,7 +237,14 @@ func verifyInner(ref string, base baseRef, command []string) string {
 // VerifyCommand is the remote shell command a verify sends: the host user's
 // ids, then the container with the bare repo mounted read-only.
 func VerifyCommand(h Host, container, bare, ref string, base baseRef, command []string) string {
+	return verifyCommand(h, container, bare, ref, base, command, "")
+}
+
+func verifyCommand(h Host, container, bare, ref string, base baseRef, command []string, owner string) string {
 	argv := []string{"--init", "--user", "0", "-i", "--name", container}
+	if owner != "" {
+		argv = append(argv, "--label", "net.staix.dot.remote-owner="+owner)
+	}
 	if h.CPUs > 0 {
 		argv = append(argv, "--cpus", fmt.Sprint(h.CPUs))
 	}
@@ -258,7 +313,7 @@ func (d Deps) Verify(ctx context.Context, cfg Config, opts VerifyOptions) error 
 	}
 
 	leases, err := d.admit(ctx, h, admitOptions{
-		Scope: PathScope(checkout), Cwd: checkout, Wait: opts.Wait, Ignore: opts.Ignore, IgnoreSrc: opts.IgnoreSrc,
+		Scope: PathScope(checkout), Container: container, Cwd: checkout, Wait: opts.Wait, Ignore: opts.Ignore, IgnoreSrc: opts.IgnoreSrc,
 		Busy: func(holder *admission.Lease) string { return pathBusyReason(checkout, holder) },
 	})
 	if err != nil {
@@ -269,7 +324,7 @@ func (d Deps) Verify(ctx context.Context, cfg Config, opts VerifyOptions) error 
 	if err != nil {
 		return err
 	}
-	if err := d.prepareContainer(ctx, h, container, PathScope(checkout)); err != nil {
+	if err := d.prepareContainer(ctx, h, container, PathScope(checkout), true); err != nil {
 		return err
 	}
 
@@ -278,7 +333,7 @@ func (d Deps) Verify(ctx context.Context, cfg Config, opts VerifyOptions) error 
 		return err
 	}
 	ref := VerifyRef(rel, sha, d.nonce())
-	remoteCommand := VerifyCommand(h, container, bare, ref, base, command)
+	remoteCommand := verifyCommand(h, container, bare, ref, base, command, d.containerOwner(PathScope(checkout)))
 	if _, err := d.capture(ctx, SSHArgv(h.SSH, bareInitScript(h, bare)), nil); err != nil {
 		return fmt.Errorf("creating the bare repo %s on %s: %w", path.Join(h.GitRoot, bare), h.Name, err)
 	}
@@ -290,8 +345,16 @@ func (d Deps) Verify(ctx context.Context, cfg Config, opts VerifyOptions) error 
 		h.SSH + ":" + path.Join(h.GitRoot, bare)}, refspecs...)
 	// From here the ref may be on the host, so every path deletes it.
 	defer d.deleteVerifyRefs(ctx, h, bare, ref, base.Branch != "")
-	if _, err := d.capture(ctx, push, nil); err != nil {
+	var pushOut, pushErr bytes.Buffer
+	exit, sig, err := d.ex()(ctx, push, nil, &pushOut, &pushErr)
+	if sig != 0 {
+		return &ExitCode{Code: 128 + int(sig), Err: fmt.Errorf("pushing %s to %s interrupted by signal %d", shortSHA(sha), h.Name, sig)}
+	}
+	if err != nil {
 		return fmt.Errorf("pushing %s to %s: %w", shortSHA(sha), h.Name, err)
+	}
+	if exit != 0 {
+		return fmt.Errorf("pushing %s to %s exited %d: %s; check ssh access and remote repository permissions, then retry `dot remote verify`", shortSHA(sha), h.Name, exit, tail(pushErr.String()))
 	}
 	what := ""
 	if opts.Dirty {

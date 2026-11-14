@@ -416,6 +416,21 @@ directory the checkout deletes outright is the other shape, and there the files
 it sent go while a build output beside them stays, with rsync's "some files
 vanished" (24) accepted on that pass alone.
 
+## Verify/src container recovery
+
+`verify` and `src` identify their containers with a label derived from the
+invoking machine name, admission store root and local lease scope. A process holding the same
+local lease can remove a matching running leftover; a foreign, missing or
+unreadable label never authorizes that removal. This relies on machine names
+being distinct when two machines use identical admission store paths.
+Changing the machine name or state root requires manual cleanup of an old
+running container. The runtime still arbitrates simultaneous creation of
+the same container name; verify refs remain unique per run.
+
+Accepted because it recovers a locally killed process without guessing
+whether another machine is alive. Revisit if machine-name collisions or
+stronger cross-machine identities are required.
+
 ## Prune and another machine's verify
 
 `internal/remote/prune.go` removes a leftover `refs/verify/<key>/...` ref only
