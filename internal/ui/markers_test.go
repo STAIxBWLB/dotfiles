@@ -120,3 +120,28 @@ func TestRawMarkersUseTheirSemanticRoles(t *testing.T) {
 		}
 	}
 }
+
+func TestCanonicalGlyphLookupIndependentOfLocale(t *testing.T) {
+	before := CanonicalMarkerGlyph("ok")
+	restore, warning := SetPresentation(func(k string) string {
+		if k == "LANG" {
+			return "C"
+		}
+		return ""
+	}, false)
+	if warning != "" {
+		t.Fatal(warning)
+	}
+	defer restore()
+	if MarkPresent != "ok" || CanonicalMarkerGlyph("ok") != before || before == MarkPresent {
+		t.Fatal("canonical glyph depends on mutable locale aliases")
+	}
+	for _, spec := range markerTable {
+		if CanonicalMarkerGlyph(spec.name) != spec.glyph {
+			t.Errorf("missing canonical marker %s", spec.name)
+		}
+	}
+	if CanonicalMarkerGlyph("not-a-marker") != "" {
+		t.Fatal("unknown marker name accepted")
+	}
+}

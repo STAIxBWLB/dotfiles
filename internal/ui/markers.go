@@ -29,15 +29,15 @@ const (
 )
 
 type markerSpec struct {
-	glyph, ascii string
-	role         Role
+	name, glyph, ascii string
+	role               Role
 }
 
 var markerTable = [markerCount]markerSpec{
-	markerPresent: {"✓", "ok", RoleSuccess}, markerFail: {"✗", "x", RoleError}, markerWarn: {"⚠", "!", RoleWarning},
-	markerAbsent: {"-", "-", RoleHint}, markerUnknown: {"?", "?", RoleHint}, markerPending: {"~", "~", RoleHint},
-	markerStarred: {"*", "*", RoleSuccess}, markerNext: {"→", "->", RoleAccent},
-	markerPartial: {":", ":", RoleHint}, markerPreferred: {"+", "+", RoleSuccess}, markerSection: {"▸", ">", RoleSection},
+	markerPresent: {"ok", "✓", "ok", RoleSuccess}, markerFail: {"fail", "✗", "x", RoleError}, markerWarn: {"warn", "⚠", "!", RoleWarning},
+	markerAbsent: {"absent", "-", "-", RoleHint}, markerUnknown: {"unknown", "?", "?", RoleHint}, markerPending: {"pending", "~", "~", RoleHint},
+	markerStarred: {"active", "*", "*", RoleSuccess}, markerNext: {"next", "→", "->", RoleAccent},
+	markerPartial: {"partial", ":", ":", RoleHint}, markerPreferred: {"preferred", "+", "+", RoleSuccess}, markerSection: {"section", "▸", ">", RoleSection},
 }
 var initialMarkers = markersFor(os.Getenv, false)
 
@@ -103,4 +103,16 @@ func RenderMarker(marker string) string {
 		}
 	}
 	return marker
+}
+
+// CanonicalMarkerGlyph returns the immutable UTF-8 glyph from the marker table,
+// independent of the invocation's resolved Mark* strings. Unknown names return
+// an empty string. This also gives conformance tests a stable expectation.
+func CanonicalMarkerGlyph(name string) string {
+	for _, spec := range markerTable {
+		if spec.name == name {
+			return spec.glyph
+		}
+	}
+	return ""
 }

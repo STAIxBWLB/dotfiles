@@ -29,7 +29,7 @@ func TestCommandLocaleAndASCIIMarkers(t *testing.T) {
 		force             bool
 		ok, next, section string
 	}{
-		{"UTF8", "en_US.UTF-8", false, "✓", "→", "▸"},
+		{"UTF8", "en_US.UTF-8", false, ui.CanonicalMarkerGlyph("ok"), ui.CanonicalMarkerGlyph("next"), ui.CanonicalMarkerGlyph("section")},
 		{"LANG C", "C", false, "ok", "->", ">"},
 		{"explicit ASCII", "en_US.UTF-8", true, "ok", "->", ">"},
 	} {
