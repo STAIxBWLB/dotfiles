@@ -90,7 +90,7 @@ func runProfileRoot(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		effective := resolveBackupRoot(cmd, state, home)
-		p.Line("%s", ui.StyleSuccess.Render("✓ backup root cleared"))
+		p.Line("%s", ui.StyleSuccess.Render(ui.MarkPresent+" backup root cleared"))
 		p.Line("  %s  %s", ui.StyleKey.Render("Effective:"), ui.StyleValue.Render(effective))
 
 	case detect:
@@ -102,7 +102,7 @@ func runProfileRoot(cmd *cobra.Command, args []string) error {
 		if err := persistProfileState(cmd, state); err != nil {
 			return err
 		}
-		p.Line("%s", ui.StyleSuccess.Render("✓ backup root set (auto-detected)"))
+		p.Line("%s", ui.StyleSuccess.Render(ui.MarkPresent+" backup root set (auto-detected)"))
 		p.Line("  %s  %s", ui.StyleKey.Render("Root:"), ui.StyleValue.Render(drive))
 
 	case len(args) == 1:
@@ -111,7 +111,7 @@ func runProfileRoot(cmd *cobra.Command, args []string) error {
 		if err := persistProfileState(cmd, state); err != nil {
 			return err
 		}
-		p.Line("%s", ui.StyleSuccess.Render("✓ backup root set"))
+		p.Line("%s", ui.StyleSuccess.Render(ui.MarkPresent+" backup root set"))
 		p.Line("  %s  %s", ui.StyleKey.Render("Root:"), ui.StyleValue.Render(path))
 
 	default:
@@ -256,7 +256,7 @@ func runProfileBackup(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	p := printerFrom(cmd)
-	p.Line("%s", ui.StyleSuccess.Render("✓ snapshot created"))
+	p.Line("%s", ui.StyleSuccess.Render(ui.MarkPresent+" snapshot created"))
 	p.Line("  %s  %s", ui.StyleKey.Render("Version:"), ui.StyleValue.Render(snap.Version))
 	p.Line("  %s  %s", ui.StyleKey.Render("Path:"), ui.StyleValue.Render(snap.Path))
 	if snap.Tag != "" {
@@ -338,20 +338,20 @@ func runProfileRestore(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	p.Line("%s", ui.StyleSuccess.Render("✓ restore complete"))
+	p.Line("%s", ui.StyleSuccess.Render(ui.MarkPresent+" restore complete"))
 	p.Line("  %s  %s", ui.StyleKey.Render("Version:"), ui.StyleValue.Render(snap.Version))
 	p.Line("  %s  %s", ui.StyleKey.Render("Path:"), ui.StyleValue.Render(snap.Path))
 	if snap.Tag != "" {
 		p.Line("  %s  %s", ui.StyleKey.Render("Tag:"), ui.StyleValue.Render(snap.Tag))
 	}
 	if snap.RestoredState {
-		p.Line("  %s  %s", ui.StyleKey.Render("State:"), ui.StyleValue.Render("restored → "+eng.StatePath))
+		p.Line("  %s  %s", ui.StyleKey.Render("State:"), ui.StyleValue.Render("restored "+ui.MarkNext+" "+eng.StatePath))
 	} else {
 		p.Line("  %s  %s", ui.StyleKey.Render("State:"), ui.StyleHint.Render("skipped (--no-state)"))
 	}
 	if includeSecrets {
 		if snap.RestoredSecrets > 0 {
-			p.Line("  %s  %s", ui.StyleKey.Render("Secrets:"), ui.StyleValue.Render(fmt.Sprintf("%d file(s) → %s", snap.RestoredSecrets, eng.SecretsDir)))
+			p.Line("  %s  %s", ui.StyleKey.Render("Secrets:"), ui.StyleValue.Render(fmt.Sprintf("%d file(s) "+ui.MarkNext+" %s", snap.RestoredSecrets, eng.SecretsDir)))
 		} else {
 			p.Warn("  Secrets: requested but snapshot %s contains none", snap.Version)
 		}

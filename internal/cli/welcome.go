@@ -45,7 +45,7 @@ func printWelcome(cmd *cobra.Command, version, commit string) {
 
 func printWelcomeCmd(p *Printer, cmd, desc string) {
 	p.Line("  %s  %s",
-		ui.StyleValue.Bold(true).Render(cmd),
+		ui.StyleAccent.Render(cmd),
 		ui.StyleHint.Render("— "+desc))
 }
 
@@ -194,7 +194,7 @@ var useSections = []useSection{
 		{"dot secrets restore ~/backup", "Decrypt from backup on new machine"},
 	}},
 	{"macOS app management (cask install + settings backup)", "Install apps from an embedded catalog; back up and restore per-app settings.", []usecase{
-		{"dot apps list", "Browse the cask catalog (★ defaults, ✓ installed)"},
+		{"dot apps list", "Browse the cask catalog (defaults and installed apps)"},
 		{"dot apps install", "Interactive checkbox picker -> save selection -> install missing casks"},
 		{"dot apps install raycast obsidian", "Install specific casks by token"},
 		{"dot apps install --defaults", "Install the catalog's default set"},
@@ -206,7 +206,7 @@ var useSections = []useSection{
 	{"Profile snapshots (versioned config backup)", "Snapshot config.yaml, cask lists, and optional age keys into timestamped versions.", []usecase{
 		{"dot profile backup", "Create a new version snapshot under <backup-root>/profiles/<host>/"},
 		{"dot profile backup --tag pre-migration --include-age-key", "Tag the snapshot and include ~/.ssh/age_key*"},
-		{"dot profile list", "List all snapshots for this host (★ marks latest)"},
+		{"dot profile list", "List all snapshots for this host (latest marked active)"},
 		{"dot profile restore", "Restore the latest snapshot (config.yaml -> ~/.config/dotfiles/)"},
 		{"dot profile restore --version 20260416T083412Z --include-age-key", "Restore a specific version including age keys"},
 		{"dot profile prune --keep 5", "Delete snapshots older than the 5 most recent"},
@@ -265,7 +265,7 @@ func section(p *Printer, title, intro string, cases []usecase) {
 	p.Section(title)
 	p.Line("  %s", ui.StyleHint.Render(intro))
 	for _, c := range cases {
-		p.Line("  $ %s", ui.StyleValue.Bold(true).Render(c.cmd))
+		p.Line("  $ %s", ui.StyleAccent.Render(c.cmd))
 		p.Line("    %s", ui.StyleHint.Render(c.desc))
 	}
 }

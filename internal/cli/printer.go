@@ -74,7 +74,7 @@ func (p *Printer) Section(title string) { ui.WriteSection(p.Out, title) }
 // Marker comes from ui.Mark* constants; caller-provided style (if any) is
 // applied to marker via lipgloss Render before calling.
 func (p *Printer) Bullet(marker, text string) {
-	p.Line("  %s  %s", marker, text)
+	p.Line("  %s %s", ui.MarkerColumn(ui.RenderMarker(marker)), text)
 }
 
 // KV renders a styled key/value line. Empty values render as "(unset)" in

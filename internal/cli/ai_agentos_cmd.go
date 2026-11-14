@@ -272,7 +272,7 @@ func skillLinkStatusMarker(status string) (string, interface{ Render(...string) 
 	case aisettings.SkillLinkStatusMissing, aisettings.SkillLinkStatusSourceMissing:
 		return ui.MarkAbsent, ui.StyleHint
 	default:
-		return ui.MarkPartial, ui.StyleHint
+		return ui.MarkUnknown, ui.StyleHint
 	}
 }
 
@@ -320,9 +320,11 @@ func skillStatusMarker(status string) (string, interface{ Render(...string) stri
 	case aisettings.SkillStatusValid:
 		return ui.MarkPresent, ui.StyleSuccess
 	case aisettings.SkillStatusInvalid:
-		return ui.MarkAbsent, ui.StyleError
-	default:
+		return ui.MarkFail, ui.StyleError
+	case aisettings.SkillStatusLegacy:
 		return ui.MarkPartial, ui.StyleHint
+	default:
+		return ui.MarkUnknown, ui.StyleHint
 	}
 }
 

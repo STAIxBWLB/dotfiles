@@ -437,7 +437,7 @@ func (m *ContainerModule) installLinux(ctx context.Context, rc *RunContext, h *c
 			if backendPref == container.BackendDocker {
 				return nil, fmt.Errorf("installing docker: %w", installErr)
 			}
-			fmt.Fprintf(rc.out(), "  ⚠ container: docker install failed (%v); installing podman instead\n", installErr)
+			fmt.Fprintf(rc.out(), "  "+ui.MarkWarn+" container: docker install failed (%v); installing podman instead\n", installErr)
 		} else if backendPref == container.BackendDocker {
 			return nil, fmt.Errorf("docker install declined, and modules.container.backend is docker")
 		}

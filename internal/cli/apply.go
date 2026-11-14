@@ -221,7 +221,7 @@ func runApply(cmd *cobra.Command, _ []string) error {
 	if changed, err := installCompletions(cmd.Root(), runner, home); err != nil {
 		runner.Logger.Warn("installing shell completions failed", "err", err)
 	} else if changed && !dryRun {
-		p.Line("✓ shell completions refreshed in %s", completionDir(home))
+		p.Line(ui.MarkPresent+" shell completions refreshed in %s", completionDir(home))
 	}
 	return nil
 }

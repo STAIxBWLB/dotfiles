@@ -434,7 +434,7 @@ func (o *onestopCtx) restoreProfileStep(version string, includeSecrets bool) (on
 	if err != nil {
 		return onestopStep{Name: "profile", Err: err}, ""
 	}
-	detail := fmt.Sprintf("version %s → %s", snap.Version, eng.StatePath)
+	detail := fmt.Sprintf("version %s "+ui.MarkNext+" %s", snap.Version, eng.StatePath)
 	if snap.PreRestoreBackup != "" {
 		o.p.Line("  %s  %s", ui.StyleKey.Render("Previous:"), ui.StyleHint.Render(snap.PreRestoreBackup))
 	}

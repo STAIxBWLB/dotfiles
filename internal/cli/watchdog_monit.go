@@ -75,7 +75,7 @@ func setupMonitStep(p *Printer, mgr *watchdog.Manager, wcfg config.WatchdogConfi
 	if err := mgr.InstallMonit(ctx, monitPath, monitrc); err != nil {
 		return err
 	}
-	p.Line("  ✓ monit agent installed (load > %g, cpu user > %g%%, system > %g%%, %d cycles)",
+	p.Line("  "+ui.MarkPresent+" monit agent installed (load > %g, cpu user > %g%%, system > %g%%, %d cycles)",
 		settings.Load1Threshold, settings.CPUUserThreshold, settings.CPUSystemThreshold, settings.Cycles)
 	if heal {
 		if err := installScreenSharingHeal(p, mgr); err != nil {
@@ -122,7 +122,7 @@ func installScreenSharingHeal(p *Printer, mgr *watchdog.Manager) error {
 	if err := mgr.InstallScreenSharingHeal(ctx, current.Username); err != nil {
 		return err
 	}
-	p.Line("  ✓ Screen Sharing heal helper installed (sudoers grant %s)", watchdog.ScreenSharingSudoersPath)
+	p.Line("  "+ui.MarkPresent+" Screen Sharing heal helper installed (sudoers grant %s)", watchdog.ScreenSharingSudoersPath)
 	return nil
 }
 

@@ -1,0 +1,15 @@
+
+ [1;34m dot Report [m 
+
+[1;35m▸ State[m
+  [34mProfile:[m                minimal
+  [1;32m✓[m  ready
+  [1;31m✗[m  failed
+  [1;33m⚠[m  warning
+  [90m-[m  absent
+  [90m?[m  unknown
+  [90m~[m  pending
+  [1;32m*[m  active
+  [36m→[m  dot status
+  [90m:[m  partial
+  [1;32m+[m  preferred

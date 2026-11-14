@@ -113,7 +113,7 @@ func runSyncSharedAdd(cmd *cobra.Command, args []string) error {
 		p.Line("No new entries — all already present.")
 	} else {
 		for _, rel := range added {
-			p.Line("✓ added %q", rel)
+			p.Line(ui.MarkPresent+" added %q", rel)
 		}
 	}
 	return nil
@@ -134,7 +134,7 @@ func runSyncSharedRemove(cmd *cobra.Command, args []string) error {
 		p.Line("No matching entries — nothing removed.")
 	} else {
 		for _, rel := range removed {
-			p.Line("✓ removed %q", rel)
+			p.Line(ui.MarkPresent+" removed %q", rel)
 		}
 	}
 	return nil
@@ -166,7 +166,7 @@ func runSyncSharedClear(cmd *cobra.Command, _ []string) error {
 	if err := syncer.SharedClear(bs.Config); err != nil {
 		return err
 	}
-	p.Line("✓ Cleared %d manual entries.", n)
+	p.Line(ui.MarkPresent+" Cleared %d manual entries.", n)
 	return nil
 }
 

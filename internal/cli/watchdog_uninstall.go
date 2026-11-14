@@ -109,6 +109,6 @@ func runWatchdogUninstallForGOOS(cmd *cobra.Command, _ []string, goos string) er
 		}
 		p.Line("Removed watchdog state and logs.")
 	}
-	p.Success("✓ dot watchdog uninstalled")
+	p.Success("%s dot watchdog uninstalled", ui.MarkPresent)
 	return nil
 }

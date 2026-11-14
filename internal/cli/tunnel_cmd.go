@@ -188,7 +188,7 @@ func runTunnelUninstall(cmd *cobra.Command, _ []string) error {
 	if err := config.SaveState(state); err != nil {
 		return fmt.Errorf("saving state: %w", err)
 	}
-	p.Success("✓ dot tunnel uninstalled")
+	p.Success("%s dot tunnel uninstalled", ui.MarkPresent)
 	p.Line("Remote Login was not changed.")
 	p.Line("Remove DNS CNAME records and the Cloudflare Access app manually in the Cloudflare dashboard.")
 	return nil

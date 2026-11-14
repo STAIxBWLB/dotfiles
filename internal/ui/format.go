@@ -15,7 +15,7 @@ const kvKeyWidth = 22 // width of "Pull+intake scheduler:"
 
 // WriteHeader writes a styled report title to w with one leading blank line.
 // The title is rendered with a single space of horizontal padding so the
-// blue StyleHeader background frames the text cleanly.
+// header role frames the text without painting a background.
 func WriteHeader(w io.Writer, title string) {
 	_, _ = fmt.Fprintln(Output(w))
 	_, _ = fmt.Fprintln(Output(w), StyleHeader.Render(" "+title+" "))
@@ -25,7 +25,7 @@ func WriteHeader(w io.Writer, title string) {
 // canonical "▸ " prefix. Callers pass the section name only.
 func WriteSection(w io.Writer, title string) {
 	_, _ = fmt.Fprintln(Output(w))
-	_, _ = fmt.Fprintln(Output(w), StyleSection.Render("▸ "+title))
+	_, _ = fmt.Fprintln(Output(w), StyleSection.Render(MarkSection+" "+title))
 }
 
 // WriteKV writes a styled key/value row at the 2-space top-level indent.

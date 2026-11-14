@@ -7,58 +7,9 @@ import (
 	"regexp"
 
 	"charm.land/huh/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/term"
 
 	"github.com/STAIxBWLB/dotfiles/internal/sliceutil"
-)
-
-// Styles for consistent output across the CLI.
-//
-// Semantic contract for the color layer (glyphs live in markers.go):
-//   - StyleHeader   page/report titles — blue, bold, padded
-//   - StyleSection  section dividers   — purple, bold
-//   - StyleKey      left-side labels in key/value rows
-//   - StyleValue    values in key/value rows, emphasized list items
-//   - StyleSuccess  positive status (MarkPresent, MarkStarred) — green, bold
-//   - StyleWarning  non-fatal attention (MarkWarn) — orange, bold
-//   - StyleError    hard failure / non-zero exit paths (MarkFail) — red, bold
-//   - StyleHint     secondary info, neutral missing, (unset) placeholders
-var (
-	StyleHeader = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#7AA2F7")).
-			BorderForeground(lipgloss.Color("#7AA2F7")).
-			Padding(0, 1)
-
-	// StyleSection intentionally has no MarginTop — the leading blank line is
-	// emitted by cli.Printer.Section / ui.WriteSection so the contract stays
-	// explicit and assertable in tests.
-	StyleSection = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#BB9AF7"))
-
-	StyleKey = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#9ECE6A")).
-			Width(14)
-
-	StyleValue = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#C0CAF5"))
-
-	StyleSuccess = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#9ECE6A")).
-			Bold(true)
-
-	StyleWarning = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#E0AF68")).
-			Bold(true)
-
-	StyleError = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#F7768E")).
-			Bold(true)
-
-	StyleHint = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#565F89"))
 )
 
 // TerminalAttached reports whether the prompts below can run: huh's
