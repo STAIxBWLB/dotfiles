@@ -304,12 +304,18 @@ func withPresentation(cmd *cobra.Command, run func() error) error {
 	return run()
 }
 
-// commandLogger is for library execution details; user-facing diagnostics use
-// Printer.Warn/Fail and remain available without verbose mode.
+// commandLogger hides library execution details by default, while preserving
+// warnings and errors. Dry-run keeps INFO previews visible. User-facing
+// progress remains on the Printer path.
 func commandLogger(cmd *cobra.Command) *slog.Logger {
 	verbose, _ := cmd.Flags().GetBool("verbose")
-	if !verbose {
-		return slog.New(slog.DiscardHandler)
+	level := slog.LevelWarn
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	if dryRun {
+		level = slog.LevelInfo
 	}
-	return slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{Level: slog.LevelDebug}))
+	if verbose {
+		level = slog.LevelDebug
+	}
+	return slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{Level: level}))
 }

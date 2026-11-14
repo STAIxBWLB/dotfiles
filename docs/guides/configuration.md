@@ -268,7 +268,9 @@ and `never` take priority over these environment variables. JSON is always
 uncolored. This follows the [shared CLI output standard](https://github.com/STAIxBWLB/agent-hub/blob/main/docs/design/cli-output.md#color-policy).
 
 Library INFO and debug execution logs are silent by default; `--verbose` exposes
-them on stderr. Human warnings and errors remain visible. Existing local
+them on stderr. `--dry-run` keeps INFO previews visible without `--verbose`,
+so commands and file operations that would run are still listed. Library Warn/Error and human warnings and errors remain
+visible on stderr without `--verbose`. Existing local
 `--verbose` options keep their command-specific behavior (for example, rsync
-progress under `dot sync`). Color filtering applies to dot's UI text, not to
+progress under `dot sync`) and also enable library logs. Color filtering applies to dot's UI text, not to
 raw child-process output forwarded by commands such as `dot remote run`.

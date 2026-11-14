@@ -115,12 +115,16 @@ func TestCommandPresentationRestoresOnFailureAndRoutesLibraryLogs(t *testing.T) 
 		probe := &cobra.Command{Use: "probe", RunE: func(cmd *cobra.Command, _ []string) error {
 			// A library's default logger and the explicit runner path must follow
 			// the same policy, while a user-facing warning remains visible.
+			slog.Debug("library debug")
 			slog.Info("library info")
 			slog.Warn("library warning")
+			slog.Error("library error")
 			runner := exec.NewRunner(true, commandLogger(cmd))
 			if _, err := runner.Run(cmd.Context(), "fixture-command"); err != nil {
 				return err
 			}
+			runner.Logger.Warn("explicit runner warning")
+			runner.Logger.Error("explicit runner error")
 			printerFrom(cmd).Warn("user warning")
 			return errors.New("fixture failure")
 		}}
@@ -137,13 +141,18 @@ func TestCommandPresentationRestoresOnFailureAndRoutesLibraryLogs(t *testing.T) 
 		if err := root.Execute(); err == nil {
 			t.Fatal("missing fixture failure")
 		}
-		for _, message := range []string{"library info", "library warning", "fixture-command"} {
+		for _, message := range []string{"library debug", "library info", "fixture-command"} {
 			if strings.Contains(errOut.String(), message) != verbose {
 				t.Fatalf("verbose=%v, missing/wrong log %s: %s", verbose, message, errOut.String())
 			}
 		}
-		if !strings.Contains(errOut.String(), "user warning") || out.Len() != 0 {
-			t.Fatal("user diagnostic routing changed")
+		for _, message := range []string{"library warning", "library error", "explicit runner warning", "explicit runner error", "user warning"} {
+			if !strings.Contains(errOut.String(), message) {
+				t.Fatalf("verbose=%v: missing diagnostic %q: %s", verbose, message, errOut.String())
+			}
+		}
+		if out.Len() != 0 {
+			t.Fatal("library diagnostics leaked to stdout")
 		}
 		if slog.Default() != previous {
 			t.Fatal("logger leaked after error")
@@ -210,5 +219,61 @@ func TestPresentationRestoresStandardLogBridge(t *testing.T) {
 	log.Print("after")
 	if !strings.Contains(captured.String(), "after") {
 		t.Fatalf("standard logger sink lost: %q", captured.String())
+	}
+}
+
+func TestSecretsRunnerPreservesWarningsAndErrorsWithoutVerbose(t *testing.T) {
+	cmd := &cobra.Command{Use: "secrets"}
+	cmd.Flags().Bool("dry-run", false, "")
+	cmd.Flags().Bool("verbose", false, "")
+	var stderr bytes.Buffer
+	cmd.SetErr(&stderr)
+	runner := secretsRunner(cmd)
+	runner.Logger.Debug("debug trace")
+	runner.Logger.Info("exec trace")
+	runner.Logger.Warn("restore warning")
+	runner.Logger.Error("encryption error")
+	got := stderr.String()
+	if strings.Contains(got, "trace") || !strings.Contains(got, "restore warning") || !strings.Contains(got, "encryption error") {
+		t.Fatalf("secrets diagnostics lost: %q", got)
+	}
+}
+
+func TestDryRunCommandPreviewSurvivesWithoutVerbose(t *testing.T) {
+	cmd := &cobra.Command{Use: "apply"}
+	cmd.Flags().Bool("dry-run", true, "")
+	cmd.Flags().Bool("verbose", false, "")
+	var stderr bytes.Buffer
+	cmd.SetErr(&stderr)
+	runner := exec.NewRunner(true, commandLogger(cmd))
+	if _, err := runner.Run(cmd.Context(), "would-run-command", "--fixture"); err != nil {
+		t.Fatal(err)
+	}
+	runner.Logger.Debug("hidden debug")
+	runner.Logger.Warn("preserved warning")
+	got := stderr.String()
+	for _, want := range []string{"dry-run", "would-run-command --fixture", "preserved warning"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("dry-run omitted %q: %q", want, got)
+		}
+	}
+	if strings.Contains(got, "hidden debug") {
+		t.Fatal("dry-run enabled debug without verbose")
+	}
+}
+
+func TestApplyDryRunListsWouldWriteOperationWithoutVerbose(t *testing.T) {
+	pinColorEnv(t)
+	_, home := newStatusHomeFixture(t)
+	pinNoTerminal(t)
+	out, stderr, err := runDotForTest("--home", home, "apply", "--module", "git", "--dry-run", "--color=never")
+	if err != nil {
+		t.Fatalf("apply dry-run: %v\nstdout:%s\nstderr:%s", err, out, stderr)
+	}
+	if !strings.Contains(out, "Mode: dry-run") || !strings.Contains(stderr, "dry-run: write file") || !strings.Contains(stderr, completionDir(home)) {
+		t.Fatalf("missing would-write preview: %s / %s", out, stderr)
+	}
+	if _, err := os.Stat(completionDir(home)); !os.IsNotExist(err) {
+		t.Fatalf("dry-run wrote completion directory: %v", err)
 	}
 }
