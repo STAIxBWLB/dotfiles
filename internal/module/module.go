@@ -9,6 +9,7 @@ import (
 	"github.com/STAIxBWLB/dotfiles/internal/config"
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
 	"github.com/STAIxBWLB/dotfiles/internal/template"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // Module is the interface that all dotfiles modules must implement.
@@ -149,17 +150,17 @@ func RunAll(ctx context.Context, modules []Module, rc *RunContext) error {
 	for _, m := range modules {
 		check, err := m.Check(ctx, rc)
 		if err != nil {
-			fmt.Fprintf(rc.out(), "  ⚠ %s: check error: %v\n", m.Name(), err)
+			fmt.Fprintf(rc.out(), "  %s %s: check error: %v\n", ui.MarkerColumn(ui.MarkWarn), m.Name(), err)
 			errors = append(errors, fmt.Sprintf("%s: %v", m.Name(), err))
 			continue
 		}
 		if check.Satisfied {
-			fmt.Fprintf(rc.out(), "  ✓ %s: already satisfied\n", m.Name())
+			fmt.Fprintf(rc.out(), "  %s %s: already satisfied\n", ui.MarkerColumn(ui.MarkPresent), m.Name())
 			continue
 		}
 
 		for _, c := range check.Changes {
-			fmt.Fprintf(rc.out(), "  → %s: %s\n", m.Name(), c.Description)
+			fmt.Fprintf(rc.out(), "  %s %s: %s\n", ui.MarkerColumn(ui.MarkNext), m.Name(), c.Description)
 		}
 
 		if rc.DryRun {
@@ -168,13 +169,13 @@ func RunAll(ctx context.Context, modules []Module, rc *RunContext) error {
 
 		result, err := m.Apply(ctx, rc)
 		if err != nil {
-			fmt.Fprintf(rc.out(), "  ✗ %s: %v\n", m.Name(), err)
+			fmt.Fprintf(rc.out(), "  %s %s: %v\n", ui.MarkerColumn(ui.MarkFail), m.Name(), err)
 			errors = append(errors, fmt.Sprintf("%s: %v", m.Name(), err))
 			continue
 		}
 		if result.Changed {
 			for _, msg := range result.Messages {
-				fmt.Fprintf(rc.out(), "  ✓ %s: %s\n", m.Name(), msg)
+				fmt.Fprintf(rc.out(), "  %s %s: %s\n", ui.MarkerColumn(ui.MarkPresent), m.Name(), msg)
 			}
 		}
 	}

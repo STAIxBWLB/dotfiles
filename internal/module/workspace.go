@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 	"github.com/STAIxBWLB/dotfiles/internal/ws"
 )
 
@@ -154,7 +155,7 @@ func (m *WorkspaceModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResu
 		})
 		messages = append(messages, initMsgs...)
 		if err != nil {
-			fmt.Fprintf(rc.out(), "  ⚠ workspace: ws.Init: %v (continuing)\n", err)
+			fmt.Fprintf(rc.out(), "  "+ui.MarkWarn+" workspace: ws.Init: %v (continuing)\n", err)
 		}
 	}
 

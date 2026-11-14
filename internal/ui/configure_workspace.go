@@ -181,7 +181,7 @@ func configureWorkspaceSymlinkAndRepos(state *config.UserState, yes bool) error 
 		keepCurrent := false
 		currentTarget := readSymlinkTarget(expandedPath)
 		if currentTarget != "" {
-			printLine(StyleHint.Render(fmt.Sprintf("  Current symlink: %s → %s", state.Modules.Workspace.Path, currentTarget)))
+			printLine(StyleHint.Render(fmt.Sprintf("  Current symlink: %s "+MarkNext+" %s", state.Modules.Workspace.Path, currentTarget)))
 
 			keepCurrent, err = ConfirmBool("Keep existing symlink?", true, false)
 			if err != nil {
@@ -201,7 +201,7 @@ func configureWorkspaceSymlinkAndRepos(state *config.UserState, yes bool) error 
 				"  Optional: make %s itself a symlink pointing elsewhere\n"+
 					"  (e.g. into cloud-storage). Leave blank to keep %s as a real directory.",
 				state.Modules.Workspace.Path, state.Modules.Workspace.Path)))
-			prompt := fmt.Sprintf("Symlink %s → (blank to skip)", state.Modules.Workspace.Path)
+			prompt := fmt.Sprintf("Symlink %s "+MarkNext+" (blank to skip)", state.Modules.Workspace.Path)
 			state.Modules.Workspace.Symlink, err = Input(prompt, symlinkDefault, false)
 			if err != nil {
 				return err

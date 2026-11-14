@@ -151,7 +151,7 @@ func newRegisterCmd() *cobra.Command {
 			}
 
 			proj := cfg.FindProject(name)
-			printerFrom(cmd).Line("Registered project %q → %s", name, proj.Path)
+			printerFrom(cmd).Line("Registered project %q "+ui.MarkNext+" %s", name, proj.Path)
 			return nil
 		},
 	}

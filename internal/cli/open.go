@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 	"github.com/STAIxBWLB/dotfiles/internal/workspace"
 	"github.com/spf13/cobra"
 )
@@ -78,7 +79,7 @@ func runOpen(cmd *cobra.Command, args []string) error {
 		if err := cfg.Save(); err != nil {
 			return fmt.Errorf("saving config: %w", err)
 		}
-		p.Line("  Registered project %q → %s", name, cwd)
+		p.Line("  Registered project %q "+ui.MarkNext+" %s", name, cwd)
 		proj = cfg.FindProject(name)
 	}
 

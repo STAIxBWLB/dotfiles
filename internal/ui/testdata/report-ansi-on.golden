@@ -1,0 +1,18 @@
+[
+  "\n",
+  " \u001b[1;34m dot Report \u001b[m \n",
+  "\n",
+  "\u001b[1;35m▸ State\u001b[m\n",
+  "  \u001b[34mProfile:\u001b[m                minimal\n",
+  "  \u001b[1;32m✓\u001b[m  ready\n",
+  "  \u001b[1;31m✗\u001b[m  failed\n",
+  "  \u001b[1;33m⚠\u001b[m  warning\n",
+  "  \u001b[90m-\u001b[m  absent\n",
+  "  \u001b[90m?\u001b[m  unknown\n",
+  "  \u001b[90m~\u001b[m  pending\n",
+  "  \u001b[1;32m*\u001b[m  active\n",
+  "  \u001b[36m→\u001b[m  dot status\n",
+  "  \u001b[90m:\u001b[m  partial\n",
+  "  \u001b[1;32m+\u001b[m  preferred\n",
+  ""
+]

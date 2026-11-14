@@ -252,12 +252,16 @@ func scopeProfileFlags(root *cobra.Command) {
 // handlers. Local verbose flags keep their existing names and meanings.
 func configurePresentation(root *cobra.Command) {
 	mode := ui.ColorAuto
+	root.PersistentFlags().Bool("ascii", false, "Use ASCII markers regardless of locale")
 	root.PersistentFlags().Var(&mode, "color", "Color output: auto, always or never")
 	root.PersistentFlags().Bool("verbose", false, "Show library and debug logs on stderr")
 	bindPresentation(root)
 	defaultHelp := root.HelpFunc()
 	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		_ = withPresentation(cmd, func() error { defaultHelp(cmd, args); return nil })
+		if err := withPresentation(cmd, func() error { defaultHelp(cmd, args); return nil }); err != nil {
+			fmt.Fprintln(cmd.ErrOrStderr(), "dot:", err)
+			defaultHelp(cmd, args)
+		}
 	})
 }
 
@@ -268,16 +272,19 @@ func bindPresentation(cmd *cobra.Command) {
 		cmd.RunE = func(c *cobra.Command, args []string) error {
 			return withPresentation(c, func() error { return run(c, args) })
 		}
-	}
-	if run := cmd.Run; run != nil {
-		cmd.Run = func(c *cobra.Command, args []string) {
-			_ = withPresentation(c, func() error { run(c, args); return nil })
+	} else if run := cmd.Run; run != nil {
+		// Adapt Run into RunE so a future wrapper error cannot be discarded.
+		cmd.Run = nil
+		cmd.RunE = func(c *cobra.Command, args []string) error {
+			return withPresentation(c, func() error { run(c, args); return nil })
 		}
 	}
 	for _, child := range cmd.Commands() {
 		bindPresentation(child)
 	}
 }
+
+type presentationWarningKey struct{}
 
 // withPresentation scopes the process logger and native UI policy even on
 // failure. Printer binds each human-output stream independently. Raw child
@@ -288,6 +295,22 @@ func withPresentation(cmd *cobra.Command, run func() error) error {
 		mode = ui.ColorMode(value)
 	}
 	json, _ := cmd.Flags().GetBool("json")
+	ascii, _ := cmd.Flags().GetBool("ascii")
+	restorePresentation, warning := ui.SetPresentation(os.Getenv, ascii)
+	defer restorePresentation()
+	if warning != "" {
+		previousContext := cmd.Context()
+		ctx := previousContext
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		warned, _ := ctx.Value(presentationWarningKey{}).(bool)
+		if !warned {
+			fmt.Fprintln(cmd.ErrOrStderr(), "dot: warning:", warning)
+			cmd.SetContext(context.WithValue(ctx, presentationWarningKey{}, true))
+			defer cmd.SetContext(previousContext)
+		}
+	}
 	restoreColor := ui.SetColorPolicy(mode, json)
 	defer restoreColor()
 	previous := slog.Default()

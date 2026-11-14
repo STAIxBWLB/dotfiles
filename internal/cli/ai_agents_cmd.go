@@ -386,7 +386,7 @@ func agentDriftMarker(drift string) (string, interface{ Render(...string) string
 	case "target-missing", "ssot-missing":
 		return ui.MarkAbsent, ui.StyleHint
 	default:
-		return ui.MarkPartial, ui.StyleHint
+		return ui.MarkUnknown, ui.StyleHint
 	}
 }
 

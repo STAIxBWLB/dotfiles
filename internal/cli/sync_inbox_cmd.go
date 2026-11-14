@@ -91,7 +91,7 @@ func runSyncInboxForget(cmd *cobra.Command, args []string) error {
 	}
 	p := printerFrom(cmd)
 	if dropped {
-		p.Line("✓ forgot %q — next intake will re-stage it if mirror still has it", rel)
+		p.Line(ui.MarkPresent+" forgot %q — next intake will re-stage it if mirror still has it", rel)
 	} else {
 		p.Line("no entry for %q in imports.manifest — nothing to forget", rel)
 	}
@@ -125,6 +125,6 @@ func runSyncInboxClear(cmd *cobra.Command, _ []string) error {
 	if err := syncer.ClearImportsAndTombstones(cfg.LocalPaths); err != nil {
 		return err
 	}
-	p.Line("✓ cleared %d imports + %d tombstones.", imports, tomb)
+	p.Line(ui.MarkPresent+" cleared %d imports + %d tombstones.", imports, tomb)
 	return nil
 }

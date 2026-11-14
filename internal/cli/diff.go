@@ -155,7 +155,7 @@ func printPlanSummary(p *Printer, plan *modulePlan) {
 		}
 		p.Bullet(marker, fmt.Sprintf("%-15s %s", ui.StyleValue.Render(m.Name()), detail))
 		for _, c := range r.Changes {
-			p.Line("      → %s", c.Description)
+			p.Line("      "+ui.MarkNext+" %s", c.Description)
 		}
 	}
 
@@ -187,7 +187,7 @@ func printPlanDiff(p *Printer, plan *modulePlan) {
 		p.Bullet(marker, fmt.Sprintf("%-15s %s", ui.StyleValue.Render(m.Name()),
 			ui.StyleWarning.Render(fmt.Sprintf("%d pending change(s)", len(r.Changes)))))
 		for _, c := range r.Changes {
-			p.Line("      → %s", c.Description)
+			p.Line("      "+ui.MarkNext+" %s", c.Description)
 			if c.Command != "" {
 				p.Line("        $ %s", c.Command)
 			}

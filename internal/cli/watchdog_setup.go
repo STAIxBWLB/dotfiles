@@ -154,7 +154,7 @@ func runWatchdogSetupForGOOS(cmd *cobra.Command, _ []string, goos string) error 
 			return err
 		}
 	}
-	p.Success("✓ dot watchdog setup complete (mode: %s)", settings.Mode)
+	p.Success(ui.MarkPresent+" dot watchdog setup complete (mode: %s)", settings.Mode)
 	p.Line("Check with: dot watchdog status · Logs: dot watchdog log")
 	return nil
 }
@@ -242,7 +242,7 @@ func runWatchdogNotify(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	p := printerFrom(cmd)
-	p.Success("✓ notification sent (%s)", args[0])
+	p.Success(ui.MarkPresent+" notification sent (%s)", args[0])
 	return nil
 }
 

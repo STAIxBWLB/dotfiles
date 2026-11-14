@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/STAIxBWLB/dotfiles/internal/tunnel"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 func newTunnelClientCmd() *cobra.Command {
@@ -47,7 +48,7 @@ func runTunnelClientAdd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if added {
-		p.Success("✓ added %s", hostname)
+		p.Success(ui.MarkPresent+" added %s", hostname)
 	} else {
 		p.Line("%s is already configured; existing block left untouched.", hostname)
 	}
@@ -110,7 +111,7 @@ func runTunnelClientRemove(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if removed {
-		p.Success("✓ removed %s", hostname)
+		p.Success(ui.MarkPresent+" removed %s", hostname)
 	} else {
 		p.Line("%s was not configured.", hostname)
 	}

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // globalNpmPackages are installed globally when npm is available.
@@ -170,11 +172,11 @@ func (m *NodeModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, e
 	fnmAvailable := rc.Runner.CommandExists("fnm")
 	if fnmAvailable && !fnmHasInstalledVersion(ctx, rc) {
 		if err := rc.Runner.RunAttached(ctx, "fnm", "install", "--lts"); err != nil {
-			messages = append(messages, fmt.Sprintf("⚠ fnm install --lts failed: %v", err))
+			messages = append(messages, fmt.Sprintf(ui.MarkWarn+" fnm install --lts failed: %v", err))
 		} else {
 			messages = append(messages, "installed Node.js LTS via fnm")
 			if _, err := rc.Runner.Run(ctx, "fnm", "default", "lts-latest"); err != nil {
-				messages = append(messages, fmt.Sprintf("⚠ fnm default lts-latest failed: %v", err))
+				messages = append(messages, fmt.Sprintf(ui.MarkWarn+" fnm default lts-latest failed: %v", err))
 			}
 		}
 	}
@@ -188,7 +190,7 @@ func (m *NodeModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, e
 				continue
 			}
 			if _, err := rc.Runner.Run(ctx, "fnm", "exec", "--using=default", "--", "npm", "install", "-g", pkg); err != nil {
-				messages = append(messages, fmt.Sprintf("⚠ failed to install %s: %v", pkg, err))
+				messages = append(messages, fmt.Sprintf(ui.MarkWarn+" failed to install %s: %v", pkg, err))
 			} else {
 				messages = append(messages, fmt.Sprintf("installed global npm: %s", pkg))
 			}
@@ -199,13 +201,13 @@ func (m *NodeModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, e
 				continue
 			}
 			if _, err := rc.Runner.Run(ctx, "npm", "install", "-g", pkg); err != nil {
-				messages = append(messages, fmt.Sprintf("⚠ failed to install %s: %v", pkg, err))
+				messages = append(messages, fmt.Sprintf(ui.MarkWarn+" failed to install %s: %v", pkg, err))
 			} else {
 				messages = append(messages, fmt.Sprintf("installed global npm: %s", pkg))
 			}
 		}
 	default:
-		messages = append(messages, "⚠ npm not found — skipping global package install (install node via fnm first)")
+		messages = append(messages, ui.MarkWarn+" npm not found — skipping global package install (install node via fnm first)")
 	}
 
 	return &ApplyResult{Changed: len(messages) > 0, Messages: messages}, nil

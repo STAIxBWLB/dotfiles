@@ -84,7 +84,7 @@ func runSyncTarget(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	p.Line("%s", ui.StyleSuccess.Render("✓ sync target set"))
+	p.Line("%s", ui.StyleSuccess.Render(ui.MarkPresent+" sync target set"))
 	p.KV("Target", target.String())
 	return nil
 }
