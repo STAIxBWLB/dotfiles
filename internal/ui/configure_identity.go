@@ -92,9 +92,9 @@ func ConfigureSSH(state *config.UserState, home string, yes bool) error {
 	}
 
 	if len(keys) > 0 && !yes {
-		fmt.Println(StyleHint.Render(fmt.Sprintf("  Found %d SSH key(s):", len(keys))))
+		printLine(StyleHint.Render(fmt.Sprintf("  Found %d SSH key(s):", len(keys))))
 		for _, k := range keys {
-			fmt.Println(StyleHint.Render("    • " + k))
+			printLine(StyleHint.Render("    • " + k))
 		}
 
 		options := make([]string, len(keys))

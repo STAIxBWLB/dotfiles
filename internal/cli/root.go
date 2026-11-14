@@ -5,12 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
+
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // ErrUnknownCommand is returned by Execute when argv names no registered
@@ -111,6 +114,7 @@ Also available as 'dotfiles' for back-compat.`,
 	// Dual-workspace ops
 	root.AddCommand(newWorkspaceDualCmd())
 
+	configurePresentation(root)
 	return root
 }
 
@@ -241,4 +245,62 @@ func scopeProfileFlags(root *cobra.Command) {
 		}
 	}
 	walk(root, "")
+}
+
+// configurePresentation registers invocation-wide policy before binding the
+// handlers. Local verbose flags keep their existing names and meanings.
+func configurePresentation(root *cobra.Command) {
+	mode := ui.ColorAuto
+	root.PersistentFlags().Var(&mode, "color", "Color output: auto, always or never")
+	root.PersistentFlags().Bool("verbose", false, "Show library and debug logs on stderr")
+	bindPresentation(root)
+	defaultHelp := root.HelpFunc()
+	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		_ = withPresentation(cmd, func() error { defaultHelp(cmd, args); return nil })
+	})
+}
+
+// bindPresentation scopes the registered handlers rather than relying on a
+// post-run hook, which cobra skips when a handler returns an error.
+func bindPresentation(cmd *cobra.Command) {
+	if run := cmd.RunE; run != nil {
+		cmd.RunE = func(c *cobra.Command, args []string) error {
+			return withPresentation(c, func() error { return run(c, args) })
+		}
+	}
+	if run := cmd.Run; run != nil {
+		cmd.Run = func(c *cobra.Command, args []string) {
+			_ = withPresentation(c, func() error { run(c, args); return nil })
+		}
+	}
+	for _, child := range cmd.Commands() {
+		bindPresentation(child)
+	}
+}
+
+// withPresentation scopes the process logger and native UI policy even on
+// failure. Printer binds each human-output stream independently. Raw child
+// process payloads keep their original writers. The CLI runs one command per process.
+func withPresentation(cmd *cobra.Command, run func() error) error {
+	mode := ui.ColorAuto
+	if value, err := cmd.Flags().GetString("color"); err == nil {
+		mode = ui.ColorMode(value)
+	}
+	json, _ := cmd.Flags().GetBool("json")
+	restoreColor := ui.SetColorPolicy(mode, json)
+	defer restoreColor()
+	previous := slog.Default()
+	slog.SetDefault(commandLogger(cmd))
+	defer slog.SetDefault(previous)
+	return run()
+}
+
+// commandLogger is for library execution details; user-facing diagnostics use
+// Printer.Warn/Fail and remain available without verbose mode.
+func commandLogger(cmd *cobra.Command) *slog.Logger {
+	verbose, _ := cmd.Flags().GetBool("verbose")
+	if !verbose {
+		return slog.New(slog.DiscardHandler)
+	}
+	return slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{Level: slog.LevelDebug}))
 }

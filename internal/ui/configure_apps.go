@@ -21,8 +21,8 @@ func ConfigureAI(state *config.UserState, yes bool, freshDefault bool) error {
 	}
 
 	if !yes {
-		fmt.Println(StyleHint.Render("  Enables shell aliases and assistant config files; app installation is managed by `dot apps`."))
-		fmt.Println(StyleHint.Render("  Managed files: ~/.config/shell/30-ai.sh, ~/.config/claude/settings.json"))
+		printLine(StyleHint.Render("  Enables shell aliases and assistant config files; app installation is managed by `dot apps`."))
+		printLine(StyleHint.Render("  Managed files: ~/.config/shell/30-ai.sh, ~/.config/claude/settings.json"))
 	}
 
 	var err error
@@ -54,7 +54,7 @@ func ConfigureAI(state *config.UserState, yes bool, freshDefault bool) error {
 	case "path":
 		modeDefault = "custom path"
 	}
-	fmt.Println(StyleHint.Render("  Skills SSOT is only used by the read-only `dot ai skills` diagnostics; the Maru app manages runtime symlinks."))
+	printLine(StyleHint.Render("  Skills SSOT is only used by the read-only `dot ai skills` diagnostics; the Maru app manages runtime symlinks."))
 	mode, err := Select("Skills SSOT",
 		[]string{"none", "maru", "custom path"}, modeDefault, false)
 	if err != nil {
@@ -138,7 +138,7 @@ func ConfigureTerminal(state *config.UserState, profile string, system *config.S
 		}
 	}
 	if !yes {
-		fmt.Println(StyleHint.Render("  Sets $EDITOR; zed/code are installed as casks on macOS via `dot apps`."))
+		printLine(StyleHint.Render("  Sets $EDITOR; zed/code are installed as casks on macOS via `dot apps`."))
 	}
 	state.Modules.Editor, err = Select("Default editor",
 		[]string{"zed", "code", "vi"}, editorDefault, yes)
@@ -233,8 +233,8 @@ func ConfigureSecrets(state *config.UserState, home, profile string, yes bool) e
 	ageKeys := detectAgeKeys(home)
 
 	if len(ageKeys) == 0 && state.Secrets.AgeIdentity == "" {
-		fmt.Println(StyleHint.Render("  No age keys found. Skipping secrets configuration."))
-		fmt.Println(StyleHint.Render("  Create one later with: age-keygen -o ~/.ssh/age_key"))
+		printLine(StyleHint.Render("  No age keys found. Skipping secrets configuration."))
+		printLine(StyleHint.Render("  Create one later with: age-keygen -o ~/.ssh/age_key"))
 		return nil
 	}
 
@@ -254,9 +254,9 @@ func ConfigureSecrets(state *config.UserState, home, profile string, yes bool) e
 	}
 
 	if len(ageKeys) > 0 && !yes {
-		fmt.Println(StyleHint.Render(fmt.Sprintf("  Found %d age key(s):", len(ageKeys))))
+		printLine(StyleHint.Render(fmt.Sprintf("  Found %d age key(s):", len(ageKeys))))
 		for _, k := range ageKeys {
-			fmt.Println(StyleHint.Render("    • " + k))
+			printLine(StyleHint.Render("    • " + k))
 		}
 
 		options := make([]string, len(ageKeys))
@@ -297,7 +297,7 @@ func ConfigureSecrets(state *config.UserState, home, profile string, yes bool) e
 	}
 
 	if recipientDefault != "" {
-		fmt.Println(StyleHint.Render(fmt.Sprintf("  Public key: %s", recipientDefault)))
+		printLine(StyleHint.Render(fmt.Sprintf("  Public key: %s", recipientDefault)))
 		state.Secrets.AgeRecipients = []string{recipientDefault}
 	} else if !yes {
 		recipient, err := Input("Age recipient (public key, blank to skip)", "", false)
@@ -328,7 +328,7 @@ func ConfigureMacApps(state *config.UserState, home, profile string, yes bool) e
 
 	cat, err := catalog.LoadMacApps()
 	if err != nil {
-		fmt.Println(StyleWarning.Render("  catalog load failed: " + err.Error()))
+		printLine(StyleWarning.Render("  catalog load failed: " + err.Error()))
 		return nil
 	}
 
@@ -368,7 +368,7 @@ func ConfigureMacApps(state *config.UserState, home, profile string, yes bool) e
 	}
 
 	if !yes {
-		fmt.Println(StyleHint.Render(fmt.Sprintf("  Catalog: %d apps across %d groups", len(tokens), len(cat.Groups))))
+		printLine(StyleHint.Render(fmt.Sprintf("  Catalog: %d apps across %d groups", len(tokens), len(cat.Groups))))
 	}
 	selected, err := MultiSelect("Select apps to install", tokens, valid, yes)
 	if err != nil {

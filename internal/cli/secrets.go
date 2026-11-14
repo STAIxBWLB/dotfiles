@@ -3,8 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"os"
 	"strings"
 	"time"
 
@@ -35,10 +33,7 @@ func newSecretsCmd() *cobra.Command {
 // Honors the global --dry-run flag: when dry-run, commands are printed but not executed.
 func secretsRunner(cmd *cobra.Command) *exec.Runner {
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}))
-	return exec.NewRunner(dryRun, logger)
+	return exec.NewRunner(dryRun, commandLogger(cmd))
 }
 
 // renderSecretsEvent turns one engine step outcome into the line the report

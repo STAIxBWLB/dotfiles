@@ -9,9 +9,9 @@ import (
 
 // PrintStateSummary displays the current configuration summary with styled output.
 func PrintStateSummary(state *config.UserState) {
-	fmt.Println()
-	fmt.Println(StyleHeader.Render(" Configuration Summary "))
-	fmt.Println()
+	printLine()
+	printLine(StyleHeader.Render(" Configuration Summary "))
+	printLine()
 
 	printKV("Profile", state.Profile)
 	printKV("Name", state.Name)
@@ -62,5 +62,5 @@ func PrintStateSummary(state *config.UserState) {
 			printKV("Backup root", state.Modules.MacApps.BackupRoot)
 		}
 	}
-	fmt.Println()
+	printLine()
 }
