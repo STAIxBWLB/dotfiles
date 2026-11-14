@@ -182,3 +182,36 @@ func TestInvalidThemeDoesNotHideHelp(t *testing.T) {
 		t.Fatalf("help hidden by theme error: %q, %q, %v", out, stderr, err)
 	}
 }
+
+func TestInvalidThemeWarnsAndRunsRunAndRunECommands(t *testing.T) {
+	pinColorEnv(t)
+	t.Setenv("DOT_COLOR_THEME", "tokyo")
+	t.Setenv("LC_ALL", "en_US.UTF-8")
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		payload string
+	}{
+		{"Run", []string{"version", "--color=always"}, "dot dev (test)"},
+		{"RunE", []string{"usecase", "--color=always"}, "dot Use Cases"},
+		{"RunE help", []string{"peer", "--color=always"}, "Usage:"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out, stderr, err := runDotForTest(tc.args...)
+			if err != nil || !strings.Contains(out, tc.payload) {
+				t.Fatalf("cosmetic theme blocked command: out=%q err=%v", out, err)
+			}
+			if strings.Count(stderr, "dot: warning:") != 1 {
+				t.Fatalf("expected one warning: %q", stderr)
+			}
+			for _, want := range []string{`"tokyo"`, "using ansi", "tokyo-night-dark", "tokyo-night-light"} {
+				if !strings.Contains(stderr, want) {
+					t.Errorf("warning lacks %q: %s", want, stderr)
+				}
+			}
+			if strings.Contains(out, "38;2;") {
+				t.Fatal("fallback still used a truecolor theme")
+			}
+		})
+	}
+}

@@ -272,16 +272,19 @@ func bindPresentation(cmd *cobra.Command) {
 		cmd.RunE = func(c *cobra.Command, args []string) error {
 			return withPresentation(c, func() error { return run(c, args) })
 		}
-	}
-	if run := cmd.Run; run != nil {
-		cmd.Run = func(c *cobra.Command, args []string) {
-			_ = withPresentation(c, func() error { run(c, args); return nil })
+	} else if run := cmd.Run; run != nil {
+		// Adapt Run into RunE so a future wrapper error cannot be discarded.
+		cmd.Run = nil
+		cmd.RunE = func(c *cobra.Command, args []string) error {
+			return withPresentation(c, func() error { run(c, args); return nil })
 		}
 	}
 	for _, child := range cmd.Commands() {
 		bindPresentation(child)
 	}
 }
+
+type presentationWarningKey struct{}
 
 // withPresentation scopes the process logger and native UI policy even on
 // failure. Printer binds each human-output stream independently. Raw child
@@ -293,11 +296,21 @@ func withPresentation(cmd *cobra.Command, run func() error) error {
 	}
 	json, _ := cmd.Flags().GetBool("json")
 	ascii, _ := cmd.Flags().GetBool("ascii")
-	restorePresentation, err := ui.SetPresentation(os.Getenv, ascii)
-	if err != nil {
-		return err
-	}
+	restorePresentation, warning := ui.SetPresentation(os.Getenv, ascii)
 	defer restorePresentation()
+	if warning != "" {
+		previousContext := cmd.Context()
+		ctx := previousContext
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		warned, _ := ctx.Value(presentationWarningKey{}).(bool)
+		if !warned {
+			fmt.Fprintln(cmd.ErrOrStderr(), "dot: warning:", warning)
+			cmd.SetContext(context.WithValue(ctx, presentationWarningKey{}, true))
+			defer cmd.SetContext(previousContext)
+		}
+	}
 	restoreColor := ui.SetColorPolicy(mode, json)
 	defer restoreColor()
 	previous := slog.Default()

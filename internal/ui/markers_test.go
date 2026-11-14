@@ -75,14 +75,14 @@ func TestMarkerAlphabetAndTwoCellColumns(t *testing.T) {
 
 func TestMarkerSelectionScopedWithoutRewritingValues(t *testing.T) {
 	before := captureMarkers()
-	restore, err := SetPresentation(func(k string) string {
+	restore, warning := SetPresentation(func(k string) string {
 		if k == "LANG" {
 			return "C"
 		}
 		return ""
 	}, false)
-	if err != nil {
-		t.Fatal(err)
+	if warning != "" {
+		t.Fatal(warning)
 	}
 	var out bytes.Buffer
 	WriteKV(NewColorWriter(&out, ColorNever, false), "Path", "some→path")
@@ -99,14 +99,14 @@ func TestMarkerSelectionScopedWithoutRewritingValues(t *testing.T) {
 }
 
 func TestRawMarkersUseTheirSemanticRoles(t *testing.T) {
-	restore, err := SetPresentation(func(k string) string {
+	restore, warning := SetPresentation(func(k string) string {
 		if k == "LANG" {
 			return "C"
 		}
 		return ""
 	}, false)
-	if err != nil {
-		t.Fatal(err)
+	if warning != "" {
+		t.Fatal(warning)
 	}
 	defer restore()
 	current := captureMarkers()

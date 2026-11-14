@@ -275,7 +275,6 @@ visible on stderr without `--verbose`. Existing local
 progress under `dot sync`) and also enable library logs. Color filtering applies to dot's UI text, not to
 raw child-process output forwarded by commands such as `dot remote run`.
 
-
 ## CLI roles and markers
 
 Human output uses nine semantic roles on the terminal's 16 ANSI colors by
@@ -288,7 +287,9 @@ Tokyo Night is optional: set `DOT_COLOR_THEME=tokyo-night-dark` for a terminal
 background of `#1A1B26` and default foreground `#C0CAF5`, or
 `DOT_COLOR_THEME=tokyo-night-light` for background `#E1E2E7` and foreground
 `#343B58`.
-`DOT_COLOR_THEME=ansi` (or unset) uses the default roles. These opt-in palettes
+`DOT_COLOR_THEME=ansi` (or unset) uses the default roles. An unknown value
+prints one warning on stderr and falls back to ANSI without stopping the
+command. These opt-in palettes
 are tested against their reference backgrounds at 4.5:1 contrast per role,
 with a 3:1 minimum for hint. Dot never paints the default value foreground or a background, or detects/selects
 one of these themes automatically; choose the variant matching your terminal.
@@ -297,6 +298,8 @@ Markers remain distinct without color: absent `-`, unknown `?`, pending `~`,
 active `*`, partial `:` and preferred `+`. UTF-8 output also uses `✓` for ok,
 `✗` for failure, `⚠` for warning and `→` for a next step. A non-UTF-8 locale
 (checked in order: `LC_ALL`, `LC_CTYPE`, `LANG`) selects `ok`, `x`, `!`, `->`
-and `>` for sections. `--ascii` forces these forms in a UTF-8 locale too.
+and `>` for sections. If all three locale variables are unset or empty,
+ASCII is used (the POSIX locale). `--ascii` forces these forms in a UTF-8
+locale too.
 The marker column reserves two cells, including `ok` and `->`. Marker
 selection changes UI markers, never user-provided values or raw child output.
