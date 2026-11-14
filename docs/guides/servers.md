@@ -210,7 +210,9 @@ The container starts as root only to make the checkout and hand it to your host
 UID and GID, then drops to that user with no capabilities before the command
 runs. Before pushing, `verify` refuses an ssh account with UID 0 (change
 `remote.hosts.<host>.ssh`) and checks that the image has a passwd entry for
-the host UID. Build the image with that UID and GID if this check fails.
+the host UID using `getent` in the image. The image needs `getent` installed
+and an account built with the host UID and GID. If the host cannot report its
+UID/GID, check the ssh account and its `id` command first.
 The bare repository is mounted read-only, and the host's caches are
 mounted as for a run. `verify` and `run` of one checkout hold the same path
 lease, so they exclude each other; the host's `max_runs` and load check apply
@@ -236,7 +238,9 @@ lease removes its own running leftover before starting. A running container
 with another owner, no label, or an unreadable label is left alone and the
 job defers. `dot remote status` reports the actual verify or src container
 name alongside its local lease. Interrupting a verify push exits with
-128 plus the signal number and still attempts ref cleanup.
+128 plus the signal number and still attempts ref cleanup. A push that fails
+without a signal exits 1, with its diagnostic and a retry step; only the
+verification command's own exit status is passed through.
 
 ### Limits and interrupts
 

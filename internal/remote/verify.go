@@ -354,7 +354,7 @@ func (d Deps) Verify(ctx context.Context, cfg Config, opts VerifyOptions) error 
 		return fmt.Errorf("pushing %s to %s: %w", shortSHA(sha), h.Name, err)
 	}
 	if exit != 0 {
-		return &ExitCode{Code: exit, Err: fmt.Errorf("pushing %s to %s exited %d: %s", shortSHA(sha), h.Name, exit, tail(pushErr.String()))}
+		return fmt.Errorf("pushing %s to %s exited %d: %s; check ssh access and remote repository permissions, then retry `dot remote verify`", shortSHA(sha), h.Name, exit, tail(pushErr.String()))
 	}
 	what := ""
 	if opts.Dirty {

@@ -21,7 +21,7 @@ func TestVerifyRefusesRootAndMissingImageAccountBeforePush(t *testing.T) {
 	for _, tc := range []struct{ identity, want string }{
 		{"root", "remote.hosts.buildbox.ssh"},
 		{"missing\t1234:5678", "build the image with the host UID and GID"},
-		{"unknown", "no verified passwd entry"},
+		{"unknown", "could not determine the ssh account's UID/GID"},
 	} {
 		t.Run(tc.identity, func(t *testing.T) {
 			f, repo := verifyFixture(t)
@@ -185,36 +185,56 @@ func TestSnapshotDirtyExcludesMatchRunRsyncFilters(t *testing.T) {
 	}
 }
 
-func TestVerifyInterruptedPushKeepsSignalStatusAndCleansRefs(t *testing.T) {
-	f, repo := verifyFixture(t)
-	f.cfg.Projects[0].Base = "main"
-	d := f.verifyDeps()
-	original := d.Exec
-	d.Exec = func(ctx context.Context, argv []string, in io.Reader, out, errOut io.Writer) (int, syscall.Signal, error) {
-		if hasArg(argv, "push") {
-			return execAttached(ctx, []string{"sh", "-c", "kill -INT $$"}, in, out, errOut)
-		}
-		return original(ctx, argv, in, out, errOut)
-	}
-	err := d.Verify(context.Background(), f.cfg, VerifyOptions{Path: repo, HostName: f.host.Name})
-	var code *ExitCode
-	if !errors.As(err, &code) || code.Code != 130 {
-		t.Fatalf("Verify = %v; want 130", err)
-	}
-	deletes := 0
-	for _, argv := range f.exec.calls {
-		if strings.Contains(argv[len(argv)-1], "update-ref -d") {
-			deletes++
-		}
-	}
-	if deletes != 2 {
-		t.Fatalf("deleted %d refs; want target and base", deletes)
-	}
-	if f.exec.order("/git/repo.git:ro") >= 0 {
-		t.Fatal("started container after interrupted push")
-	}
-	if len(f.leases()) != 0 {
-		t.Fatal("interrupted push left leases")
+func TestVerifyPushFailuresKeepPhaseSpecificExitStatusAndCleanRefs(t *testing.T) {
+	for _, signal := range []bool{false, true} {
+		t.Run(fmt.Sprintf("signal=%v", signal), func(t *testing.T) {
+			f, repo := verifyFixture(t)
+			f.cfg.Projects[0].Base = "main"
+			d := f.verifyDeps()
+			original := d.Exec
+			d.Exec = func(ctx context.Context, argv []string, in io.Reader, out, errOut io.Writer) (int, syscall.Signal, error) {
+				if !hasArg(argv, "push") {
+					return original(ctx, argv, in, out, errOut)
+				}
+				if signal {
+					return execAttached(ctx, []string{"sh", "-c", "kill -INT $$"}, in, out, errOut)
+				}
+				io.WriteString(errOut, "fatal: authentication failed\n")
+				return 128, 0, nil
+			}
+			err := d.Verify(context.Background(), f.cfg, VerifyOptions{Path: repo, HostName: f.host.Name})
+			var code interface{ ExitCode() int }
+			hasCode := errors.As(err, &code)
+			if signal {
+				if !hasCode || code.ExitCode() != 130 {
+					t.Fatalf("interrupted push = %v; want 130", err)
+				}
+			} else {
+				if err == nil || hasCode {
+					t.Fatalf("non-signal push = %v; want plain error (exit 1)", err)
+				}
+				for _, want := range []string{"authentication failed", "check ssh access", "retry `dot remote verify`"} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("push error lacks %q: %v", want, err)
+					}
+				}
+			}
+			deletes := 0
+			for _, argv := range f.exec.calls {
+				if strings.Contains(argv[len(argv)-1], "update-ref -d") {
+					deletes++
+				}
+			}
+			if deletes != 2 {
+				t.Fatalf("deleted %d refs; want target and base", deletes)
+			}
+			if f.exec.order("/git/repo.git:ro") >= 0 {
+				t.Fatal("started container after failed push")
+			}
+			if len(f.leases()) != 0 {
+				t.Fatal("failed push left leases")
+			}
+		})
 	}
 }
 
@@ -259,5 +279,27 @@ func TestAdmitPersistsContainerOnOwnLeaseOnly(t *testing.T) {
 	other.Store = admission.NewStore(filepath.Join(t.TempDir(), "other-store"), d.Runner)
 	if d.containerOwner(PathScope(f.checkout)) == other.containerOwner(PathScope(f.checkout)) {
 		t.Fatal("independent admission stores share ownership")
+	}
+}
+
+func TestVerifyIdentityErrorsExplainUnknownIDsAndGetentRequirement(t *testing.T) {
+	for _, tc := range []struct{ identity, ids, want, absent string }{
+		{"unknown", "", "host's id command", "passwd entry"},
+		{"", "", "could not determine", "UID ()"},
+		{"missing", "1234:5678", "image needs getent", "UID ()"},
+	} {
+		seen := containerPreflight{inspection: inspection{Image: "known", ImageUser: "dev"}, Identity: tc.identity, HostIDs: tc.ids}
+		err := seen.checkImage(testHost(), true)
+		if err == nil || !strings.Contains(err.Error(), tc.want) || strings.Contains(err.Error(), tc.absent) {
+			t.Errorf("identity %q: %v", tc.identity, err)
+		}
+	}
+	// Execute an actual failed id query through the probe rather than assuming
+	// a missing passwd entry when the host could not supply any UID/GID.
+	stub := `image_known=yes; id(){ return 1; }; docker(){ echo unexpected-runtime-probe; }; `
+	script := fmt.Sprintf(verifyIdentityTemplate, "docker", "dev")
+	out, err := osexec.Command("sh", "-c", stub+script).CombinedOutput()
+	if err != nil || string(out) != "identity\tunknown\n" {
+		t.Fatalf("failed id probe = %q, %v", out, err)
 	}
 }

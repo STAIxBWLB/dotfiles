@@ -228,7 +228,10 @@ func (seen containerPreflight) checkImage(h Host, verify bool) error {
 		return fmt.Errorf("%s's image %s runs as root (no USER): give the image an unprivileged user (see docs/guides/servers.md) and re-run `dot remote setup`", h.Name, h.Image())
 	}
 	if verify && seen.Identity != "ok" {
-		return fmt.Errorf("%s's image %s has no verified passwd entry for the host UID (%s): build the image with the host UID and GID, then run `dot remote setup`", h.Name, h.Image(), seen.HostIDs)
+		if seen.Identity != "missing" {
+			return fmt.Errorf("could not determine the ssh account's UID/GID on %s with id -u and id -g: check remote.hosts.%s.ssh and the host's id command before verifying", h.Name, h.Name)
+		}
+		return fmt.Errorf("%s's image %s has no verified passwd entry for the host UID (%s): the image needs getent to check the account; install getent and build the image with the host UID and GID, then run `dot remote setup`", h.Name, h.Image(), seen.HostIDs)
 	}
 	return nil
 }
