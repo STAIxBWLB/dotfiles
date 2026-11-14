@@ -314,3 +314,18 @@ func writeCLITestFile(t *testing.T, path, body string) {
 		t.Fatal(err)
 	}
 }
+
+// treeOf reads every file under root, keyed by path, for the "nothing changed"
+// assertions.
+func treeOf(t *testing.T, root string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			raw, _ := os.ReadFile(path)
+			out[path] = string(raw)
+		}
+		return nil
+	})
+	return out
+}

@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -30,12 +29,8 @@ through 'amem ingest <agent>', run at session end or on demand.
 
 'dot ai memory audit' reports the size and drift of each agent's native memory
 store, and 'dot ai memory archive' moves stale files out of the loaded layer
-(a dry run unless --apply is given).
-
-'dot ai memory retire-claude-mem' removes the old claude-mem integration. It is
-a dry run unless --apply is given.`,
+(a dry run unless --apply is given).`,
 	}
-	cmd.AddCommand(newAIMemoryRetireCmd())
 	cmd.AddCommand(newAIMemoryAuditCmd())
 	cmd.AddCommand(newAIMemoryArchiveCmd())
 	return cmd
@@ -196,122 +191,4 @@ func printMemoryState(p *Printer, label string, ok bool, detail string) {
 		state = "ready"
 	}
 	p.Bullet(marker, fmt.Sprintf("%-13s %-7s %s", ui.StyleValue.Render(label), state, detail))
-}
-
-func newAIMemoryRetireCmd() *cobra.Command {
-	c := &cobra.Command{
-		Use:   "retire-claude-mem",
-		Short: "Remove the claude-mem integration (dry run unless --apply)",
-		Long: `Retire claude-mem after its notes were imported into amem.
-
-Without --apply this only lists what would be touched and reads back what is
-left on the machine; it changes nothing. With --apply, in order, it:
-
-  1. disables and uninstalls the claude-mem plugin for Claude Code and Codex,
-     and removes their claude-mem marketplaces (through the native CLIs);
-  2. removes the claude-mem entry from the MCP configs of Kimi, Qwen,
-     Antigravity, Kiro and Copilot;
-  3. boots out and removes the two dotfiles LaunchAgents;
-  4. moves ~/.claude-mem to ~/.claude-mem.archive-<date> (never deletes it,
-     and refuses while a claude-mem process runs);
-  5. reads back that no claude-mem process, port, hook or LaunchAgent remains.
-
-Claude Code is handled in its active profile: $CLAUDE_CONFIG_DIR when set,
-else ~/.claude. The dry run names that profile, the files to back up before
---apply, and any claude-mem left in the default ~/.claude while another
-profile is active (that profile is never changed; run again with
-CLAUDE_CONFIG_DIR unset to retire it). It never edits the profile's
-settings.json, which Claude Code owns: the exact lines to remove are printed
-for you. --apply refuses unless --import-complete says
-the 'amem import claude-mem' run is done and an amem import cursor exists.`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			apply, _ := cmd.Flags().GetBool("apply")
-			imported, _ := cmd.Flags().GetBool("import-complete")
-			if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
-				apply = false
-			}
-			over, _ := cmd.Flags().GetString("home")
-			opts := aisettings.RetireOptions{HomeDir: homeFromCmd(cmd), ExplicitHome: over != "", Apply: apply, ImportConfirmed: imported}
-			if adopted := os.Getenv("KIMI_CODE_HOME"); filepath.IsAbs(adopted) && over == "" {
-				opts.KimiHome = adopted
-			}
-			result, err := aisettings.RetireClaudeMem(cmd.Context(), opts)
-			if err != nil {
-				return err
-			}
-			printRetireResult(printerFrom(cmd), result)
-			if apply && result.Blocked == "" {
-				auditAIEventBestEffort(cmd, "ai.memory.retire", map[string]any{"archive": result.Archive, "clean": result.Clean(), "failed_steps": len(result.Failed())})
-			}
-			if result.Blocked != "" {
-				return fmt.Errorf("%s", result.Blocked)
-			}
-			if apply {
-				if failed := result.Failed(); len(failed) > 0 {
-					names := make([]string, len(failed))
-					for i, step := range failed {
-						names[i] = step.ID
-					}
-					return fmt.Errorf("%d retirement step(s) failed (%s); see the steps above", len(failed), strings.Join(names, ", "))
-				}
-				if !result.Clean() {
-					return fmt.Errorf("claude-mem residue remains; see the read-back above")
-				}
-			}
-			return nil
-		},
-	}
-	c.Flags().Bool("apply", false, "Run the retirement (default: dry run)")
-	c.Flags().Bool("import-complete", false, "Confirm that `amem import claude-mem` has finished")
-	return c
-}
-
-func printRetireResult(p *Printer, r aisettings.RetireResult) {
-	if r.Apply && r.Blocked == "" {
-		p.Header("Retire claude-mem")
-	} else {
-		p.Header("Retire claude-mem (dry run: nothing is changed)")
-	}
-	source := "default"
-	if r.ClaudeProfileFromEnv {
-		source = "CLAUDE_CONFIG_DIR"
-	}
-	p.Line("Claude profile: %s (%s)", r.ClaudeProfile, source)
-	p.Section("Steps")
-	for _, step := range r.Steps {
-		p.Line("  [%-6s] %-24s %s", step.Status, step.ID, step.Action)
-		if step.Detail != "" && step.Status != aisettings.RetireWould && step.Status != aisettings.RetireAbsent {
-			p.Line("           %s", step.Detail)
-		}
-	}
-	if len(r.Manual) > 0 {
-		p.Section("Edit by hand (Claude Code owns this file; dot never writes it)")
-		for _, line := range r.Manual {
-			p.Line("  %s", line)
-		}
-	}
-	if len(r.Backup) > 0 && (!r.Apply || r.Blocked != "") {
-		p.Section("Back up before --apply (the run or your edits rewrite these)")
-		for _, path := range r.Backup {
-			p.Line("  %s", path)
-		}
-	}
-	if len(r.OtherProfile) > 0 {
-		p.Section("Default Claude profile (not changed by this run; retire it with `env -u CLAUDE_CONFIG_DIR dot ai memory retire-claude-mem`)")
-		for _, line := range r.OtherProfile {
-			p.Line("  %s", line)
-		}
-	}
-	p.Section("Read-back")
-	for _, item := range r.ReadBack {
-		if item.Clean {
-			p.Line("  [clean ] %s", item.Check)
-		} else {
-			p.Line("  [FOUND ] %s: %s", item.Check, item.Found)
-		}
-	}
-	if r.Archive != "" {
-		p.Line("Archive: %s (kept; delete it yourself when you are sure)", r.Archive)
-	}
 }

@@ -106,21 +106,20 @@ grants it or the manifest marks it `"readOnly": true`. A readOnly claim never
 covers a name that can delete, forget, move, purge or remove, so a manifest
 alone never auto-approves a new tool that writes.
 
-To remove claude-mem after `amem import claude-mem` has finished, run
-`dot ai memory retire-claude-mem` for a dry run that lists every item and reads
-back what is left, then `--apply --import-complete` to do it. It archives
-`~/.claude-mem` to `~/.claude-mem.archive-<date>` and never deletes it, and it
-prints the lines of the Claude profile's `settings.json` for you to remove,
-because Claude Code owns that file. The profile is `$CLAUDE_CONFIG_DIR` when
-set, else `~/.claude`; the dry run names it and lists the files to back up
-before `--apply`. Copy those files first, apply, then compare the read-back and
-the copies. When another profile is active and the default `~/.claude` still
-has claude-mem, the dry run shows it in its own section and leaves it alone;
-retire it with `env -u CLAUDE_CONFIG_DIR dot ai memory retire-claude-mem`.
-`--apply` is refused before any step while a claude-mem
-process is running (quit the Claude and Codex sessions that load it first), when
-a file it must read cannot be read, and under `--home`; the dry run works with
-`--home` and reads nothing from your shell environment.
+claude-mem is retired, and dot no longer carries a command that removes it: with
+`amem import claude-mem` the material worth keeping moves into amem, and the rest
+is the person's own step. Quiesce it first, or a live worker writes into the data
+directory and holds its database while you work: quit the Claude and Codex
+sessions that load the server, then stop the two LaunchAgents if an older dot
+installed them (`launchctl bootout gui/$(id -u)
+~/Library/LaunchAgents/com.dotfiles.claude-mem-bridge.plist`, and the same for
+`com.dotfiles.claude-mem-sync.plist`) before deleting those plist files. Only
+then archive `~/.claude-mem` if you want to keep it (dot never deletes it), and
+remove the `claude-mem` MCP entry with `claude mcp remove` and the plugin with
+`claude plugin uninstall` (`codex plugin remove` and `codex plugin marketplace
+remove` for the Codex ones). Claude Code owns its own `settings.json`, so the
+claude-mem keys in it are yours to edit; the profile is `$CLAUDE_CONFIG_DIR` when
+set, else `~/.claude`.
 
 Each agent also keeps its own native memory (Claude Code auto memory, Codex
 memories, Qwen memory, Grok memory-v2, jcode). `dot ai memory audit` reads them
@@ -154,18 +153,14 @@ vmem setup all --apply             # Claude Code, Codex, Kimi, Qwen, pi, jcode
 vmem setup agy --apply             # inside each workspace that uses Antigravity
 dot ai mcp install vmem --dry-run     # what would change; nothing is written
 dot ai mcp install vmem               # add `vmem mcp` to Kiro and Copilot, write the vault block
-dot ai mcp status vmem                # warns while `obsidian` is still registered
-dot ai vault retire-mcpvault       # dry run: every file it would change
-dot ai vault retire-mcpvault --apply
+dot ai mcp status vmem                # health of the Kiro and Copilot entries
 ```
 
 `vmem setup` registers the server as `vmem` (granted as `mcp__vmem__vmem_*`)
 and keeps undo receipts, so dot writes only the Kiro and Copilot entries and the
-agents SSOT vault block (after a backup). Bindings to `obsidian` earn no grant.
-`retire-mcpvault` removes `mcpServers.obsidian` from the Kiro and Copilot
-configs only; for Claude Code and Codex it prints `claude mcp remove obsidian
---scope user` and the `[mcp_servers.obsidian*]` tables to delete, and it refuses
-while vmem is not on PATH.
+agents SSOT vault block (after a backup). A binding to the old generic vault
+server (`obsidian`, @bitbonsai/mcpvault) earns no grant, so nothing is approved
+through it; removing such an entry from a config is the person's own step.
 
 Research studies run through [ares](https://github.com/STAIxBWLB/agent-research)
 (`@staix/agent-research`), which dot registers and installs only through
@@ -336,10 +331,10 @@ The hook fails open if the dot binary is missing or moved. `dot guard status` re
 
 Portable AI snapshots exclude skill roots, auth by default, caches, histories, databases, and machine-local plugin state; archives reject symlinks, hardlinks, devices, and link-pivot paths. `~/.codex/config.toml` is normally kept live on restore because Codex rewrites it and hashes MCP credentials into the Keychain. `dot ai skills` is diagnose-only: Maru owns runtime skill symlinks and tool federation.
 
-## amem and the claude-mem retirement
+## amem, and claude-mem before it
 
-`dot ai mcp install|status amem` register amem's MCP server for Kiro and Copilot and report its health (`dot` never installs amem; `amem setup` registers Claude Code, Codex, Kimi, Qwen, pi and Antigravity). `dot ai memory retire-claude-mem` is a dry run unless `--apply` is given; see the README. The former `dot ai memory sync|update|bridge` commands and the hourly peer sync LaunchAgent are gone: amem syncs through its own git refs and has no resident process.
+`dot ai mcp install|status amem` register amem's MCP server for Kiro and Copilot and report its health (`dot` never installs amem; `amem setup` registers Claude Code, Codex, Kimi, Qwen, pi and Antigravity). The former `dot ai memory sync|update|bridge` commands and the hourly peer sync LaunchAgent are gone: amem syncs through its own git refs and has no resident process.
 
-`dot ai mcp install|status vmem` register vmem's MCP server for Kiro and Copilot and report its health, warning while the retired `obsidian` server is still registered (`dot` never installs vmem; `vmem setup` registers Claude Code, Codex, Kimi, Qwen, pi, jcode and Antigravity). `dot ai vault retire-mcpvault` is a dry run unless `--apply` is given and only edits the Kiro and Copilot configs.
+`dot ai mcp install|status vmem` register vmem's MCP server for Kiro and Copilot and report its health (`dot` never installs vmem; `vmem setup` registers Claude Code, Codex, Kimi, Qwen, pi, jcode and Antigravity).
 
 `dot ai mcp install|status ares` register ares's MCP server for Kiro and Copilot, write the research block into the agents SSOT and report its health (`ares setup` registers Claude Code, Codex, Kimi, Qwen, pi, jcode and Antigravity). The policy auto-approves ares's read tools only.

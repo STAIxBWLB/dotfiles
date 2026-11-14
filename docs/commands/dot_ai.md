@@ -59,5 +59,5 @@ dot ai [flags]
 * [dot ai skills](dot_ai_skills.md)	 - Diagnose AI Markdown skills (read-only; the Maru app manages runtime symlinks)
 * [dot ai tools](dot_ai_tools.md)	 - Inspect or reconcile selected development tooling
 * [dot ai update](dot_ai_update.md)	 - Update explicitly selected agent CLIs and development tools
-* [dot ai vault](dot_ai_vault.md)	 - Retire the legacy Obsidian MCP integration
+* [dot ai vault](dot_ai_vault.md)	 - Register vmem as the agents' vault server
 

@@ -31,9 +31,6 @@ const VmemPackage = "@staix/vault-mem"
 // mcp__vmem__vmem_search and so on.
 const VmemServerName = "vmem"
 
-// ObsidianServerName is the retired generic Obsidian MCP server (@bitbonsai/mcpvault) vmem replaces.
-const ObsidianServerName = "obsidian"
-
 const (
 	vaultBlockStart = "<!-- dotfiles:vmem:start -->"
 	vaultBlockEnd   = "<!-- dotfiles:vmem:end -->"
@@ -70,8 +67,6 @@ type VmemStatus struct {
 	Selected            map[string]bool
 	VmemPath            string
 	Version             string
-	// ObsidianRegistered lists the MCP configs that still register the retired obsidian server.
-	ObsidianRegistered []string
 	// Manifest is what the installed vmem publishes about itself; zero when it publishes nothing.
 	Manifest toolversion.Manifest
 }
@@ -321,38 +316,6 @@ func hasMCPServer(path, name, command string, variant mcpEntryVariant) bool {
 	return true
 }
 
-// codexRegistersObsidian reports whether a Codex config.toml has an [mcp_servers.obsidian] table (or a subtable).
-func codexRegistersObsidian(path string) bool {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return false
-	}
-	for _, line := range strings.Split(string(raw), "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "[") {
-			continue
-		}
-		end := strings.Index(line, "]")
-		if end < 0 {
-			continue
-		}
-		table := knowledgeTableName(strings.Trim(line[:end+1], "[]"))
-		if table == "mcp_servers."+ObsidianServerName || strings.HasPrefix(table, "mcp_servers."+ObsidianServerName+".") {
-			return true
-		}
-	}
-	return false
-}
-
-// knowledgeTableName normalizes a TOML table header: trims spaces around dots and quotes on simple keys.
-func knowledgeTableName(header string) string {
-	parts := strings.Split(header, ".")
-	for i, part := range parts {
-		parts[i] = strings.Trim(strings.TrimSpace(part), `"'`)
-	}
-	return strings.Join(parts, ".")
-}
-
 // Status reads the integration without writing or starting anything.
 func (m *VmemManager) Status(ctx context.Context, ssotPath string) VmemStatus {
 	status := VmemStatus{
@@ -363,7 +326,6 @@ func (m *VmemManager) Status(ctx context.Context, ssotPath string) VmemStatus {
 	}
 	raw, err := os.ReadFile(ssotPath)
 	status.InstructionsEnabled = err == nil && bytes.Contains(raw, []byte(vaultBlockStart)) && bytes.Contains(raw, []byte(vaultBlockEnd))
-	status.ObsidianRegistered = m.obsidianRegistrations()
 	if m.VmemPath != "" {
 		read := m.Version
 		if read == nil {
@@ -381,79 +343,6 @@ func (m *VmemManager) Status(ctx context.Context, ssotPath string) VmemStatus {
 		status.Manifest = manifest(ctx, m.VmemPath)
 	}
 	return status
-}
-
-// obsidianRegistrations lists every known MCP config that still registers the retired obsidian server.
-func (m *VmemManager) obsidianRegistrations() []string {
-	var found []string
-	for _, path := range []string{m.ClaudeConfigPath(), m.KiroMCPPath(), m.CopilotMCPPath()} {
-		if state, _ := mcpServerState(path, ObsidianServerName); state == present {
-			found = append(found, path)
-		}
-	}
-	if codexRegistersObsidian(m.CodexConfigPath()) {
-		found = append(found, m.CodexConfigPath())
-	}
-	return found
-}
-
-// RetireMcpvaultResult is what retire-mcpvault did or would do.
-type RetireMcpvaultResult struct {
-	Apply bool
-	// Files are the dot-owned configs that register obsidian: removed with Apply, listed otherwise.
-	Files []string
-	// Removed are the files actually rewritten.
-	Removed []string
-	// Manual are the person-run lines for configs dot does not own.
-	Manual []string
-	// Skipped are selected, owned configs that still register obsidian but have no working vmem entry yet.
-	Skipped []string
-	// Remaining lists configs that still register obsidian after the run.
-	Remaining []string
-}
-
-// RetireMcpvault removes mcpServers.obsidian from the selected configs dot owns (Kiro, Copilot) that already
-// register a working vmem entry, and prints the lines for the rest (Claude Code, Codex). It is a dry run
-// unless apply, refuses without vmem on PATH, and skips (and reports) any config without vmem, so no agent
-// is left without a vault server.
-func (m *VmemManager) RetireMcpvault(apply bool) (RetireMcpvaultResult, error) {
-	result := RetireMcpvaultResult{Apply: apply}
-	if m.VmemPath == "" {
-		return result, errors.New("vmem is not on PATH: install @staix/vault-mem " + VmemPinnedVersion + " and register it before retiring the obsidian server")
-	}
-	for _, target := range m.ownedTargets() {
-		// The saved selection bounds every write, as for install (docs/BOUNDARIES.md).
-		if !m.selected(target.agent) {
-			continue
-		}
-		state, err := mcpServerState(target.path, ObsidianServerName)
-		if err != nil {
-			return result, fmt.Errorf("%s: %w", target.path, err)
-		}
-		if state != present {
-			continue
-		}
-		// Never leave an agent without a vault server: obsidian goes only where a working vmem entry already is.
-		if !hasMCPServer(target.path, VmemServerName, m.VmemPath, target.variant) {
-			result.Skipped = append(result.Skipped, fmt.Sprintf("%s: %s has no working vmem entry; run `dot ai mcp install vmem` first, obsidian is kept", target.agent, target.path))
-			continue
-		}
-		result.Files = append(result.Files, target.path)
-		if apply {
-			if err := removeMCPServer(target.path, ObsidianServerName); err != nil {
-				return result, err
-			}
-			result.Removed = append(result.Removed, target.path)
-		}
-	}
-	if state, _ := mcpServerState(m.ClaudeConfigPath(), ObsidianServerName); state == present {
-		result.Manual = append(result.Manual, "Claude Code ("+m.ClaudeConfigPath()+"): claude mcp remove obsidian --scope user")
-	}
-	if codexRegistersObsidian(m.CodexConfigPath()) {
-		result.Manual = append(result.Manual, "Codex ("+m.CodexConfigPath()+"): delete the [mcp_servers.obsidian] table and every [mcp_servers.obsidian.*] table")
-	}
-	result.Remaining = m.obsidianRegistrations()
-	return result, nil
 }
 
 // commandVersion is the trimmed output of `<bin> --version` (vmem, ares).
