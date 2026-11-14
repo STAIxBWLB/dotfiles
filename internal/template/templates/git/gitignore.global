@@ -101,6 +101,9 @@ htmlcov/
 # Agent tooling / dependencies #
 ################################
 .agenthub/
+!/.agenthub/
+/.agenthub/*
+!/.agenthub/config.json
 .qwen/
 .kimi-code/
 .jcode/
