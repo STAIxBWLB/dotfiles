@@ -524,7 +524,7 @@ type MemoryBlockResult struct {
 // MemoryWanted reports whether this machine uses amem: the executable is on PATH, one of the MCP
 // configs dot manages registers an amem server, or the SSOT already carries the amem block (so it is kept
 // current). A machine that has none of these still runs claude-mem, and its instruction block stays until
-// amem arrives or `dot ai memory retire-claude-mem` runs.
+// amem arrives or the person removes the old integration by hand.
 func (m *AgentsManager) MemoryWanted() bool {
 	if bytesContainsMarker(m.SSOTPath(), memoryBlockStart) {
 		return true

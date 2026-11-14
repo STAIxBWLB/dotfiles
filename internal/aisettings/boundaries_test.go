@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-	"time"
 )
 
 // pathClass classifies what a Path-suffixed declaration does with the path
@@ -73,10 +72,9 @@ var pathBoundaryTable = []pathBoundaryEntry{
 	{"HUDManager.codexConfigPath", classHomeWrite},
 	{"InstructionPath", classHomeWrite},
 	{"PreserveForeignHooksPath", classTransform},
-	{"RetireOptions.archivePath", classHomeWrite},
 	{"SkillsManager.DefaultMaruSSOTPath", classReadOnly},
-	{"VmemManager.ClaudeConfigPath", classReadOnly}, // status and the retire dry run only read it; Claude Code owns it
-	{"VmemManager.CodexConfigPath", classReadOnly},  // status and the retire dry run only read it; the person owns it
+	{"VmemManager.ClaudeConfigPath", classReadOnly}, // the status read only reads it; Claude Code owns it
+	{"VmemManager.CodexConfigPath", classReadOnly},  // the status read only reads it; the person owns it
 	{"VmemManager.CopilotMCPPath", classHomeWrite},
 	{"VmemManager.KiroMCPPath", classHomeWrite},
 	{"canonicalSkillPath", classTransform},
@@ -105,11 +103,6 @@ var allowedBoundaryRoots = []string{
 	"~/.local/share/dotfiles",
 	"~/.config/git/config",
 	"~/.config/git/hooks/commit-msg",
-	"~/.claude-mem",
-	// A root ending in "-" is a name prefix: the dated archive sits beside ~/.claude-mem.
-	"~/.claude-mem.archive-",
-	"~/Library/LaunchAgents/com.dotfiles.claude-mem-bridge.plist",
-	"~/Library/LaunchAgents/com.dotfiles.claude-mem-sync.plist",
 	"~/.claude/plugins/marketplaces/thedotmack",
 	"~/.kimi-code/mcp.json",
 	"~/.qwen/settings.json",
@@ -329,10 +322,6 @@ func resolveHomeWrite(t *testing.T, name, home string) string {
 		return (&VmemManager{HomeDir: home}).KiroMCPPath()
 	case "VmemManager.CopilotMCPPath":
 		return (&VmemManager{HomeDir: home}).CopilotMCPPath()
-	case "RetireOptions.archivePath":
-		// The destination of `dot ai memory retire-claude-mem --apply`: a dated sibling
-		// of ~/.claude-mem, never the data directory itself and never a deletion.
-		return (RetireOptions{HomeDir: home, Now: func() time.Time { return time.Date(2026, 10, 24, 0, 0, 0, 0, time.UTC) }}).archivePath()
 	case "CoauthorGuardManager.SSOTPath":
 		return (&CoauthorGuardManager{HomeDir: home}).SSOTPath()
 	case "CoauthorGuardManager.gitConfigPath":

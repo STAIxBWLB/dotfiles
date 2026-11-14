@@ -16,19 +16,14 @@ func newAIVaultCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "vault",
 		RunE:  runAIGroupHelp,
-		Short: "Retire the legacy Obsidian MCP integration",
+		Short: "Register vmem as the agents' vault server",
 		Long: `Register vmem (@staix/vault-mem) as the agents' vault server for Kiro and
 GitHub Copilot, and print the 'vmem setup' lines for Claude Code, Codex, Kimi,
 Qwen, pi, jcode and Antigravity, which vmem registers itself.
 
 dot runs no vault process and installs vmem only on request: install the exact
-version yourself or with 'dot ai family install vmem', then run 'dot ai mcp install vmem'.
-
-'dot ai vault retire-mcpvault' removes the generic Obsidian MCP server
-("obsidian", @bitbonsai/mcpvault) from the configs dot owns and prints the
-lines for the rest. It is a dry run unless --apply is given.`,
+version yourself or with 'dot ai family install vmem', then run 'dot ai mcp install vmem'.`,
 	}
-	cmd.AddCommand(newAIVaultRetireCmd())
 	return cmd
 }
 
@@ -155,78 +150,7 @@ func newAIVaultStatusCmd() *cobra.Command {
 			p.Line("Claude Code, Codex, Kimi, Qwen, pi, jcode and Antigravity are registered by `vmem setup`; see `dot ai mcp install vmem` for the lines.")
 			p.Section("Shared")
 			printMemoryState(p, "instructions", status.InstructionsEnabled, "agents SSOT vault block")
-			if len(status.ObsidianRegistered) > 0 {
-				p.Section("Retired server still registered")
-				for _, path := range status.ObsidianRegistered {
-					p.Warn("  obsidian (@bitbonsai/mcpvault) is still registered in %s; run `dot ai vault retire-mcpvault`", path)
-				}
-			}
 			return nil
 		},
 	}
-}
-
-func newAIVaultRetireCmd() *cobra.Command {
-	c := &cobra.Command{
-		Use:   "retire-mcpvault",
-		Short: "Remove the Obsidian MCP server (dry run unless --apply)",
-		Long: `Retire the generic Obsidian MCP server ("obsidian", @bitbonsai/mcpvault)
-after vmem is registered.
-
-Without --apply this lists every file it would change and changes nothing.
-With --apply it removes mcpServers.obsidian from the Kiro and Copilot configs,
-the files dot owns, for the selected agents only, and only from a config that
-already registers a working vmem entry; any other is skipped and reported. It never edits Claude Code's or Codex's config: the exact
-lines to run or delete are printed instead. It refuses while vmem is not on
-PATH, so the vault is never left without an agent-facing server.`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			apply, _ := cmd.Flags().GetBool("apply")
-			if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
-				apply = false
-			}
-			mgr, err := newVmemManagerFromCmd(cmd)
-			if err != nil {
-				return err
-			}
-			result, err := mgr.RetireMcpvault(apply)
-			if err != nil {
-				return err
-			}
-			p := printerFrom(cmd)
-			if apply {
-				p.Header("Retire the Obsidian MCP server")
-			} else {
-				p.Header("Retire the Obsidian MCP server (dry run: nothing is changed)")
-			}
-			if len(result.Files) == 0 {
-				p.Line("No file dot owns registers obsidian.")
-			}
-			for _, path := range result.Files {
-				if apply {
-					p.Line("removed mcpServers.obsidian from %s", path)
-				} else {
-					p.Line("would remove mcpServers.obsidian from %s", path)
-				}
-			}
-			if len(result.Skipped) > 0 {
-				p.Section("Skipped (no working vmem entry yet)")
-				for _, line := range result.Skipped {
-					p.Warn("  %s", line)
-				}
-			}
-			if len(result.Manual) > 0 {
-				p.Section("Run or edit by hand (dot never writes these files)")
-				for _, line := range result.Manual {
-					p.Line("  %s", line)
-				}
-			}
-			if apply {
-				auditAIEventBestEffort(cmd, "ai.vault.retire", map[string]any{"removed": result.Removed, "remaining": len(result.Remaining)})
-			}
-			return nil
-		},
-	}
-	c.Flags().Bool("apply", false, "Remove the obsidian server from the files dot owns (default: dry run)")
-	return c
 }

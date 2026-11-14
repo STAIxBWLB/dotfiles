@@ -10,8 +10,8 @@ The selectable agent environments are Claude, Codex, Kimi, Qwen, Grok,
 OpenCode, Genspark Gencode, pi and Antigravity. The automatic add-on catalog
 is limited to ripwire, Open Code Review, GSD and ponytail. Project memory is
 amem, which dot registers and installs only through `dot ai family install`
-(see `~/.kiro/settings/mcp.json` below); claude-mem is retired and only `dot ai memory retire-claude-mem`
-touches what is left of it.
+(see `~/.kiro/settings/mcp.json` below); claude-mem is retired, and dot neither
+reads nor writes what is left of it.
 Selection limits managed writes; it does not hide existing globally
 discoverable skills from unselected agents. Gencode and pi install through
 the managed npm prefix; Antigravity installs `agy` under `~/.local/bin` and
@@ -187,15 +187,10 @@ tool):
 - `~/.config/git/hooks/commit-msg` — the coauthor-guard hook script,
   written by `dot ai coauthor-guard` when the guard mode is warn or
   block
-- `~/.claude-mem` — retired. dot writes nothing into it any more. The only
-  operation on it is `dot ai memory retire-claude-mem --apply`, which moves
-  the whole directory to the dated sibling `~/.claude-mem.archive-<YYYYMMDD>`
-  (never a deletion). It is refused, before any step, while a claude-mem process
-  runs, when the directory is a symlink, when any file it must read cannot be
-  read, and under an explicit `--home`: the native `claude` and `codex` CLIs and
-  launchd act on the invoking user's real state, so a scratch home can be
-  planned and read back but never applied. `$CLAUDE_MEM_DATA_DIR` is honored
-  for the person's own home only.
+- `~/.claude-mem` — retired and no longer touched: dot reads and writes nothing
+  there. Removing it, its plugins and its MCP entries is the person's own step;
+  `dot` carries no command for it (docs/guides/agents.md carries the commands
+  the native CLIs take).
 - Agent native memory stores: `<Claude config dir>/projects/*/memory/**`,
   `$CODEX_HOME/memories/**`, `~/.qwen/memories/**`,
   `~/.qwen/projects/*/memory/**`, the `MEMORY.md` indexes under
@@ -211,18 +206,16 @@ tool):
 - `~/.config/dotfiles/agents/memory-markers.yaml` — the retired terms the
   audit checks. dot only reads it; the person writes it. Untracked, and synced
   between machines by `dot peer` with the rest of `~/.config/dotfiles`.
-- `~/.claude-mem.archive-` — the dated archive that retirement creates; a name
-  prefix, not a directory, because the date and a same-day counter follow it.
 - `~/Library/LaunchAgents/com.dotfiles.claude-mem-bridge.plist` and
   `~/Library/LaunchAgents/com.dotfiles.claude-mem-sync.plist` — retired
-  LaunchAgents. dot no longer writes either; `dot ai memory retire-claude-mem
-  --apply` boots them out and removes the files. dot writes no LaunchAgent for
-  amem, which has no resident process.
+  LaunchAgents. dot no longer writes either, and removing an installed pair is
+  the person's own step. dot writes no LaunchAgent for amem, which has no
+  resident process.
 - `~/.claude/plugins/marketplaces/thedotmack` — the claude-mem marketplace
-  checkout. dot no longer refreshes it. Retirement removes the marketplace
-  and plugin through `claude plugin marketplace remove` and `claude plugin
-  uninstall`, and the Codex ones through `codex plugin remove` and `codex
-  plugin marketplace remove`, never by editing their files directly. Lines in
+  checkout. dot no longer refreshes it, and removing it is the person's own
+  step: `claude plugin marketplace remove` and `claude plugin uninstall`, and
+  the Codex ones through `codex plugin remove` and `codex plugin marketplace
+  remove`, never by editing their files directly. Lines in
   the active Claude profile's `settings.json` (`$CLAUDE_CONFIG_DIR`, else
   `~/.claude`) that name claude-mem are printed for the person to remove; dot
   never writes that file, and never touches a Claude profile other than the
@@ -347,17 +340,16 @@ tool):
   `power.json`, and restored by `dot watchdog uninstall` under the
   interactive-only restore prompt. No other pmset/systemsetup key is
   touched.
-- `~/.kimi-code/mcp.json` — only retirement writes it, removing the
-  `claude-mem` entry; every other server entry is preserved. Its `amem`
-  entry belongs to `amem setup kimi`, never to dot
+- `~/.kimi-code/mcp.json` — dot backs it up and restores it, and writes
+  nothing into it: a leftover `claude-mem` entry is the person's to clear. Its
+  `amem` entry belongs to `amem setup kimi`, never to dot
 - `~/.gemini/config/mcp_config.json` — the Antigravity CLI (agy) shared MCP
-  config: only retirement writes it, removing the `claude-mem` entry; every
-  other server entry is preserved. amem is set up per repository by
-  `amem setup agy`, never in this global file
-- `~/.qwen/settings.json` — only retirement writes it, removing the
-  `claude-mem` entry; the `amem` entry belongs to `amem setup qwen`; every
-  other key — Qwen's model, provider, auth, and UI settings — is
-  preserved. Notably NOT dotfiles-managed: `~/.qwen/.env` (secrets),
+  config: dot backs it up and restores it, and writes nothing into it. amem is
+  set up per repository by `amem setup agy`, never in this global file
+- `~/.qwen/settings.json` — dot backs it up and restores it, and writes no
+  server entry into it; the `amem` entry belongs to `amem setup qwen`, and
+  every key — Qwen's model, provider, auth, and UI settings — is the
+  person's. Notably NOT dotfiles-managed: `~/.qwen/.env` (secrets),
   `~/.qwen/projects/**/chats/**`, `~/.qwen/memories/**`, and
   `~/.qwen/usage_record.jsonl` are machine state dot neither backs up
   nor restores
@@ -365,17 +357,14 @@ tool):
   `mcpServers` plus `"disabled": false`, written by
   `dot ai mcp install amem`, and the same shape of `vmem` and `ares` entries
   (`<bin> mcp`),
-  written by `dot ai mcp install vmem` and `dot ai mcp install ares`;
-  retirement removes the `claude-mem` entry and `dot ai vault
-  retire-mcpvault --apply` the `obsidian` entry; every other server entry
-  is preserved
+  written by `dot ai mcp install vmem` and `dot ai mcp install ares`; every
+  other server entry is preserved
 - `~/.copilot/mcp-config.json` — the `amem` entry under
   `mcpServers` plus `"type": "local"` and `"tools": ["*"]`, written by
   `dot ai mcp install amem`, and the same shape of `vmem` and `ares` entries,
-  written by `dot ai mcp install vmem` and `dot ai mcp install ares`;
-  retirement removes the `claude-mem` entry and `dot ai vault
-  retire-mcpvault --apply` the `obsidian` entry; every other server entry
-  is preserved. The `ares` entry in Claude Code, Codex, Kimi, Qwen, pi,
+  written by `dot ai mcp install vmem` and `dot ai mcp install ares`; every
+  other server entry is preserved. The `ares` entry in Claude Code, Codex,
+  Kimi, Qwen, pi,
   jcode and Antigravity configs belongs to `ares setup`, never to dot
 - `~/.codex/config.toml` — the `tui.status_line` setting, patched by
   `dot ai hud apply`; the write is an atomic rename because Codex

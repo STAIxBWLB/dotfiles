@@ -873,8 +873,8 @@ func (c *AIToolingConfig) Clone() *AIToolingConfig {
 // retiredTools are add-on IDs a saved selection may still name after the add-on
 // left the catalog. A selection that carries one is read without it, so an
 // upgrade never turns a working `dot apply` into a validation failure. claude-mem
-// was replaced by amem (dotfiles#255); its removal from the machine is the
-// person's `dot ai memory retire-claude-mem`.
+// was replaced by amem (dotfiles#255); dot no longer carries a command that
+// removes it from a machine, so that is the person's own step.
 var retiredTools = map[string]bool{"claude-mem": true}
 
 func withoutRetiredTools(tools []string) []string {
