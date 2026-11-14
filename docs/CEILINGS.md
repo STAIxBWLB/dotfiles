@@ -404,7 +404,9 @@ because the older listing describes a send this run did not make: a file sent
 now and lost from the checkout before the next run would never enter a deletion
 list. The run removes the record and empties it when the state directory refuses
 the removal, and the next run reconciles, which is a whole listing of the mirror
-in place of one subtraction.
+in place of one subtraction; when both the removal and the emptying are refused,
+the warning names the record file to delete, since that is the run's own limit
+reached and only a person can clear it.
 
 One exception to that protection, accepted with it: a path the checkout turns
 from a directory into a file or a symlink is sent with `--force`, because rsync

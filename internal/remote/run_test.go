@@ -771,6 +771,17 @@ func TestAFailedPassKeepsAtMostFiveStderrLines(t *testing.T) {
 	}
 }
 
+// tail is the one-line form a caller with room for one line builds its message
+// from, so it keeps the last non-empty line and nothing else.
+func TestTailKeepsOnlyTheLastLine(t *testing.T) {
+	if got := tail("first: ignored\nrefused: permission denied\n\n"); got != "refused: permission denied" {
+		t.Errorf("tail = %q, want the last line alone", got)
+	}
+	if got := tail(""); got != "" {
+		t.Errorf("tail of nothing = %q, want empty", got)
+	}
+}
+
 // A repository whose listing cannot be read is an error, not a reason to send
 // the tree unfiltered: git is what keeps build outputs and secrets home, and a
 // timeout or a refused safe.directory is not "this is not a checkout".

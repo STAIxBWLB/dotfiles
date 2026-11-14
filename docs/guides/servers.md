@@ -142,7 +142,8 @@ rather than acted on. A record that cannot be written makes the older one
 unusable rather than leaving it: the run discards it, empties it when the state
 directory refuses the removal, and says which happened, because the next run
 then reconciles the mirror instead of subtracting from a listing this run did
-not send.
+not send. When both are refused it names the record file to delete before the
+next run, since nothing the run does can make that run reconcile.
 
 A mirror this machine has no record of, because it has never sent there or
 because the host's `root` or `ssh` changed, is reconciled once against its own

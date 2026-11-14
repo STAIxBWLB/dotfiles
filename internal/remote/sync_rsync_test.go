@@ -1165,6 +1165,41 @@ func TestAFailedRecordWriteMakesTheNextRunReconcile(t *testing.T) {
 	}
 }
 
+// When the state directory refuses both the write and the discard, nothing this
+// run does can make the next run reconcile, so the warning has to name the file
+// a person removes instead.
+func TestARecordThatCannotBeDiscardedNamesTheFile(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes into a read-only directory and file")
+	}
+	f := newSyncFixture(t)
+	f.sourceFile("keep.txt", "keep")
+	f.runAsRun(f.gitListing())
+	sentPath := f.deps.sentPath(f.host, f.rel)
+	if _, err := os.Stat(sentPath); err != nil {
+		t.Fatalf("the first run recorded nothing at %s: %v", sentPath, err)
+	}
+
+	// Unwritable file in an unwritable directory: the temp write is refused, the
+	// removal is refused, and emptying the file is refused with it.
+	f.sourceFile("n.txt", "new")
+	if err := os.Chmod(sentPath, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(f.deps.SentRoot, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(sentPath, 0o644)
+		_ = os.Chmod(f.deps.SentRoot, 0o755)
+	})
+
+	f.runAsRun(f.gitList())
+	if !strings.Contains(f.errs.String(), "delete "+sentPath+" before the next run there") {
+		t.Fatalf("stderr does not name the record file to delete:\n%s", f.errs.String())
+	}
+}
+
 // localRsyncRunner runs a plan's argv the way the fixture's local host would:
 // rsync's `buildbox:<path>` destination becomes the fixture's own path.
 func localRsyncRunner() Execer {

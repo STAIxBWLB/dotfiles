@@ -156,15 +156,27 @@ func (d Deps) writeSent(h Host, rel, checkout string, listing []byte) error {
 // never reached the mirror: a file this run sent and the checkout lost before
 // the next run would never enter a deletion list.
 func (d Deps) recordSent(h Host, mirror, rel, checkout string, listing []byte) {
-	if err := d.writeSent(h, rel, checkout, listing); err != nil {
-		if ierr := d.invalidateSent(h, rel); ierr != nil {
-			fmt.Fprintf(d.errOut(), "dot remote: could not record what this run sent to %s on %s (%v), and could not discard the older record (%v), so the next run there still subtracts from a listing this run did not send\n",
-				mirror, h.Name, err, ierr)
-			return
-		}
+	err := d.writeSent(h, rel, checkout, listing)
+	if err == nil {
+		return
+	}
+	ierr := d.invalidateSent(h, rel)
+	if ierr == nil {
 		fmt.Fprintf(d.errOut(), "dot remote: could not record what this run sent to %s on %s (%v), so it discarded the older record and the next run there reconciles the mirror instead\n",
 			mirror, h.Name, err)
+		return
 	}
+	// Both the removal and the emptying the fallback offers were refused, so the
+	// next step is a person's: the file has to go, or the next run subtracts from
+	// a listing this one never sent. With no state directory there is no file to
+	// name, and no older record for it to describe either.
+	if sentPath := d.sentPath(h, rel); sentPath != "" {
+		fmt.Fprintf(d.errOut(), "dot remote: could not record what this run sent to %s on %s (%v), and could not discard the older record (%v): delete %s before the next run there, which otherwise subtracts from a listing this run did not send\n",
+			mirror, h.Name, err, ierr, sentPath)
+		return
+	}
+	fmt.Fprintf(d.errOut(), "dot remote: could not record what this run sent to %s on %s (%v), and could not discard the older record (%v), so the next run there still subtracts from a listing this run did not send\n",
+		mirror, h.Name, err, ierr)
 }
 
 // invalidateSent makes one mirror's record unusable, so the next run reconciles

@@ -306,3 +306,11 @@ func tailLines(s string, n int) string {
 	}
 	return strings.Join(kept, "\n")
 }
+
+// tail keeps the last line alone, for a caller whose message has room for one:
+// verify's push failure reads it into a single sentence. It is the older form of
+// tailLines, kept so a caller that wants the last line only does not have to
+// know the bound.
+func tail(s string) string {
+	return strings.TrimSpace(tailLines(s, 1))
+}
