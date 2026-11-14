@@ -737,6 +737,40 @@ func TestANonGitCheckoutFallsBackToTheExcludeList(t *testing.T) {
 	}
 }
 
+// A failed pass reports the lines above rsync's summary, not the summary alone,
+// and names what the caller can do next.
+func TestAFailedPassReportsEveryDiagnosticLine(t *testing.T) {
+	src := t.TempDir()
+	d := Deps{Err: io.Discard, Exec: func(_ context.Context, _ []string, _ io.Reader, _, stderr io.Writer) (int, syscall.Signal, error) {
+		fmt.Fprintln(stderr, "could not make way for new regular file: pkg")
+		fmt.Fprintln(stderr, "rsync error: some files/attrs were not transferred (see previous errors) (code 23) at main.c(1416)")
+		return 23, 0, nil
+	}}
+	err := d.sync(context.Background(), testHost(), "/mirror", "rsync", src, SyncInput{Listing: []byte("a.txt\x00")})
+	if err == nil {
+		t.Fatal("a failed pass succeeded")
+	}
+	for _, want := range []string{"could not make way for new regular file: pkg", "some files/attrs were not transferred", "--dry-run"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error lacks %q:\n%s", want, err)
+		}
+	}
+}
+
+// The excerpt a failed pass reports is bounded: the diagnostics above the
+// summary, never a page of them.
+func TestAFailedPassKeepsAtMostFiveStderrLines(t *testing.T) {
+	var b strings.Builder
+	for i := 1; i <= 8; i++ {
+		fmt.Fprintf(&b, "line %d\n", i)
+	}
+	got := tailLines(b.String(), stderrLines)
+	if strings.Contains(got, "line 1\n") || strings.Contains(got, "line 3\n") ||
+		!strings.Contains(got, "line 4") || !strings.Contains(got, "line 8") {
+		t.Errorf("tailLines kept %q, want lines 4 to 8", got)
+	}
+}
+
 // A repository whose listing cannot be read is an error, not a reason to send
 // the tree unfiltered: git is what keeps build outputs and secrets home, and a
 // timeout or a refused safe.directory is not "this is not a checkout".

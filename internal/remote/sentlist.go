@@ -3,6 +3,7 @@ package remote
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -146,6 +147,41 @@ func (d Deps) writeSent(h Host, rel, checkout string, listing []byte) error {
 	if err := os.Rename(tmpName, sentPath); err != nil {
 		remove()
 		return err
+	}
+	return nil
+}
+
+// recordSent saves what this run sent, and on failure makes the older record
+// unusable. Keeping it would leave the next run subtracting from a listing that
+// never reached the mirror: a file this run sent and the checkout lost before
+// the next run would never enter a deletion list.
+func (d Deps) recordSent(h Host, mirror, rel, checkout string, listing []byte) {
+	if err := d.writeSent(h, rel, checkout, listing); err != nil {
+		if ierr := d.invalidateSent(h, rel); ierr != nil {
+			fmt.Fprintf(d.errOut(), "dot remote: could not record what this run sent to %s on %s (%v), and could not discard the older record (%v), so the next run there still subtracts from a listing this run did not send\n",
+				mirror, h.Name, err, ierr)
+			return
+		}
+		fmt.Fprintf(d.errOut(), "dot remote: could not record what this run sent to %s on %s (%v), so it discarded the older record and the next run there reconciles the mirror instead\n",
+			mirror, h.Name, err)
+	}
+}
+
+// invalidateSent makes one mirror's record unusable, so the next run reconciles
+// instead of subtracting from it. Removal is what the state directory usually
+// allows; a directory that refuses it still lets the file be emptied, and
+// readSent treats a record it cannot read as one that describes another mirror.
+func (d Deps) invalidateSent(h Host, rel string) error {
+	sentPath := d.sentPath(h, rel)
+	if sentPath == "" {
+		return fmt.Errorf("no state directory to keep the sent listing in")
+	}
+	remove := os.Remove(sentPath)
+	if remove == nil || os.IsNotExist(remove) {
+		return nil
+	}
+	if err := os.Truncate(sentPath, 0); err != nil {
+		return errors.Join(remove, err)
 	}
 	return nil
 }

@@ -399,6 +399,13 @@ only. Revisit this when a mirror is written by something other than `dot
 remote`, or when the record has to be shared between machines: the subtraction
 then has to name the sending machine per path.
 
+A record that cannot be written is made unusable rather than left as it was,
+because the older listing describes a send this run did not make: a file sent
+now and lost from the checkout before the next run would never enter a deletion
+list. The run removes the record and empties it when the state directory refuses
+the removal, and the next run reconciles, which is a whole listing of the mirror
+in place of one subtraction.
+
 One exception to that protection, accepted with it: a path the checkout turns
 from a directory into a file or a symlink is sent with `--force`, because rsync
 cannot otherwise replace a non-empty directory, and the previous behaviour was a
@@ -410,11 +417,19 @@ that directory holds a name on the exclude list, rsync protects it on the
 receiving side as well, so the run removes the directory itself over ssh first,
 only for a listed file or symlink it did not send under that name last time,
 never for a path rsync itself would not send under the exclude list (a dry run
-answers that), never through a symlink on the mirror,
-and only when the mirror holds a real directory there. A
+answers that, and a listed name the dry run cannot print as itself - a backslash
+or a control character - costs one dry run of its own), never through a symlink
+on the mirror, and only when the mirror holds a real directory there. A path
+that is not a checkout has no listing to compare against: its one plain pass
+meets the same refusal, so the run takes the path from rsync's own line naming
+the directory, keeps it only when the checkout now has a file or a symlink
+there, and runs the pass once more; a name rsync printed in its escaped form is
+left alone, since the line does not spell a path rsync can be given back. A
 directory the checkout deletes outright is the other shape, and there the files
 it sent go while a build output beside them stays, with rsync's "some files
-vanished" (24) accepted on that pass alone.
+vanished" (24) accepted on that pass alone. A failed pass prints at most five
+lines of stderr above rsync's summary, so a tool that reports more loses the
+earlier ones, and the error names `--dry-run` as the way to see the plan.
 
 ## Prune and another machine's verify
 

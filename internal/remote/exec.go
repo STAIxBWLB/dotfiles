@@ -170,9 +170,30 @@ func (d Deps) captureExit(ctx context.Context, argv []string, stdin []byte) (str
 		return stdout.String(), exit, fmt.Errorf("%s was interrupted by signal %d", strings.Join(argv[:1], " "), int(sig))
 	}
 	if exit != 0 {
-		return stdout.String(), exit, fmt.Errorf("%s exited %d: %s", strings.Join(argv[:1], " "), exit, tail(stderr.String()))
+		return stdout.String(), exit, &cmdFailure{
+			Command: strings.Join(argv[:1], " "),
+			Exit:    exit,
+			Stderr:  tailLines(stderr.String(), stderrLines),
+		}
 	}
 	return stdout.String(), 0, nil
+}
+
+// stderrLines bounds what one failed command prints: enough for a tool's
+// diagnostics, never a page.
+const stderrLines = 5
+
+// cmdFailure is a command that exited non-zero: its status and a bounded
+// excerpt of its stderr, so a caller whose failure has a known remedy can read
+// what the tool said instead of parsing the printed message.
+type cmdFailure struct {
+	Command string
+	Exit    int
+	Stderr  string
+}
+
+func (e *cmdFailure) Error() string {
+	return fmt.Sprintf("%s exited %d: %s", e.Command, e.Exit, e.Stderr)
 }
 
 // execAttached runs argv with attached stdio and forwards SIGINT, SIGTERM and
@@ -269,12 +290,19 @@ func (s *signalMemory) signal() syscall.Signal {
 	return s.last
 }
 
-// tail keeps the last line of a command's stderr, which is where rsync and the
-// runtimes put the sentence worth reading.
-func tail(s string) string {
-	lines := strings.Split(strings.TrimSpace(s), "\n")
-	if len(lines) == 0 {
-		return ""
+// tailLines keeps the last n non-empty lines of a command's stderr. A tool puts
+// its summary last and the sentence that says what to fix above it, so one line
+// alone reads as a failure with no cause.
+func tailLines(s string, n int) string {
+	var kept []string
+	for _, line := range strings.Split(strings.TrimSpace(s), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		kept = append(kept, strings.TrimRight(line, "\r"))
+		if len(kept) > n {
+			kept = kept[1:]
+		}
 	}
-	return strings.TrimSpace(lines[len(lines)-1])
+	return strings.Join(kept, "\n")
 }

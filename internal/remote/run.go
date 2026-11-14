@@ -254,10 +254,7 @@ func (d Deps) Run(ctx context.Context, cfg Config, opts RunOptions) error {
 	// that did not complete, would let the next run subtract from a record that
 	// never described what is on the mirror.
 	if isCheckout && decision.Record {
-		if err := d.writeSent(h, rel, path, listing); err != nil {
-			fmt.Fprintf(d.errOut(), "dot remote: could not record what this run sent to %s on %s (%v), so the next run there reconciles the mirror instead\n",
-				mirror, h.Name, err)
-		}
+		d.recordSent(h, mirror, rel, path, listing)
 	}
 	fmt.Fprintf(d.errOut(), "dot remote: running in %s on %s (mirror %s)\n", container, h.Name, mirror)
 	exit, sig, runErr := d.ex()(ctx, RunSSHArgv(h, opts.Ports, RunCommandWith(h, container, rel, opts.Command, opts.Extras())), d.in(), d.out(), d.errOut())
@@ -388,8 +385,8 @@ func (d Deps) syncInput(ctx context.Context, h Host, mirror, rel, path string, i
 // order.
 //
 // A name rsync would have to escape in its output (a control character or a
-// backslash) is never reported as kept: its printed form could be another
-// file's real name.
+// backslash) is asked on its own: with one name in the list, any output at all
+// is its answer, so the printed form is never read as another file's name.
 func (d Deps) rsyncKeeps(ctx context.Context, rsyncPath, src string, excludes []string, names []byte) (map[string]bool, error) {
 	kept := map[string]bool{}
 	if len(names) == 0 {
@@ -414,11 +411,41 @@ func (d Deps) rsyncKeeps(ctx context.Context, rsyncPath, src string, excludes []
 		printed[strings.TrimSuffix(line, "/")] = true
 	}
 	for _, name := range strings.Split(string(names), "\x00") {
-		if name != "" && plainName(name) && printed[strings.TrimSuffix(name, "/")] {
+		if name == "" {
+			continue
+		}
+		if !plainName(name) {
+			one, err := d.rsyncKeepsOne(ctx, rsyncPath, src, excludes, name)
+			if err != nil {
+				return nil, err
+			}
+			if one {
+				kept[name] = true
+			}
+			continue
+		}
+		if printed[strings.TrimSuffix(name, "/")] {
 			kept[name] = true
 		}
 	}
 	return kept, nil
+}
+
+// rsyncKeepsOne judges one name rsync cannot print as itself: a dry run of that
+// single name, where any output at all means its filter rules let it through.
+func (d Deps) rsyncKeepsOne(ctx context.Context, rsyncPath, src string, excludes []string, name string) (bool, error) {
+	empty, err := os.MkdirTemp("", "dot-remote-dry-")
+	if err != nil {
+		return false, err
+	}
+	defer os.RemoveAll(empty)
+	argv := append([]string{rsyncPath, "-a", "-n", "--no-implied-dirs", "--out-format=%n"}, ExcludeArgs(excludes)...)
+	argv = append(argv, "--files-from=-", "--from0", "--ignore-missing-args", src+"/", empty+"/")
+	out, err := d.capture(ctx, argv, []byte(name+"\x00"))
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) != "", nil
 }
 
 // plainName reports whether rsync prints a name as it is.
@@ -541,7 +568,7 @@ func (d Deps) clearReplaced(ctx context.Context, h Host, mirror string, candidat
 	}
 	for _, rel := range strings.Split(string(removed), "\x00") {
 		if rel != "" {
-			fmt.Fprintf(d.errOut(), "dot remote: removed the directory %s on %s, which this checkout replaced with a file\n", mirror+"/"+rel, h.Name)
+			fmt.Fprintf(d.errOut(), "dot remote: removed the directory %s on %s, which the mirrored path now has as a file\n", mirror+"/"+rel, h.Name)
 		}
 	}
 	return nil
@@ -618,12 +645,81 @@ func (d Deps) gitIgnored(ctx context.Context, path string, candidates []string) 
 func (d Deps) sync(ctx context.Context, h Host, mirror, rsyncPath, path string, in SyncInput) error {
 	target := h.SSH + ":" + mirror
 	for _, step := range SyncPlan(rsyncPath, path, target, in) {
-		_, exit, err := d.captureExit(ctx, step.Argv, step.Stdin)
-		if err := stepError(step, exit, err); err != nil {
-			return fmt.Errorf("mirroring %s to %s: %w", path, h.Name, err)
+		err := d.runStep(ctx, step)
+		if err == nil {
+			continue
 		}
+		// A path that is not a checkout gets one plain --delete pass, which
+		// cannot make way for a file where the mirror holds a directory with an
+		// excluded name in it. The checkout has decided that path is not a
+		// directory any more, so the directory goes by name, as the git path's
+		// delete pass removes it, and the pass runs once more.
+		if in.Listing == nil {
+			if named := staleDirs(err, path); len(named) > 0 {
+				if cerr := d.clearReplaced(ctx, h, mirror, named); cerr != nil {
+					return fmt.Errorf("mirroring %s to %s: %w", path, h.Name, cerr)
+				}
+				if rerr := d.runStep(ctx, step); rerr != nil {
+					return fmt.Errorf("mirroring %s to %s: %w; %s", path, h.Name, rerr, syncNextStep)
+				}
+				continue
+			}
+		}
+		return fmt.Errorf("mirroring %s to %s: %w; %s", path, h.Name, err, syncNextStep)
 	}
 	return nil
+}
+
+// syncNextStep is what a caller can do about a failed pass on its own: the plan
+// it would send names every path rsync decided on.
+const syncNextStep = "rerun with --dry-run to print the plan this pass would send"
+
+// runStep runs one rsync step and applies the tolerance that step's own input
+// gives its status.
+func (d Deps) runStep(ctx context.Context, step Step) error {
+	_, exit, err := d.captureExit(ctx, step.Argv, step.Stdin)
+	return stepError(step, exit, err)
+}
+
+// staleDirMarkers are the lines rsync names a directory it could not make way
+// for. The way-making refusal is on stderr with the rest of the diagnostics; the
+// deletion refusal it follows goes to stdout, and is accepted here in case a
+// version moves it.
+var staleDirMarkers = []string{
+	"could not make way for new regular file: ",
+	"cannot delete non-empty directory: ",
+}
+
+// staleDirs reads the paths rsync named as a directory it could not delete, and
+// keeps only those this checkout now has as something other than a directory:
+// the mirror's directory has to give way to a file, and a path the checkout
+// still has as a directory is not a run's to remove. A name rsync had to escape
+// in its message, or one that does not stay inside the mirror, is left alone.
+func staleDirs(err error, src string) []byte {
+	var failure *cmdFailure
+	if !errors.As(err, &failure) {
+		return nil
+	}
+	var out []byte
+	for _, line := range strings.Split(failure.Stderr, "\n") {
+		line = strings.TrimSpace(line)
+		rel, ok := "", false
+		for _, marker := range staleDirMarkers {
+			if rel, ok = strings.CutPrefix(line, marker); ok {
+				break
+			}
+		}
+		if !ok || !plainName(rel) || !safeRelPath(rel) {
+			continue
+		}
+		info, ierr := os.Lstat(filepath.Join(src, filepath.FromSlash(rel)))
+		if ierr != nil || info.IsDir() {
+			continue
+		}
+		out = append(out, rel...)
+		out = append(out, 0)
+	}
+	return out
 }
 
 // stepError is what one rsync step's outcome means: nothing when it succeeded or
