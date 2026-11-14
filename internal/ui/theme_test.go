@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -160,12 +161,21 @@ func TestSemanticReportGoldens(t *testing.T) {
 			} {
 				fmt.Fprintf(w, "  %s %s\n", MarkerColumn(row.style.Render(row.mark)), row.text)
 			}
+			// Encode every output line, including trailing spaces and the final
+			// empty element, rather than trimming terminal layout from goldens.
+			var snapshot bytes.Buffer
+			encoder := json.NewEncoder(&snapshot)
+			encoder.SetEscapeHTML(false)
+			encoder.SetIndent("", "  ")
+			if err := encoder.Encode(strings.SplitAfter(out.String(), "\n")); err != nil {
+				t.Fatal(err)
+			}
 			target := filepath.Join("testdata", tc.name)
 			if os.Getenv("UPDATE_UI_GOLDENS") == "1" {
 				if err := os.MkdirAll("testdata", 0755); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.WriteFile(target, out.Bytes(), 0644); err != nil {
+				if err := os.WriteFile(target, snapshot.Bytes(), 0644); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -173,8 +183,8 @@ func TestSemanticReportGoldens(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !bytes.Equal(want, out.Bytes()) {
-				t.Fatalf("report differs: got %q, want %q", out.Bytes(), want)
+			if !bytes.Equal(want, snapshot.Bytes()) {
+				t.Fatalf("report differs: got %q, want %q", snapshot.Bytes(), want)
 			}
 		})
 	}
