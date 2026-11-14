@@ -104,6 +104,8 @@ htmlcov/
 !/.agenthub/
 /.agenthub/*
 !/.agenthub/config.json
+!/.agenthub/routing.toml
+!/.agenthub/sdlc.toml
 .qwen/
 .kimi-code/
 .jcode/
