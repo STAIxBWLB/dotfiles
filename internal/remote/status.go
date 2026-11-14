@@ -178,8 +178,8 @@ func (d Deps) Status(ctx context.Context, cfg Config, h Host) (Status, error) {
 }
 
 // activeRuns selects this host's remote leases and names each one's container.
-// The container name comes from the mirror's path, so it is derived the same way
-// a run derives it: from the lease's local path mapped back through the config.
+// New verify/src leases record their container. Older leases fall back to
+// deriving it from the path or src scope.
 func activeRuns(cfg Config, h Host, leases []admission.Lease, now time.Time) []ActiveRun {
 	runs := []ActiveRun{}
 	for _, lease := range leases {
@@ -187,12 +187,13 @@ func activeRuns(cfg Config, h Host, leases []admission.Lease, now time.Time) []A
 			continue
 		}
 		run := ActiveRun{
-			Kind:    "path",
-			Scope:   lease.Scope,
-			Owner:   lease.Owner,
-			PID:     lease.PID,
-			Since:   lease.AcquiredAt,
-			Session: lease.Session,
+			Kind:      "path",
+			Scope:     lease.Scope,
+			Owner:     lease.Owner,
+			PID:       lease.PID,
+			Since:     lease.AcquiredAt,
+			Session:   lease.Session,
+			Container: leaseContainer(cfg, h, lease),
 		}
 		if strings.HasPrefix(lease.Scope, "remote-host:") {
 			run.Kind = "host"
@@ -200,8 +201,6 @@ func activeRuns(cfg Config, h Host, leases []admission.Lease, now time.Time) []A
 			run.Kind = "src"
 		} else if strings.HasPrefix(lease.Scope, "remote-job:") {
 			run.Kind = "job"
-		} else if rel, err := cfg.Rel(lease.Scope); err == nil {
-			run.Container = h.ContainerName(rel)
 		}
 		if run.Since.IsZero() {
 			run.Since = now
@@ -209,4 +208,22 @@ func activeRuns(cfg Config, h Host, leases []admission.Lease, now time.Time) []A
 		runs = append(runs, run)
 	}
 	return runs
+}
+
+// leaseContainer preserves recorded names and derives names for older leases.
+func leaseContainer(cfg Config, h Host, lease admission.Lease) string {
+	if lease.Container != "" {
+		return lease.Container
+	}
+	if strings.HasPrefix(lease.Scope, "remote-src:") {
+		name := strings.TrimPrefix(lease.Scope, "remote-src:"+h.Name+"/")
+		if name == "." {
+			name = ""
+		}
+		return h.SrcContainer(name)
+	}
+	if rel, err := cfg.Rel(lease.Scope); err == nil {
+		return h.ContainerName(rel)
+	}
+	return ""
 }

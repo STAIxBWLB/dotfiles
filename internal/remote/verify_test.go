@@ -200,6 +200,11 @@ func (f *runFixture) verifyDeps() Deps {
 			f.exec.calls = append(f.exec.calls, argv)
 			return 0, 0, nil
 		}
+		if strings.Contains(last, "--entrypoint getent") && f.exec.preflight == preflightAbsent {
+			f.exec.calls = append(f.exec.calls, argv)
+			io.WriteString(stdout, preflightAbsent+"identity\tok\n")
+			return 0, 0, nil
+		}
 		return f.exec.execute(ctx, argv, stdin, stdout, stderr)
 	}
 	return d

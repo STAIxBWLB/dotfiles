@@ -528,7 +528,10 @@ configurable in the `remote:` block:
 - the cache volumes `<prefix>-<cache>`, one per `caches` entry, and the
   containers `<prefix>-<mirror key>` a run creates and removes,
   `<prefix>-verify-<mirror key>` a verify does, and `<prefix>-src-<name>`
-  (`<prefix>-src-root` without a name) a src job does
+  (`<prefix>-src-root` without a name) a src job does; verify/src containers
+  carry an ownership label derived from this machine, admission store and job
+  scope, so
+  only the same local lease holder reclaims its running leftover
 - `<jobs root>/<name>` for each `dot remote job` (`jobs.<profile>.root`,
   absolute or under the remote `$HOME`, default `~/dot-remote-jobs/<profile>`):
   `in/` fed by rsync with the job's input files and `out/` written by the job,

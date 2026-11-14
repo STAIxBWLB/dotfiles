@@ -200,12 +200,18 @@ its outcome.
 
 `--dirty` stages the working tree (tracked files plus untracked ones no ignore
 rule covers) in a throwaway index and writes a commit object on top of HEAD:
-your index, branches and refs are not touched, and ignored files are never
-sent. Only commits travel; nothing else of the checkout is copied.
+your index, branches and refs are not touched. The snapshot tree excludes the
+same built-in secret, build and runtime paths as `run` (with `.env.example`
+allowed), even when tracked. Existing history still travels with the commit,
+so this does not scrub secrets already committed. Ignored files are never
+added. Only commits travel; nothing else of the checkout is copied.
 
 The container starts as root only to make the checkout and hand it to your host
 UID and GID, then drops to that user with no capabilities before the command
-runs. The bare repository is mounted read-only, and the host's caches are
+runs. Before pushing, `verify` refuses an ssh account with UID 0 (change
+`remote.hosts.<host>.ssh`) and checks that the image has a passwd entry for
+the host UID. Build the image with that UID and GID if this check fails.
+The bare repository is mounted read-only, and the host's caches are
 mounted as for a run. `verify` and `run` of one checkout hold the same path
 lease, so they exclude each other; the host's `max_runs` and load check apply
 as for a run.
@@ -223,6 +229,14 @@ the host. No cache volume is mounted, so that code cannot reach the caches
 trusted builds reuse. A NAME is one path segment (letters, digits, `.`, `_`,
 `-`); one the host has no clone of exits 66. Each NAME holds its own lease plus
 one of the host's `max_runs`.
+
+`verify` and `src` label their containers with the invoking machine, admission
+store and job scope. After a killed local process, the next run holding that same local
+lease removes its own running leftover before starting. A running container
+with another owner, no label, or an unreadable label is left alone and the
+job defers. `dot remote status` reports the actual verify or src container
+name alongside its local lease. Interrupting a verify push exits with
+128 plus the signal number and still attempts ref cleanup.
 
 ### Limits and interrupts
 

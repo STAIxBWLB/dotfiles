@@ -49,6 +49,10 @@ const missingCloneMarker = "dot-remote-src: no clone"
 // SrcCommand is the remote shell command one src job sends. No cache volume is
 // mounted: untrusted code must not reach the caches trusted builds reuse.
 func SrcCommand(h Host, name string, command []string) string {
+	return srcCommand(h, name, command, "")
+}
+
+func srcCommand(h Host, name string, command []string, owner string) string {
 	base := `"$HOME"/` + ShellQuote(h.SrcRoot)
 	workdir := "/src"
 	guard := "mkdir -p " + base + " && "
@@ -61,6 +65,9 @@ func SrcCommand(h Host, name string, command []string) string {
 			" >&2; exit " + fmt.Sprint(ExitMissingClone) + "; }; "
 	}
 	argv := []string{"--init", "-i", "--name", h.SrcContainer(name)}
+	if owner != "" {
+		argv = append(argv, "--label", "net.staix.dot.remote-owner="+owner)
+	}
 	if h.CPUs > 0 {
 		argv = append(argv, "--cpus", fmt.Sprint(h.CPUs))
 	}
@@ -82,14 +89,14 @@ func (d Deps) Src(ctx context.Context, cfg Config, opts SrcOptions) error {
 		return err
 	}
 	container := h.SrcContainer(opts.Name)
-	remoteCommand := SrcCommand(h, opts.Name, opts.Command)
+	remoteCommand := srcCommand(h, opts.Name, opts.Command, d.containerOwner(srcScope(h, opts.Name)))
 	if opts.DryRun {
 		fmt.Fprintf(d.out(), "would run in %s on %s:\n  %s\n", container, h.Name, strings.Join(SSHArgv(h.SSH, remoteCommand), " "))
 		return nil
 	}
 	scope := srcScope(h, opts.Name)
 	leases, err := d.admit(ctx, h, admitOptions{
-		Scope: scope, Cwd: opts.Cwd, Wait: opts.Wait, Ignore: opts.Ignore, IgnoreSrc: opts.IgnoreSrc,
+		Scope: scope, Container: container, Cwd: opts.Cwd, Wait: opts.Wait, Ignore: opts.Ignore, IgnoreSrc: opts.IgnoreSrc,
 		Busy: func(holder *admission.Lease) string {
 			who := "another job"
 			if holder != nil {
@@ -102,7 +109,7 @@ func (d Deps) Src(ctx context.Context, cfg Config, opts SrcOptions) error {
 		return err
 	}
 	defer leases.Release()
-	if err := d.prepareContainer(ctx, h, container, scope); err != nil {
+	if err := d.prepareContainer(ctx, h, container, scope, false); err != nil {
 		return err
 	}
 	fmt.Fprintf(d.errOut(), "dot remote: running in %s on %s\n", srcLabel(h, opts.Name), h.Name)
