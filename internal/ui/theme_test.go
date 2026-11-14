@@ -105,9 +105,9 @@ func TestThemeIsExplicitAndRestoresOnExit(t *testing.T) {
 		}
 		return ""
 	}
-	restore, err := SetPresentation(env, false)
-	if err != nil {
-		t.Fatal(err)
+	restore, warning := SetPresentation(env, false)
+	if warning != "" {
+		t.Fatal(warning)
 	}
 	if !reflect.DeepEqual(StyleKey.GetForeground(), lipgloss.Color(palettes["tokyo-night-light"].colors[RoleKey])) {
 		t.Fatal("explicit theme was not selected")
@@ -116,12 +116,36 @@ func TestThemeIsExplicitAndRestoresOnExit(t *testing.T) {
 	if !reflect.DeepEqual(captureStyles(), before) {
 		t.Fatal("theme escaped invocation")
 	}
-	_, err = SetPresentation(func(string) string { return "invalid" }, false)
-	if err == nil || !strings.Contains(err.Error(), "DOT_COLOR_THEME") {
-		t.Fatalf("invalid theme accepted: %v", err)
+	darkRestore, warning := SetPresentation(func(k string) string {
+		if k == "DOT_COLOR_THEME" {
+			return "tokyo-night-dark"
+		}
+		return "en_US.UTF-8"
+	}, false)
+	if warning != "" {
+		t.Fatal(warning)
 	}
+	fallbackRestore, warning := SetPresentation(func(k string) string {
+		if k == "DOT_COLOR_THEME" {
+			return "typo"
+		}
+		return "en_US.UTF-8"
+	}, false)
+	for _, want := range []string{"typo", "using ansi", "tokyo-night-dark", "tokyo-night-light"} {
+		if !strings.Contains(warning, want) {
+			t.Errorf("warning lacks %q: %q", want, warning)
+		}
+	}
+	if !reflect.DeepEqual(StyleKey.GetForeground(), lipgloss.Color("4")) {
+		t.Fatal("unknown theme did not fall back to ANSI")
+	}
+	fallbackRestore()
+	if !reflect.DeepEqual(StyleKey.GetForeground(), lipgloss.Color(palettes["tokyo-night-dark"].colors[RoleKey])) {
+		t.Fatal("fallback scope lost prior theme")
+	}
+	darkRestore()
 	if !reflect.DeepEqual(captureStyles(), before) {
-		t.Fatal("invalid theme changed styles")
+		t.Fatal("fallback theme escaped invocation")
 	}
 }
 
@@ -136,14 +160,14 @@ func TestSemanticReportGoldens(t *testing.T) {
 		{"report-ascii-off.golden", ColorNever, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			restore, err := SetPresentation(func(k string) string {
+			restore, warning := SetPresentation(func(k string) string {
 				if k == "LANG" {
 					return "en_US.UTF-8"
 				}
 				return ""
 			}, tc.ascii)
-			if err != nil {
-				t.Fatal(err)
+			if warning != "" {
+				t.Fatal(warning)
 			}
 			defer restore()
 			var out bytes.Buffer

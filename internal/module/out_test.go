@@ -64,14 +64,14 @@ func TestRunContextOut_NilDefaultsToStdout(t *testing.T) {
 
 func pinModuleReportMarkers(t *testing.T) {
 	t.Helper()
-	restore, err := ui.SetPresentation(func(k string) string {
+	restore, warning := ui.SetPresentation(func(k string) string {
 		if k == "LANG" {
 			return "en_US.UTF-8"
 		}
 		return ""
 	}, false)
-	if err != nil {
-		t.Fatal(err)
+	if warning != "" {
+		t.Fatal(warning)
 	}
 	t.Cleanup(restore)
 }

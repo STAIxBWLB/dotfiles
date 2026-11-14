@@ -75,20 +75,24 @@ func stylesFor(p palette) styleSet {
 
 // SetPresentation selects an explicitly requested theme and locale markers for
 // one command. The CLI executes one command per process; the caller defers the
-// restoration even on error. No environment variable or user setting is changed.
-func SetPresentation(getenv func(string) string, ascii bool) (func(), error) {
+// restoration even on command failure. The second result is an advisory warning;
+// the restore function is always usable. Unknown themes fall back to ANSI.
+// No environment variable or user setting is changed.
+func SetPresentation(getenv func(string) string, ascii bool) (func(), string) {
 	name := getenv("DOT_COLOR_THEME")
 	if name == "" {
 		name = "ansi"
 	}
 	p, ok := palettes[name]
+	warning := ""
 	if !ok {
-		return nil, fmt.Errorf("invalid DOT_COLOR_THEME %q: choose ansi, tokyo-night-dark or tokyo-night-light", name)
+		warning = fmt.Sprintf("unknown DOT_COLOR_THEME %q; using ansi; valid choices: ansi, tokyo-night-dark, tokyo-night-light", name)
+		p = palettes["ansi"]
 	}
 	previousStyles, previousMarkers := captureStyles(), captureMarkers()
 	stylesFor(p).apply()
 	markersFor(getenv, ascii).apply()
-	return func() { previousStyles.apply(); previousMarkers.apply() }, nil
+	return func() { previousStyles.apply(); previousMarkers.apply() }, warning
 }
 
 // RoleStyle returns the current semantic style. Named aliases remain available
