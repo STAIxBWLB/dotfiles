@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // IntakeOptions controls one Intake run.
@@ -403,7 +404,7 @@ func refreshBaseline(cfg *Config, mode FingerprintMode, written map[string]bool)
 			if remoteBaseline || absPath == walkRoot {
 				return err
 			}
-			fmt.Fprintf(os.Stderr, "warning: baseline walk skipping %s: %v\n", absPath, err)
+			ui.WriteWarning(os.Stderr, fmt.Sprintf("baseline walk skipping %s: %v", absPath, err))
 			if d != nil && d.IsDir() {
 				return filepath.SkipDir
 			}

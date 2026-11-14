@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/STAIxBWLB/dotfiles/internal/config"
 	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
 	"github.com/STAIxBWLB/dotfiles/internal/template"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
+	"gopkg.in/yaml.v3"
 )
 
 // localStoreDir is the per-workspace root for sync runtime state
@@ -488,19 +488,19 @@ func LoadLocalConfig(paths *LocalPaths) (*LocalConfig, bool, error) {
 	cfg.retired = retiredLocalConfigValues(data)
 	if err := cfg.Propagation.Validate(); err != nil {
 		// Fall back to defaults when on-disk policy is unusable rather than blocking.
-		fmt.Fprintf(os.Stderr, "warning: %s has invalid propagation (%v); using defaults\n", paths.ConfigFile, err)
+		ui.WriteWarning(os.Stderr, fmt.Sprintf("%s has invalid propagation (%v); using defaults", paths.ConfigFile, err))
 		cfg.Propagation = DefaultPropagationPolicy()
 	}
 	if cfg.FilterMode == "" {
 		cfg.FilterMode = DefaultFilterMode()
 	} else if err := cfg.FilterMode.Validate(); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: %s has invalid filter_mode (%v); using %s\n", paths.ConfigFile, err, DefaultFilterMode())
+		ui.WriteWarning(os.Stderr, fmt.Sprintf("%s has invalid filter_mode (%v); using %s", paths.ConfigFile, err, DefaultFilterMode()))
 		cfg.FilterMode = DefaultFilterMode()
 	} else {
 		cfg.FilterMode = normalizeFilterMode(cfg.FilterMode)
 	}
 	schedule := ScheduleSettingsFromLocalConfig(&cfg).NormalizeLenient(func(field string, err error, fallback any) {
-		fmt.Fprintf(os.Stderr, "warning: %s has invalid %s (%v); using %v\n", paths.ConfigFile, field, err, fallback)
+		ui.WriteWarning(os.Stderr, fmt.Sprintf("%s has invalid %s (%v); using %v", paths.ConfigFile, field, err, fallback))
 	})
 	schedule.ApplyToLocalConfig(&cfg)
 	return &cfg, true, nil
@@ -585,8 +585,8 @@ func announceRetiredLocalConfigKeys(path string, cfg *LocalConfig, carried map[s
 	if len(keys) == 0 {
 		return
 	}
-	fmt.Fprintf(os.Stderr, "note: dropped the retired `%s` key from %s; `dot sync` uses this store's `target` (set it with `dot sync target`)\n",
-		strings.Join(keys, "`, `"), path)
+	ui.WriteNote(os.Stderr, fmt.Sprintf("dropped the retired `%s` key from %s; `dot sync` uses this store's `target` (set it with `dot sync target`)",
+		strings.Join(keys, "`, `"), path))
 }
 
 // retiredMirrorPathKey is the one retired key whose value the sync engine still

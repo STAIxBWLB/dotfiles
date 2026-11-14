@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 type PushConflict struct {
@@ -368,7 +370,7 @@ func collectPlanInventory(root string, filter *syncFilter, mode FingerprintMode)
 			if absPath == root {
 				return err
 			}
-			fmt.Fprintf(os.Stderr, "warning: plan walk skipping %s: %v\n", absPath, err)
+			ui.WriteWarning(os.Stderr, fmt.Sprintf("plan walk skipping %s: %v", absPath, err))
 			if d != nil && d.IsDir() {
 				return filepath.SkipDir
 			}

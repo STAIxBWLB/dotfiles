@@ -5,9 +5,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/spf13/cobra"
-
 	"github.com/STAIxBWLB/dotfiles/internal/ui"
+	"github.com/spf13/cobra"
 )
 
 // Printer routes CLI output to writable sinks so tests can capture output.
@@ -87,10 +86,20 @@ func (p *Printer) Success(format string, a ...any) {
 	p.Line("%s", ui.StyleSuccess.Render(fmt.Sprintf(format, a...)))
 }
 
-// Warn prints a formatted line to Err styled with StyleWarning (orange).
+// Warn prints a warning diagnostic to Err using the shared UI form.
 // Use for recoverable / attention-needed conditions.
 func (p *Printer) Warn(format string, a ...any) {
-	ui.WriteReportLine(p.Err, ui.StyleWarning.Render(fmt.Sprintf(format, a...)))
+	ui.WriteWarning(p.Err, fmt.Sprintf(format, a...))
+}
+
+// Next prints a complete next step to Err in the accent role.
+func (p *Printer) Next(format string, a ...any) {
+	ui.WriteNext(p.Err, fmt.Sprintf(format, a...))
+}
+
+// DryRun prints an action that would run to Out with the pending marker.
+func (p *Printer) DryRun(format string, a ...any) {
+	ui.WriteDryRun(p.Out, fmt.Sprintf(format, a...))
 }
 
 // Fail prints a formatted line to Err styled with StyleError (red).

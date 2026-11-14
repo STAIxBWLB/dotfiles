@@ -14,6 +14,7 @@ import (
 	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
 	"github.com/STAIxBWLB/dotfiles/internal/sliceutil"
 	"github.com/STAIxBWLB/dotfiles/internal/tunnel"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 	"gopkg.in/yaml.v3"
 )
 
@@ -259,8 +260,8 @@ func retiredMirrorPathStillMoves(state *UserState, home string) bool {
 // carry a version above this binary's, so the case is unreachable in v1.0. A
 // quiet variant is the one-line upgrade path if v1.1 makes it real.
 func warnForwardSchema(path string, version int) {
-	fmt.Fprintf(os.Stderr, "warning: %s was written by a newer dot (state schema version %d, this binary understands %d)\n", path, version, currentSchemaVersion)
-	fmt.Fprintln(os.Stderr, "  Run 'dot update' to upgrade.")
+	ui.WriteWarning(os.Stderr, fmt.Sprintf("%s was written by a newer dot (state schema version %d, this binary understands %d)", path, version, currentSchemaVersion))
+	ui.WriteNext(os.Stderr, "dot update")
 }
 
 // UserState holds user-configured settings persisted to disk.
@@ -731,8 +732,8 @@ func loadStateAt(path string) (*UserState, error) {
 		return nil, err
 	}
 	if err := state.Validate(); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: state file has invalid values: %v\n", err)
-		fmt.Fprintln(os.Stderr, "  Run 'dot reconfigure' to fix.")
+		ui.WriteWarning(os.Stderr, fmt.Sprintf("state file has invalid values: %v", err))
+		ui.WriteNext(os.Stderr, "dot reconfigure")
 	}
 	return state, nil
 }
@@ -850,11 +851,10 @@ func saveStateAtForHome(path string, state *UserState, home string) error {
 
 	// The write choke point is the smallest correct site for this notice: it
 	// fires once per write, from every write command, and no read path can
-	// reach it. `note: ` is the prefix internal/syncer/sync.go:217 already uses
-	// for a non-actionable informational line.
+	// reach it. Informational notices use the shared UI prefix without a level word.
 	if len(state.carriedLegacy) > 0 {
-		fmt.Fprintf(os.Stderr, "note: migrated legacy state keys to their canonical form: %s\n",
-			strings.Join(state.carriedLegacy, ", "))
+		ui.WriteNote(os.Stderr, fmt.Sprintf("migrated legacy state keys to their canonical form: %s",
+			strings.Join(state.carriedLegacy, ", ")))
 	}
 	// A retired key is the other half of the same notice: nothing replaces its
 	// value, so the note has to name the command that sets the replacement.
@@ -865,7 +865,7 @@ func saveStateAtForHome(path string, state *UserState, home string) error {
 			if carryRetired && key == retiredMirrorPathStateKey {
 				continue
 			}
-			fmt.Fprintf(os.Stderr, "note: dropped the retired `%s` key: %s\n", key, retiredStateKeys[key])
+			ui.WriteNote(os.Stderr, fmt.Sprintf("dropped the retired `%s` key: %s", key, retiredStateKeys[key]))
 		}
 		state.retiredKeys = nil
 	}
@@ -989,7 +989,7 @@ func LoadStateFrom(path string) (*UserState, error) {
 		return nil, err
 	}
 	if err := state.Validate(); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: imported config has invalid values: %v\n", err)
+		ui.WriteWarning(os.Stderr, fmt.Sprintf("imported config has invalid values: %v", err))
 	}
 	if state.Name == "" && state.Profile == "" {
 		return nil, fmt.Errorf("imported config is empty (no name or profile set)")

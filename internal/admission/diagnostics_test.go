@@ -133,7 +133,7 @@ func TestBuildBundleAlwaysCarriesTheNote(t *testing.T) {
 func TestOverflowSlotReasonIsTheNoticeSentence(t *testing.T) {
 	var buf bytes.Buffer
 	NoteOverflowSlot(&buf, Lease{Index: 2}, 1, "")
-	want := "admission: " + OverflowSlotReason(1, 2, "") + "\n"
+	want := "dot: warning: admission: " + OverflowSlotReason(1, 2, "") + "\n"
 	if buf.String() != want {
 		t.Errorf("notice = %q, want %q", buf.String(), want)
 	}

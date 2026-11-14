@@ -151,7 +151,7 @@ func TestLoadState_DropsTheRetiredMirrorPathKeyOnceItIsMoot(t *testing.T) {
 			t.Fatalf("save: %v", err)
 		}
 	})
-	if got := strings.Count(out, "note: dropped the retired `"+retiredMirrorPathStateKey+"` key"); got != 1 {
+	if got := strings.Count(out, "dot: dropped the retired `"+retiredMirrorPathStateKey+"` key"); got != 1 {
 		t.Fatalf("want exactly one retired-key note, got %d in %q", got, out)
 	}
 	if !strings.Contains(out, "`dot sync target`") {

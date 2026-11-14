@@ -10,7 +10,7 @@ import (
 
 // TestUnknownCommandGate_WritesGuidanceAndReturnsSentinel verifies that an
 // unrecognized first argument is rejected with the ErrUnknownCommand sentinel
-// and the exact six-line guidance. Without this guarantee a typo could be
+// and the usage-error guidance. Without this guarantee a typo could be
 // silently routed somewhere unexpected, or main could print a redundant
 // "dot: unknown command" line behind guidance the user already saw.
 func TestUnknownCommandGate_WritesGuidanceAndReturnsSentinel(t *testing.T) {
@@ -27,13 +27,13 @@ func TestUnknownCommandGate_WritesGuidanceAndReturnsSentinel(t *testing.T) {
 
 	out := buf.String()
 	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
-	if len(lines) != 6 {
-		t.Fatalf("guidance = %d lines, want 6:\n%s", len(lines), out)
+	if len(lines) != 5 {
+		t.Fatalf("guidance = %d lines, want 5:\n%s", len(lines), out)
 	}
 	if want := `dot: unknown command "definitely-not-a-command"`; lines[0] != want {
 		t.Errorf("first line = %q, want %q", lines[0], want)
 	}
-	if !strings.Contains(out, "  dot open definitely-not-a-command") {
+	if !strings.Contains(out, "dot open definitely-not-a-command") || !strings.HasPrefix(lines[1], "Usage: dot") || lines[2] != "Run 'dot help' for details." {
 		t.Errorf("guidance missing open-subcommand suggestion:\n%s", out)
 	}
 }
