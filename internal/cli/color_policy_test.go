@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"log/slog"
 	"os"
 	"strings"
@@ -189,5 +190,25 @@ func TestPresentationPreservesRawChildPayload(t *testing.T) {
 	err := withPresentation(cmd, func() error { _, err := cmd.OutOrStdout().Write(raw); return err })
 	if err != nil || !bytes.Equal(raw, out.Bytes()) {
 		t.Fatalf("raw payload changed: %q, %v", out.Bytes(), err)
+	}
+}
+
+func TestPresentationRestoresStandardLogBridge(t *testing.T) {
+	writer, flags, prefix := log.Writer(), log.Flags(), log.Prefix()
+	defer func() { log.SetOutput(writer); log.SetFlags(flags); log.SetPrefix(prefix) }()
+	var captured bytes.Buffer
+	log.SetOutput(&captured)
+	log.SetFlags(log.Lshortfile)
+	log.SetPrefix("before: ")
+	cmd := &cobra.Command{Use: "probe"}
+	cmd.Flags().Bool("verbose", true, "")
+	cmd.SetErr(io.Discard)
+	_ = withPresentation(cmd, func() error { return errors.New("fixture") })
+	if log.Writer() != &captured || log.Flags() != log.Lshortfile || log.Prefix() != "before: " {
+		t.Fatal("standard logger bridge leaked across invocation")
+	}
+	log.Print("after")
+	if !strings.Contains(captured.String(), "after") {
+		t.Fatalf("standard logger sink lost: %q", captured.String())
 	}
 }

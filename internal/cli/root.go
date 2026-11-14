@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -290,8 +291,16 @@ func withPresentation(cmd *cobra.Command, run func() error) error {
 	restoreColor := ui.SetColorPolicy(mode, json)
 	defer restoreColor()
 	previous := slog.Default()
+	// slog.SetDefault also redirects the standard log package. Restore that
+	// bridge too; restoring only the slog pointer can leave a stale sink.
+	logWriter, logFlags, logPrefix := log.Writer(), log.Flags(), log.Prefix()
 	slog.SetDefault(commandLogger(cmd))
-	defer slog.SetDefault(previous)
+	defer func() {
+		slog.SetDefault(previous)
+		log.SetOutput(logWriter)
+		log.SetFlags(logFlags)
+		log.SetPrefix(logPrefix)
+	}()
 	return run()
 }
 
