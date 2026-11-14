@@ -95,7 +95,7 @@ func runOpen(cmd *cobra.Command, args []string) error {
 	env := os.Environ()
 	if flagLayout, _ := cmd.Flags().GetString("layout"); flagLayout != "" {
 		if !workspace.IsValidLayout(flagLayout) {
-			return fmt.Errorf("unknown layout %q; valid: %v", flagLayout, workspace.ValidLayouts())
+			return usageError(cmd, fmt.Errorf("unknown layout %q; valid: %v", flagLayout, workspace.ValidLayouts()))
 		}
 		layout = flagLayout
 		env = append(env, "DOT_LAYOUT_REQUESTED=1")
@@ -105,7 +105,7 @@ func runOpen(cmd *cobra.Command, args []string) error {
 	}
 	if flagTheme, _ := cmd.Flags().GetString("theme"); flagTheme != "" {
 		if !workspace.IsValidTheme(flagTheme) {
-			return fmt.Errorf("unknown theme %q; valid: %v", flagTheme, workspace.ValidThemes())
+			return usageError(cmd, fmt.Errorf("unknown theme %q; valid: %v", flagTheme, workspace.ValidThemes()))
 		}
 		theme = flagTheme
 	}

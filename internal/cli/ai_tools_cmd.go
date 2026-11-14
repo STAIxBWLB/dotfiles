@@ -17,7 +17,7 @@ func newAIToolsCmd() *cobra.Command {
 		includeAuth, _ := cmd.Flags().GetBool("include-auth")
 		if details || includeAuth {
 			if asJSON {
-				return fmt.Errorf("--details and --include-auth produce a human inventory, not catalog JSON; omit those flags for --json or omit --json for the inventory")
+				return usageError(cmd, fmt.Errorf("--details and --include-auth produce a human inventory, not catalog JSON; omit those flags for --json or omit --json for the inventory"))
 			}
 			return runAIList(cmd, nil)
 		}

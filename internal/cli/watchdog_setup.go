@@ -261,7 +261,7 @@ func runWatchdogLog(cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		parsed, err := strconv.Atoi(args[0])
 		if err != nil || parsed <= 0 {
-			return fmt.Errorf("log line count must be a positive integer")
+			return usageError(cmd, fmt.Errorf("log line count must be a positive integer"))
 		}
 		n = parsed
 	}

@@ -66,7 +66,7 @@ func runUpgrade(cmd *cobra.Command, currentVersion string) error {
 	if explicitVersion {
 		requested = "v" + strings.TrimPrefix(requested, "v")
 		if !stableReleaseTag.MatchString(requested) {
-			return fmt.Errorf("release version %q is not a stable X.Y.Z version; use dot update --version X.Y.Z", requested)
+			return usageError(cmd, fmt.Errorf("release version %q is not a stable X.Y.Z version; use dot update --version X.Y.Z", requested))
 		}
 	}
 	checkOnly, _ := cmd.Flags().GetBool("check")

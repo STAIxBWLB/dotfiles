@@ -39,14 +39,14 @@ others, and the command exits non-zero naming each tool that failed.`, RunE: fun
 		version, _ := cmd.Flags().GetString("version")
 		adopt, _ := cmd.Flags().GetBool("adopt")
 		if all, _ := cmd.Flags().GetBool("all"); all == (len(args) > 0) {
-			return fmt.Errorf("name one or more of %s, or pass --all", familyIDs())
+			return usageError(cmd, fmt.Errorf("name one or more of %s, or pass --all", familyIDs()))
 		} else if all {
 			for _, t := range aitooling.FamilyTools() {
 				args = append(args, t.ID)
 			}
 		}
 		if version != "" && len(args) != 1 {
-			return errors.New("--version needs exactly one id")
+			return usageError(cmd, errors.New("--version needs exactly one id"))
 		}
 		e := familyEngine(cmd)
 		return familyBatch(cmd, "ai.family.install", args, func(id string) (aitooling.FamilyResult, error) {

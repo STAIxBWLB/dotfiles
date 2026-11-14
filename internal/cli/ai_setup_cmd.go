@@ -37,7 +37,7 @@ func runAISetup(cmd *cobra.Command, _ []string) error {
 	unattended := yes || noninteractive
 	if selection == nil {
 		if unattended && !cmd.Flags().Changed("agents") {
-			return fmt.Errorf("first noninteractive setup requires --agents; use --agents= for an empty selection")
+			return usageError(cmd, fmt.Errorf("first noninteractive setup requires --agents; use --agents= for an empty selection"))
 		}
 		selection = &config.AIToolingConfig{Agents: []string{}}
 		if !unattended {

@@ -3,8 +3,6 @@ package ui
 import (
 	"os"
 	"strings"
-
-	"charm.land/lipgloss/v2"
 )
 
 // Marker names and their canonical glyphs live in one table. Partial (:) and
@@ -89,7 +87,7 @@ func markersFor(getenv func(string) string, ascii bool) markerSet {
 // MarkerColumn reserves exactly two cells, including ASCII ok and ->. Width
 // measurement treats ambiguous characters as narrow, matching the standard.
 func MarkerColumn(marker string) string {
-	return marker + strings.Repeat(" ", max(0, 2-lipgloss.Width(marker)))
+	return padCell(marker, 2)
 }
 
 // RenderMarker pairs a raw named marker with its semantic role. A marker the

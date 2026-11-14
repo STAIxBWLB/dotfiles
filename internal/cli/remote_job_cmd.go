@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/STAIxBWLB/dotfiles/internal/remote"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // newRemoteJobCmd builds `dot remote job`: file-in, file-out jobs on a host's
@@ -82,7 +83,7 @@ func runRemoteJobRun(cmd *cobra.Command, _ []string) error {
 	opts.DryRun, _ = cmd.Flags().GetBool("dry-run")
 	opts.Wait, _ = cmd.Flags().GetDuration("wait")
 	if opts.Wait < 0 {
-		return fmt.Errorf("--wait must not be negative")
+		return usageError(cmd, fmt.Errorf("--wait must not be negative"))
 	}
 	err = deps.RunJob(cmd.Context(), cfg, opts)
 	var deferred *remote.Deferred
@@ -142,10 +143,14 @@ func runRemoteJobCheck(cmd *cobra.Command, _ []string) error {
 			return merr
 		}
 		p.Line("%s", data)
-	} else if result.Available {
-		p.Success("%s can take a %s job now", host.Name, profile.Name)
 	} else {
-		p.Warn("%s cannot take a %s job: %s", host.Name, profile.Name, result.Reason)
+		if result.Available {
+			p.Bullet(ui.MarkPresent, fmt.Sprintf("%s can take a %s job now", host.Name, profile.Name))
+			p.Summary(ui.CheckSummary{OK: 1})
+		} else {
+			p.Bullet(ui.MarkFail, fmt.Sprintf("%s cannot take a %s job: %s", host.Name, profile.Name, result.Reason))
+			p.Summary(ui.CheckSummary{Failed: 1})
+		}
 	}
 	if !result.Available {
 		return &ExitCodeError{Code: remote.ExitUnavailable, Err: fmt.Errorf("%s cannot take a %s job: %s", host.Name, profile.Name, result.Reason)}

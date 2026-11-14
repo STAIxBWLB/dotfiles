@@ -2,6 +2,11 @@
 
 Report structural mismatches between workspaces
 
+### Synopsis
+
+Read-only structure report. Mismatches are warnings in the final summary.
+Exit 0 when the report can be read, even when the trees differ.
+
 ```
 dot ws audit [scope] [flags]
 ```

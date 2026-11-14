@@ -18,14 +18,14 @@ const kvKeyWidth = 22 // width of "Pull+intake scheduler:"
 // header role frames the text without painting a background.
 func WriteHeader(w io.Writer, title string) {
 	_, _ = fmt.Fprintln(Output(w))
-	_, _ = fmt.Fprintln(Output(w), StyleHeader.Render(" "+title+" "))
+	WriteReportLine(w, StyleHeader.Render(" "+title+" "))
 }
 
 // WriteSection writes a section divider with one leading blank line and the
 // canonical "▸ " prefix. Callers pass the section name only.
 func WriteSection(w io.Writer, title string) {
 	_, _ = fmt.Fprintln(Output(w))
-	_, _ = fmt.Fprintln(Output(w), StyleSection.Render(MarkSection+" "+title))
+	WriteReportLine(w, StyleSection.Render(MarkSection+" "+title))
 }
 
 // WriteKV writes a styled key/value row at the 2-space top-level indent.
@@ -41,7 +41,12 @@ func WriteKV(w io.Writer, key, value string) {
 	if labelWidth := lipgloss.Width(label); labelWidth > width {
 		width = labelWidth
 	}
-	_, _ = fmt.Fprintf(Output(w), "  %s  %s\n", StyleKey.Width(width).Render(label), value)
+	if lipgloss.Width(label) > 28 {
+		WriteReportLine(w, "  "+StyleKey.Width(0).Render(label))
+		WriteReportLine(w, "    "+value)
+		return
+	}
+	WriteReportLine(w, fmt.Sprintf("  %s  %s", StyleKey.Width(width).Render(label), value))
 }
 
 // printSection emits a section divider to os.Stdout. Ui-internal wrapper over

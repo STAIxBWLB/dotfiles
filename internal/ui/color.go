@@ -72,7 +72,10 @@ func SetColorPolicy(mode ColorMode, json bool) func() {
 	return func() { currentColor.Store(previous) }
 }
 
-type colorWriter struct{ *colorprofile.Writer }
+type colorWriter struct {
+	*colorprofile.Writer
+	json bool
+}
 
 // Output applies the invocation's color policy to this particular stream.
 // Already-bound writers retain their policy rather than being auto-detected
@@ -103,5 +106,5 @@ func NewColorWriter(w io.Writer, mode ColorMode, json bool) io.Writer {
 	if ResolveColor(mode, os.Getenv, tty, json) {
 		profile = colorprofile.TrueColor
 	}
-	return &colorWriter{&colorprofile.Writer{Forward: w, Profile: profile}}
+	return &colorWriter{Writer: &colorprofile.Writer{Forward: w, Profile: profile}, json: json}
 }

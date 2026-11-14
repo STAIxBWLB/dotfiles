@@ -65,7 +65,7 @@ func runSyncSetup(cmd *cobra.Command, _ []string) error {
 		raw, _ := cmd.Flags().GetString("push-interval")
 		seconds, err := parseIntervalFlag(raw)
 		if err != nil {
-			return fmt.Errorf("--push-interval: %w", err)
+			return usageError(cmd, fmt.Errorf("--push-interval: %w", err))
 		}
 		pushInterval = seconds
 	}
@@ -73,19 +73,19 @@ func runSyncSetup(cmd *cobra.Command, _ []string) error {
 		raw, _ := cmd.Flags().GetString("pull-interval")
 		seconds, err := parseIntervalFlag(raw)
 		if err != nil {
-			return fmt.Errorf("--pull-interval: %w", err)
+			return usageError(cmd, fmt.Errorf("--pull-interval: %w", err))
 		}
 		pullInterval = seconds
 	}
 	pushModeRaw, _ := cmd.Flags().GetString("push-mode")
 	pushMode, err := parseAutomaticModeFlag(pushModeRaw)
 	if err != nil {
-		return fmt.Errorf("--push-mode: %w", err)
+		return usageError(cmd, fmt.Errorf("--push-mode: %w", err))
 	}
 	pullModeRaw, _ := cmd.Flags().GetString("pull-mode")
 	pullMode, err := parseAutomaticModeFlag(pullModeRaw)
 	if err != nil {
-		return fmt.Errorf("--pull-mode: %w", err)
+		return usageError(cmd, fmt.Errorf("--pull-mode: %w", err))
 	}
 	owner, _ := cmd.Flags().GetString("owner")
 	if err := setupSchedulerOwner(cfg, owner, cmd.Flags().Changed("owner"), dryRun); err != nil {
@@ -135,7 +135,7 @@ func runSyncSetup(cmd *cobra.Command, _ []string) error {
 		}
 		p.Line("  log:  %s", cfg.LogFile)
 		p.Blank()
-		p.Line(ui.MarkPresent + " sync setup dry-run complete.")
+		p.Line("%s", ui.MarkPresent+" sync setup dry-run complete.")
 		return nil
 	}
 	if err := sched.Install(ctx); err != nil {
@@ -155,7 +155,7 @@ func runSyncSetup(cmd *cobra.Command, _ []string) error {
 	p.Line("  log:  %s", cfg.LogFile)
 
 	p.Blank()
-	p.Line(ui.MarkPresent + " sync setup complete.")
+	p.Line("%s", ui.MarkPresent+" sync setup complete.")
 	if cfg.Paused {
 		p.Line("  Paused gate is set — run `dot sync resume` to start syncing.")
 	} else {
@@ -252,7 +252,7 @@ func runSyncResume(cmd *cobra.Command, _ []string) error {
 	}
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	if res.WasPaused {
-		p.Line(ui.MarkPresent + " sync resumed.")
+		p.Line("%s", ui.MarkPresent+" sync resumed.")
 	} else {
 		p.Line("sync was not paused.")
 	}
@@ -275,7 +275,7 @@ func runSyncResume(cmd *cobra.Command, _ []string) error {
 			p.Warn("scheduler resume failed: %v", res.SchedulerErr)
 		}
 	} else if res.SchedulerResumed {
-		p.Line(ui.MarkPresent + " scheduler resumed.")
+		p.Line("%s", ui.MarkPresent+" scheduler resumed.")
 	}
 	return nil
 }
@@ -304,7 +304,7 @@ func runSyncPause(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if !res.WasPaused {
-		p.Line(ui.MarkPresent + " sync paused.")
+		p.Line("%s", ui.MarkPresent+" sync paused.")
 	} else {
 		p.Line("sync was already paused.")
 	}
@@ -316,7 +316,7 @@ func runSyncPause(cmd *cobra.Command, _ []string) error {
 			p.Warn("scheduler pause failed: %v", res.SchedulerErr)
 		}
 	} else if res.SchedulerStopped {
-		p.Line(ui.MarkPresent + " scheduler stopped.")
+		p.Line("%s", ui.MarkPresent+" scheduler stopped.")
 	}
 	return nil
 }

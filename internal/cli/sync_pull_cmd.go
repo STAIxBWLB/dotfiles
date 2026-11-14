@@ -72,7 +72,7 @@ func runSyncPull(cmd *cobra.Command, _ []string) error {
 	case syncer.PullAborted:
 		p.Line("Aborted.")
 	case syncer.PullCompleteDirect:
-		p.Line(ui.MarkPresent + " Pull complete.")
+		p.Line("%s", ui.MarkPresent+" Pull complete.")
 	case syncer.PullCompleteTracked:
 		printPullResult(p, cfg, res.Result)
 	case syncer.PullPlanned:

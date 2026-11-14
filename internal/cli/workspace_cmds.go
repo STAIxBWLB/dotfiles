@@ -131,10 +131,10 @@ func newRegisterCmd() *cobra.Command {
 			theme, _ := cmd.Flags().GetString("theme")
 
 			if layout != "" && !workspace.IsValidLayout(layout) {
-				return fmt.Errorf("unknown layout %q; valid: %v", layout, workspace.ValidLayouts())
+				return usageError(cmd, fmt.Errorf("unknown layout %q; valid: %v", layout, workspace.ValidLayouts()))
 			}
 			if theme != "" && !workspace.IsValidTheme(theme) {
-				return fmt.Errorf("unknown theme %q; valid: %v", theme, workspace.ValidThemes())
+				return usageError(cmd, fmt.Errorf("unknown theme %q; valid: %v", theme, workspace.ValidThemes()))
 			}
 
 			cfg, err := workspace.LoadConfig()
@@ -229,6 +229,7 @@ func newLayoutsDoctorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
 		Short: "Check the tools workspace layouts need",
+		Long:  "Check required and optional workspace tools. The final summary counts their results.\nExit 1 when a required tool is missing; optional tools produce warnings only.",
 		RunE:  runLayoutsDoctor,
 	}
 }
@@ -276,5 +277,10 @@ func runLayoutsDoctor(cmd *cobra.Command, args []string) error {
 	p.KV("Config", configPath)
 	p.KV("Scripts", dataDir)
 
+	summary := ui.CheckSummary{OK: len(status.Installed), Failed: len(status.Required), Warnings: len(status.Missing)}
+	p.Summary(summary)
+	if summary.Failed > 0 {
+		return fmt.Errorf("%d required workspace tool(s) missing", summary.Failed)
+	}
 	return nil
 }
