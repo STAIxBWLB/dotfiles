@@ -3,12 +3,8 @@ package ui
 import (
 	"fmt"
 	"io"
-	"os"
-	"strings"
 
 	"charm.land/lipgloss/v2"
-
-	"github.com/STAIxBWLB/dotfiles/internal/sliceutil"
 )
 
 const kvKeyWidth = 22 // width of "Pull+intake scheduler:"
@@ -48,44 +44,3 @@ func WriteKV(w io.Writer, key, value string) {
 	}
 	WriteReportLine(w, fmt.Sprintf("  %s  %s", StyleKey.Width(width).Render(label), value))
 }
-
-// printSection emits a section divider to os.Stdout. Ui-internal wrapper over
-// WriteSection used by the configure_*.go interactive flow, which always runs
-// on a real TTY and does not go through cli.Printer.
-func printSection(title string) { WriteSection(os.Stdout, title) }
-
-// printKV emits a KV row to os.Stdout. Ui-internal wrapper over WriteKV used
-// by PrintStateSummary (called from `dot init`/`reconfigure`/`preflight`).
-func printKV(key, value string) { WriteKV(os.Stdout, key, value) }
-
-// formatBool returns a styled enabled/disabled indicator. The leading glyph
-// comes from the marker alphabet (MarkPresent / MarkAbsent) so color and
-// glyph stay semantically paired.
-func formatBool(v bool) string {
-	if v {
-		return StyleSuccess.Render(MarkPresent) + " enabled"
-	}
-	return StyleHint.Render(MarkAbsent + " disabled")
-}
-
-// splitCaskList parses a whitespace-separated cask list into a clean,
-// de-duplicated slice.
-func splitCaskList(s string) []string {
-	return sliceutil.Dedupe(strings.Fields(s))
-}
-
-func pickBackupChoice(path string, detectedDrive bool) string {
-	if detectedDrive {
-		return "cloud (auto-detected)"
-	}
-	if strings.Contains(path, "/.local/share/dotfiles/") {
-		return "local"
-	}
-	if path != "" {
-		return "custom"
-	}
-	return "local"
-}
-
-// printLine routes native UI text through the same stream policy as reports.
-func printLine(v ...any) { _, _ = fmt.Fprintln(Output(os.Stdout), v...) }

@@ -1,4 +1,4 @@
-package ui
+package configure
 
 import (
 	"fmt"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/STAIxBWLB/dotfiles/internal/config"
 	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // ConfigureWorkspace prompts for workspace settings. Skipped for server profile.
@@ -25,7 +26,7 @@ func ConfigureWorkspace(state *config.UserState, profile string, yes bool) error
 
 	printSection("Workspace")
 
-	enableWorkspace, err := ConfirmBool("Enable workspace module?", state.Modules.Workspace.Path != "", yes)
+	enableWorkspace, err := ui.ConfirmBool("Enable workspace module?", state.Modules.Workspace.Path != "", yes)
 	if err != nil {
 		return err
 	}
@@ -48,7 +49,7 @@ func ConfigureWorkspace(state *config.UserState, profile string, yes bool) error
 			wsDefault = "~/workspace"
 		}
 	}
-	state.Modules.Workspace.Path, err = InputWithDetected("Workspace path", wsDefault, wsDetected, yes)
+	state.Modules.Workspace.Path, err = ui.InputWithDetected("Workspace path", wsDefault, wsDetected, yes)
 	if err != nil {
 		return err
 	}
@@ -98,12 +99,12 @@ func configureVaultPath(state *config.UserState, yes bool) error {
 		def = freshDefault
 	}
 
-	choice, err := Select("Vault location", opts, def, yes)
+	choice, err := ui.Select("Vault location", opts, def, yes)
 	if err != nil {
 		return err
 	}
 	if choice == optOther {
-		state.Modules.Workspace.Vault, err = Input("Vault path", previous, yes)
+		state.Modules.Workspace.Vault, err = ui.Input("Vault path", previous, yes)
 		if err != nil {
 			return err
 		}
@@ -135,7 +136,7 @@ func configureCloudMirror(state *config.UserState, yes bool) error {
 			def = optSkip
 		}
 	}
-	choice, err := Select("Cloud storage for workspace mirror", opts, def, yes)
+	choice, err := ui.Select("Cloud storage for workspace mirror", opts, def, yes)
 	if err != nil {
 		return err
 	}
@@ -143,7 +144,7 @@ func configureCloudMirror(state *config.UserState, yes bool) error {
 	case optSkip:
 		state.Modules.Workspace.Gdrive = ""
 	case optOther:
-		state.Modules.Workspace.Gdrive, err = Input("Cloud storage path (blank to skip)", previous, yes)
+		state.Modules.Workspace.Gdrive, err = ui.Input("Cloud storage path (blank to skip)", previous, yes)
 		if err != nil {
 			return err
 		}
@@ -160,12 +161,12 @@ func configureCloudMirror(state *config.UserState, yes bool) error {
 	if gsDefault == "" || state.Modules.Workspace.Gdrive != previous {
 		gsDefault = defaultCloudSymlink(state.Modules.Workspace.Gdrive)
 	}
-	state.Modules.Workspace.GdriveSymlink, err = Input("Cloud symlink name (blank to skip)", gsDefault, yes)
+	state.Modules.Workspace.GdriveSymlink, err = ui.Input("Cloud symlink name (blank to skip)", gsDefault, yes)
 	if err != nil {
 		return err
 	}
 	if previous != "" && state.Modules.Workspace.Gdrive != previous {
-		printLine(StyleHint.Render(
+		printLine(ui.StyleHint.Render(
 			"  Cloud changed: symlinks pointing at the previous cloud (old link, <workspace>/work/.gdrive)\n" +
 				"  are left in place; remove them manually so the next `dot apply` can repoint them."))
 	}
@@ -181,9 +182,9 @@ func configureWorkspaceSymlinkAndRepos(state *config.UserState, yes bool) error 
 		keepCurrent := false
 		currentTarget := readSymlinkTarget(expandedPath)
 		if currentTarget != "" {
-			printLine(StyleHint.Render(fmt.Sprintf("  Current symlink: %s "+MarkNext+" %s", state.Modules.Workspace.Path, currentTarget)))
+			printLine(ui.StyleHint.Render(fmt.Sprintf("  Current symlink: %s "+ui.MarkNext+" %s", state.Modules.Workspace.Path, currentTarget)))
 
-			keepCurrent, err = ConfirmBool("Keep existing symlink?", true, false)
+			keepCurrent, err = ui.ConfirmBool("Keep existing symlink?", true, false)
 			if err != nil {
 				return err
 			}
@@ -197,12 +198,12 @@ func configureWorkspaceSymlinkAndRepos(state *config.UserState, yes bool) error 
 				// Only default to Gdrive when no separate GdriveSymlink is configured
 				symlinkDefault = state.Modules.Workspace.Gdrive
 			}
-			printLine(StyleHint.Render(fmt.Sprintf(
+			printLine(ui.StyleHint.Render(fmt.Sprintf(
 				"  Optional: make %s itself a symlink pointing elsewhere\n"+
 					"  (e.g. into cloud-storage). Leave blank to keep %s as a real directory.",
 				state.Modules.Workspace.Path, state.Modules.Workspace.Path)))
-			prompt := fmt.Sprintf("Symlink %s "+MarkNext+" (blank to skip)", state.Modules.Workspace.Path)
-			state.Modules.Workspace.Symlink, err = Input(prompt, symlinkDefault, false)
+			prompt := fmt.Sprintf("Symlink %s "+ui.MarkNext+" (blank to skip)", state.Modules.Workspace.Path)
+			state.Modules.Workspace.Symlink, err = ui.Input(prompt, symlinkDefault, false)
 			if err != nil {
 				return err
 			}
@@ -211,7 +212,7 @@ func configureWorkspaceSymlinkAndRepos(state *config.UserState, yes bool) error 
 
 	// --- Workspace git repos (optional) ---
 	if !yes {
-		configureRepos, err := ConfirmBool("Configure workspace git repos?", true, false)
+		configureRepos, err := ui.ConfirmBool("Configure workspace git repos?", true, false)
 		if err != nil {
 			return err
 		}
@@ -224,7 +225,7 @@ func configureWorkspaceSymlinkAndRepos(state *config.UserState, yes bool) error 
 			uiHome, _ := os.UserHomeDir()
 			for _, name := range []string{"work", "vault"} {
 				if name == "vault" && config.ResolveVaultPath(state.Modules.Workspace.Vault, state.Modules.Workspace.Path, uiHome) != topLevelVault {
-					printLine(StyleHint.Render(fmt.Sprintf(
+					printLine(ui.StyleHint.Render(fmt.Sprintf(
 						"  Vault location is %s — skipping the separate vault repo\n"+
 							"  (the vault is expected to arrive with work, e.g. as a submodule).",
 						state.Modules.Workspace.Vault)))
@@ -237,7 +238,7 @@ func configureWorkspaceSymlinkAndRepos(state *config.UserState, yes bool) error 
 						break
 					}
 				}
-				remote, err := Input(
+				remote, err := ui.Input(
 					fmt.Sprintf("Git remote for %s/%s (blank to skip)", state.Modules.Workspace.Path, name),
 					existingRemote, false)
 				if err != nil {
