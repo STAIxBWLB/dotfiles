@@ -184,6 +184,22 @@ func TestJobCheckScriptOnAShell(t *testing.T) {
 	}
 }
 
+func TestJobCheckScriptDoesNotCreateAMissingRoot(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "missing", "jobs")
+	p := JobProfile{Name: "media", Root: root, Ref: "img:1", MinFreeGB: 1}
+	out, err := shellRun("docker(){ echo dev; }; " + JobCheckScript(testHost(), p))
+	if err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	if ok, why := ParseJobCheck(out); !ok {
+		t.Errorf("existing parent was not usable for the free-space check: %s", why)
+	}
+	if _, err := os.Stat(filepath.Join(base, "missing")); !os.IsNotExist(err) {
+		t.Errorf("job check created part of the missing root: %v", err)
+	}
+}
+
 // jobFixture fakes ssh, rsync and the runtime for one job.
 type jobFixture struct {
 	t        *testing.T
@@ -527,6 +543,21 @@ func TestRemoteJobRefusesASymlinkedOut(t *testing.T) {
 	}
 	if out, _ := shellRun(outIsDirScript(p, "j")); strings.TrimSpace(out) == "dir" {
 		t.Error("a symlinked out/ passed the probe")
+	}
+}
+
+func TestRemoteJobKeepsTheCommandStatusWhenTheOutputDirCannotBeCreated(t *testing.T) {
+	f := newJobFixture(t)
+	f.exit = 7
+	blocker := filepath.Join(f.root, "not-a-directory")
+	write(t, blocker, "file")
+	err := f.run(JobOptions{OutDir: filepath.Join(blocker, "result")})
+	var code *ExitCode
+	if !errors.As(err, &code) || code.Code != 7 {
+		t.Errorf("the output error replaced the command status: %v", err)
+	}
+	if got := f.err.String(); !strings.Contains(got, "collecting out/") || !strings.Contains(got, "job kept at buildbox:~/jobs/j1") {
+		t.Errorf("collection error or kept job missing from stderr: %s", got)
 	}
 }
 
