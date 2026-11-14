@@ -80,3 +80,6 @@ sync status --json	stdout	SEC-10: schemaVersion 2 adds the always-present sensit
 peer status --json	stdout	SEC-10: the nested sync profile now carries schemaVersion 2 and its always-present sensitiveOverrides policy array.
 ai skills status --json	stdout	Issue #150 / PR #151: skills diagnostics intentionally include kimi, qwen, grok and opencode alongside claude and codex; the six-host shape is pinned by the ai-skills-status JSON golden and does not grant or synchronize skills.
 status	stdout	Issue #378: the pending-modules hint names dot diff --summary instead of the hidden dot check alias.
+--help	stdout	#435: root Args binding bypasses Cobra's legacy pre-parse command check; a --home value after --help is parsed as a flag value, so help prints and exits 0
+--help	stderr	#435: root Args binding bypasses Cobra's legacy pre-parse command check; a --home value after --help is parsed as a flag value, so help prints and exits 0
+--help	exit_code	#435: root Args binding bypasses Cobra's legacy pre-parse command check; a --home value after --help is parsed as a flag value, so help prints and exits 0

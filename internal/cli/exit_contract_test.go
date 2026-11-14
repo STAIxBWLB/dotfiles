@@ -116,6 +116,18 @@ func TestExitContract(t *testing.T) {
 		}
 	})
 
+	t.Run("help parses home value after help flag", func(t *testing.T) {
+		home := t.TempDir()
+		before := treeDigest(t, home)
+		out, stderr, code := runIsolated(t, bin, home, "--help", "--home", home)
+		if code != 0 || stderr != "" || !strings.Contains(out, "Usage:") {
+			t.Fatalf("help/home flag parsing: exit=%d stdout=%s stderr=%s", code, out, stderr)
+		}
+		if treeDigest(t, home) != before {
+			t.Fatal("help changed the target home")
+		}
+	})
+
 	// Aggregating Check errors turns a previously swallowed failure into a
 	// non-zero exit, and differential.sh:363 plus dryrun_property_test.go:186
 	// assert exit 0 absolutely. Measure it here so a Check path that fires in a

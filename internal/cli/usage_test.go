@@ -155,3 +155,25 @@ func TestManualInputValidationUsesUsageStatus(t *testing.T) {
 		}
 	}
 }
+
+// Before root Args is bound, Cobra's legacy Find validation runs ahead of help
+// flag initialization. It can consume --home as --help's apparent value and
+// then misclassify the directory as a command. Bound Args defers validation to
+// the parser, where both flags are known.
+func TestHelpHomeFixDefersLegacyFindValidationUntilFlagParsing(t *testing.T) {
+	root := &cobra.Command{Use: "dot", SilenceErrors: true, SilenceUsage: true}
+	root.PersistentFlags().String("home", "", "")
+	root.AddCommand(&cobra.Command{Use: "known", RunE: func(*cobra.Command, []string) error { return nil }})
+	args := []string{"--help", "--home", t.TempDir()}
+	if _, _, err := root.Find(args); err == nil || !strings.Contains(err.Error(), "unknown command") {
+		t.Fatalf("legacy precondition not reproduced: %v", err)
+	}
+	configureUsage(root)
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs(args)
+	if err := root.Execute(); err != nil || !strings.Contains(stdout.String(), "Usage:") || stderr.Len() != 0 {
+		t.Fatalf("bound Args did not allow help parsing: %v out=%q stderr=%q", err, stdout.String(), stderr.String())
+	}
+}
