@@ -8,6 +8,7 @@ import (
 
 	"github.com/STAIxBWLB/dotfiles/internal/resourceguard"
 	"github.com/STAIxBWLB/dotfiles/internal/syncer"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -117,7 +118,7 @@ func runSyncPush(cmd *cobra.Command, _ []string) error {
 	case syncer.PushAborted:
 		p.Line("Aborted.")
 	case syncer.PushComplete:
-		p.Line("✓ Push complete.")
+		p.Line(ui.MarkPresent + " Push complete.")
 	case syncer.PushPlanned:
 	}
 	return nil

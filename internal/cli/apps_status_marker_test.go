@@ -11,7 +11,10 @@ import (
 // header comment forbids.
 var markerAlphabet = map[string]string{
 	ui.MarkPresent:   "MarkPresent",
-	ui.MarkAbsent:    "MarkAbsent / MarkFail", // one glyph, the style disambiguates
+	ui.MarkAbsent:    "MarkAbsent",
+	ui.MarkFail:      "MarkFail",
+	ui.MarkUnknown:   "MarkUnknown",
+	ui.MarkNext:      "MarkNext",
 	ui.MarkPartial:   "MarkPartial",
 	ui.MarkStarred:   "MarkStarred",
 	ui.MarkPreferred: "MarkPreferred",
@@ -36,7 +39,7 @@ func TestAppsStatusMarkerRendersThreeDistinctStates(t *testing.T) {
 	}{
 		{"installed", true, true, ui.MarkPresent},
 		{"known and not installed", true, false, ui.MarkAbsent},
-		{"install state unknown", false, false, ui.MarkPartial},
+		{"install state unknown", false, false, ui.MarkUnknown},
 	}
 
 	seen := make(map[string]string, len(rows))

@@ -39,6 +39,7 @@ func (s *runAllStubModule) Apply(_ context.Context, _ *RunContext) (*ApplyResult
 // pass against a RunAll that returns an error unconditionally, and it asserts
 // the printed line so the fix cannot quietly reword what the operator sees.
 func TestRunAll_AggregatesCheckErrors(t *testing.T) {
+	pinModuleReportMarkers(t)
 	checkBoom := errors.New("check exploded")
 	applyBoom := errors.New("apply exploded")
 
@@ -56,20 +57,20 @@ func TestRunAll_AggregatesCheckErrors(t *testing.T) {
 			modules:    []Module{&runAllStubModule{name: "alpha", checkErr: checkBoom}},
 			wantErr:    true,
 			wantErrHas: []string{"1 module(s) failed", "alpha", "check exploded"},
-			wantOut:    []string{"  ⚠ alpha: check error: check exploded\n"},
+			wantOut:    []string{"  ⚠  alpha: check error: check exploded\n"},
 		},
 		{
 			name:       "apply error is aggregated",
 			modules:    []Module{&runAllStubModule{name: "beta", applyErr: applyBoom}},
 			wantErr:    true,
 			wantErrHas: []string{"1 module(s) failed", "beta", "apply exploded"},
-			wantOut:    []string{"  ✗ beta: apply exploded\n"},
+			wantOut:    []string{"  ✗  beta: apply exploded\n"},
 		},
 		{
 			name:    "no failure returns nil",
 			modules: []Module{&runAllStubModule{name: "gamma"}},
 			wantErr: false,
-			wantOut: []string{"  → gamma: do something\n", "  ✓ gamma: applied\n"},
+			wantOut: []string{"  →  gamma: do something\n", "  ✓  gamma: applied\n"},
 		},
 		{
 			name: "every failing module is counted",

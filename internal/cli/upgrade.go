@@ -18,6 +18,7 @@ import (
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
 	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
 	"github.com/STAIxBWLB/dotfiles/internal/resourceguard"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 const githubRepo = "STAIxBWLB/dotfiles"
@@ -160,7 +161,7 @@ func runUpgrade(cmd *cobra.Command, currentVersion string) error {
 	}
 
 	if checkOnly {
-		p.Line("\nUpdate available: %s → %s", currentClean, latestVersion)
+		p.Line("\nUpdate available: %s "+ui.MarkNext+" %s", currentClean, latestVersion)
 		p.Line("Update path: %s", updatePath(ctx, brew, viaBrew, currentClean, latestVersion, latest.TagName))
 		if explicitVersion {
 			p.Line("Run 'dot update --version %s' to install.", latestVersion)

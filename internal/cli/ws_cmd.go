@@ -379,7 +379,7 @@ func runWsReconcile(cmd *cobra.Command, args []string) error {
 	}
 	p := printerFrom(cmd)
 	if len(mismatches) == 0 {
-		p.Line("%s", ui.StyleSuccess.Render("✓ Trees are in sync. Nothing to reconcile."))
+		p.Line("%s", ui.StyleSuccess.Render(ui.MarkPresent+" Trees are in sync. Nothing to reconcile."))
 		return nil
 	}
 
@@ -417,17 +417,17 @@ func runWsReconcile(cmd *cobra.Command, args []string) error {
 			dstParent := filepath.Dir(dstAbs)
 			if !fileutil.IsDir(dstParent) {
 				if err := runner.MkdirAll(dstParent, 0755); err != nil {
-					p.Line("  ⚠ mkdir parent %s: %v", dstParent, err)
+					p.Line("  "+ui.MarkWarn+" mkdir parent %s: %v", dstParent, err)
 					skipped++
 					continue
 				}
 			}
 			if _, err := runner.Run(ctx, "cp", "-R", srcAbs, dstAbs); err != nil {
-				p.Line("  ⚠ cp failed: %v", err)
+				p.Line("  "+ui.MarkWarn+" cp failed: %v", err)
 				skipped++
 				continue
 			}
-			p.Line("  ✓ copied %s → %s", srcAbs, dstAbs)
+			p.Line("  "+ui.MarkPresent+" copied %s "+ui.MarkNext+" %s", srcAbs, dstAbs)
 			copied++
 		case deleteLabel:
 			srcAbs, _ := resolveSidePair(roots, m.RelPath, srcSide)
@@ -444,11 +444,11 @@ func runWsReconcile(cmd *cobra.Command, args []string) error {
 				}
 			}
 			if _, err := runner.Run(ctx, "rm", "-rf", srcAbs); err != nil {
-				p.Line("  ⚠ rm failed: %v", err)
+				p.Line("  "+ui.MarkWarn+" rm failed: %v", err)
 				skipped++
 				continue
 			}
-			p.Line("  ✓ deleted %s", srcAbs)
+			p.Line("  "+ui.MarkPresent+" deleted %s", srcAbs)
 			deleted++
 		case "Skip":
 			skipped++

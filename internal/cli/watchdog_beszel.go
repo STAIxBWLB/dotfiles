@@ -71,7 +71,7 @@ func setupBeszelStep(p *Printer, mgr *watchdog.Manager, bcfg config.WatchdogBesz
 	if err := mgr.InstallBeszel(ctx, agentPath, settings.EnvPath, settings.Listen); err != nil {
 		return err
 	}
-	p.Line("  ✓ Beszel agent installed (%s, hub %s, listen fallback %s)", agentPath, settings.HubURL, settings.Listen)
+	p.Line("  "+ui.MarkPresent+" Beszel agent installed (%s, hub %s, listen fallback %s)", agentPath, settings.HubURL, settings.Listen)
 	return nil
 }
 

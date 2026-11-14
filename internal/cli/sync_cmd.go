@@ -190,26 +190,26 @@ func renderSyncEvent(p *Printer, r syncRender) func(syncer.SyncEvent) {
 		case syncer.SyncEventDryRunNotice:
 			p.Line("  (dry-run — no changes)")
 		case syncer.SyncEventPushSSHStart:
-			p.Line("Push %s → %s (%s, direct rsync — no plan preview for ssh targets)",
+			p.Line("Push %s "+ui.MarkNext+" %s (%s, direct rsync — no plan preview for ssh targets)",
 				cfg.LocalPath, cfg.Target.RsyncDest(), cfg.Propagation)
 			if r.dryRun {
 				p.Line("  (dry-run — no changes)")
 			}
 			printSensitiveOverrides(p, r.sensitiveOverrides, false)
 		case syncer.SyncEventPushPlanStart:
-			p.Line("Push plan for %s → %s (%s, mode=%s)", cfg.LocalPath, cfg.MirrorPath, cfg.Propagation, r.mode)
+			p.Line("Push plan for %s "+ui.MarkNext+" %s (%s, mode=%s)", cfg.LocalPath, cfg.MirrorPath, cfg.Propagation, r.mode)
 		case syncer.SyncEventPushPlanReady:
 			printPushPlan(p, e.PushPlan)
 			printSensitiveOverrides(p, r.sensitiveOverrides, false)
 		case syncer.SyncEventPullSSHStart:
-			p.Line("Pull %s → %s (direct rsync --update; workspace files win ties)",
+			p.Line("Pull %s "+ui.MarkNext+" %s (direct rsync --update; workspace files win ties)",
 				cfg.Target.RsyncDest(), cfg.LocalPath)
 		case syncer.SyncEventPullPlanStart:
-			p.Line("Pull plan for baseline-tracked payloads %s → %s (%s)", cfg.MirrorPath, cfg.LocalPath, r.mode)
+			p.Line("Pull plan for baseline-tracked payloads %s "+ui.MarkNext+" %s (%s)", cfg.MirrorPath, cfg.LocalPath, r.mode)
 		case syncer.SyncEventPullPlanReady:
 			printPullPlan(p, cfg, e.PullResult)
 		case syncer.SyncEventIntakeStart:
-			p.Line("Intaking %s → %s/inbox/gdrive/<ts>/ (%s mode)", cfg.MirrorPath, stripTrailingSlash(cfg.LocalPath), strictLabel(r.strict))
+			p.Line("Intaking %s "+ui.MarkNext+" %s/inbox/gdrive/<ts>/ (%s mode)", cfg.MirrorPath, stripTrailingSlash(cfg.LocalPath), strictLabel(r.strict))
 		case syncer.SyncEventFetchMissing:
 			p.Warn("not on target, skipped: %s", e.Path)
 		case syncer.SyncEventFetchExcluded:

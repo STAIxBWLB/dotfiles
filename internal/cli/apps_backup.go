@@ -257,7 +257,7 @@ func pickBackupTokens(p *Printer, eng *appsettings.Engine, state *config.UserSta
 		if inManifest[entry] {
 			if installed != nil && !installed[entry] {
 				p.Line("%s", ui.StyleWarning.Render(fmt.Sprintf(
-					"  ⚠ %q — not currently installed; backup will skip missing paths", entry)))
+					"  "+ui.MarkWarn+" %q — not currently installed; backup will skip missing paths", entry)))
 			}
 			validExtras = append(validExtras, entry)
 			continue
@@ -269,13 +269,13 @@ func pickBackupTokens(p *Printer, eng *appsettings.Engine, state *config.UserSta
 		discovered := appsettings.DiscoverApp(eng.HomeDir, entry)
 		if discovered == nil {
 			p.Line("%s", ui.StyleError.Render(fmt.Sprintf(
-				"  ✗ %q — .app bundle not found and not in manifest; skipped", entry)))
+				"  "+ui.MarkFail+" %q — .app bundle not found and not in manifest; skipped", entry)))
 			continue
 		}
 		eng.Manifest.Apps = append(eng.Manifest.Apps, *discovered)
 		inManifest[entry] = true
 		p.Line("%s", ui.StyleSuccess.Render(fmt.Sprintf(
-			"  ✓ %q — discovered %d backup path(s)", entry, len(discovered.Paths))))
+			"  "+ui.MarkPresent+" %q — discovered %d backup path(s)", entry, len(discovered.Paths))))
 		validExtras = append(validExtras, entry)
 	}
 

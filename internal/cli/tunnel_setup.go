@@ -84,7 +84,7 @@ func runTunnelSetupForGOOS(cmd *cobra.Command, _ []string, goos string) error {
 		return fmt.Errorf("saving tunnel state: %w", err)
 	}
 
-	p.Success("✓ dot tunnel setup complete")
+	p.Success("%s dot tunnel setup complete", ui.MarkPresent)
 	printAccessGuide(p, hostname)
 	return nil
 }

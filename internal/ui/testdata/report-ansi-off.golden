@@ -1,0 +1,15 @@
+
+  dot Report  
+
+▸ State
+  Profile:                minimal
+  ✓  ready
+  ✗  failed
+  ⚠  warning
+  -  absent
+  ?  unknown
+  ~  pending
+  *  active
+  →  dot status
+  :  partial
+  +  preferred

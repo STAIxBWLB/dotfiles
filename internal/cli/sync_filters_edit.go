@@ -302,7 +302,7 @@ func runSyncFiltersReset(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	p.Line("%s", ui.StyleSuccess.Render("✓ filter files reset from templates"))
+	p.Line("%s", ui.StyleSuccess.Render(ui.MarkPresent+" filter files reset from templates"))
 	for _, b := range backups {
 		p.KV("Backup", b)
 	}

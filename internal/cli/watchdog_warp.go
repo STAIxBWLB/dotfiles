@@ -82,7 +82,7 @@ func runWatchdogWarpForGOOS(cmd *cobra.Command, _ []string, goos string) error {
 
 	p := printerFrom(cmd)
 	if dryRun {
-		p.Line("[dry-run] healthy=%v consecutive=%d attempts=%d → would %s",
+		p.Line("[dry-run] healthy=%v consecutive=%d attempts=%d "+ui.MarkNext+" would %s",
 			healthy, next.ConsecutiveFailures, next.Attempts, action)
 		return nil
 	}
@@ -180,7 +180,7 @@ func setupWarpDaemonStep(p *Printer, mgr *watchdog.Manager, wcfg config.Watchdog
 	if err != nil {
 		return err
 	}
-	p.Line("  ✓ WARP heal daemon installed (every %s, kickstart target %s)", settings.Interval, daemonLabel)
+	p.Line("  "+ui.MarkPresent+" WARP heal daemon installed (every %s, kickstart target %s)", settings.Interval, daemonLabel)
 	return nil
 }
 
@@ -227,7 +227,7 @@ func applyPowerStep(p *Printer, mgr *watchdog.Manager, yes bool) error {
 		return err
 	}
 	_ = watchdog.AppendEvent(mgr.LogPath(), watchdog.Event{Level: "info", Event: "power", Msg: "headless power hardening applied"})
-	p.Line("  ✓ power hardening applied (prior values in %s)", mgr.PowerStatePath())
+	p.Line("  "+ui.MarkPresent+" power hardening applied (prior values in %s)", mgr.PowerStatePath())
 	return nil
 }
 

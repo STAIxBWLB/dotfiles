@@ -14,6 +14,7 @@ import (
 
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
 	"github.com/STAIxBWLB/dotfiles/internal/resourceguard"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // homebrewDot is a dot binary that Homebrew installed, from the formula at
@@ -169,7 +170,7 @@ func upgradeHomebrew(ctx context.Context, p *Printer, h homebrewDot, current, la
 	if upgradeErr == nil && !dryRun {
 		var installed string
 		if installed, upgradeErr = upgradedVersion(work, h, latest); upgradeErr == nil {
-			p.Line("Upgraded: %s → %s (Homebrew)", current, installed)
+			p.Line("Upgraded: %s "+ui.MarkNext+" %s (Homebrew)", current, installed)
 		}
 	}
 	// brew installs each version in its own keg. Reload whenever the opt link

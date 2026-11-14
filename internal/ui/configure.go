@@ -32,10 +32,10 @@ func PrintStateSummary(state *config.UserState) {
 			printKV("Cloud", state.Modules.Workspace.Gdrive)
 		}
 		if state.Modules.Workspace.GdriveSymlink != "" {
-			printKV("Cloud link", state.Modules.Workspace.GdriveSymlink+" → "+state.Modules.Workspace.Gdrive)
+			printKV("Cloud link", state.Modules.Workspace.GdriveSymlink+" "+MarkNext+" "+state.Modules.Workspace.Gdrive)
 		}
 		if state.Modules.Workspace.Symlink != "" {
-			printKV("Symlink", state.Modules.Workspace.Path+" → "+state.Modules.Workspace.Symlink)
+			printKV("Symlink", state.Modules.Workspace.Path+" "+MarkNext+" "+state.Modules.Workspace.Symlink)
 		}
 		for _, repo := range state.Modules.Workspace.Repos {
 			printKV(repo.Name+" repo", repo.Remote)

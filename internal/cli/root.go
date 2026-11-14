@@ -252,12 +252,16 @@ func scopeProfileFlags(root *cobra.Command) {
 // handlers. Local verbose flags keep their existing names and meanings.
 func configurePresentation(root *cobra.Command) {
 	mode := ui.ColorAuto
+	root.PersistentFlags().Bool("ascii", false, "Use ASCII markers regardless of locale")
 	root.PersistentFlags().Var(&mode, "color", "Color output: auto, always or never")
 	root.PersistentFlags().Bool("verbose", false, "Show library and debug logs on stderr")
 	bindPresentation(root)
 	defaultHelp := root.HelpFunc()
 	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		_ = withPresentation(cmd, func() error { defaultHelp(cmd, args); return nil })
+		if err := withPresentation(cmd, func() error { defaultHelp(cmd, args); return nil }); err != nil {
+			fmt.Fprintln(cmd.ErrOrStderr(), "dot:", err)
+			defaultHelp(cmd, args)
+		}
 	})
 }
 
@@ -288,6 +292,12 @@ func withPresentation(cmd *cobra.Command, run func() error) error {
 		mode = ui.ColorMode(value)
 	}
 	json, _ := cmd.Flags().GetBool("json")
+	ascii, _ := cmd.Flags().GetBool("ascii")
+	restorePresentation, err := ui.SetPresentation(os.Getenv, ascii)
+	if err != nil {
+		return err
+	}
+	defer restorePresentation()
 	restoreColor := ui.SetColorPolicy(mode, json)
 	defer restoreColor()
 	previous := slog.Default()

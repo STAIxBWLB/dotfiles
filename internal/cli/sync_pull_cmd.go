@@ -72,7 +72,7 @@ func runSyncPull(cmd *cobra.Command, _ []string) error {
 	case syncer.PullAborted:
 		p.Line("Aborted.")
 	case syncer.PullCompleteDirect:
-		p.Line("✓ Pull complete.")
+		p.Line(ui.MarkPresent + " Pull complete.")
 	case syncer.PullCompleteTracked:
 		printPullResult(p, cfg, res.Result)
 	case syncer.PullPlanned:
@@ -135,7 +135,7 @@ func runSyncIntake(cmd *cobra.Command, _ []string) error {
 
 	printPullResult(p, cfg, res.Pull)
 	if res.StagingDir != "" {
-		p.Line("  ✓ %d intaked into %s", len(res.Intaked), res.StagingDir)
+		p.Line("  "+ui.MarkPresent+" %d intaked into %s", len(res.Intaked), res.StagingDir)
 	} else {
 		p.Line("  %d intaked", len(res.Intaked))
 	}
@@ -264,6 +264,6 @@ func runSyncFetch(cmd *cobra.Command, args []string) error {
 		p.Line("Nothing to fetch.")
 		return nil
 	}
-	p.Line("%s", ui.StyleSuccess.Render(fmt.Sprintf("✓ fetched %d path(s)", len(res.Result.Fetched))))
+	p.Line("%s", ui.StyleSuccess.Render(fmt.Sprintf(ui.MarkPresent+" fetched %d path(s)", len(res.Result.Fetched))))
 	return nil
 }

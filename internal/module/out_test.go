@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // outStubModule reports a fixed set of pending changes and never applies.
@@ -29,6 +31,7 @@ func (s *outStubModule) Apply(_ context.Context, _ *RunContext) (*ApplyResult, e
 // the Phase 3 extractions would land on code that still writes to process
 // stdout, and callers capturing output through the seam would see nothing.
 func TestRunAll_WritesToRunContextOut(t *testing.T) {
+	pinModuleReportMarkers(t)
 	var buf bytes.Buffer
 	rc := &RunContext{Out: &buf, DryRun: true}
 	m := &outStubModule{name: "stub", changes: []Change{{Description: "do something"}}}
@@ -37,7 +40,7 @@ func TestRunAll_WritesToRunContextOut(t *testing.T) {
 		t.Fatalf("RunAll error = %v", err)
 	}
 
-	want := "  → stub: do something\n"
+	want := "  →  stub: do something\n"
 	if !strings.Contains(buf.String(), want) {
 		t.Errorf("buffer = %q, want it to contain %q", buf.String(), want)
 	}
@@ -57,4 +60,18 @@ func TestRunContextOut_NilDefaultsToStdout(t *testing.T) {
 	if got := nilRC.out(); got != os.Stdout {
 		t.Errorf("nil receiver out() = %v, want os.Stdout", got)
 	}
+}
+
+func pinModuleReportMarkers(t *testing.T) {
+	t.Helper()
+	restore, err := ui.SetPresentation(func(k string) string {
+		if k == "LANG" {
+			return "en_US.UTF-8"
+		}
+		return ""
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(restore)
 }

@@ -271,7 +271,7 @@ func (o *onestopCtx) backupProfileStep(tag string, includeSecrets bool) onestopS
 	if includeSecrets && snap.SecretsCopied == 0 {
 		o.p.Warn("  profile: age keys requested but no ~/.ssh/age_key* found — snapshot contains no secrets")
 	}
-	return onestopStep{Name: "profile", Detail: fmt.Sprintf("version %s → %s", snap.Version, snap.Path)}
+	return onestopStep{Name: "profile", Detail: fmt.Sprintf("version %s "+ui.MarkNext+" %s", snap.Version, snap.Path)}
 }
 
 func (o *onestopCtx) backupAppsStep(tag string) onestopStep {
@@ -312,7 +312,7 @@ func (o *onestopCtx) backupAppsStep(tag string) onestopStep {
 			o.runner.Logger.Warn("write last-backup stamp", "err", err)
 		}
 	}
-	return onestopStep{Name: "apps", Detail: fmt.Sprintf("%d app(s), %d file(s) → %s", len(sum.Apps), sum.Files, eng.HostRoot())}
+	return onestopStep{Name: "apps", Detail: fmt.Sprintf("%d app(s), %d file(s) "+ui.MarkNext+" %s", len(sum.Apps), sum.Files, eng.HostRoot())}
 }
 
 func (o *onestopCtx) backupAIStep(tag string, includeAuth bool) onestopStep {
@@ -322,7 +322,7 @@ func (o *onestopCtx) backupAIStep(tag string, includeAuth bool) onestopStep {
 		return onestopStep{Name: "ai", Err: err}
 	}
 	auditAIEventBestEffort(o.cmd, "ai.backup", aiSummaryPayload(sum))
-	return onestopStep{Name: "ai", Detail: fmt.Sprintf("version %s (%d files) → %s", sum.Version, sum.Files, sum.Path)}
+	return onestopStep{Name: "ai", Detail: fmt.Sprintf("version %s (%d files) "+ui.MarkNext+" %s", sum.Version, sum.Files, sum.Path)}
 }
 
 func (o *onestopCtx) backupSecretsStep(storeDir string) onestopStep {
@@ -347,5 +347,5 @@ func (o *onestopCtx) backupSecretsStep(storeDir string) onestopStep {
 			o.runner.Logger.Warn("record secrets last backup", "err", err)
 		}
 	}
-	return onestopStep{Name: "secrets", Detail: fmt.Sprintf("%d archive(s) → %s", copied, dest)}
+	return onestopStep{Name: "secrets", Detail: fmt.Sprintf("%d archive(s) "+ui.MarkNext+" %s", copied, dest)}
 }

@@ -44,13 +44,13 @@ func renderAppsEvent(p *Printer) func(appsettings.Event) {
 	return func(e appsettings.Event) {
 		switch e.Kind {
 		case appsettings.EventAllInstalled:
-			p.Line("%s", ui.StyleSuccess.Render("✓ all selected casks already installed"))
+			p.Line("%s", ui.StyleSuccess.Render(ui.MarkPresent+" all selected casks already installed"))
 		case appsettings.EventSkippedExisting:
 			p.Line("%s", ui.StyleHint.Render(fmt.Sprintf(
 				"↷ skipping %d already-present app(s): %s  (use --force to reinstall)",
 				len(e.Tokens), strings.Join(e.Tokens, ", "))))
 		case appsettings.EventNothingToInstall:
-			p.Line("%s", ui.StyleSuccess.Render("✓ nothing to install"))
+			p.Line("%s", ui.StyleSuccess.Render(ui.MarkPresent+" nothing to install"))
 		case appsettings.EventDryRunTap:
 			p.Line("dry-run: would tap %d Homebrew repo(s): %s", len(e.Tokens), strings.Join(e.Tokens, ", "))
 		case appsettings.EventDryRunInstall:
@@ -60,13 +60,13 @@ func renderAppsEvent(p *Printer) func(appsettings.Event) {
 		case appsettings.EventInstalling:
 			p.Line("Installing %d cask(s): %s", len(e.Tokens), strings.Join(e.Tokens, ", "))
 		case appsettings.EventInstallComplete:
-			p.Line("%s", ui.StyleSuccess.Render("✓ install complete"))
+			p.Line("%s", ui.StyleSuccess.Render(ui.MarkPresent+" install complete"))
 		case appsettings.EventAppDiscovered:
 			p.Line("%s", ui.StyleSuccess.Render(fmt.Sprintf(
-				"  ✓ %q — discovered %d backup path(s)", e.Token, e.Paths)))
+				"  "+ui.MarkPresent+" %q — discovered %d backup path(s)", e.Token, e.Paths)))
 		case appsettings.EventAppNotFound:
 			p.Line("%s", ui.StyleWarning.Render(fmt.Sprintf(
-				"  ⚠ %q — not in manifest and .app bundle not found; will be ignored", e.Token)))
+				"  "+ui.MarkWarn+" %q — not in manifest and .app bundle not found; will be ignored", e.Token)))
 		}
 	}
 }
@@ -198,7 +198,7 @@ func runAppsInstall(cmd *cobra.Command, args []string) error {
 	saveAfter := false
 	if sel.Interactive {
 		p.Line("%s", ui.StyleHint.Render(fmt.Sprintf(
-			"  Catalog: %d apps across %d groups  (★ defaults, ✓ installed)", len(sel.PickTokens), sel.CatalogGroups)))
+			"  Catalog: %d apps across %d groups  ("+ui.MarkStarred+" defaults, "+ui.MarkPresent+" installed)", len(sel.PickTokens), sel.CatalogGroups)))
 		selected, err := ui.MultiSelect("Pick apps to install", sel.PickTokens, sel.Preselect, false)
 		if err != nil {
 			return err
@@ -277,7 +277,7 @@ func newAppsStatusCmd() *cobra.Command {
 func appsInstallMarker(installKnown, installed bool) (string, interface{ Render(...string) string }) {
 	switch {
 	case !installKnown:
-		return ui.MarkPartial, ui.StyleHint
+		return ui.MarkUnknown, ui.StyleHint
 	case installed:
 		return ui.MarkPresent, ui.StyleSuccess
 	default:

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/dotfiles/internal/syncer"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -102,7 +103,7 @@ func runSyncSetup(cmd *cobra.Command, _ []string) error {
 	}
 	switch rsync.Outcome {
 	case syncer.RsyncPresent, syncer.RsyncInstalled:
-		p.Line("  ✓ rsync installed (%s)", rsync.Version)
+		p.Line("  "+ui.MarkPresent+" rsync installed (%s)", rsync.Version)
 	case syncer.RsyncWouldInstall:
 		p.Line("  ~ rsync not found; would install after confirmation")
 	case syncer.RsyncInstallDeclined:
@@ -134,27 +135,27 @@ func runSyncSetup(cmd *cobra.Command, _ []string) error {
 		}
 		p.Line("  log:  %s", cfg.LogFile)
 		p.Blank()
-		p.Line("✓ sync setup dry-run complete.")
+		p.Line(ui.MarkPresent + " sync setup dry-run complete.")
 		return nil
 	}
 	if err := sched.Install(ctx); err != nil {
 		return fmt.Errorf("installing scheduler: %w", err)
 	}
 	if cfg.Interval > 0 {
-		p.Line("  ✓ push unit installed (interval: %s, mode: %s)", formatInterval(cfg.Interval), cfg.PushMode)
+		p.Line("  "+ui.MarkPresent+" push unit installed (interval: %s, mode: %s)", formatInterval(cfg.Interval), cfg.PushMode)
 		p.Line("  unit: %s", scheduleUnitLabel(paths))
 	} else {
 		p.Line("  (push scheduler off — pass --push-interval=DUR to enable)")
 	}
 	if cfg.PullInterval > 0 {
-		p.Line("  ✓ pull unit installed (interval: %s, mode: %s)", formatInterval(cfg.PullInterval), cfg.PullMode)
+		p.Line("  "+ui.MarkPresent+" pull unit installed (interval: %s, mode: %s)", formatInterval(cfg.PullInterval), cfg.PullMode)
 	} else {
 		p.Line("  (pull scheduler off — pass --pull-interval=DUR to enable)")
 	}
 	p.Line("  log:  %s", cfg.LogFile)
 
 	p.Blank()
-	p.Line("✓ sync setup complete.")
+	p.Line(ui.MarkPresent + " sync setup complete.")
 	if cfg.Paused {
 		p.Line("  Paused gate is set — run `dot sync resume` to start syncing.")
 	} else {
@@ -251,7 +252,7 @@ func runSyncResume(cmd *cobra.Command, _ []string) error {
 	}
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	if res.WasPaused {
-		p.Line("✓ sync resumed.")
+		p.Line(ui.MarkPresent + " sync resumed.")
 	} else {
 		p.Line("sync was not paused.")
 	}
@@ -260,7 +261,7 @@ func runSyncResume(cmd *cobra.Command, _ []string) error {
 			p.Line("  ~ would rewrite the installed scheduler unit to call `dot sync --store=%s`", store)
 			continue
 		}
-		p.Line("✓ rewrote the installed scheduler unit to call `dot sync --store=%s`", store)
+		p.Line(ui.MarkPresent+" rewrote the installed scheduler unit to call `dot sync --store=%s`", store)
 	}
 	if res.SchedulerOff {
 		p.Line("scheduler remains off — run `dot sync setup --push-interval=DUR` or `--pull-interval=DUR` to enable.")
@@ -274,7 +275,7 @@ func runSyncResume(cmd *cobra.Command, _ []string) error {
 			p.Warn("scheduler resume failed: %v", res.SchedulerErr)
 		}
 	} else if res.SchedulerResumed {
-		p.Line("✓ scheduler resumed.")
+		p.Line(ui.MarkPresent + " scheduler resumed.")
 	}
 	return nil
 }
@@ -303,7 +304,7 @@ func runSyncPause(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if !res.WasPaused {
-		p.Line("✓ sync paused.")
+		p.Line(ui.MarkPresent + " sync paused.")
 	} else {
 		p.Line("sync was already paused.")
 	}
@@ -315,7 +316,7 @@ func runSyncPause(cmd *cobra.Command, _ []string) error {
 			p.Warn("scheduler pause failed: %v", res.SchedulerErr)
 		}
 	} else if res.SchedulerStopped {
-		p.Line("✓ scheduler stopped.")
+		p.Line(ui.MarkPresent + " scheduler stopped.")
 	}
 	return nil
 }

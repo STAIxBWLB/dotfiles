@@ -337,6 +337,6 @@ func saveStateFor(p *Printer, homeOverride string, state *config.UserState, dryR
 	if err != nil {
 		return fmt.Errorf("saving state: %w", err)
 	}
-	p.Line("✓ container: saved modules.container in %s", path)
+	p.Line(ui.MarkPresent+" container: saved modules.container in %s", path)
 	return nil
 }

@@ -73,6 +73,7 @@ func TestPrinter_HeaderEmitsLeadingBlank(t *testing.T) {
 // TestPrinter_SectionEmitsLeadingBlankAndPrefix locks in the "▸ " prefix
 // and the blank-before-none-after contract.
 func TestPrinter_SectionEmitsLeadingBlankAndPrefix(t *testing.T) {
+	pinUTF8PrinterMarkers(t)
 	var out bytes.Buffer
 	(&Printer{Out: &out}).Section("System")
 
@@ -91,6 +92,7 @@ func TestPrinter_SectionEmitsLeadingBlankAndPrefix(t *testing.T) {
 
 // TestPrinter_BulletIndentsTwoSpaces locks in the canonical row layout.
 func TestPrinter_BulletIndentsTwoSpaces(t *testing.T) {
+	pinUTF8PrinterMarkers(t)
 	var out bytes.Buffer
 	(&Printer{Out: &out}).Bullet(ui.MarkPresent, "ready")
 
@@ -177,4 +179,18 @@ func TestPrinter_SuccessAndFailRouteToCorrectSinks(t *testing.T) {
 	if strings.Contains(errb.String(), "installed") {
 		t.Error("Success leaked to stderr")
 	}
+}
+
+func pinUTF8PrinterMarkers(t *testing.T) {
+	t.Helper()
+	restore, err := ui.SetPresentation(func(k string) string {
+		if k == "LANG" {
+			return "en_US.UTF-8"
+		}
+		return ""
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(restore)
 }
