@@ -140,7 +140,8 @@ func jobDirLabel(h Host, p JobProfile, name string) string {
 // JobCheckScript asks the host whether it can take a job now: the profile's
 // image present and not root, load1 under max_load_ratio x CPUs, and more than
 // min_free_gb free under the root. It prints "ok" or one "unavailable\t<why>"
-// line; an unreadable value is a reason, never health.
+// line; an unreadable value is a reason, never health. It never writes: free
+// space is measured on the root's nearest existing ancestor.
 func JobCheckScript(h Host, p JobProfile) string {
 	ih := p.ImageHost(h)
 	image := ShellQuote(ih.Image())
@@ -153,9 +154,13 @@ func JobCheckScript(h Host, p JobProfile) string {
 		fmt.Fprintf(&b, "if ! awk -v n=\"$(nproc)\" -v r=%s 'NR==1 { if (n > 0 && $1 < n*r) ok=1 } END { exit !ok }' /proc/loadavg 2>/dev/null; then printf 'unavailable\\tload1 %%s is at or over %s x %%s CPUs, or unreadable\\n' \"$(cut -d' ' -f1 /proc/loadavg 2>/dev/null)\" \"$(nproc 2>/dev/null)\"; exit 0; fi\n",
 			strconv.FormatFloat(p.MaxLoadRatio, 'g', -1, 64), strconv.FormatFloat(p.MaxLoadRatio, 'g', -1, 64))
 	}
-	fmt.Fprintf(&b, "if ! mkdir -p %s 2>/dev/null; then printf 'unavailable\\tcannot create the job root\\n'; exit 0; fi\n", root)
+	// A check writes nothing, so it walks up to the nearest existing ancestor of
+	// the root to ask whether a job could create it, and to measure free space.
+	fmt.Fprintf(&b, "probe=%s\n", root)
+	b.WriteString("while [ ! -d \"$probe\" ]; do probe=$(dirname \"$probe\"); done\n")
+	b.WriteString("if [ ! -w \"$probe\" ] || [ ! -x \"$probe\" ]; then printf 'unavailable\\tcannot create the job root\\n'; exit 0; fi\n")
 	if p.MinFreeGB > 0 {
-		fmt.Fprintf(&b, "free=$(df -Pk %s 2>/dev/null | awk 'NR==2 { print int($4 / 1048576) }')\n", root)
+		b.WriteString("free=$(df -Pk \"$probe\" 2>/dev/null | awk 'NR==2 { print int($4 / 1048576) }')\n")
 		fmt.Fprintf(&b, "case \"$free\" in ''|*[!0-9]*) printf 'unavailable\\tfree space under the job root is unreadable\\n'; exit 0;; esac\n")
 		fmt.Fprintf(&b, "if [ \"$free\" -le %d ]; then printf 'unavailable\\t%%s GB free under the job root, need more than %d\\n' \"$free\"; exit 0; fi\n", p.MinFreeGB, p.MinFreeGB)
 	}
@@ -397,7 +402,12 @@ func (d Deps) runRemoteJob(ctx context.Context, h Host, p JobProfile, name strin
 	}
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		fmt.Fprintf(d.errOut(), "dot remote: job kept at %s\n", label)
-		return err
+		collect := fmt.Errorf("collecting out/ into %s: %w", outDir, err)
+		if exit != 0 {
+			fmt.Fprintf(d.errOut(), "dot remote: %v\n", collect)
+			return &ExitCode{Code: exit, Err: fmt.Errorf("the job exited with status %d", exit)}
+		}
+		return collect
 	}
 	// From the host's $HOME, which is where rsync's remote side starts, so a
 	// relative root needs no expansion.
