@@ -296,7 +296,7 @@ func TestUpgradeHomebrewBranches(t *testing.T) {
 			f:        fakeUpgrade{infos: []string{formulaJSON("1.0.0", false)}},
 			dryRun:   true,
 			want:     []string{"brew info --json=v2 --formula dotfiles"},
-			wantLine: "[dry-run] would run: brew update\n[dry-run] would run: brew upgrade --formula staixbwlb/cask/dotfiles\n",
+			wantLine: "  ~  would run: brew update\n  ~  would run: brew upgrade --formula staixbwlb/cask/dotfiles\n",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -631,7 +631,7 @@ func TestReloadDotLaunchAgents(t *testing.T) {
 		{
 			name:     "dry run",
 			run:      func(ctx context.Context, p *Printer) error { return reloadDotLaunchAgents(ctx, p, h, true) },
-			wantLine: "[dry-run] would reload com.dotfiles.sync",
+			wantLine: "  ~  would reload com.dotfiles.sync",
 		},
 		{
 			// The reload also follows a failed post-upgrade check: brew may
@@ -816,7 +816,7 @@ func TestReloadDotLaunchAgentsForCask(t *testing.T) {
 	if err := reloadDotLaunchAgents(context.Background(), &Printer{Out: &out, Err: &out}, h, true); err != nil {
 		t.Fatal(err)
 	}
-	if got := out.String(); got != "[dry-run] would reload com.dotfiles.sync\n" {
+	if got := out.String(); got != "  ~  would reload com.dotfiles.sync\n" {
 		t.Fatalf("output %q", got)
 	}
 }

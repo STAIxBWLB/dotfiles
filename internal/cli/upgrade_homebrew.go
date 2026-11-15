@@ -123,7 +123,7 @@ func upgradeHomebrew(ctx context.Context, p *Printer, h homebrewDot, current, la
 	brew := func(args ...string) error {
 		line := "brew " + strings.Join(args, " ")
 		if dryRun {
-			p.Line("[dry-run] would run: %s", line)
+			p.DryRun("run: %s", line)
 			return nil
 		}
 		p.Line("\nRunning %s...", line)
@@ -271,7 +271,7 @@ func reloadDotLaunchAgents(ctx context.Context, p *Printer, h homebrewDot, dryRu
 			continue
 		}
 		if dryRun {
-			p.Line("[dry-run] would reload %s", label)
+			p.DryRun("reload %s", label)
 			continue
 		}
 		if err := reloadLaunchAgent(ctx, domain, label, plist); err != nil {

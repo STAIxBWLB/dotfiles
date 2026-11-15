@@ -162,8 +162,8 @@ func runTunnelUninstall(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("loading state: %w", err)
 	}
 	if dryRun {
-		p.Line("[dry-run] would bootout %s and remove %s", tunnel.Label, tunnel.PlistPath)
-		p.Line("[dry-run] would optionally remove %s and credentials, delete the Cloudflare tunnel, and clear state", tunnel.ConfigDir)
+		p.DryRun("bootout %s and remove %s", tunnel.Label, tunnel.PlistPath)
+		p.DryRun("optionally remove %s and credentials, delete the Cloudflare tunnel, and clear state", tunnel.ConfigDir)
 		return nil
 	}
 
@@ -224,7 +224,8 @@ func renderTunnelEvent(p *Printer, tunnelName, hostname string, event tunnel.Eve
 	case tunnel.EventCloudflaredFound:
 		p.Line("  %s cloudflared found at %s", check, event.Path)
 	case tunnel.EventCloudflaredWouldInstall:
-		p.Line("  ~ cloudflared not found; would install with: brew install cloudflared")
+		p.Line("cloudflared not found.")
+		p.DryRun("run brew install cloudflared")
 	case tunnel.EventCloudflaredInstalled:
 		p.Line("  %s cloudflared installed at %s", check, event.Path)
 	case tunnel.EventCertFound:
@@ -233,11 +234,12 @@ func renderTunnelEvent(p *Printer, tunnelName, hostname string, event tunnel.Eve
 		p.Line("Cloudflare login cert is missing.")
 		p.Line("Choose the zone that will contain the SSH hostname, then complete the browser login.")
 	case tunnel.EventCertWouldLogin:
-		p.Line("  ~ would run: %s tunnel login", event.Path)
+		p.DryRun("run %s tunnel login", shellQuote(event.Path))
 	case tunnel.EventRemoteLoginReachable:
 		p.Line("  %s Remote Login is reachable on localhost:22", check)
 	case tunnel.EventRemoteLoginWouldEnable:
-		p.Line("  ~ port 22 is closed; would enable Remote Login with systemsetup, then launchctl fallback if needed")
+		p.Line("Port 22 is closed.")
+		p.DryRun("enable Remote Login with systemsetup, then launchctl fallback if needed")
 	case tunnel.EventRemoteLoginEnabled:
 		p.Line("  %s Remote Login enabled", check)
 	case tunnel.EventRemoteLoginFallback:
@@ -269,8 +271,9 @@ func renderTunnelEvent(p *Printer, tunnelName, hostname string, event tunnel.Eve
 	case tunnel.EventConnectorRegistered:
 		p.Line("  %s tunnel connector registered (%d connection(s))", check, event.Connections)
 	case tunnel.EventConnectorMissing:
-		p.Warn("tunnel daemon installed, but no active connector was observed within 20s")
-		p.Warn("check logs with: dot tunnel log 100")
+		ui.WriteWarning(p.Err,
+			"tunnel daemon installed, but no active connector was observed within 20s",
+			"dot tunnel log 100")
 	case tunnel.EventDaemonRemoved:
 		p.Line("Removed LaunchDaemon plist (if present).")
 	case tunnel.EventManagedFilesRemoved:

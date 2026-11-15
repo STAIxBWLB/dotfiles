@@ -63,7 +63,7 @@ func TestRealignNextKeepsNoPush(t *testing.T) {
 		{0, 1, false, true, true, "Run with --rescue --no-push --apply to realign."},
 		{0, 1, false, true, false, "Run with --rescue --apply to realign."},
 		{0, 1, false, false, false, "Run with --apply to realign."},
-		{0, 1, true, true, true, "--dry-run: nothing changed. Re-run without it to apply."},
+		{0, 1, true, true, true, "Nothing changed. Re-run without --dry-run to apply."},
 		{1, 0, false, true, true, ""},
 		{0, 0, false, true, true, ""},
 	} {

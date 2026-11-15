@@ -59,7 +59,7 @@ func TestPrintPeerScheduleDryRunTargetUserGuidance(t *testing.T) {
 			if off {
 				verb = "remove"
 			}
-			if !strings.Contains(out.String(), "dry-run: would "+verb+" "+result.Plist) {
+			if !strings.Contains(out.String(), "would "+verb+" "+result.Plist) {
 				t.Errorf("stdout missing %s preview: %q", verb, out.String())
 			}
 			for _, want := range []string{"target-user action required", "no service-manager action ran in the caller domain", "sudo -iu <target-user>"} {

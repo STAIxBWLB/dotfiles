@@ -403,7 +403,7 @@ func TestSyncMirrorCLI_PrintAndDryRunAreReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("gsync mirror --dry-run: %v", err)
 	}
-	if !strings.Contains(out, "[dry-run]") || !strings.Contains(out, newMirror) {
+	if !strings.Contains(out, "would set target") || !strings.Contains(out, newMirror) {
 		t.Errorf("dry-run output unexpected:\n%s", out)
 	}
 	if _, err := os.Stat(store); !os.IsNotExist(err) {

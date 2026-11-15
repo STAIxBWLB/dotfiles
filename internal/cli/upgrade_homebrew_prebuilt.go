@@ -40,7 +40,7 @@ func upgradeHomebrewPrebuilt(ctx context.Context, p *Printer, h homebrewDot, cur
 		return errHomebrewNeedsFullGate
 	}
 	if dryRun {
-		p.Line("[dry-run] verified Homebrew formula is eligible for dot %s", version)
+		p.Line("Verified Homebrew formula is eligible for dot %s", version)
 		return nil
 	}
 	release, err := acquireMaintenanceSlot(ctx, p, wait, upgradeAcquirePrebuilt)

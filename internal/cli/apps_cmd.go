@@ -52,9 +52,9 @@ func renderAppsEvent(p *Printer) func(appsettings.Event) {
 		case appsettings.EventNothingToInstall:
 			p.Line("%s", ui.StyleSuccess.Render(ui.MarkPresent+" nothing to install"))
 		case appsettings.EventDryRunTap:
-			p.Line("dry-run: would tap %d Homebrew repo(s): %s", len(e.Tokens), strings.Join(e.Tokens, ", "))
+			p.DryRun("tap %d Homebrew repo(s): %s", len(e.Tokens), strings.Join(e.Tokens, ", "))
 		case appsettings.EventDryRunInstall:
-			p.Line("dry-run: would install %d cask(s): %s", len(e.Tokens), strings.Join(e.Tokens, ", "))
+			p.DryRun("install %d cask(s): %s", len(e.Tokens), strings.Join(e.Tokens, ", "))
 		case appsettings.EventTapping:
 			p.Line("Tapping %d Homebrew repo(s): %s", len(e.Tokens), strings.Join(e.Tokens, ", "))
 		case appsettings.EventInstalling:

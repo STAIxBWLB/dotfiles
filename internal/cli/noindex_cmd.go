@@ -120,15 +120,15 @@ func runNoindex(cmd *cobra.Command, args []string) error {
 		p.Warn("could not mark %d directories (permissions?); re-run with -v to list them", len(res.Failed))
 	}
 
-	verb := "marked"
-	if dryRun {
-		verb = "would mark"
-	}
 	if len(res.Marked) == 0 && len(res.Failed) == 0 {
 		p.Success("nothing to do (%d already marked)", res.Present)
 		return nil
 	}
-	p.Success("%s %d directories (%d already marked)", verb, len(res.Marked), res.Present)
+	if dryRun {
+		p.DryRun("mark %d directories (%d already marked)", len(res.Marked), res.Present)
+	} else {
+		p.Success("marked %d directories (%d already marked)", len(res.Marked), res.Present)
+	}
 	return nil
 }
 
@@ -157,8 +157,8 @@ func newNoindexSetupCmd() *cobra.Command {
 			logFile := filepath.Join(home, ".local", "log", "dotfiles-noindex.log")
 
 			if dryRun {
-				p.Line("dry-run: would write %s", plist)
-				p.Line("dry-run: would load %s every %s", noindexLabel, interval)
+				p.DryRun("write %s", plist)
+				p.DryRun("load %s every %s", noindexLabel, interval)
 				return nil
 			}
 
@@ -213,7 +213,7 @@ func newNoindexUninstallCmd() *cobra.Command {
 			plist := noindexPlistPath(home)
 			dryRun, _ := c.Flags().GetBool("dry-run")
 			if dryRun {
-				p.Line("dry-run: would remove %s", plist)
+				p.DryRun("remove %s", plist)
 				return nil
 			}
 			if sameUserHome(c) {

@@ -69,7 +69,7 @@ func runSyncTarget(cmd *cobra.Command, args []string) error {
 			p.KV("Target", bs.Config.Target.String())
 			return nil
 		}
-		p.Line("[dry-run] would set target to %s (local config)", target.String())
+		p.DryRun("set target to %s (local config)", target.String())
 		return nil
 	}
 
@@ -118,12 +118,12 @@ func runSyncInit(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if res.DryRun {
-		p.Line("dry-run: would create %s", res.StoreDir)
+		p.DryRun("create %s", res.StoreDir)
 		for _, f := range []string{res.ConfigFile, res.IncludeFile, res.IgnoreFile} {
-			p.Line("dry-run: would create %s", f)
+			p.DryRun("create %s", f)
 		}
-		p.Line("dry-run: would create %s", res.InboxDir)
-		p.Line("dry-run: would append the managed block to %s", res.WorkspaceIgnore)
+		p.DryRun("create %s", res.InboxDir)
+		p.DryRun("append the managed block to %s", res.WorkspaceIgnore)
 		return nil
 	}
 
@@ -330,10 +330,6 @@ func runSyncOwnerRename(cmd *cobra.Command, oldName, newName string, localOnly b
 	if err != nil {
 		return err
 	}
-	verb := "owner"
-	if dryRun {
-		verb = "dry-run: would set owner"
-	}
 	kept := "kept as an alias"
 	switch {
 	case !keepAlias:
@@ -342,7 +338,11 @@ func runSyncOwnerRename(cmd *cobra.Command, oldName, newName string, localOnly b
 		kept = "a generic name, not kept"
 	}
 	for _, profile := range res.Profiles {
-		p.Success("profile %q: %s %q (was %q, %s)", profile, verb, newName, oldName, kept)
+		if dryRun {
+			p.DryRun("set owner of profile %q to %q (was %q, %s)", profile, newName, oldName, kept)
+		} else {
+			p.Success("profile %q: owner %q (was %q, %s)", profile, newName, oldName, kept)
+		}
 	}
 	for _, profile := range res.Already {
 		p.Success("profile %q: already renamed to %q", profile, newName)
@@ -361,7 +361,7 @@ func runSyncOwnerRename(cmd *cobra.Command, oldName, newName string, localOnly b
 	}
 	host := peer.Config.Target.Host
 	if dryRun {
-		p.Line("dry-run: would run on %s: %s", host, manual)
+		p.DryRun("run on %s: %s", host, manual)
 		return nil
 	}
 	out, err := syncer.RenamePeerOwner(cmd.Context(), probeRunner(), peer.Config, oldName, newName)
@@ -459,9 +459,9 @@ func runSyncOwner(cmd *cobra.Command, opts syncer.OwnerOptions) error {
 	switch {
 	case opts.DryRun:
 		if owner == "" {
-			p.Line("dry-run: would clear the owner of profile %q", cfg.Profile)
+			p.DryRun("clear the owner of profile %q", cfg.Profile)
 		} else {
-			p.Line("dry-run: would set the owner of profile %q to %q", cfg.Profile, owner)
+			p.DryRun("set the owner of profile %q to %q", cfg.Profile, owner)
 		}
 	case owner == "":
 		p.Success("owner cleared for profile %q (any machine may push)", cfg.Profile)
@@ -484,7 +484,7 @@ func runSyncOwner(cmd *cobra.Command, opts syncer.OwnerOptions) error {
 				}
 				verb := "owner set"
 				if dryRun {
-					verb = "dry-run: owner not set"
+					verb = "owner not set (preview)"
 				}
 				// Under --home the plist is gone and only launchd is left.
 				var target *syncer.SchedulerTargetUserActionRequiredError
@@ -494,7 +494,7 @@ func runSyncOwner(cmd *cobra.Command, opts syncer.OwnerOptions) error {
 				return fmt.Errorf("%s, but removing this Mac's peer scheduler failed: %w; run dot peer setup --off", verb, err)
 			}
 			if dryRun {
-				p.Line("dry-run: would remove this Mac's peer scheduler (it no longer coordinates)")
+				p.DryRun("remove this Mac's peer scheduler (it no longer coordinates)")
 			} else {
 				p.Success("peer scheduler removed: this Mac no longer coordinates")
 			}

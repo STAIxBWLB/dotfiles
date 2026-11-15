@@ -49,10 +49,10 @@ change when the address does. A laptop needs one that works without an inbound p
 				return err
 			}
 			if res.DryRun {
-				p.Line("dry-run: would write %s", res.ConfigFile)
-				p.Line("dry-run: would create %s", res.AllowFile)
-				p.Line("dry-run: would create %s", res.HomePathsFile)
-				p.Line("dry-run: would create %s", res.HomeTrackedFile)
+				p.DryRun("write %s", res.ConfigFile)
+				p.DryRun("create %s", res.AllowFile)
+				p.DryRun("create %s", res.HomePathsFile)
+				p.DryRun("create %s", res.HomeTrackedFile)
 				p.KV("target", res.Target)
 				return nil
 			}
@@ -186,7 +186,15 @@ func printPeerHooks(p *Printer, hooks []syncer.HookResult) {
 		case h.Err != nil:
 			p.Warn("hook %s %s: %v", h.Phase, h.Action, h.Err)
 		case h.DryRun:
-			p.Line("dry-run: hook %s %s: %s", h.Phase, h.Action, h.Detail)
+			action, preview := strings.CutPrefix(h.Detail, "would ")
+			if !preview {
+				action, preview = strings.CutPrefix(h.Detail, "would: ")
+			}
+			if preview {
+				p.DryRun("run hook %s %s: %s", h.Phase, h.Action, action)
+			} else {
+				p.Line("hook %s %s: %s", h.Phase, h.Action, h.Detail)
+			}
 		default:
 			p.Success("hook %s %s: %s", h.Phase, h.Action, h.Detail)
 		}
@@ -195,9 +203,9 @@ func printPeerHooks(p *Printer, hooks []syncer.HookResult) {
 
 func printPeerScheduleDryRun(p *Printer, res *syncer.PeerScheduleResult) {
 	if res.Off {
-		p.Line("dry-run: would remove %s", res.Plist)
+		p.DryRun("remove %s", res.Plist)
 	} else {
-		p.Line("dry-run: would write %s", res.Plist)
+		p.DryRun("write %s", res.Plist)
 	}
 	if res.TargetUserActionRequired {
 		p.Warn("target-user action required: %s", syncer.SchedulerTargetUserInstruction())

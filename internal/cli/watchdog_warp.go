@@ -82,8 +82,7 @@ func runWatchdogWarpForGOOS(cmd *cobra.Command, _ []string, goos string) error {
 
 	p := printerFrom(cmd)
 	if dryRun {
-		p.Line("[dry-run] healthy=%v consecutive=%d attempts=%d "+ui.MarkNext+" would %s",
-			healthy, next.ConsecutiveFailures, next.Attempts, action)
+		printWarpDryRun(p, healthy, next, action)
 		return nil
 	}
 	if err := executeWarpAction(ctx, mgr, runner, wcfg, state, action, next, now); err != nil {
@@ -96,6 +95,24 @@ func runWatchdogWarpForGOOS(cmd *cobra.Command, _ []string, goos string) error {
 		p.Line("warp healthy=%v consecutive=%d action=%s", healthy, next.ConsecutiveFailures, action)
 	}
 	return nil
+}
+
+// printWarpDryRun separates observed/predicted state from the already-decided
+// action. It neither decides nor persists any WARP state.
+func printWarpDryRun(p *Printer, healthy bool, next watchdog.WarpState, action watchdog.WarpAction) {
+	p.Line("warp healthy=%v consecutive=%d attempts=%d", healthy, next.ConsecutiveFailures, next.Attempts)
+	switch action {
+	case watchdog.WarpActionNone:
+		p.DryRun("take no WARP action")
+	case watchdog.WarpActionReconnect:
+		p.DryRun("reconnect WARP")
+	case watchdog.WarpActionKickstart:
+		p.DryRun("kickstart the WARP daemon")
+	case watchdog.WarpActionRateLimited:
+		p.DryRun("defer the WARP restart (rate-limited)")
+	default:
+		p.Line("Unknown WARP action %d; no action preview is available.", int(action))
+	}
 }
 
 // executeWarpAction applies the decided action, logging and notifying on

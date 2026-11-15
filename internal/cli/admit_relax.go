@@ -71,7 +71,7 @@ func runAdmitRelax(cmd *cobra.Command, _ []string) error {
 			return fmt.Errorf("--clear takes no other options (got --%s)", other)
 		}
 		if dryRun {
-			p.Line("dry-run: would clear the temporary admission override (%s).", store.OverridePath())
+			p.DryRun("clear the temporary admission override (%s).", store.OverridePath())
 			return nil
 		}
 		if err := store.ClearRelaxOverride(); err != nil {
@@ -124,7 +124,7 @@ func runAdmitRelax(cmd *cobra.Command, _ []string) error {
 		Set:       setValues,
 	}
 	if dryRun {
-		p.Line("dry-run: would set a temporary admission override until %s in %s; nothing written.",
+		p.DryRun("set a temporary admission override until %s in %s; nothing written.",
 			override.ExpiresAt.Format(time.RFC3339), store.OverridePath())
 		if len(override.Ignore) > 0 {
 			p.Line("  --ignore %s", ignore.Label())

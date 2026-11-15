@@ -46,7 +46,7 @@ func renderSecretsEvent(p *Printer) func(secrets.Event) {
 		case secrets.EventVerificationSkipped:
 			p.Warn("  decrypt verification skipped: %s — restore from this archive is unverified", ev.Reason)
 		case secrets.EventScaffoldPreview:
-			p.Line("  [dry-run] Would scaffold: %s (0600)", ev.Path)
+			p.DryRun("scaffold: %s (0600)", ev.Path)
 		case secrets.EventScaffolded:
 			p.Line("  Scaffolded: %s (0600)", ev.Path)
 		case secrets.EventPlaintextMissing:

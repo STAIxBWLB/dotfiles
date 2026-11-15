@@ -530,7 +530,7 @@ func runRemoteStatus(cmd *cobra.Command, _ []string) error {
 		p.KV("Bare repos", fmt.Sprintf("%d (%s)", len(status.BareRepos), totalSize(status.BareRepos)))
 	}
 	p.Blank()
-	p.Line("Note: %s", admission.UncoveredNote)
+	p.Line("%s", admission.UncoveredNote)
 	return nil
 }
 
