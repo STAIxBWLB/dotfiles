@@ -27,8 +27,10 @@ func newAIToolsCmd() *cobra.Command {
 			}{Items: aitooling.Catalog()})
 		}
 		p := printerFrom(cmd)
+		// Tab-separated rows read by scripts keep their columns: Raw skips the
+		// report-width wrap Line applies.
 		for _, e := range aitooling.Catalog() {
-			p.Line("%s\t%s\t%s", e.Kind, e.ID, e.Name)
+			p.Raw("%s\t%s\t%s\n", e.Kind, e.ID, e.Name)
 		}
 		return nil
 	}}

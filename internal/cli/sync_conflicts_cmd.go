@@ -92,12 +92,13 @@ func conflictAge(now, modTime time.Time) time.Duration {
 	return now.Sub(modTime).Truncate(time.Hour)
 }
 
-// conflictAgeMarker flags backups older than 30 days as prune candidates.
+// conflictAgeMarker flags backups older than 30 days as prune candidates; the
+// rest are kept until `conflicts prune` runs.
 func conflictAgeMarker(now, modTime time.Time) string {
 	if conflictAge(now, modTime) > 30*24*time.Hour {
 		return ui.MarkWarn
 	}
-	return ui.MarkAbsent
+	return ui.MarkPending
 }
 
 func runSyncConflictsPrune(cmd *cobra.Command, _ []string) error {

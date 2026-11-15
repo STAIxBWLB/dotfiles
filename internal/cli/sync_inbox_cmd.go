@@ -72,7 +72,8 @@ func runSyncInboxList(cmd *cobra.Command, _ []string) error {
 			shown = shown[len(shown)-5:]
 		}
 		for _, t := range shown {
-			p.Bullet(ui.MarkAbsent, fmt.Sprintf("%s (detected %s)", t.RelPath, t.DetectedAt.Format(time.RFC3339)))
+			// An intake queue entry is waiting to be applied, not missing.
+			p.Bullet(ui.MarkPending, fmt.Sprintf("%s (detected %s)", t.RelPath, t.DetectedAt.Format(time.RFC3339)))
 		}
 	}
 	p.Blank()

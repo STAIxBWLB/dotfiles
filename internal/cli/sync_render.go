@@ -26,7 +26,8 @@ func gdriveSyncModeFrom(cmd *cobra.Command) (syncer.RunMode, error) {
 
 func printPathList(p *Printer, paths []string) {
 	for _, path := range paths {
-		p.Bullet(ui.MarkAbsent, path)
+		// A plan row is work the next run still owes, not something missing now.
+		p.Bullet(ui.MarkPending, path)
 	}
 }
 

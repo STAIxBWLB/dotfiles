@@ -286,7 +286,7 @@ resolve outside it, the store's own index, and a destination that exists.`,
 			p.Header("Archive " + args[0] + " memory")
 			for _, m := range moves {
 				p.Line("%s", m.From)
-				p.Next("%s", m.To)
+				p.Line("  to %s", m.To)
 				for _, ref := range m.IndexRefs {
 					p.Line("  still named by %s", ref)
 				}

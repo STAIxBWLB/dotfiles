@@ -336,7 +336,9 @@ func newAIAgentsPathCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			mgr := newAgentsManagerFromCmd(cmd)
-			printerFrom(cmd).Line("%s", mgr.SSOTDirPath())
+			// A script reads this value with $(dot ai agents path), so it stays one
+			// unwrapped line: Raw skips the report-width wrap Line applies.
+			printerFrom(cmd).Raw("%s\n", mgr.SSOTDirPath())
 			return nil
 		},
 	}
