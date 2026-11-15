@@ -120,7 +120,7 @@ func runOpen(cmd *cobra.Command, args []string) error {
 
 	installOptional, _ := cmd.Flags().GetBool("install-optional")
 	if installOptional {
-		workspace.InstallOptional(ctx, runner, brew, cmd.OutOrStdout())
+		workspace.InstallOptional(ctx, runner, brew, cmd.OutOrStdout(), cmd.ErrOrStderr())
 	}
 
 	// Deploy shell scripts

@@ -1,16 +1,17 @@
-package ui
+package configure
 
 import (
 	"fmt"
 	"strings"
 
 	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // PrintStateSummary displays the current configuration summary with styled output.
 func PrintStateSummary(state *config.UserState) {
 	printLine()
-	printLine(StyleHeader.Render(" Configuration Summary "))
+	printLine(ui.StyleHeader.Render(" Configuration Summary "))
 	printLine()
 
 	printKV("Profile", state.Profile)
@@ -32,10 +33,10 @@ func PrintStateSummary(state *config.UserState) {
 			printKV("Cloud", state.Modules.Workspace.Gdrive)
 		}
 		if state.Modules.Workspace.GdriveSymlink != "" {
-			printKV("Cloud link", state.Modules.Workspace.GdriveSymlink+" "+MarkNext+" "+state.Modules.Workspace.Gdrive)
+			printKV("Cloud link", state.Modules.Workspace.GdriveSymlink+" "+ui.MarkNext+" "+state.Modules.Workspace.Gdrive)
 		}
 		if state.Modules.Workspace.Symlink != "" {
-			printKV("Symlink", state.Modules.Workspace.Path+" "+MarkNext+" "+state.Modules.Workspace.Symlink)
+			printKV("Symlink", state.Modules.Workspace.Path+" "+ui.MarkNext+" "+state.Modules.Workspace.Symlink)
 		}
 		for _, repo := range state.Modules.Workspace.Repos {
 			printKV(repo.Name+" repo", repo.Remote)

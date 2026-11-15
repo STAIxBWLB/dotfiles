@@ -7,9 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"gopkg.in/yaml.v3"
 )
 
 func TestPropagationPolicy_Validate(t *testing.T) {
@@ -503,7 +502,7 @@ func TestSaveLocalConfig_DropsTheRetiredMirrorPathKeyOnce(t *testing.T) {
 			t.Fatalf("SaveLocalConfig: %v", err)
 		}
 	})
-	if !strings.Contains(out, "note: dropped the retired `mirror_path` key") || !strings.Contains(out, "`dot sync target`") {
+	if !strings.Contains(out, "dot: dropped the retired `mirror_path` key") || !strings.Contains(out, "`dot sync target`") {
 		t.Errorf("save did not announce the drop once:\n%s", out)
 	}
 	saved, err := os.ReadFile(paths.ConfigFile)
@@ -587,7 +586,7 @@ func TestSaveLocalConfig_CarriesTheRetiredMirrorPathWhileItStillMoves(t *testing
 			t.Fatalf("second SaveLocalConfig: %v", err)
 		}
 	})
-	if !strings.Contains(out, "note: dropped the retired `mirror_path` key") {
+	if !strings.Contains(out, "dot: dropped the retired `mirror_path` key") {
 		t.Errorf("a key that decides nothing was dropped without a note: %q", out)
 	}
 	if saved, err = os.ReadFile(paths.ConfigFile); err != nil {

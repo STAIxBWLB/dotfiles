@@ -1,0 +1,10 @@
+[
+  "\u001b[1;33mdot: warning: cache is unavailable\u001b[m\n",
+  "  \u001b[36m→ dot status\u001b[m\n",
+  "  \u001b[36m→ DOT_CACHE=local\u001b[m\n",
+  "  \u001b[36m→ dot apply --yes\u001b[m\n",
+  "    \u001b[36m→ dot diff --summary\u001b[m\n",
+  "  \u001b[90m~\u001b[m  would write profile\n",
+  "dot: using default profile\n",
+  ""
+]

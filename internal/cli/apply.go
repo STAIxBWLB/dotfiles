@@ -6,13 +6,13 @@ import (
 	"os"
 	"strings"
 
-	"github.com/spf13/cobra"
-
 	"github.com/STAIxBWLB/dotfiles/internal/config"
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
 	"github.com/STAIxBWLB/dotfiles/internal/module"
 	"github.com/STAIxBWLB/dotfiles/internal/template"
 	"github.com/STAIxBWLB/dotfiles/internal/ui"
+	"github.com/STAIxBWLB/dotfiles/internal/ui/configure"
+	"github.com/spf13/cobra"
 )
 
 var errAborted = errors.New("aborted by user")
@@ -266,30 +266,30 @@ func configureInteractive(
 	p.Line("\n=== Configuration ===")
 	freshState := state.Name == ""
 
-	if err := ui.ConfigureIdentity(state, false); err != nil {
+	if err := configure.ConfigureIdentity(state, false); err != nil {
 		return err
 	}
 
-	if err := ui.ConfigureSSH(state, home, false); err != nil {
+	if err := configure.ConfigureSSH(state, home, false); err != nil {
 		return err
 	}
 
-	if err := ui.ConfigureWorkspace(state, profile, false); err != nil {
+	if err := configure.ConfigureWorkspace(state, profile, false); err != nil {
 		return err
 	}
 
-	if err := ui.ConfigureAI(state, false, freshState); err != nil {
+	if err := configure.ConfigureAI(state, false, freshState); err != nil {
 		return err
 	}
 
-	if err := ui.ConfigureTerminal(state, profile, system, false); err != nil {
+	if err := configure.ConfigureTerminal(state, profile, system, false); err != nil {
 		return err
 	}
 
-	if err := ui.ConfigureFonts(state, profile, false); err != nil {
+	if err := configure.ConfigureFonts(state, profile, false); err != nil {
 		return err
 	}
 
-	ui.PrintStateSummary(state)
+	configure.PrintStateSummary(state)
 	return nil
 }

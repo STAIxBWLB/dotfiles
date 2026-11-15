@@ -1,4 +1,4 @@
-package ui
+package configure
 
 import (
 	"fmt"
@@ -9,6 +9,7 @@ import (
 	"github.com/STAIxBWLB/dotfiles/internal/config"
 	"github.com/STAIxBWLB/dotfiles/internal/config/catalog"
 	"github.com/STAIxBWLB/dotfiles/internal/sliceutil"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // ConfigureAI prompts for AI CLI/config helper setup.
@@ -21,12 +22,12 @@ func ConfigureAI(state *config.UserState, yes bool, freshDefault bool) error {
 	}
 
 	if !yes {
-		printLine(StyleHint.Render("  Enables shell aliases and assistant config files; app installation is managed by `dot apps`."))
-		printLine(StyleHint.Render("  Managed files: ~/.config/shell/30-ai.sh, ~/.config/claude/settings.json"))
+		printLine(ui.StyleHint.Render("  Enables shell aliases and assistant config files; app installation is managed by `dot apps`."))
+		printLine(ui.StyleHint.Render("  Managed files: ~/.config/shell/30-ai.sh, ~/.config/claude/settings.json"))
 	}
 
 	var err error
-	state.Modules.AI.Enabled, err = ConfirmBool("Enable AI CLI/config helpers?", aiDefault, yes)
+	state.Modules.AI.Enabled, err = ui.ConfirmBool("Enable AI CLI/config helpers?", aiDefault, yes)
 	if err != nil {
 		return err
 	}
@@ -39,7 +40,7 @@ func ConfigureAI(state *config.UserState, yes bool, freshDefault bool) error {
 	if freshDefault {
 		agentsDefault = true
 	}
-	state.Modules.AI.AgentsSSOT, err = ConfirmBool("Keep global agent instructions in sync?", agentsDefault, yes)
+	state.Modules.AI.AgentsSSOT, err = ui.ConfirmBool("Keep global agent instructions in sync?", agentsDefault, yes)
 	if err != nil {
 		return err
 	}
@@ -54,8 +55,8 @@ func ConfigureAI(state *config.UserState, yes bool, freshDefault bool) error {
 	case "path":
 		modeDefault = "custom path"
 	}
-	printLine(StyleHint.Render("  Skills SSOT is only used by the read-only `dot ai skills` diagnostics; the Maru app manages runtime symlinks."))
-	mode, err := Select("Skills SSOT",
+	printLine(ui.StyleHint.Render("  Skills SSOT is only used by the read-only `dot ai skills` diagnostics; the Maru app manages runtime symlinks."))
+	mode, err := ui.Select("Skills SSOT",
 		[]string{"none", "maru", "custom path"}, modeDefault, false)
 	if err != nil {
 		return err
@@ -76,7 +77,7 @@ func ConfigureAI(state *config.UserState, yes bool, freshDefault bool) error {
 		if defaultPath == "" {
 			defaultPath = "~/.maru/skills"
 		}
-		skills.SSOTPath, err = Input("Skills SSOT path", defaultPath, false)
+		skills.SSOTPath, err = ui.Input("Skills SSOT path", defaultPath, false)
 		if err != nil {
 			return err
 		}
@@ -92,7 +93,7 @@ func ConfigureAI(state *config.UserState, yes bool, freshDefault bool) error {
 	if len(toolDefault) == 0 {
 		toolDefault = []string{"claude", "codex"}
 	}
-	skills.Tools, err = MultiSelectLabeled("Target tools for skills", skillToolSelectOptions(), toolDefault, false)
+	skills.Tools, err = ui.MultiSelectLabeled("Target tools for skills", skillToolSelectOptions(), toolDefault, false)
 	if err != nil {
 		return err
 	}
@@ -100,8 +101,8 @@ func ConfigureAI(state *config.UserState, yes bool, freshDefault bool) error {
 	return nil
 }
 
-func skillToolSelectOptions() []SelectOption {
-	return []SelectOption{
+func skillToolSelectOptions() []ui.SelectOption {
+	return []ui.SelectOption{
 		{Label: "claude - Claude Code", Value: "claude"},
 		{Label: "codex - Codex CLI", Value: "codex"},
 	}
@@ -123,7 +124,7 @@ func ConfigureTerminal(state *config.UserState, profile string, system *config.S
 		}
 	}
 	var err error
-	state.Modules.PromptStyle, err = Select("Prompt style",
+	state.Modules.PromptStyle, err = ui.Select("Prompt style",
 		[]string{"minimal", "rich"}, promptDefault, yes)
 	if err != nil {
 		return err
@@ -138,9 +139,9 @@ func ConfigureTerminal(state *config.UserState, profile string, system *config.S
 		}
 	}
 	if !yes {
-		printLine(StyleHint.Render("  Sets $EDITOR; zed/code are installed as casks on macOS via `dot apps`."))
+		printLine(ui.StyleHint.Render("  Sets $EDITOR; zed/code are installed as casks on macOS via `dot apps`."))
 	}
-	state.Modules.Editor, err = Select("Default editor",
+	state.Modules.Editor, err = ui.Select("Default editor",
 		[]string{"zed", "code", "vi"}, editorDefault, yes)
 	if err != nil {
 		return err
@@ -178,7 +179,7 @@ func ConfigureTerminal(state *config.UserState, profile string, system *config.S
 			appDefault = config.DefaultTerminalApps(profile, system)
 		}
 	}
-	selectedApps, err := MultiSelectLabeled(
+	selectedApps, err := ui.MultiSelectLabeled(
 		"Terminal apps to install",
 		terminalAppSelectOptions(availableApps),
 		appDefault,
@@ -193,10 +194,10 @@ func ConfigureTerminal(state *config.UserState, profile string, system *config.S
 	return nil
 }
 
-func terminalAppSelectOptions(apps []config.TerminalAppOption) []SelectOption {
-	options := make([]SelectOption, len(apps))
+func terminalAppSelectOptions(apps []config.TerminalAppOption) []ui.SelectOption {
+	options := make([]ui.SelectOption, len(apps))
 	for i, app := range apps {
-		options[i] = SelectOption{
+		options[i] = ui.SelectOption{
 			Label: app.Token + " - " + app.Name,
 			Value: app.Token,
 		}
@@ -218,7 +219,7 @@ func ConfigureFonts(state *config.UserState, profile string, yes bool) error {
 	}
 
 	var err error
-	state.Modules.Fonts.Family, err = Select("Font family", []string{"FiraCode", "JetBrainsMono", "Hack"}, fontFamily, yes)
+	state.Modules.Fonts.Family, err = ui.Select("Font family", []string{"FiraCode", "JetBrainsMono", "Hack"}, fontFamily, yes)
 	return err
 }
 
@@ -233,12 +234,12 @@ func ConfigureSecrets(state *config.UserState, home, profile string, yes bool) e
 	ageKeys := detectAgeKeys(home)
 
 	if len(ageKeys) == 0 && state.Secrets.AgeIdentity == "" {
-		printLine(StyleHint.Render("  No age keys found. Skipping secrets configuration."))
-		printLine(StyleHint.Render("  Create one later with: age-keygen -o ~/.ssh/age_key"))
+		printLine(ui.StyleHint.Render("  No age keys found. Skipping secrets configuration."))
+		printLine(ui.StyleHint.Render("  Create one later with: age-keygen -o ~/.ssh/age_key"))
 		return nil
 	}
 
-	enableSecrets, err := ConfirmBool("Configure age encryption for secrets?", state.Secrets.AgeIdentity != "" || len(ageKeys) > 0, yes)
+	enableSecrets, err := ui.ConfirmBool("Configure age encryption for secrets?", state.Secrets.AgeIdentity != "" || len(ageKeys) > 0, yes)
 	if err != nil {
 		return err
 	}
@@ -254,9 +255,9 @@ func ConfigureSecrets(state *config.UserState, home, profile string, yes bool) e
 	}
 
 	if len(ageKeys) > 0 && !yes {
-		printLine(StyleHint.Render(fmt.Sprintf("  Found %d age key(s):", len(ageKeys))))
+		printLine(ui.StyleHint.Render(fmt.Sprintf("  Found %d age key(s):", len(ageKeys))))
 		for _, k := range ageKeys {
-			printLine(StyleHint.Render("    • " + k))
+			printLine(ui.StyleHint.Render("    • " + k))
 		}
 
 		options := make([]string, len(ageKeys))
@@ -268,13 +269,13 @@ func ConfigureSecrets(state *config.UserState, home, profile string, yes bool) e
 			selectDefault = ageKeys[0]
 		}
 
-		selected, err := Select("Age identity (private key)", options, selectDefault, false)
+		selected, err := ui.Select("Age identity (private key)", options, selectDefault, false)
 		if err != nil {
 			return err
 		}
 
 		if selected == "(enter custom path)" {
-			state.Secrets.AgeIdentity, err = Input("Age identity path", identityDefault, false)
+			state.Secrets.AgeIdentity, err = ui.Input("Age identity path", identityDefault, false)
 			if err != nil {
 				return err
 			}
@@ -282,7 +283,7 @@ func ConfigureSecrets(state *config.UserState, home, profile string, yes bool) e
 			state.Secrets.AgeIdentity = selected
 		}
 	} else {
-		state.Secrets.AgeIdentity, err = Input("Age identity path", identityDefault, yes)
+		state.Secrets.AgeIdentity, err = ui.Input("Age identity path", identityDefault, yes)
 		if err != nil {
 			return err
 		}
@@ -297,10 +298,10 @@ func ConfigureSecrets(state *config.UserState, home, profile string, yes bool) e
 	}
 
 	if recipientDefault != "" {
-		printLine(StyleHint.Render(fmt.Sprintf("  Public key: %s", recipientDefault)))
+		printLine(ui.StyleHint.Render(fmt.Sprintf("  Public key: %s", recipientDefault)))
 		state.Secrets.AgeRecipients = []string{recipientDefault}
 	} else if !yes {
-		recipient, err := Input("Age recipient (public key, blank to skip)", "", false)
+		recipient, err := ui.Input("Age recipient (public key, blank to skip)", "", false)
 		if err != nil {
 			return err
 		}
@@ -328,7 +329,7 @@ func ConfigureMacApps(state *config.UserState, home, profile string, yes bool) e
 
 	cat, err := catalog.LoadMacApps()
 	if err != nil {
-		printLine(StyleWarning.Render("  catalog load failed: " + err.Error()))
+		printLine(ui.StyleWarning.Render("  catalog load failed: " + err.Error()))
 		return nil
 	}
 
@@ -337,7 +338,7 @@ func ConfigureMacApps(state *config.UserState, home, profile string, yes bool) e
 		// Fresh install defaults to enabled on darwin non-server profiles.
 		enableDefault = true
 	}
-	enable, err := ConfirmBool("Manage macOS cask apps?", enableDefault, yes)
+	enable, err := ui.ConfirmBool("Manage macOS cask apps?", enableDefault, yes)
 	if err != nil {
 		return err
 	}
@@ -347,7 +348,7 @@ func ConfigureMacApps(state *config.UserState, home, profile string, yes bool) e
 	}
 	state.Modules.MacApps.Enabled = true
 
-	// MultiSelect presented in grouped sections. Build a single flattened list
+	// ui.MultiSelect presented in grouped sections. Build a single flattened list
 	// so huh renders group separators as disabled-looking labels.
 	tokens := cat.AllTokens()
 	// Preselect: existing state → catalog recommended (curated set).
@@ -368,9 +369,9 @@ func ConfigureMacApps(state *config.UserState, home, profile string, yes bool) e
 	}
 
 	if !yes {
-		printLine(StyleHint.Render(fmt.Sprintf("  Catalog: %d apps across %d groups", len(tokens), len(cat.Groups))))
+		printLine(ui.StyleHint.Render(fmt.Sprintf("  Catalog: %d apps across %d groups", len(tokens), len(cat.Groups))))
 	}
-	selected, err := MultiSelect("Select apps to install", tokens, valid, yes)
+	selected, err := ui.MultiSelect("ui.Select apps to install", tokens, valid, yes)
 	if err != nil {
 		return err
 	}
@@ -378,7 +379,7 @@ func ConfigureMacApps(state *config.UserState, home, profile string, yes bool) e
 
 	// Free-form additions
 	extraDefault := strings.Join(state.Modules.MacApps.CasksExtra, " ")
-	extraStr, err := Input("Additional casks (space-separated, optional)", extraDefault, yes)
+	extraStr, err := ui.Input("Additional casks (space-separated, optional)", extraDefault, yes)
 	if err != nil {
 		return err
 	}
@@ -389,7 +390,7 @@ func ConfigureMacApps(state *config.UserState, home, profile string, yes bool) e
 	if len(backupDefault) == 0 {
 		backupDefault = selected
 	}
-	sameAsInstall, err := ConfirmBool("Use the same list for settings backup?",
+	sameAsInstall, err := ui.ConfirmBool("Use the same list for settings backup?",
 		len(state.Modules.MacApps.BackupApps) == 0 || sliceutil.Equal(state.Modules.MacApps.BackupApps, selected),
 		yes)
 	if err != nil {
@@ -398,7 +399,7 @@ func ConfigureMacApps(state *config.UserState, home, profile string, yes bool) e
 	if sameAsInstall {
 		state.Modules.MacApps.BackupApps = nil // defer to install list at runtime
 	} else {
-		backupSel, err := MultiSelect("Select apps whose settings to back up", selected, backupDefault, yes)
+		backupSel, err := ui.MultiSelect("ui.Select apps whose settings to back up", selected, backupDefault, yes)
 		if err != nil {
 			return err
 		}
@@ -416,7 +417,7 @@ func ConfigureMacApps(state *config.UserState, home, profile string, yes bool) e
 			rootDefault = appsettings.DefaultBackupRoot(home)
 		}
 	}
-	choice, err := Select("Backup root",
+	choice, err := ui.Select("Backup root",
 		[]string{"cloud (auto-detected)", "local", "custom"},
 		pickBackupChoice(rootDefault, detected),
 		yes)
@@ -428,7 +429,7 @@ func ConfigureMacApps(state *config.UserState, home, profile string, yes bool) e
 		if detected {
 			state.Modules.MacApps.BackupRoot = rootDefault
 		} else {
-			path, inputErr := Input("Cloud backup root", rootDefault, yes)
+			path, inputErr := ui.Input("Cloud backup root", rootDefault, yes)
 			if inputErr != nil {
 				return inputErr
 			}
@@ -437,7 +438,7 @@ func ConfigureMacApps(state *config.UserState, home, profile string, yes bool) e
 	case "local":
 		state.Modules.MacApps.BackupRoot = appsettings.DefaultBackupRoot(home)
 	case "custom":
-		path, inputErr := Input("Backup root path", rootDefault, yes)
+		path, inputErr := ui.Input("Backup root path", rootDefault, yes)
 		if inputErr != nil {
 			return inputErr
 		}

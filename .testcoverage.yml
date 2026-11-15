@@ -127,8 +127,10 @@ override:
     threshold: 94
   - path: ^internal/tunnel$ # measured 31.6964% (142/448)
     threshold: 30
-  - path: ^internal/ui$ # measured 19.9442% (143/717)
-    threshold: 18
+  - path: ^internal/ui$ # measured 68.4015% (184/269) on Linux after the wizard moved to ui/configure (dotfiles#450)
+    threshold: 67
+  - path: ^internal/ui/configure$ # measured 25.6211% (165/644) on Linux at introduction (dotfiles#450); interactive prompt branches stay fixture-bypassed
+    threshold: 24
   - path: ^internal/watchdog$ # measured 75.3% on darwin after P2 review fixes; warp daemon install/launchctl branches are present-and-unhit on Linux
     threshold: 74
   - path: ^internal/workspace$ # measured 60.8434% (101/166)

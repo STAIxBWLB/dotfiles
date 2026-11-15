@@ -227,7 +227,7 @@ func TestLoadStateFrom_KeepsItsThreeBehaviours(t *testing.T) {
 func TestLoadStateFrom_ValidationWarningWording(t *testing.T) {
 	path := writeStateFile(t, t.TempDir(), "name: Test\nprofile: not-a-profile\n")
 	out := captureStderr(t, func() { _, _ = LoadStateFrom(path) })
-	if !strings.HasPrefix(out, "warning: imported config has invalid values: ") {
+	if !strings.HasPrefix(out, "dot: warning: imported config has invalid values: ") {
 		t.Fatalf("import warning wording changed: %q", out)
 	}
 	if strings.Contains(out, "dot reconfigure") {
@@ -242,10 +242,10 @@ func TestLoadStateFrom_ValidationWarningWording(t *testing.T) {
 func TestLoadState_ValidationWarningWording(t *testing.T) {
 	path := writeStateFile(t, t.TempDir(), "name: Test\nprofile: not-a-profile\n")
 	out := captureStderr(t, func() { _, _ = loadStateAt(path) })
-	if !strings.HasPrefix(out, "warning: state file has invalid values: ") {
+	if !strings.HasPrefix(out, "dot: warning: state file has invalid values: ") {
 		t.Fatalf("state warning wording changed: %q", out)
 	}
-	if !strings.HasSuffix(out, "  Run 'dot reconfigure' to fix.\n") {
+	if !strings.HasSuffix(out, "dot reconfigure\n") {
 		t.Fatalf("state warning lost its remedy line: %q", out)
 	}
 }
@@ -470,14 +470,14 @@ func TestSaveState_NotesTheLegacyMigration(t *testing.T) {
 			t.Errorf("saveStateAt: %v", err)
 		}
 	})
-	if !strings.HasPrefix(out, "note: ") {
+	if !strings.HasPrefix(out, "dot: ") {
 		t.Fatalf("no migration note on a converted write: %q", out)
 	}
 	if !strings.Contains(out, "modules.warp") {
 		t.Fatalf("note does not name the key that moved: %q", out)
 	}
-	if strings.Count(out, "note: ") != 1 {
-		t.Fatalf("note fired %d times, want once: %q", strings.Count(out, "note: "), out)
+	if strings.Count(out, "dot: ") != 1 {
+		t.Fatalf("note fired %d times, want once: %q", strings.Count(out, "dot: "), out)
 	}
 }
 

@@ -21,8 +21,10 @@ import (
 //     `p.Line("")` around them; use Blank() when an explicit separator is
 //     needed mid-section.
 //  2. Indent policy. KV() and Bullet() lead with two spaces — the canonical
-//     top-level indent. Nested detail uses four spaces written by the caller.
-//  3. Stream policy. Line / Header / Section / Bullet / KV / Success / Raw
+//     top-level indent. Next() uses two spaces; NextNested() uses four spaces
+//     below a Bullet. Other nested detail uses four spaces written by the caller.
+//  3. Stream policy. Line / Header / Section / Bullet / KV / Success / Raw / Next /
+//     NextNested / DryRun
 //     go to Out. Warn (yellow) and Fail (red) go to Err.
 type Printer struct {
 	Out io.Writer
@@ -87,10 +89,26 @@ func (p *Printer) Success(format string, a ...any) {
 	p.Line("%s", ui.StyleSuccess.Render(fmt.Sprintf(format, a...)))
 }
 
-// Warn prints a formatted line to Err styled with StyleWarning (orange).
+// Warn prints a warning diagnostic to Err using the shared UI form.
 // Use for recoverable / attention-needed conditions.
 func (p *Printer) Warn(format string, a ...any) {
-	ui.WriteReportLine(p.Err, ui.StyleWarning.Render(fmt.Sprintf(format, a...)))
+	ui.WriteWarning(p.Err, fmt.Sprintf(format, a...))
+}
+
+// Next prints a top-level report next step to Out at two-space indent.
+// Warning next steps use ui.WriteWarning on Err instead.
+func (p *Printer) Next(format string, a ...any) {
+	ui.WriteNext(p.Out, fmt.Sprintf(format, a...))
+}
+
+// NextNested prints a report next step to Out at four-space indent below a bullet.
+func (p *Printer) NextNested(format string, a ...any) {
+	ui.WriteNextIndented(p.Out, 4, fmt.Sprintf(format, a...))
+}
+
+// DryRun prints an action that would run to Out with the pending marker.
+func (p *Printer) DryRun(format string, a ...any) {
+	ui.WriteDryRun(p.Out, fmt.Sprintf(format, a...))
 }
 
 // Fail prints a formatted line to Err styled with StyleError (red).

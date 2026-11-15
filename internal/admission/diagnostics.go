@@ -5,6 +5,8 @@ import (
 	"io"
 	"strings"
 	"time"
+
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // UncoveredNote is the bypass-visibility disclaimer every status view
@@ -27,7 +29,7 @@ func NoteIgnoredPressure(w io.Writer, d Decision) {
 	if source == "" {
 		source = "ignore"
 	}
-	fmt.Fprintf(w, "admission: pressure gate ignored (%s): %s\n", source, reason)
+	ui.WriteWarning(w, fmt.Sprintf("admission: pressure gate ignored (%s): %s", source, reason))
 }
 
 // NoteIgnoredUncovered writes the line an uncovered-work bypass prints instead
@@ -40,7 +42,7 @@ func NoteIgnoredUncovered(w io.Writer, jobs []string, source string) {
 	if source == "" {
 		source = "ignore"
 	}
-	fmt.Fprintf(w, "admission: uncovered heavy work ignored (%s): %s\n", source, strings.Join(jobs, ", "))
+	ui.WriteWarning(w, fmt.Sprintf("admission: uncovered heavy work ignored (%s): %s", source, strings.Join(jobs, ", ")))
 }
 
 // OverflowSlotReason is the sentence a slot bypass reports: the job is not
@@ -60,7 +62,7 @@ func NoteOverflowSlot(w io.Writer, lease Lease, capacity int, source string) {
 	if lease.Index < capacity || w == nil {
 		return
 	}
-	fmt.Fprintln(w, "admission: "+OverflowSlotReason(capacity, lease.Index, source))
+	ui.WriteWarning(w, "admission: "+OverflowSlotReason(capacity, lease.Index, source))
 }
 
 // SlotBusyReason names the limit a slot acquirer hit and who holds it. When the

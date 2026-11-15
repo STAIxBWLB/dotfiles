@@ -294,6 +294,14 @@ are tested against their reference backgrounds at 4.5:1 contrast per role,
 with a 3:1 minimum for hint. Dot never paints the default value foreground or a background, or detects/selects
 one of these themes automatically; choose the variant matching your terminal.
 
+Warnings go to stderr as `dot: warning: <message>`; terminals also show the
+warning marker before the prefix. A known next command or setting is on a separate indented line
+with `→` (ASCII `->`) in the accent role. Report next steps stay on stdout
+(two spaces at top level, four below a bullet); warning next steps stay on stderr. Informational library notices use
+`dot: <message>` without a level word. Dry-run rows use the pending marker and
+`would <action>`. Scripts matching older warning or note prefixes need to match
+these forms instead. JSON payloads keep their existing shape.
+
 Markers remain distinct without color: absent `-`, unknown `?`, pending `~`,
 active `*`, partial `:` and preferred `+`. UTF-8 output also uses `✓` for ok,
 `✗` for failure, `⚠` for warning and `→` for a next step. A non-UTF-8 locale

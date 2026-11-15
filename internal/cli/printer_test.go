@@ -20,10 +20,10 @@ func TestPrinter_LineAndWarnRouteToDistinctSinks(t *testing.T) {
 	if got := out.String(); got != "hello world\ntail" {
 		t.Errorf("Out = %q, want %q", got, "hello world\ntail")
 	}
-	// Warn uses StyleWarning.Render; in a non-TTY buffer lipgloss emits
+	// Warn uses the shared prefix; in a non-TTY buffer lipgloss emits
 	// the raw string without ANSI escapes.
-	if got := errb.String(); got != "oops 42\n" {
-		t.Errorf("Err = %q, want %q", got, "oops 42\n")
+	if got := errb.String(); got != "dot: warning: oops 42\n" {
+		t.Errorf("Err = %q, want %q", got, "dot: warning: oops 42\n")
 	}
 }
 
@@ -193,4 +193,20 @@ func pinUTF8PrinterMarkers(t *testing.T) {
 		t.Fatal(warning)
 	}
 	t.Cleanup(restore)
+}
+
+func TestPrinterNextAndDryRunStreams(t *testing.T) {
+	pinUTF8PrinterMarkers(t)
+	var out, errb bytes.Buffer
+	p := &Printer{Out: ui.NewColorWriter(&out, ui.ColorNever, false), Err: ui.NewColorWriter(&errb, ui.ColorNever, false)}
+	p.DryRun("install %s", "tool")
+	p.Next("dot %s", "update")
+	p.NextNested("dot %s", "diff --summary")
+	p.Warn("disk is low")
+	if got := out.String(); got != "  ~  would install tool\n  → dot update\n    → dot diff --summary\n" {
+		t.Fatalf("stdout=%q", got)
+	}
+	if got := errb.String(); got != "dot: warning: disk is low\n" {
+		t.Fatalf("stderr=%q", got)
+	}
 }

@@ -48,7 +48,8 @@ The files `dot` may write are listed in [BOUNDARIES.md](../BOUNDARIES.md), and a
 | `internal/template` | Embedded templates rendered into config files |
 | `internal/toolversion` | Version ranges and family tool manifests |
 | `internal/tunnel` | Cloudflare Tunnel SSH setup (`dot tunnel`) |
-| `internal/ui` | Terminal styles, prompts and the init wizard |
+| `internal/ui` | Terminal styles, report and diagnostic rendering, and prompt primitives |
+| `internal/ui/configure` | Init and reconfigure wizard, configuration summary and system detection |
 | `internal/watchdog` | Runaway-process reaper, WARP heal and host health alerts |
 | `internal/workspace` | Project registry and tmux layouts behind `dot open` and `dot hub` |
 | `internal/ws` | Directory operations on the workspace and its mirror (`dot ws`) |

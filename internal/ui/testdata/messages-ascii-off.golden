@@ -1,0 +1,10 @@
+[
+  "dot: warning: cache is unavailable\n",
+  "  -> dot status\n",
+  "  -> DOT_CACHE=local\n",
+  "  -> dot apply --yes\n",
+  "    -> dot diff --summary\n",
+  "  ~  would write profile\n",
+  "dot: using default profile\n",
+  ""
+]

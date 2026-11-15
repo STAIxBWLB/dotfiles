@@ -5,11 +5,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/spf13/cobra"
-
 	"github.com/STAIxBWLB/dotfiles/internal/config"
 	"github.com/STAIxBWLB/dotfiles/internal/sliceutil"
 	"github.com/STAIxBWLB/dotfiles/internal/ui"
+	"github.com/STAIxBWLB/dotfiles/internal/ui/configure"
+	"github.com/spf13/cobra"
 )
 
 func newInitCmd() *cobra.Command {
@@ -66,7 +66,7 @@ func runInitFlow(cmd *cobra.Command, skipExistingGate bool) error {
 			return fmt.Errorf("importing config from %s: %w", fromPath, err)
 		}
 		p.Line("Imported settings from %s", fromPath)
-		ui.PrintStateSummary(state)
+		configure.PrintStateSummary(state)
 		p.Line("")
 		p.Line("Machine-specific settings (workspace, terminal) will be confirmed interactively.")
 		p.Line("")
@@ -86,7 +86,7 @@ func runInitFlow(cmd *cobra.Command, skipExistingGate bool) error {
 	freshState := state.Name == "" && fromPath == ""
 	if state.Name != "" && !yes && fromPath == "" && !skipExistingGate {
 		p.Line("Current configuration:")
-		ui.PrintStateSummary(state)
+		configure.PrintStateSummary(state)
 		p.Line("")
 
 		reconfigure, err := ui.ConfirmBool("Reconfigure existing settings?", false, false)
@@ -100,7 +100,7 @@ func runInitFlow(cmd *cobra.Command, skipExistingGate bool) error {
 	}
 
 	// --- Identity ---
-	if err := ui.ConfigureIdentity(state, yes); err != nil {
+	if err := configure.ConfigureIdentity(state, yes); err != nil {
 		return err
 	}
 
@@ -117,42 +117,42 @@ func runInitFlow(cmd *cobra.Command, skipExistingGate bool) error {
 		}
 		state.Profile = p
 	}
-	if err := ui.ConfigureProfile(state, sysInfo.SuggestProfile(), yes); err != nil {
+	if err := configure.ConfigureProfile(state, sysInfo.SuggestProfile(), yes); err != nil {
 		return err
 	}
 
 	// --- SSH ---
-	if err := ui.ConfigureSSH(state, wizardHome, yes); err != nil {
+	if err := configure.ConfigureSSH(state, wizardHome, yes); err != nil {
 		return err
 	}
 
 	// --- Workspace ---
-	if err := ui.ConfigureWorkspace(state, state.Profile, yes); err != nil {
+	if err := configure.ConfigureWorkspace(state, state.Profile, yes); err != nil {
 		return err
 	}
 
 	// --- AI ---
-	if err := ui.ConfigureAI(state, yes, freshState); err != nil {
+	if err := configure.ConfigureAI(state, yes, freshState); err != nil {
 		return err
 	}
 
 	// --- Terminal ---
-	if err := ui.ConfigureTerminal(state, state.Profile, sysInfo, yes); err != nil {
+	if err := configure.ConfigureTerminal(state, state.Profile, sysInfo, yes); err != nil {
 		return err
 	}
 
 	// --- Fonts ---
-	if err := ui.ConfigureFonts(state, state.Profile, yes); err != nil {
+	if err := configure.ConfigureFonts(state, state.Profile, yes); err != nil {
 		return err
 	}
 
 	// --- Secrets ---
-	if err := ui.ConfigureSecrets(state, wizardHome, state.Profile, yes); err != nil {
+	if err := configure.ConfigureSecrets(state, wizardHome, state.Profile, yes); err != nil {
 		return err
 	}
 
 	// --- macOS Apps ---
-	if err := ui.ConfigureMacApps(state, wizardHome, state.Profile, yes); err != nil {
+	if err := configure.ConfigureMacApps(state, wizardHome, state.Profile, yes); err != nil {
 		return err
 	}
 
@@ -180,7 +180,7 @@ func saveStateAndSummarize(cmd *cobra.Command, homeOverride string, state *confi
 	p.Line("")
 	p.Line("%s", heading)
 	p.Line("  State file: %s", statePathFor(homeOverride))
-	ui.PrintStateSummary(state)
+	configure.PrintStateSummary(state)
 	p.Line("")
 	p.Line("Run 'dot apply' to apply the configuration.")
 	return nil

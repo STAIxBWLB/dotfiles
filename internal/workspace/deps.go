@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // outOrStdout normalizes a nil writer to os.Stdout, so the package states
@@ -95,10 +97,13 @@ func InstallRequired(ctx context.Context, runner *exec.Runner, brew *exec.Brew, 
 }
 
 // InstallOptional attempts to install optional missing tools via brew.
-// Failures are logged but not fatal.
-// Progress lines go to out; a nil out means process stdout.
-func InstallOptional(ctx context.Context, runner *exec.Runner, brew *exec.Brew, out io.Writer) {
+// Failures are warnings on errOut but not fatal.
+// Progress lines go to out; nil streams mean process stdout and stderr.
+func InstallOptional(ctx context.Context, runner *exec.Runner, brew *exec.Brew, out, errOut io.Writer) {
 	out = outOrStdout(out)
+	if errOut == nil {
+		errOut = os.Stderr
+	}
 	if !brew.IsAvailable() {
 		return
 	}
@@ -126,6 +131,6 @@ func InstallOptional(ctx context.Context, runner *exec.Runner, brew *exec.Brew, 
 
 	fmt.Fprintf(out, "  Installing optional tools: %v\n", formulas)
 	if err := brew.Install(ctx, formulas); err != nil {
-		fmt.Fprintf(out, "  Warning: some optional tools failed to install: %v\n", err)
+		ui.WriteWarning(errOut, fmt.Sprintf("some optional tools failed to install: %v", err), "brew install "+strings.Join(formulas, " "))
 	}
 }

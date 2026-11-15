@@ -1,4 +1,4 @@
-package ui
+package configure
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/STAIxBWLB/dotfiles/internal/config"
 	"github.com/STAIxBWLB/dotfiles/internal/sliceutil"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // ConfigureIdentity prompts for identity fields with system detection.
@@ -22,7 +23,7 @@ func ConfigureIdentity(state *config.UserState, yes bool) error {
 		}
 	}
 	var err error
-	state.Name, err = InputWithDetected("Full name", nameDefault, nameDetected, yes)
+	state.Name, err = ui.InputWithDetected("Full name", nameDefault, nameDetected, yes)
 	if err != nil {
 		return err
 	}
@@ -34,7 +35,7 @@ func ConfigureIdentity(state *config.UserState, yes bool) error {
 			emailDefault, emailDetected = v, true
 		}
 	}
-	state.Email, err = InputWithDetected("Email address", emailDefault, emailDetected, yes)
+	state.Email, err = ui.InputWithDetected("Email address", emailDefault, emailDetected, yes)
 	if err != nil {
 		return err
 	}
@@ -46,7 +47,7 @@ func ConfigureIdentity(state *config.UserState, yes bool) error {
 			ghDefault, ghDetected = v, true
 		}
 	}
-	state.GithubUser, err = InputWithDetected("GitHub username", ghDefault, ghDetected, yes)
+	state.GithubUser, err = ui.InputWithDetected("GitHub username", ghDefault, ghDetected, yes)
 	if err != nil {
 		return err
 	}
@@ -60,7 +61,7 @@ func ConfigureIdentity(state *config.UserState, yes bool) error {
 			tzDefault = "Asia/Seoul"
 		}
 	}
-	state.Timezone, err = InputWithDetected("Timezone", tzDefault, tzDetected, yes)
+	state.Timezone, err = ui.InputWithDetected("Timezone", tzDefault, tzDetected, yes)
 	return err
 }
 
@@ -72,7 +73,7 @@ func ConfigureProfile(state *config.UserState, suggested string, yes bool) error
 	}
 
 	var err error
-	state.Profile, err = Select("Profile", config.AvailableProfiles(), profileDefault, yes)
+	state.Profile, err = ui.Select("Profile", config.AvailableProfiles(), profileDefault, yes)
 	return err
 }
 
@@ -92,9 +93,9 @@ func ConfigureSSH(state *config.UserState, home string, yes bool) error {
 	}
 
 	if len(keys) > 0 && !yes {
-		printLine(StyleHint.Render(fmt.Sprintf("  Found %d SSH key(s):", len(keys))))
+		printLine(ui.StyleHint.Render(fmt.Sprintf("  Found %d SSH key(s):", len(keys))))
 		for _, k := range keys {
-			printLine(StyleHint.Render("    • " + k))
+			printLine(ui.StyleHint.Render("    • " + k))
 		}
 
 		options := make([]string, len(keys))
@@ -106,13 +107,13 @@ func ConfigureSSH(state *config.UserState, home string, yes bool) error {
 			selectDefault = keys[0]
 		}
 
-		selected, err := Select("SSH key", options, selectDefault, false)
+		selected, err := ui.Select("SSH key", options, selectDefault, false)
 		if err != nil {
 			return err
 		}
 
 		if selected == "(enter custom name)" {
-			state.SSH.KeyName, err = Input("SSH key name", sshKeyDefault, false)
+			state.SSH.KeyName, err = ui.Input("SSH key name", sshKeyDefault, false)
 			return err
 		}
 		state.SSH.KeyName = selected
@@ -120,6 +121,6 @@ func ConfigureSSH(state *config.UserState, home string, yes bool) error {
 	}
 
 	var err error
-	state.SSH.KeyName, err = Input("SSH key name", sshKeyDefault, yes)
+	state.SSH.KeyName, err = ui.Input("SSH key name", sshKeyDefault, yes)
 	return err
 }

@@ -277,3 +277,32 @@ func TestApplyDryRunListsWouldWriteOperationWithoutVerbose(t *testing.T) {
 		t.Fatalf("dry-run wrote completion directory: %v", err)
 	}
 }
+
+func TestThemeWarningHonorsStreamColorAndJSONPolicy(t *testing.T) {
+	pinColorEnv(t)
+	t.Setenv("DOT_COLOR_THEME", "invalid")
+	t.Setenv("FORCE_COLOR", "1")
+	for _, tc := range []struct {
+		name, color   string
+		json, escapes bool
+	}{
+		{"never beats force", "never", false, false},
+		{"JSON beats always", "always", true, false},
+		{"always colors warning", "always", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var stderr bytes.Buffer
+			cmd := &cobra.Command{Use: "probe"}
+			cmd.SetErr(&stderr)
+			cmd.Flags().String("color", tc.color, "")
+			cmd.Flags().Bool("json", tc.json, "")
+			ran := false
+			if err := withPresentation(cmd, func() error { ran = true; return nil }); err != nil {
+				t.Fatal(err)
+			}
+			if !ran || !strings.Contains(stderr.String(), "dot: warning:") || strings.ContainsRune(stderr.String(), 27) != tc.escapes {
+				t.Fatalf("ran=%v warning=%q", ran, stderr.String())
+			}
+		})
+	}
+}

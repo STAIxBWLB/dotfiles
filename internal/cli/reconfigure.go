@@ -3,10 +3,10 @@ package cli
 import (
 	"fmt"
 
-	"github.com/spf13/cobra"
-
 	"github.com/STAIxBWLB/dotfiles/internal/config"
 	"github.com/STAIxBWLB/dotfiles/internal/ui"
+	"github.com/STAIxBWLB/dotfiles/internal/ui/configure"
+	"github.com/spf13/cobra"
 )
 
 func newReconfigureCmd() *cobra.Command {
@@ -36,7 +36,7 @@ func runReconfigure(cmd *cobra.Command, _ []string) error {
 		p.Line("No existing configuration found. Running init...")
 	} else {
 		p.Line("Current configuration:")
-		ui.PrintStateSummary(state)
+		configure.PrintStateSummary(state)
 		p.Line("")
 	}
 
