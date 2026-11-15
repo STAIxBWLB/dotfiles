@@ -20,15 +20,16 @@ func newAIHandoffCmd() *cobra.Command {
 		if asJSON {
 			return json.NewEncoder(cmd.OutOrStdout()).Encode(report)
 		}
-		fmt.Fprintln(cmd.OutOrStdout(), report.Verification)
+		p := printerFrom(cmd)
+		p.Line("%s", report.Verification)
 		for _, entry := range report.Entries {
-			fmt.Fprintf(cmd.OutOrStdout(), "%s %s [%s] %s (producer claim: %s)\n%s\n", entry.Record.Time.Format("2006-01-02T15:04:05Z"), entry.Record.Agent, entry.Record.Kind, entry.State, entry.Record.ProducerResult, entry.Record.Summary)
+			p.Line("%s %s [%s] %s (producer claim: %s)\n%s", entry.Record.Time.Format("2006-01-02T15:04:05Z"), entry.Record.Agent, entry.Record.Kind, entry.State, entry.Record.ProducerResult, entry.Record.Summary)
 			for _, reason := range entry.Reasons {
-				fmt.Fprintf(cmd.OutOrStdout(), "  %s\n", reason)
+				p.Line("  %s", reason)
 			}
 		}
 		if len(report.Entries) == 0 {
-			fmt.Fprintln(cmd.OutOrStdout(), "No handoffs recorded.")
+			p.Line("No handoffs recorded.")
 		}
 		return nil
 	}}
@@ -60,10 +61,11 @@ func newAIHandoffCmd() *cobra.Command {
 		if err != nil {
 			return err
 		}
+		p := printerFrom(cmd)
 		if dry {
-			fmt.Fprintf(cmd.OutOrStdout(), "dry-run: would record %s handoff for %s at %s\n", note.Kind, note.Agent, note.HEAD)
+			p.DryRun("record %s handoff for %s at %s", note.Kind, note.Agent, note.HEAD)
 		} else {
-			fmt.Fprintf(cmd.OutOrStdout(), "Recorded %s handoff for %s at %s (result is a producer claim).\n", note.Kind, note.Agent, note.HEAD)
+			p.Line("Recorded %s handoff for %s at %s (result is a producer claim).", note.Kind, note.Agent, note.HEAD)
 		}
 		return nil
 	}}

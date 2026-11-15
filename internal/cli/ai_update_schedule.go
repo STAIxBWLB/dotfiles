@@ -102,9 +102,13 @@ func runAIUpdateSchedule(cmd *cobra.Command, action string) error {
 	if asJSON {
 		return json.NewEncoder(cmd.OutOrStdout()).Encode(status)
 	}
-	_, err = fmt.Fprintf(cmd.OutOrStdout(), "AI maintenance: enabled=%t installed=%t loaded=%t supported=%t\n%s\n%s\nScheduled attempts remaining: %d/%d; budget exhausted=%t\n", status.Enabled, status.Installed, status.Loaded, status.Supported, status.Schedule, status.Plist, status.AttemptsRemaining, aischedule.WeeklyAttemptLimit, status.BudgetExhausted)
-	if err == nil && status.NextEligible != nil {
-		_, err = fmt.Fprintf(cmd.OutOrStdout(), "Next eligible: %s\n", status.NextEligible.Format(time.RFC3339))
+	p := printerFrom(cmd)
+	p.Line("AI maintenance: enabled=%t installed=%t loaded=%t supported=%t", status.Enabled, status.Installed, status.Loaded, status.Supported)
+	p.Line("%s", status.Schedule)
+	p.Line("%s", status.Plist)
+	p.Line("Scheduled attempts remaining: %d/%d; budget exhausted=%t", status.AttemptsRemaining, aischedule.WeeklyAttemptLimit, status.BudgetExhausted)
+	if status.NextEligible != nil {
+		p.Line("Next eligible: %s", status.NextEligible.Format(time.RFC3339))
 	}
-	return err
+	return nil
 }

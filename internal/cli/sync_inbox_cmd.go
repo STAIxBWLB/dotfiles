@@ -72,7 +72,7 @@ func runSyncInboxList(cmd *cobra.Command, _ []string) error {
 			shown = shown[len(shown)-5:]
 		}
 		for _, t := range shown {
-			p.Bullet("•", fmt.Sprintf("%s (detected %s)", t.RelPath, t.DetectedAt.Format(time.RFC3339)))
+			p.Bullet(ui.MarkAbsent, fmt.Sprintf("%s (detected %s)", t.RelPath, t.DetectedAt.Format(time.RFC3339)))
 		}
 	}
 	p.Blank()

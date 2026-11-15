@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 
 	dotexec "github.com/STAIxBWLB/dotfiles/internal/exec"
 	dottemplate "github.com/STAIxBWLB/dotfiles/internal/template"
@@ -752,11 +753,11 @@ func (m *AgentsManager) authorInteractive() (*AuthorResult, error) {
 	var changed []string
 	for _, section := range defaultAgentSections {
 		current := strings.TrimSpace(markdownSection(doc, section))
-		fmt.Fprintf(m.out(), "\n## %s\n", section)
+		ui.WriteSection(m.out(), section)
 		if current == "" {
-			fmt.Fprintln(m.out(), "(empty)")
+			ui.WriteReportLine(m.out(), ui.StyleHint.Render("(empty)"))
 		} else {
-			fmt.Fprintln(m.out(), current)
+			ui.WriteReportLine(m.out(), current)
 		}
 		fmt.Fprint(m.out(), "[k]eep, [r]eplace line, [e]dit in $EDITOR, [d]elete: ")
 		answer, _ := reader.ReadString('\n')
@@ -779,7 +780,7 @@ func (m *AgentsManager) authorInteractive() (*AuthorResult, error) {
 			doc = deleteMarkdownSection(doc, section)
 			changed = append(changed, section)
 		default:
-			fmt.Fprintln(m.out(), "unrecognized action; keeping section")
+			ui.WriteNote(m.out(), "unrecognized action; keeping section")
 		}
 	}
 	didChange := normalizedHash(data) != normalizedHash([]byte(doc))

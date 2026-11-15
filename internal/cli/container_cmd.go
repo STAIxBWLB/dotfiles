@@ -297,12 +297,12 @@ func containerExec(home string, args, dns []string) error {
 		return err
 	}
 	if t.Note != "" {
-		fmt.Fprintln(os.Stderr, t.Note)
+		ui.WriteNote(os.Stderr, t.Note)
 		return nil
 	}
 	argv := append([]string{binary}, t.Args...)
 	if os.Getenv("DOT_CONTAINER_TRACE") == "1" {
-		fmt.Fprintln(os.Stderr, "+ "+strings.Join(argv, " "))
+		ui.WriteReportLine(os.Stderr, "+ "+strings.Join(argv, " "))
 	}
 	return syscall.Exec(binary, argv, os.Environ())
 }

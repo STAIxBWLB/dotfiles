@@ -70,7 +70,9 @@ current or with the version it would move to.`, RunE: func(cmd *cobra.Command, a
 			}
 		}
 		if len(args) == 0 {
-			fmt.Fprintln(cmd.OutOrStdout(), "no family tool is installed; run 'dot ai family install --all' or name one")
+			p := printerFrom(cmd)
+			p.Line("no family tool is installed; name one or install every family tool")
+			p.Next("dot ai family install --all")
 			return nil
 		}
 		return familyBatch(cmd, "ai.family.update", args, func(id string) (aitooling.FamilyResult, error) {
@@ -131,6 +133,7 @@ func finishFamily(cmd *cobra.Command, event, id string, r aitooling.FamilyResult
 }
 
 func printFamily(cmd *cobra.Command, r aitooling.FamilyResult) {
+	p := printerFrom(cmd)
 	line := r.ID + ": " + r.Status
 	if r.Current != "" {
 		line += " current " + r.Current
@@ -141,8 +144,8 @@ func printFamily(cmd *cobra.Command, r aitooling.FamilyResult) {
 	if len(r.Versions) > 0 {
 		line += " (installed: " + strings.Join(r.Versions, ", ") + ")"
 	}
-	fmt.Fprintln(cmd.OutOrStdout(), line)
+	p.Line("%s", line)
 	for _, n := range r.Notes {
-		fmt.Fprintln(cmd.OutOrStdout(), "  "+n)
+		p.Line("  %s", n)
 	}
 }

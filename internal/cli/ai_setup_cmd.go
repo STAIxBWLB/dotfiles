@@ -80,7 +80,7 @@ func runAISetup(cmd *cobra.Command, _ []string) error {
 		if field == "skills" {
 			options, err = maruSkillChoices(cmd)
 			if err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "Shared skill selection unavailable: %v; preserving current choices.\n", err)
+				printerFrom(cmd).Warn("shared skill selection unavailable: %v; preserving current choices", err)
 				continue
 			}
 		} else {
@@ -120,7 +120,10 @@ func runAISetup(cmd *cobra.Command, _ []string) error {
 	if err := aitooling.ValidateSelection(*selection); err != nil {
 		return err
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Agents: %s\nAdd-ons: %s\nShared skills: %s\n", strings.Join(selection.Agents, ", "), strings.Join(selection.Tools, ", "), strings.Join(selection.Skills, ", "))
+	p := printerFrom(cmd)
+	p.KV("Agents", strings.Join(selection.Agents, ", "))
+	p.KV("Add-ons", strings.Join(selection.Tools, ", "))
+	p.KV("Shared skills", strings.Join(selection.Skills, ", "))
 	dry, _ := cmd.Flags().GetBool("dry-run")
 	if !unattended && !dry {
 		ok, err := ui.ConfirmBool("Apply this selection?", false, false)

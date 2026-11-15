@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/dotfiles/internal/syncer"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +26,7 @@ func gdriveSyncModeFrom(cmd *cobra.Command) (syncer.RunMode, error) {
 
 func printPathList(p *Printer, paths []string) {
 	for _, path := range paths {
-		p.Line("  -  %s", path)
+		p.Bullet(ui.MarkAbsent, path)
 	}
 }
 

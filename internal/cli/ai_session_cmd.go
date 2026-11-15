@@ -14,6 +14,7 @@ import (
 
 	"github.com/STAIxBWLB/dotfiles/internal/aipolicy"
 	"github.com/STAIxBWLB/dotfiles/internal/aisession"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -46,8 +47,8 @@ func runAISessionStart(cmd *cobra.Command, _ []string) error {
 	}
 	dry, _ := cmd.Flags().GetBool("dry-run")
 	if dry {
-		_, err = fmt.Fprintln(cmd.OutOrStdout(), "Would resolve validated policy and launch at native turn boundaries (no probes, files, locks or agent calls).")
-		return err
+		printerFrom(cmd).DryRun("resolve validated policy and launch at native turn boundaries (no probes, files, locks or agent calls)")
+		return nil
 	}
 	inputPath, _ := cmd.Flags().GetString("input")
 	var input io.Reader
@@ -147,7 +148,7 @@ func runAISessionStart(cmd *cobra.Command, _ []string) error {
 	}
 	receipt, err := aisession.Run(ctx, options)
 	if receipt.ID != "" {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Session %s: %s, %d turns, %d changes; receipt %s\n", receipt.ID, receipt.Status, receipt.Turns, receipt.Switches, receipt.Path)
+		ui.WriteNote(printerFrom(cmd).Err, fmt.Sprintf("session %s: %s, %d turns, %d changes; receipt %s", receipt.ID, receipt.Status, receipt.Turns, receipt.Switches, receipt.Path))
 	}
 	return err
 }

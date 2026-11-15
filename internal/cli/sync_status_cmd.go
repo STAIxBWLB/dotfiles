@@ -171,7 +171,7 @@ func printConflictState(p *Printer, st *syncer.Status, now time.Time) {
 		p.Section(fmt.Sprintf("Backups: %d directories (%s), kept until `dot sync conflicts prune`", len(st.Conflicts), ws.FormatSize(st.BackupBytes)))
 		for _, c := range st.Conflicts {
 			age := now.Sub(c.ModTime).Truncate(time.Hour)
-			p.Bullet("•", fmt.Sprintf("%s (%s ago)", c.Timestamp, age))
+			p.Bullet(ui.MarkAbsent, fmt.Sprintf("%s (%s ago)", c.Timestamp, age))
 		}
 	}
 }

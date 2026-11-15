@@ -135,7 +135,7 @@ func runSyncIntake(cmd *cobra.Command, _ []string) error {
 
 	printPullResult(p, cfg, res.Pull)
 	if res.StagingDir != "" {
-		p.Line("  "+ui.MarkPresent+" %d intaked into %s", len(res.Intaked), res.StagingDir)
+		p.Bullet(ui.MarkPresent, fmt.Sprintf("%d intaked into %s", len(res.Intaked), res.StagingDir))
 	} else {
 		p.Line("  %d intaked", len(res.Intaked))
 	}
@@ -193,9 +193,9 @@ func printPullPlan(p *Printer, cfg *syncer.Config, res *syncer.PullResult) {
 			if reason == "" {
 				reason = "local and Drive both changed"
 			}
-			p.Line("  !  %s — %s", c.RelPath, reason)
+			p.Bullet(ui.MarkWarn, fmt.Sprintf("%s — %s", c.RelPath, reason))
 			if c.BackupPath != "" {
-				p.Line("     backup: %s", c.BackupPath)
+				p.Line("    backup: %s", c.BackupPath)
 			}
 		}
 	}

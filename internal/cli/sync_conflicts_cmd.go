@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/dotfiles/internal/syncer"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 	"github.com/STAIxBWLB/dotfiles/internal/ws"
 	"github.com/spf13/cobra"
 )
@@ -94,9 +95,9 @@ func conflictAge(now, modTime time.Time) time.Duration {
 // conflictAgeMarker flags backups older than 30 days as prune candidates.
 func conflictAgeMarker(now, modTime time.Time) string {
 	if conflictAge(now, modTime) > 30*24*time.Hour {
-		return "▲"
+		return ui.MarkWarn
 	}
-	return "•"
+	return ui.MarkAbsent
 }
 
 func runSyncConflictsPrune(cmd *cobra.Command, _ []string) error {
