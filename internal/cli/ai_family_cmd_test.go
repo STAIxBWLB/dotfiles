@@ -3,6 +3,8 @@ package cli
 import (
 	"strings"
 	"testing"
+
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 func TestAIFamilyCommands(t *testing.T) {
@@ -19,6 +21,11 @@ func TestAIFamilyCommands(t *testing.T) {
 	out, _, err := runDotForTest("--home", home, "ai", "family", "update")
 	if err != nil || !strings.Contains(out, "no family tool is installed") {
 		t.Fatalf("update with nothing installed = %q, %v", out, err)
+	}
+	// The condition and the command that fixes it are two lines: the second is
+	// the shared next-step form, so a person copies it without editing the first.
+	if !strings.Contains(out, "\n  "+ui.MarkNext+" dot ai family install --all\n") {
+		t.Fatalf("update with nothing installed printed no next-step line: %q", out)
 	}
 	// A named tool that is not installed is skipped; an unknown one fails without stopping the rest.
 	out, _, err = runDotForTest("--home", home, "ai", "family", "update", "nope", "ares")

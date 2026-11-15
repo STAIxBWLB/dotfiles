@@ -371,15 +371,16 @@ func newAIAuditTailCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			p := printerFrom(cmd)
 			for _, event := range events {
 				line, err := json.Marshal(event)
 				if err != nil {
 					return err
 				}
-				fmt.Fprintln(cmd.OutOrStdout(), string(line))
+				p.Raw("%s\n", string(line))
 			}
 			if malformed > 0 {
-				printerFrom(cmd).Warn("%d malformed audit line(s) skipped", malformed)
+				p.Warn("%d malformed audit line(s) skipped", malformed)
 			}
 			return nil
 		},

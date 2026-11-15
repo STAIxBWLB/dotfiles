@@ -191,9 +191,10 @@ func newAIAgentsShowCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprint(cmd.OutOrStdout(), out)
+			p := printerFrom(cmd)
+			p.Raw("%s", out)
 			if !strings.HasSuffix(out, "\n") {
-				fmt.Fprintln(cmd.OutOrStdout())
+				p.Raw("\n")
 			}
 			return nil
 		},
@@ -309,16 +310,17 @@ func newAIAgentsDiffCmd() *cobra.Command {
 			if len(ids) == 0 {
 				ids = mgr.DefaultApplyTools()
 			}
+			p := printerFrom(cmd)
 			for _, id := range ids {
 				diff, err := mgr.Diff(id)
 				if err != nil {
 					return err
 				}
 				if diff == "" {
-					fmt.Fprintf(cmd.OutOrStdout(), "%s: in-sync\n", id)
+					p.Bullet(ui.MarkPresent, id+": in-sync")
 					continue
 				}
-				fmt.Fprint(cmd.OutOrStdout(), diff)
+				p.Raw("%s", diff)
 			}
 			return nil
 		},
@@ -334,7 +336,9 @@ func newAIAgentsPathCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			mgr := newAgentsManagerFromCmd(cmd)
-			fmt.Fprintln(cmd.OutOrStdout(), mgr.SSOTDirPath())
+			// A script reads this value with $(dot ai agents path), so it stays one
+			// unwrapped line: Raw skips the report-width wrap Line applies.
+			printerFrom(cmd).Raw("%s\n", mgr.SSOTDirPath())
 			return nil
 		},
 	}

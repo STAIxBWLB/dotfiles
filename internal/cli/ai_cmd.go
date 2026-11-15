@@ -254,7 +254,7 @@ func runAIPrune(cmd *cobra.Command, _ []string) error {
 	}
 	p.Line("Pruned %d snapshot(s):", len(removed))
 	for _, v := range removed {
-		p.Line("  - %s", v)
+		p.Bullet(ui.MarkAbsent, v)
 	}
 	return nil
 }

@@ -205,7 +205,7 @@ func printPushPlan(p *Printer, plan *syncer.PushPlan) {
 			if reason == "" {
 				reason = "local and mirror differ"
 			}
-			p.Line("  !  %s — %s", c.RelPath, reason)
+			p.Bullet(ui.MarkWarn, fmt.Sprintf("%s — %s", c.RelPath, reason))
 		}
 	}
 	if len(affected) == 0 && len(plan.SkippedPolicy) == 0 && len(plan.Unsupported) == 0 && len(plan.Leftovers) == 0 && len(plan.MirrorUnsupported) == 0 && len(plan.Shadowed) == 0 {

@@ -26,8 +26,11 @@ func newAIToolsCmd() *cobra.Command {
 				Items []aitooling.Entry `json:"items"`
 			}{Items: aitooling.Catalog()})
 		}
+		p := printerFrom(cmd)
+		// Tab-separated rows read by scripts keep their columns: Raw skips the
+		// report-width wrap Line applies.
 		for _, e := range aitooling.Catalog() {
-			fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\n", e.Kind, e.ID, e.Name)
+			p.Raw("%s\t%s\t%s\n", e.Kind, e.ID, e.Name)
 		}
 		return nil
 	}}
@@ -116,8 +119,9 @@ func runToolingSelection(cmd *cobra.Command, selection config.AIToolingConfig, o
 			return err
 		}
 	} else {
+		p := printerFrom(cmd)
 		for _, item := range report.Items {
-			fmt.Fprintf(cmd.OutOrStdout(), "%s %s: %s %s\n", item.Kind, item.ID, item.Status, item.Detail)
+			p.Line("%s %s: %s %s", item.Kind, item.ID, item.Status, item.Detail)
 		}
 	}
 	if runErr != nil {

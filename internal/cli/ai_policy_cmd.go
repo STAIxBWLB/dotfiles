@@ -194,17 +194,18 @@ func runAIPolicy(cmd *cobra.Command, op string) error {
 	if jsonMode {
 		return writePolicyJSON(cmd, report)
 	}
+	p := printerFrom(cmd)
 	if report.Policy != nil {
-		fmt.Fprintf(cmd.OutOrStdout(), "Policy %s: enabled=%t, targets=%d\n", report.Policy.Revision, report.Policy.Enabled, len(report.Policy.Targets))
+		p.Line("Policy %s: enabled=%t, targets=%d", report.Policy.Revision, report.Policy.Enabled, len(report.Policy.Targets))
 	}
 	for _, runtime := range report.Inventory {
-		fmt.Fprintf(cmd.OutOrStdout(), "%s: version=%s available=%t native-review=%t\n", runtime.Agent, runtime.Version, runtime.Available, runtime.AutoReview)
+		p.Line("%s: version=%s available=%t native-review=%t", runtime.Agent, runtime.Version, runtime.Available, runtime.AutoReview)
 	}
 	for _, change := range report.Changes {
-		fmt.Fprintf(cmd.OutOrStdout(), "%s: %s (%s)\n", change.TargetID, change.Status, change.Path)
+		p.Line("%s: %s (%s)", change.TargetID, change.Status, change.Path)
 	}
 	for _, constraint := range report.Constraints {
-		fmt.Fprintln(cmd.OutOrStdout(), constraint)
+		p.Line("%s", constraint)
 	}
 	return nil
 }
@@ -234,6 +235,7 @@ func runAIPolicyResolve(cmd *cobra.Command, _ []string) error {
 	if jsonMode {
 		return writePolicyJSON(cmd, resolved)
 	}
-	_, err = fmt.Fprintf(cmd.OutOrStdout(), "%s: %s / %s / %s (%s)\n%s\n%s\n", resolved.Workload, resolved.Agent, resolved.Model, resolved.Effort, resolved.PermissionMechanism, resolved.Reason, strings.Join(resolved.Constraints, "\n"))
-	return err
+	p := printerFrom(cmd)
+	p.Line("%s: %s / %s / %s (%s)\n%s\n%s", resolved.Workload, resolved.Agent, resolved.Model, resolved.Effort, resolved.PermissionMechanism, resolved.Reason, strings.Join(resolved.Constraints, "\n"))
+	return nil
 }
