@@ -7,6 +7,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // SetupCheckScript reads everything setup needs in one ssh round trip. Missing
@@ -64,11 +66,13 @@ func (d Deps) Setup(ctx context.Context, h Host, opts SetupOptions) (SetupReport
 	if opts.DryRun {
 		// stderr, because stdout carries the report: `--json` has to stay one
 		// document whether or not the run was a dry one.
-		fmt.Fprintf(d.errOut(), "would check %s over ssh:\n  %s\n", h.SSH, script)
+		ui.WriteDryRun(d.errOut(), fmt.Sprintf("check %s over ssh", h.SSH))
+		// The script stays one raw line: a report row would wrap it.
+		_, _ = fmt.Fprintf(d.errOut(), "  %s\n", script)
 		if h.Dockerfile != "" {
-			fmt.Fprintf(d.errOut(), "would build %s from %s on %s\n", h.Image(), h.Dockerfile, h.Name)
+			ui.WriteDryRun(d.errOut(), fmt.Sprintf("build %s from %s on %s", h.Image(), h.Dockerfile, h.Name))
 		} else {
-			fmt.Fprintf(d.errOut(), "would pull %s on %s\n", h.Ref, h.Name)
+			ui.WriteDryRun(d.errOut(), fmt.Sprintf("pull %s on %s", h.Ref, h.Name))
 		}
 		return report, nil
 	}

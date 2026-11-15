@@ -17,6 +17,7 @@ import (
 	"github.com/STAIxBWLB/dotfiles/internal/config"
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
 	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // defaultMirrorPath is the mirror used when the store sets no target. It
@@ -179,6 +180,13 @@ func (c *Config) out() io.Writer {
 		return os.Stdout
 	}
 	return outOrStdout(c.Out)
+}
+
+// progressOut is out() under the invocation's color policy, so a row that
+// carries a rendered marker loses its role color on a pipe. out() itself stays
+// raw: rsync's own output is forwarded through it.
+func (c *Config) progressOut() io.Writer {
+	return ui.Output(c.out())
 }
 
 // ResolveConfig builds the runtime Config by reading the per-workspace
@@ -734,7 +742,7 @@ func Push(ctx context.Context, runner *exec.Runner, cfg *Config, dryRun bool) er
 	}
 	conflict := NewConflictDir()
 	args := pushArgs(cfg, conflict, rf, dryRun)
-	fmt.Fprintf(cfg.out(), "  Push: %s → %s (%s)\n", cfg.LocalPath, cfg.Target.RsyncDest(), cfg.Propagation)
+	fmt.Fprintf(cfg.progressOut(), "  %s Push: %s → %s (%s)\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkPending)), cfg.LocalPath, cfg.Target.RsyncDest(), cfg.Propagation)
 	// A run that exited with a status must still finalize: a partial transfer
 	// (23/24) moved most files, and a --max-delete stop (25) comes after every
 	// transfer. Returning here would leave the baseline stale, so every file
@@ -924,7 +932,7 @@ func Fetch(ctx context.Context, runner *exec.Runner, cfg *Config, rels []string,
 	}
 	args = append(args, rsyncTransportArgs(cfg)...)
 	args = append(args, cfg.Target.RsyncDest(), cfg.LocalPath)
-	fmt.Fprintf(cfg.out(), "  Fetch: %d path(s) %s → %s\n", len(res.Fetched), cfg.Target.RsyncDest(), cfg.LocalPath)
+	fmt.Fprintf(cfg.progressOut(), "  %s Fetch: %d path(s) %s → %s\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkPending)), len(res.Fetched), cfg.Target.RsyncDest(), cfg.LocalPath)
 	if err := runRsync(ctx, runner, cfg, args); err != nil {
 		return res, err
 	}
@@ -1032,7 +1040,7 @@ func PullDirect(ctx context.Context, runner *exec.Runner, cfg *Config, dryRun bo
 			return fmt.Errorf("pull: %w", err)
 		}
 	}
-	fmt.Fprintf(cfg.out(), "  Pull: %s → %s\n", cfg.Target.RsyncDest(), cfg.LocalPath)
+	fmt.Fprintf(cfg.progressOut(), "  %s Pull: %s → %s\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkPending)), cfg.Target.RsyncDest(), cfg.LocalPath)
 	if err := runRsync(ctx, runner, cfg, args); err != nil {
 		return err
 	}

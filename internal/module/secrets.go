@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // SecretsModule checks secrets status and directs user to CLI subcommand.
@@ -40,6 +42,8 @@ func (m *SecretsModule) Check(ctx context.Context, rc *RunContext) (*CheckResult
 
 func (m *SecretsModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, error) {
 	msg := "secrets are managed via the CLI — run: dot secrets restore"
-	fmt.Fprintf(rc.out(), "  ℹ %s: %s\n", m.Name(), msg)
+	// Informational, and the glyph alphabet has no info marker: this takes the
+	// note form, which carries no level word.
+	ui.WriteNote(rc.out(), m.Name()+": "+msg)
 	return &ApplyResult{Changed: false, Messages: []string{msg}}, nil
 }

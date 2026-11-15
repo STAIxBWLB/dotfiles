@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // CheckRsync checks if rsync is installed and returns its version.
@@ -202,12 +203,12 @@ func InstallRsync(ctx context.Context, runner *exec.Runner, out io.Writer) error
 	out = outOrStdout(out)
 	brew := exec.NewBrew(runner)
 	if brew.IsAvailable() {
-		fmt.Fprintln(out, "Installing rsync via Homebrew...")
+		fmt.Fprintf(out, "  %s Installing rsync via Homebrew...\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkPending)))
 		return brew.Install(ctx, []string{"rsync"})
 	}
 
 	if runtime.GOOS == "linux" {
-		fmt.Fprintln(out, "Installing rsync via apt...")
+		fmt.Fprintf(out, "  %s Installing rsync via apt...\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkPending)))
 		_, err := runner.Run(ctx, "sudo", "apt-get", "install", "-y", "rsync")
 		return err
 	}

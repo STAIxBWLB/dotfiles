@@ -85,11 +85,14 @@ func Init(ctx context.Context, runner *exec.Runner, workspacePath string,
 	// Ensure gh is authenticated if we will clone (private repos need auth).
 	if needsClone && runner.CommandExists("gh") && !ghauth.Authenticated(runner) {
 		fmt.Fprintln(opts.out(), "  GitHub authentication required for private repos.")
+		// A rendered marker carries role color, so these two rows go through the
+		// invocation's color policy: opts.out() may be a raw terminal writer.
+		warnOut := ui.Output(opts.out())
 		if opts.Yes {
-			fmt.Fprintln(opts.out(), "  ⚠ Skipping gh auth in --yes mode (run 'gh auth login' manually if clone fails)")
+			fmt.Fprintf(warnOut, "  %s Skipping gh auth in --yes mode (run 'gh auth login' manually if clone fails)\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkWarn)))
 		} else if !runner.DryRun {
 			if err := ghauth.Login(ctx, runner); err != nil {
-				fmt.Fprintf(opts.out(), "  ⚠ gh auth login failed: %v (clone may fail for private repos)\n", err)
+				fmt.Fprintf(warnOut, "  %s gh auth login failed: %v (clone may fail for private repos)\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkWarn)), err)
 			}
 		}
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/STAIxBWLB/dotfiles/internal/admission"
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // admitOptions is what a verify or src job asks of the admission controller.
@@ -83,7 +84,7 @@ func (d Deps) admit(ctx context.Context, h Host, opts admitOptions) (*Leases, er
 			if source == "" {
 				source = "--ignore"
 			}
-			fmt.Fprintf(d.errOut(), "admission: remote host load ignored (%s): %s\n", source, reason)
+			ui.WriteWarning(d.errOut(), fmt.Sprintf("admission: remote host load ignored (%s): %s", source, reason))
 		}
 	}
 	return leases, nil

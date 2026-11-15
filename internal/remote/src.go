@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/dotfiles/internal/admission"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // ExitMissingClone is the status `dot remote src NAME` exits with when the host
@@ -91,7 +92,9 @@ func (d Deps) Src(ctx context.Context, cfg Config, opts SrcOptions) error {
 	container := h.SrcContainer(opts.Name)
 	remoteCommand := srcCommand(h, opts.Name, opts.Command, d.containerOwner(srcScope(h, opts.Name)))
 	if opts.DryRun {
-		fmt.Fprintf(d.out(), "would run in %s on %s:\n  %s\n", container, h.Name, strings.Join(SSHArgv(h.SSH, remoteCommand), " "))
+		ui.WriteDryRun(d.out(), fmt.Sprintf("run in %s on %s", container, h.Name))
+		// The argv stays one raw line: a report row would wrap it.
+		_, _ = fmt.Fprintf(d.out(), "  %s\n", strings.Join(SSHArgv(h.SSH, remoteCommand), " "))
 		return nil
 	}
 	scope := srcScope(h, opts.Name)

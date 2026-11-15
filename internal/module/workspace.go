@@ -155,7 +155,7 @@ func (m *WorkspaceModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResu
 		})
 		messages = append(messages, initMsgs...)
 		if err != nil {
-			fmt.Fprintf(rc.out(), "  "+ui.MarkWarn+" workspace: ws.Init: %v (continuing)\n", err)
+			fmt.Fprintf(rc.out(), "  %s workspace: ws.Init: %v (continuing)\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkWarn)), err)
 		}
 	}
 
