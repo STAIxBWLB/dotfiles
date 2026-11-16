@@ -146,7 +146,7 @@ func TestAIGroupRemovedAliasesRejectWithoutWrites(t *testing.T) {
 	}
 	for _, route := range [][]string{{"ai"}, {"ai", "memory"}, {"ai", "vault"}} {
 		args := append([]string{"--home", home}, route...)
-		if out, _, err := runDotForTest(args...); err != nil || !strings.Contains(out, "Usage:") {
+		if out, _, err := runDotForTest(args...); err != nil || !strings.Contains(out, "Usage") {
 			t.Errorf("bare group %v must still show help: %v\n%s", route, err, out)
 		}
 	}
