@@ -170,7 +170,7 @@ func runAdmitStatus(cmd *cobra.Command, _ []string) error {
 		p.Line("    cwd %s", l.CWD)
 	}
 	p.Blank()
-	p.Line("Note: %s (uncovered scan: %s).", admission.UncoveredNote, policy.Uncovered.Coverage())
+	p.Line("%s (uncovered scan: %s).", admission.UncoveredNote, policy.Uncovered.Coverage())
 	return nil
 }
 

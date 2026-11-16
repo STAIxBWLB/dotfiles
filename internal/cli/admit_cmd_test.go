@@ -1114,7 +1114,7 @@ func TestAdmitRelaxDryRunWritesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dry-run relax = %v", err)
 	}
-	if !strings.Contains(out, "dry-run: would set") || !strings.Contains(out, "--ignore pressure") {
+	if !strings.Contains(out, "would set") || !strings.Contains(out, "--ignore pressure") {
 		t.Errorf("dry-run output = %q, want the override it would write", out)
 	}
 	root := admission.DefaultStateRoot(home)
@@ -1134,7 +1134,7 @@ func TestAdmitRelaxDryRunWritesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dry-run clear = %v", err)
 	}
-	if !strings.Contains(out, "dry-run: would clear") {
+	if !strings.Contains(out, "would clear") {
 		t.Errorf("dry-run clear output = %q, want what it would clear", out)
 	}
 	if _, err := os.Stat(path); err != nil {

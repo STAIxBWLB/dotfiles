@@ -62,9 +62,9 @@ func newGuardEnableCmd() *cobra.Command {
 
 			p.Header("dot guard enable")
 			if dryRun {
-				p.Line("[dry-run] would register 2 PreToolUse hook entries in %s", settingsPath)
-				p.Line("[dry-run] hook command: %s", hookCmd)
-				p.Line("[dry-run] would set modules.guard.careful: true")
+				p.DryRun("register 2 PreToolUse hook entries in %s", settingsPath)
+				p.DryRun("use hook command: %s", hookCmd)
+				p.DryRun("set modules.guard.careful: true")
 				return nil
 			}
 
@@ -92,7 +92,7 @@ func newGuardEnableCmd() *cobra.Command {
 			} else {
 				p.KV("Freeze", "(unset) - run 'dot guard freeze <dir>' to add an edit boundary")
 			}
-			p.Line("Note: hooks take effect in NEW Claude Code sessions (running sessions snapshot hooks at startup).")
+			p.Line("Hooks take effect in new Claude Code sessions; running sessions snapshot hooks at startup.")
 			return auditAIEvent(cmd, "ai.guard.enable", map[string]any{"changed": changed})
 		},
 	}
@@ -115,8 +115,8 @@ func newGuardDisableCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				p.Line("[dry-run] would remove %d dot-guard hook entries from %s", len(entries), settingsPath)
-				p.Line("[dry-run] would clear modules.guard state")
+				p.DryRun("remove %d dot-guard hook entries from %s", len(entries), settingsPath)
+				p.DryRun("clear modules.guard state")
 				return nil
 			}
 
@@ -171,7 +171,7 @@ func newGuardFreezeCmd() *cobra.Command {
 			}
 
 			if dryRun {
-				p.Line("[dry-run] would set modules.guard.freeze_dir: %s", dir)
+				p.DryRun("set modules.guard.freeze_dir: %s", dir)
 				return nil
 			}
 
@@ -191,7 +191,7 @@ func newGuardFreezeCmd() *cobra.Command {
 					return err
 				}
 				p.Success("registered PreToolUse hooks in %s", claudecfg.SettingsPath(home))
-				p.Line("Note: hooks take effect in NEW Claude Code sessions.")
+				p.Line("Hooks take effect in new Claude Code sessions.")
 			}
 			state.Modules.Guard.FreezeDir = dir
 			if err := saveStateForCmd(cmd, state); err != nil {
@@ -226,7 +226,7 @@ func newGuardUnfreezeCmd() *cobra.Command {
 				return nil
 			}
 			if dryRun {
-				p.Line("[dry-run] would clear modules.guard.freeze_dir (currently %s)", prev)
+				p.DryRun("clear modules.guard.freeze_dir (currently %s)", prev)
 				return nil
 			}
 			state.Modules.Guard.FreezeDir = ""

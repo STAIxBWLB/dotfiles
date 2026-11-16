@@ -223,7 +223,7 @@ func TestWatchdogSetup_DryRunExplains(t *testing.T) {
 	if err := runWatchdogSetupForGOOS(cmd, nil, "darwin"); err != nil {
 		t.Fatalf("dry-run setup: %v", err)
 	}
-	if !strings.Contains(out.String(), "[dry-run] would install and load") {
+	if !strings.Contains(out.String(), "would install and load") {
 		t.Fatalf("dry-run setup output = %q", out.String())
 	}
 }

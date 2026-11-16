@@ -52,19 +52,19 @@ func runWatchdogUninstallForGOOS(cmd *cobra.Command, _ []string, goos string) er
 	}
 	mgr := watchdog.NewManager(watchdogRunner(dryRun), home)
 	if dryRun {
-		p.Line("[dry-run] would unload and remove %s", mgr.PlistPath())
+		p.DryRun("unload and remove %s", mgr.PlistPath())
 		if mgr.Runner.FileExists(mgr.WarpPlistPath()) {
-			p.Line("[dry-run] would boot out and remove %s", mgr.WarpPlistPath())
+			p.DryRun("boot out and remove %s", mgr.WarpPlistPath())
 		}
 		if mgr.Runner.FileExists(mgr.MonitPlistPath()) || mgr.Runner.FileExists(mgr.MonitrcPath()) {
-			p.Line("[dry-run] would unload and remove %s and %s", mgr.MonitPlistPath(), mgr.MonitrcPath())
+			p.DryRun("unload and remove %s and %s", mgr.MonitPlistPath(), mgr.MonitrcPath())
 		}
 		beszelUninstallDryRunNote(p, mgr)
 		if mgr.Runner.FileExists(watchdog.ScreenSharingHealPath) || mgr.Runner.FileExists(watchdog.ScreenSharingSudoersPath) {
-			p.Line("[dry-run] would offer to remove %s and %s", watchdog.ScreenSharingHealPath, watchdog.ScreenSharingSudoersPath)
+			p.DryRun("offer to remove %s and %s", watchdog.ScreenSharingHealPath, watchdog.ScreenSharingSudoersPath)
 		}
 		if _, exists, _ := watchdog.LoadPowerState(mgr.PowerStatePath()); exists {
-			p.Line("[dry-run] would offer to restore the power settings in %s", mgr.PowerStatePath())
+			p.DryRun("offer to restore the power settings in %s", mgr.PowerStatePath())
 		}
 		return nil
 	}

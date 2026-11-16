@@ -1,0 +1,16 @@
+[
+  "  ~  would tap 1 Homebrew repo(s): vendor/tools\n",
+  "  ~  would install 1 cask(s): terminal-app\n",
+  "  ~  would scaffold: /fixture/secret file (0600)\n",
+  "  ~  would run hook on_activate app-open Terminal: open Terminal\n",
+  "hook on_activate app-open Terminal: skipped: needs macOS\n",
+  "  ~  would run hook on_deactivate launchd-bootout com.example.agent: 1 job disabled, 1 loaded job booted out\n",
+  "  ~  would write /fixture/peer.plist\n",
+  "  ~  would remove /fixture/peer.plist\n",
+  "cloudflared not found.\n",
+  "  ~  would run brew install cloudflared\n",
+  "  ~  would run '/fixture/cloudflared' tunnel login\n",
+  "Port 22 is closed.\n",
+  "  ~  would enable Remote Login with systemsetup, then launchctl fallback if needed\n",
+  ""
+]

@@ -1,0 +1,16 @@
+[
+  "  \u001b[90m~\u001b[m  would tap 1 Homebrew repo(s): vendor/tools\n",
+  "  \u001b[90m~\u001b[m  would install 1 cask(s): terminal-app\n",
+  "  \u001b[90m~\u001b[m  would scaffold: /fixture/secret file (0600)\n",
+  "  \u001b[90m~\u001b[m  would run hook on_activate app-open Terminal: open Terminal\n",
+  "hook on_activate app-open Terminal: skipped: needs macOS\n",
+  "  \u001b[90m~\u001b[m  would run hook on_deactivate launchd-bootout com.example.agent: 1 job disabled, 1 loaded job booted out\n",
+  "  \u001b[90m~\u001b[m  would write /fixture/peer.plist\n",
+  "  \u001b[90m~\u001b[m  would remove /fixture/peer.plist\n",
+  "cloudflared not found.\n",
+  "  \u001b[90m~\u001b[m  would run brew install cloudflared\n",
+  "  \u001b[90m~\u001b[m  would run '/fixture/cloudflared' tunnel login\n",
+  "Port 22 is closed.\n",
+  "  \u001b[90m~\u001b[m  would enable Remote Login with systemsetup, then launchctl fallback if needed\n",
+  ""
+]

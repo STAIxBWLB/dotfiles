@@ -295,7 +295,7 @@ func runSyncFiltersReset(cmd *cobra.Command, _ []string) error {
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	p := printerFrom(cmd)
 	if dryRun {
-		p.Line("[dry-run] would reset %s and %s from embedded templates (backups kept)", cfg.ExcludesFile, cfg.IncludeFile)
+		p.DryRun("reset %s and %s from embedded templates (backups kept)", cfg.ExcludesFile, cfg.IncludeFile)
 		return nil
 	}
 	backups, err := syncer.ResetFilterFiles(cfg.LocalPaths)

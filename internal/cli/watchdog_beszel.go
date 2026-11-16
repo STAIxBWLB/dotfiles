@@ -36,7 +36,7 @@ var beszelFormulas = []string{"beszel-agent", "henrygd/beszel/beszel-agent"}
 // no brew prompt and no install. The default env file carries the hub
 // KEY/TOKEN, is secrets-managed, and arrives via `dot secrets restore`; a
 // custom watchdog.beszel.env_path is NOT covered by `dot secrets`
-// backup/restore, which both the missing-file skip and the install note say.
+// backup/restore, which both the missing-file skip and the install warning say.
 func setupBeszelStep(p *Printer, mgr *watchdog.Manager, bcfg config.WatchdogBeszelConfig, yes bool) error {
 	settings, err := watchdog.ResolveBeszel(bcfg, mgr.Home)
 	if err != nil {
@@ -53,7 +53,9 @@ func setupBeszelStep(p *Printer, mgr *watchdog.Manager, bcfg config.WatchdogBesz
 		return nil
 	}
 	if !secretsCovered {
-		p.Line("note: %s is a custom env_path — it is not covered by `dot secrets` backup/restore; back it up yourself", settings.EnvPath)
+		ui.WriteWarning(p.Err,
+			fmt.Sprintf("%s is a custom env_path and is not covered by `dot secrets` backup/restore; back it up separately", settings.EnvPath),
+			"cp -p -i -- "+shellQuote(settings.EnvPath)+" "+shellQuote(settings.EnvPath+".backup"))
 	}
 	ctx := context.Background()
 	agentPath, err := ensureBeszelAgent(ctx, p, mgr.Runner, yes)
@@ -159,7 +161,7 @@ func printBeszelStatusRows(p *Printer, mgr *watchdog.Manager, wcfg *config.Watch
 // file uninstall never touches, and the dry-run is where that promise shows.
 func beszelUninstallDryRunNote(p *Printer, mgr *watchdog.Manager) {
 	if mgr.Runner.FileExists(mgr.BeszelPlistPath()) {
-		p.Line("[dry-run] would unload and remove %s (keeping the secrets-managed env file)", mgr.BeszelPlistPath())
+		p.DryRun("unload and remove %s (keeping the secrets-managed env file)", mgr.BeszelPlistPath())
 	}
 }
 

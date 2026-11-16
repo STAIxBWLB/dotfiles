@@ -114,7 +114,7 @@ func TestGuardDryRunWritesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dry-run enable: %v", err)
 	}
-	if !strings.Contains(out, "[dry-run]") {
+	if !strings.Contains(out, "would ") {
 		t.Fatalf("dry-run output missing marker:\n%s", out)
 	}
 	if _, err := os.Stat(filepath.Join(home, ".claude", "settings.json")); !os.IsNotExist(err) {

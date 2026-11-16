@@ -285,7 +285,7 @@ func runAIAuthLogin(cmd *cobra.Command, args []string) error {
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	if dryRun {
 		for _, name := range servers {
-			p.Line("  %s", ui.StyleHint.Render("dry-run: would run "+bin+" mcp login "+name))
+			p.DryRun("run %s mcp login %s", bin, name)
 		}
 		p.Line("Interactive OAuth cannot be simulated; re-run without --dry-run.")
 		return nil
@@ -358,7 +358,7 @@ func runAIAuthRelogin(cmd *cobra.Command, args []string) error {
 	p.Header("MCP Re-login")
 	if dryRun, _ := cmd.Flags().GetBool("dry-run"); dryRun {
 		for _, name := range args {
-			p.Line("  %s", ui.StyleHint.Render("dry-run: would run "+bin+" mcp logout/login "+name))
+			p.DryRun("run %s mcp logout/login %s", bin, name)
 		}
 		p.Line("Interactive OAuth cannot be simulated; re-run without --dry-run.")
 		return nil

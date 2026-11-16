@@ -163,7 +163,7 @@ repo and does not stop the others. Under --dry-run nothing is fetched.`,
 			p.Header("Peer Git Fetch")
 			p.KV("Workspace", res.Root)
 			if dryRun {
-				p.Line("--dry-run: nothing fetched; the status reads the refs as they are.")
+				p.Line("Nothing fetched; the status reads the refs as they are.")
 			}
 			printPeerGitRepos(p, res, true)
 			if peerGitSummary(res).Realignable > 0 {
@@ -318,7 +318,7 @@ func realignNext(realigned, realignable int, dryRun, rescue, noPush bool, candid
 		return "" // undo lines were printed per repo already, or nothing moves
 	}
 	if dryRun {
-		return "--dry-run: nothing changed. Re-run without it to apply."
+		return "Nothing changed. Re-run without --dry-run to apply."
 	}
 	flags := ""
 	if rescue {

@@ -150,9 +150,10 @@ func TestWatchdogSetupBeszel_CustomEnvPathSkipNamesManualPlacement(t *testing.T)
 	assertNoBrewCalls(t, brewLog)
 }
 
-// A custom env_path that EXISTS installs fine, with a clear note that the
+// A custom env_path that EXISTS installs fine, with a warning that the
 // path is outside `dot secrets` coverage.
 func TestWatchdogSetupBeszel_CustomEnvPathInstallNotesSecretsCoverage(t *testing.T) {
+	t.Setenv("COLUMNS", "")
 	prefix := t.TempDir()
 	stubBeszelBrew(t, prefix)
 	fakeBeszelBinary(t, prefix)
@@ -167,8 +168,12 @@ func TestWatchdogSetupBeszel_CustomEnvPathInstallNotesSecretsCoverage(t *testing
 	if err := setupBeszelStep(beszelStepPrinter(&out, &errOut), mgr, bcfg, true); err != nil {
 		t.Fatalf("setup step: %v\nstderr=%s", err, errOut.String())
 	}
-	if !strings.Contains(out.String(), "not covered by `dot secrets`") {
-		t.Fatalf("install with a custom env_path must note the secrets-coverage gap:\n%s", out.String())
+	if !strings.Contains(errOut.String(), "dot: warning:") || !strings.Contains(errOut.String(), "not covered by `dot secrets`") {
+		t.Fatalf("install with a custom env_path must warn on stderr about the secrets-coverage gap:\n%s", errOut.String())
+	}
+	backupCommand := "cp -p -i -- " + shellQuote(customEnv) + " " + shellQuote(customEnv+".backup")
+	if !strings.Contains(errOut.String(), backupCommand) || strings.Contains(out.String(), "not covered by `dot secrets`") {
+		t.Fatalf("custom env warning/fix must share stderr: stdout=%s stderr=%s", out.String(), errOut.String())
 	}
 	data, err := os.ReadFile(mgr.BeszelPlistPath())
 	if err != nil {
@@ -223,7 +228,7 @@ func TestWatchdogSetup_DryRunCoversBeszel(t *testing.T) {
 	if err := runWatchdogSetupForGOOS(cmd, nil, "darwin"); err != nil {
 		t.Fatalf("dry-run setup: %v", err)
 	}
-	if !strings.Contains(out.String(), "[dry-run] would ensure the beszel-agent binary and install") {
+	if !strings.Contains(out.String(), "would ensure the beszel-agent binary and install") {
 		t.Fatalf("dry-run setup missing the beszel line:\n%s", out.String())
 	}
 }

@@ -26,7 +26,7 @@ func TestWatchdogSetup_DryRunCoversMonit(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Monit",
-		"[dry-run] would render",
+		"would render",
 		"monitrc",
 		"com.dotfiles.monit.plist",
 		watchdog.ScreenSharingHealPath,

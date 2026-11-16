@@ -104,22 +104,22 @@ func runWatchdogSetupForGOOS(cmd *cobra.Command, _ []string, goos string) error 
 	}
 	mgr := watchdog.NewManager(watchdogRunner(dryRun), home)
 	if dryRun {
-		p.Line("[dry-run] would write %s", mgr.SnapshotPath())
-		p.Line("[dry-run] would install and load %s (every %s)", mgr.PlistPath(), settings.Interval)
+		p.DryRun("write %s", mgr.SnapshotPath())
+		p.DryRun("install and load %s (every %s)", mgr.PlistPath(), settings.Interval)
 		if wcfg.Warp.Enabled {
-			p.Line("[dry-run] would install the root WARP heal daemon %s", mgr.WarpPlistPath())
+			p.DryRun("install the root WARP heal daemon %s", mgr.WarpPlistPath())
 		}
 		if wcfg.Monit.Enabled {
-			p.Line("[dry-run] would render %s and load the monit agent %s", mgr.MonitrcPath(), mgr.MonitPlistPath())
+			p.DryRun("render %s and load the monit agent %s", mgr.MonitrcPath(), mgr.MonitPlistPath())
 			if monitSettings.ScreenSharing {
-				p.Line("[dry-run] would install %s and the sudoers grant %s", watchdog.ScreenSharingHealPath, watchdog.ScreenSharingSudoersPath)
+				p.DryRun("install %s and the sudoers grant %s", watchdog.ScreenSharingHealPath, watchdog.ScreenSharingSudoersPath)
 			}
 		}
 		if wcfg.Beszel.Enabled {
-			p.Line("[dry-run] would ensure the beszel-agent binary and install %s", mgr.BeszelPlistPath())
+			p.DryRun("ensure the beszel-agent binary and install %s", mgr.BeszelPlistPath())
 		}
 		if headless {
-			p.Line("[dry-run] would save prior power values to %s, then apply headless power settings", mgr.PowerStatePath())
+			p.DryRun("save prior power values to %s, then apply headless power settings", mgr.PowerStatePath())
 		}
 		return nil
 	}

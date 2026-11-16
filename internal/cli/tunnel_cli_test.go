@@ -88,7 +88,7 @@ func TestTunnelClientDryRunDoesNotWrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("client add --dry-run: %v\nstdout=%s\nstderr=%s", err, out, errOut)
 	}
-	if !strings.Contains(out, "[dry-run]") {
+	if !strings.Contains(out, "would ") {
 		t.Fatalf("dry-run output unexpected:\n%s", out)
 	}
 	if _, err := os.Stat(filepath.Join(home, ".ssh", "config.d", "dot-tunnel")); !os.IsNotExist(err) {

@@ -81,7 +81,7 @@ func runDotRollback(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return err
 		}
-		p.Line("[dry-run] would activate dot %s", prev)
+		p.DryRun("activate dot %s", prev)
 		return nil
 	}
 	// Rollback does no download. It takes the ordinary maintenance slot, not

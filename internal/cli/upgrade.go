@@ -261,7 +261,7 @@ func performVerifiedUpdate(ctx context.Context, p *Printer, home string, explici
 		if viaBrew {
 			return upgradeHomebrew(ctx, p, brew, current, latest, true, wait)
 		}
-		p.Line("[dry-run] would download and verify dot %s, then activate it through current (preserving %s) under verified-prebuilt admission", latest, execPath)
+		p.DryRun("download and verify dot %s, then activate it through current (preserving %s) under verified-prebuilt admission", latest, execPath)
 		return nil
 	}
 

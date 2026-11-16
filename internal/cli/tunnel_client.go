@@ -40,7 +40,7 @@ func runTunnelClientAdd(cmd *cobra.Command, args []string) error {
 	home := homeFromCmd(cmd)
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	if dryRun {
-		p.Line("[dry-run] would add Host %s to %s", hostname, tunnel.DropInPath(home))
+		p.DryRun("add Host %s to %s", hostname, tunnel.DropInPath(home))
 		return nil
 	}
 	added, warnings, err := tunnel.AddHost(home, hostname)
@@ -103,7 +103,7 @@ func runTunnelClientRemove(cmd *cobra.Command, args []string) error {
 	home := homeFromCmd(cmd)
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	if dryRun {
-		p.Line("[dry-run] would remove Host %s from %s", hostname, tunnel.DropInPath(home))
+		p.DryRun("remove Host %s from %s", hostname, tunnel.DropInPath(home))
 		return nil
 	}
 	removed, err := tunnel.RemoveHost(home, hostname)
