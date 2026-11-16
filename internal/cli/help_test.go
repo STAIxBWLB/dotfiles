@@ -162,3 +162,25 @@ func TestHelpIncludesOptionalSectionsAndFlagDefaults(t *testing.T) {
 		t.Fatal("renderer changed command metadata")
 	}
 }
+
+func TestReflowHelpLongPreservesParagraphsAndIndentedLines(t *testing.T) {
+	input := "first line\nsecond line\n\n  example one\n  example two\nnext paragraph\ncontinues\n\tindented\nlast"
+	want := "first line second line\n\n  example one\n  example two\nnext paragraph continues\n\tindented\nlast"
+	if got := reflowHelpLong(input); got != want {
+		t.Fatalf("reflow=%q, want %q", got, want)
+	}
+}
+
+func TestRootHelpShowsUngroupedCommand(t *testing.T) {
+	root := NewRootCmd("dev", "test")
+	root.AddCommand(&cobra.Command{Use: "extra", Short: "An extra command", Run: func(*cobra.Command, []string) {}})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"--help", "--color=never"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Additional commands") || !strings.Contains(out.String(), "extra") {
+		t.Fatalf("ungrouped command missing: %s", out.String())
+	}
+}

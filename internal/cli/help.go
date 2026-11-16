@@ -59,7 +59,7 @@ func renderHelp(cmd *cobra.Command) error {
 	}
 	if cmd.Long != "" && cmd.Long != cmd.Short {
 		p.Blank()
-		ui.WriteHanging(p.Out, "  ", strings.TrimSpace(cmd.Long))
+		ui.WriteHanging(p.Out, "  ", reflowHelpLong(cmd.Long))
 	}
 	p.Section("Usage")
 	ui.WriteHanging(p.Out, "  ", cmd.UseLine())
@@ -78,6 +78,16 @@ func renderHelp(cmd *cobra.Command) error {
 					p.Section(group.Title)
 					writeHelpRows(p.Out, rows)
 				}
+			}
+			var additional []helpRow
+			for _, child := range children {
+				if child.GroupID == "" {
+					additional = append(additional, helpRow{child.Name(), child.Short})
+				}
+			}
+			if len(additional) > 0 {
+				p.Section("Additional commands")
+				writeHelpRows(p.Out, additional)
 			}
 		} else {
 			p.Section("Commands")
@@ -111,6 +121,27 @@ func renderHelp(cmd *cobra.Command) error {
 		ui.WriteHanging(p.Out, "  ", strings.Join(cmd.Aliases, ", "))
 	}
 	return nil
+}
+
+// reflowHelpLong joins prose lines while preserving paragraph and example boundaries.
+func reflowHelpLong(text string) string {
+	lines := strings.Split(strings.Trim(text, "\r\n"), "\n")
+	var out strings.Builder
+	previousProse := false
+	for i, line := range lines {
+		line = strings.TrimSuffix(line, "\r")
+		prose := strings.TrimSpace(line) != "" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t")
+		if i > 0 {
+			if prose && previousProse {
+				out.WriteByte(' ')
+			} else {
+				out.WriteByte('\n')
+			}
+		}
+		out.WriteString(line)
+		previousProse = prose
+	}
+	return out.String()
 }
 
 func availableHelpCommands(cmd *cobra.Command) []*cobra.Command {
