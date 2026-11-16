@@ -155,7 +155,7 @@ func runWatchdogSetupForGOOS(cmd *cobra.Command, _ []string, goos string) error 
 		}
 	}
 	p.Success(ui.MarkPresent+" dot watchdog setup complete (mode: %s)", settings.Mode)
-	p.Line("Check with: dot watchdog status · Logs: dot watchdog log")
+	p.Line("Check with: dot watchdog status; logs with: dot watchdog log")
 	return nil
 }
 

@@ -250,7 +250,7 @@ func (m *AIModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, err
 			}
 			switch {
 			case res.Warning != "":
-				messages = append(messages, "warning: "+res.Warning)
+				messages = append(messages, res.Warning)
 			case res.Changed:
 				messages = append(messages, fmt.Sprintf("updated the amem memory block in the agents SSOT (backup: %s)", res.Backup))
 			}

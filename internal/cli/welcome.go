@@ -37,7 +37,7 @@ func printWelcome(cmd *cobra.Command, version, commit string) {
 	}
 
 	p.Blank()
-	p.Line("  %s", ui.StyleHint.Render("Tip: 'dotfiles' remains a back-compat alias; use 'dot apply'"))
+	p.Line("  %s", ui.StyleHint.Render("'dotfiles' remains a back-compat alias; use 'dot apply'"))
 	p.Line("  %s", ui.StyleHint.Render("See 'dot usecase' for detailed workflows"))
 	p.Line("  %s", ui.StyleHint.Render("See 'dot help' for all commands"))
 	p.Blank()
@@ -65,7 +65,7 @@ func newUsecaseCmd() *cobra.Command {
 func printUsecases(cmd *cobra.Command) {
 	p := printerFrom(cmd)
 	p.Header("dot Use Cases")
-	p.Line("  %s", ui.StyleHint.Render("Note: 'dot' is the canonical command; 'dotfiles' remains a back-compat alias."))
+	p.Line("  %s", ui.StyleHint.Render("'dot' is the canonical command; 'dotfiles' remains a back-compat alias."))
 	p.Line("  %s", ui.StyleHint.Render("Examples below use canonical 'dot'."))
 
 	for i, sec := range useSections {

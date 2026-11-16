@@ -203,7 +203,7 @@ func (o *onestopCtx) confirmRoot(offerSave bool) error {
 	o.root = edited
 	if offerSave && changed && !hadSaved {
 		if o.dryRun {
-			o.p.Line("  %s", ui.StyleHint.Render("[dry-run] would offer to save this root to state"))
+			o.p.DryRun("offer to save this root to state")
 		} else {
 			save, err := ui.ConfirmBool("Save this root to state for future runs?", true, false)
 			if err != nil {

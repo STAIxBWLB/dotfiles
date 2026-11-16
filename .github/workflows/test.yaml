@@ -263,6 +263,11 @@ jobs:
             echo "::error title=Glyph alphabet evidence::no positive Go-file measurement count was observed"
             exit 1
           fi
+      # The gate that scripts/check-glyph-alphabet.sh runs above must be able to
+      # fail: this plants each literal class in a scratch tree and requires a
+      # rejection, so a gate that silently stopped measuring turns red here.
+      - name: Output literal gate rejects planted literals
+        run: bash scripts/check-output-literals-selftest.sh
       - name: Ensure shellcheck (macOS)
         if: runner.os == 'macOS'
         run: command -v shellcheck >/dev/null || brew install shellcheck

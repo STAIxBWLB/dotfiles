@@ -97,7 +97,7 @@ same cloud root (Dropbox-preferred) the rest of dot backs up to.`,
 			// invoking user's (BUG-08).
 			state, err := ses.loadState()
 			if err != nil {
-				p.Warn("warning: could not load state to record backup: %v", err)
+				p.Warn("could not load state to record backup: %v", err)
 				return nil
 			}
 			state.Secrets.LastBackup = &config.BackupRecord{
@@ -106,7 +106,7 @@ same cloud root (Dropbox-preferred) the rest of dot backs up to.`,
 				Files: res.Copied,
 			}
 			if err := ses.saveState(state); err != nil {
-				p.Warn("warning: could not save last-backup record: %v", err)
+				p.Warn("could not save last-backup record: %v", err)
 			}
 			return nil
 		},

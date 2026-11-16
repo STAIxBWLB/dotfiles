@@ -145,7 +145,7 @@ func actOnCandidate(ctx context.Context, settings watchdog.ReaperSettings, c wat
 		if err := notifier.Notify(ctx, "warn", msg); err != nil {
 			return "", err
 		}
-		return "[dry-run] would kill", nil
+		return "would kill", nil
 	}
 	event.Level = "critical"
 	if err := watchdog.AppendEvent(mgr.LogPath(), event); err != nil {

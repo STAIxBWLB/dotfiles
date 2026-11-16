@@ -233,10 +233,10 @@ func runOnestopRestore(cmd *cobra.Command, _ []string) error {
 	// 9. Outcome.
 	failed := printOnestopSummary(p, steps)
 	if o.state.Modules.MacApps.BackupRoot == "" {
-		p.Line("  %s", ui.StyleHint.Render(fmt.Sprintf("Tip: save this backup root with 'dot profile root %s'", o.root)))
+		p.Line("  %s", ui.StyleHint.Render(fmt.Sprintf("Save this backup root with 'dot profile root %s'", o.root)))
 	}
 	if selected["ai"] {
-		p.Line("  %s", ui.StyleHint.Render("Tip: run 'dot ai agents apply' to reapply the agents SSOT to tool targets"))
+		p.Line("  %s", ui.StyleHint.Render("Run 'dot ai agents apply' to reapply the agents SSOT to tool targets"))
 	}
 	if failed > 0 {
 		return fmt.Errorf("%d restore step(s) failed", failed)
