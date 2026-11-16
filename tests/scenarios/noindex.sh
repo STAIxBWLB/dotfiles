@@ -106,7 +106,7 @@ EXPECTED_MARKED=5
 MARKED_COUNT() {
   sed -n \
     -e 's/^marked \([0-9][0-9]*\) directories.*/\1/p' \
-    -e 's/^would mark \([0-9][0-9]*\) directories.*/\1/p' \
+    -e 's/^[[:space:]]*~[[:space:]]*would mark \([0-9][0-9]*\) directories.*/\1/p' \
     "$1" | head -1
 }
 
