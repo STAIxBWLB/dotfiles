@@ -137,7 +137,7 @@ unset TMUX
 echo "--- implicit routing ---"
 # "help" should NOT route to open
 HELP_OUT=$($BIN help 2>&1) || true
-echo "$HELP_OUT" | grep -q "Available Commands" && pass "help not routed to open" || fail "help not routed to open"
+echo "$HELP_OUT" | grep -Eq '^(▸|>) Usage$' && pass "help not routed to open" || fail "help not routed to open"
 
 # "version" should NOT route to open
 check "version not routed to open" $BIN version
