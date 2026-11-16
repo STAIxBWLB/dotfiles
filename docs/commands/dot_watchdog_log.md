@@ -3,7 +3,7 @@
 Tail the watchdog JSON-lines event log
 
 ```
-dot watchdog log [N] [flags]
+dot watchdog log [<count>] [flags]
 ```
 
 ### Examples

@@ -3,7 +3,7 @@
 Print the last N dot ai audit events as JSONL
 
 ```
-dot ai audit tail [N] [flags]
+dot ai audit tail [<count>] [flags]
 ```
 
 ### Examples

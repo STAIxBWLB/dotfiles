@@ -98,7 +98,7 @@ func runTunnelStatus(cmd *cobra.Command, _ []string) error {
 
 func newTunnelLogCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:          "log [N]",
+		Use:          "log [<count>]",
 		Short:        "Tail the Cloudflare Tunnel daemon error log",
 		Args:         cobra.MaximumNArgs(1),
 		RunE:         runTunnelLog,
