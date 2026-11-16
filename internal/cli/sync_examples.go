@@ -58,7 +58,7 @@ var syncExamples = map[string][]string{
 	"remote job run":              {"dot remote job run -o out -i data.csv -- python3 report.py", "dot remote job run -o out --local-only -- ./build.sh"},
 	"remote prune":                {"dot remote prune", "dot remote prune --yes"},
 	"remote run":                  {"dot remote run -- make test", "dot remote run ~/workspace/work/app -- cargo test"},
-	"remote setup":                {"dot remote setup", "dot remote setup --profile dev"},
+	"remote setup":                {"dot remote setup", "dot remote setup --profile media"},
 	"remote status":               {"dot remote status", "dot remote status --json"},
 	"remote verify":               {"dot remote verify", "dot remote verify --dirty -- make test"},
 }

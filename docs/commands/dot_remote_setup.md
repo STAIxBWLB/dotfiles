@@ -18,7 +18,7 @@ dot remote setup [flags]
 
 ```
   dot remote setup
-  dot remote setup --profile dev
+  dot remote setup --profile media
 ```
 
 ### Options

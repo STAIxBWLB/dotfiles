@@ -139,9 +139,10 @@ var generatedHelp = map[string]struct{ short, long string }{
 	},
 }
 
-// applyHelpMetadata fills Example on every command outside dot ai, dot sync,
-// dot peer and dot remote that has none, and restates the generated help and
-// completion text. Call it after Cobra's generated commands exist.
+// applyHelpMetadata fills Example on every command outside dot ai that has
+// none, from helpExamples (which sync_examples.go extends for dot sync, dot
+// peer and dot remote), and restates the generated help and completion text.
+// Call it after Cobra's generated commands exist.
 func applyHelpMetadata(root *cobra.Command) {
 	var walk func(c *cobra.Command)
 	walk = func(c *cobra.Command) {
