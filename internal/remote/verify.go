@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/dotfiles/internal/admission"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // VerifyOptions is one `dot remote verify` request.
@@ -304,11 +305,13 @@ func (d Deps) Verify(ctx context.Context, cfg Config, opts VerifyOptions) error 
 			return err
 		}
 		ref := VerifyRef(rel, "<sha>", "<nonce>")
-		fmt.Fprintf(d.out(), "would push %s (%s) to %s:%s as %s\n", checkout, map[bool]string{true: "working tree", false: "HEAD"}[opts.Dirty], h.SSH, path.Join(h.GitRoot, bare), ref)
+		ui.WriteDryRun(d.out(), fmt.Sprintf("push %s (%s) to %s:%s as %s", checkout, map[bool]string{true: "working tree", false: "HEAD"}[opts.Dirty], h.SSH, path.Join(h.GitRoot, bare), ref))
 		if base.Branch != "" {
-			fmt.Fprintf(d.out(), "would send the base %s as %s\n", base.Local, base.Branch)
+			ui.WriteDryRun(d.out(), fmt.Sprintf("send the base %s as %s", base.Local, base.Branch))
 		}
-		fmt.Fprintf(d.out(), "would run in %s on %s:\n  %s\n", container, h.Name, strings.Join(SSHArgv(h.SSH, VerifyCommand(h, container, bare, ref, base, command)), " "))
+		ui.WriteDryRun(d.out(), fmt.Sprintf("run in %s on %s", container, h.Name))
+		// The argv stays one raw line: a report row would wrap it.
+		_, _ = fmt.Fprintf(d.out(), "  %s\n", strings.Join(SSHArgv(h.SSH, VerifyCommand(h, container, bare, ref, base, command)), " "))
 		return nil
 	}
 
@@ -402,9 +405,9 @@ func (d Deps) deleteVerifyRefs(ctx context.Context, h Host, bare, ref string, wi
 func (d Deps) deleteVerifyRef(ctx context.Context, h Host, bare, ref string) {
 	script := `cd "$HOME" && git -C ` + ShellQuote(path.Join(h.GitRoot, bare)) + ` update-ref -d ` + ShellQuote(ref)
 	if _, err := d.capture(context.WithoutCancel(ctx), SSHArgv(h.SSH, script), nil); err != nil {
-		fmt.Fprintf(d.errOut(), "dot remote: could not delete %s in %s on %s (%v); delete it with `%s`\n",
+		ui.WriteWarning(d.errOut(), fmt.Sprintf("remote: could not delete %s in %s on %s (%v); delete it with `%s`",
 			ref, path.Join(h.GitRoot, bare), h.Name, err,
-			sshCommand(h, `git -C "$HOME"/`+quotedWord(path.Join(h.GitRoot, bare))+" update-ref -d "+quotedWord(ref)))
+			sshCommand(h, `git -C "$HOME"/`+quotedWord(path.Join(h.GitRoot, bare))+" update-ref -d "+quotedWord(ref))))
 	}
 }
 

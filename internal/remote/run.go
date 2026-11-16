@@ -14,6 +14,7 @@ import (
 
 	"github.com/STAIxBWLB/dotfiles/internal/admission"
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // RunOptions is one `dot remote run` request.
@@ -148,7 +149,7 @@ func (d Deps) Run(ctx context.Context, cfg Config, opts RunOptions) error {
 			if source == "" {
 				source = "--ignore"
 			}
-			fmt.Fprintf(d.errOut(), "admission: remote host load ignored (%s): %s\n", source, reason)
+			ui.WriteWarning(d.errOut(), fmt.Sprintf("admission: remote host load ignored (%s): %s", source, reason))
 		}
 	}
 
@@ -157,7 +158,7 @@ func (d Deps) Run(ctx context.Context, cfg Config, opts RunOptions) error {
 		return err
 	}
 	if seen.RecordFailed {
-		fmt.Fprintf(d.errOut(), "dot remote: could not record the mirror of %s on %s, so `dot remote status` will not size it\n", path, h.Name)
+		ui.WriteWarning(d.errOut(), fmt.Sprintf("remote: could not record the mirror of %s on %s, so `dot remote status` will not size it", path, h.Name))
 	}
 	// A failed query is not an answer: an empty list from a broken runtime would
 	// otherwise read as "nothing there" and, worse, as "nothing running", and
@@ -358,8 +359,8 @@ func (d Deps) syncInput(ctx context.Context, h Host, mirror, rel, path string, i
 	record, err := d.readSent(h, rel, path)
 	switch {
 	case err != nil:
-		fmt.Fprintf(d.errOut(), "dot remote: could not read what this machine last sent to %s on %s (%v), so this run reconciles the mirror instead\n",
-			mirror, h.Name, err)
+		ui.WriteWarning(d.errOut(), fmt.Sprintf("remote: could not read what this machine last sent to %s on %s (%v), so this run reconciles the mirror instead",
+			mirror, h.Name, err))
 	case record.Stale:
 		fmt.Fprintf(d.errOut(), "dot remote: the record of what this machine sent to %s on %s was written for another mirror, so this run reconciles this one instead\n",
 			mirror, h.Name)
@@ -369,8 +370,8 @@ func (d Deps) syncInput(ctx context.Context, h Host, mirror, rel, path string, i
 	}
 	deletes, rerr := d.reconcile(ctx, h, mirror, path, in.Listing)
 	if rerr != nil {
-		fmt.Fprintf(d.errOut(), "dot remote: could not read what %s holds on %s (%v), so this run deletes nothing there and records nothing: the next run there reconciles the mirror again\n",
-			mirror, h.Name, rerr)
+		ui.WriteWarning(d.errOut(), fmt.Sprintf("remote: could not read what %s holds on %s (%v), so this run deletes nothing there and records nothing: the next run there reconciles the mirror again",
+			mirror, h.Name, rerr))
 		return syncDecision{Input: in, Replaced: replacedCandidates(path, in.Listing, nil)}
 	}
 	in.Deletes = withoutBlockedPaths(path, deletes)
@@ -465,7 +466,7 @@ func plainName(name string) bool {
 func (d Deps) sendable(ctx context.Context, rsyncPath, src string, excludes []string, candidates []byte) []byte {
 	kept, err := d.rsyncKeeps(ctx, rsyncPath, src, excludes, candidates)
 	if err != nil {
-		fmt.Fprintf(d.errOut(), "dot remote: could not check which replaced paths this run sends (%v), so it removes no directory on the host first\n", err)
+		ui.WriteWarning(d.errOut(), fmt.Sprintf("remote: could not check which replaced paths this run sends (%v), so it removes no directory on the host first", err))
 		return nil
 	}
 	var out []byte
@@ -736,14 +737,15 @@ func stepError(step Step, exit int, err error) error {
 
 // describe prints what a dry run would do, without touching the host.
 func (d Deps) describe(opts RunOptions, h Host, path, rel, mirror, container string) {
-	fmt.Fprintf(d.out(), "would mirror %s to %s:%s (container %s)\n", path, h.SSH, mirror, container)
-	fmt.Fprintf(d.out(), "would run in %s on %s:\n  %s\n",
-		container, h.Name, strings.Join(RunSSHArgv(h, opts.Ports, RunCommandWith(h, container, rel, opts.Command, opts.Extras())), " "))
+	ui.WriteDryRun(d.out(), fmt.Sprintf("mirror %s to %s:%s (container %s)", path, h.SSH, mirror, container))
+	ui.WriteDryRun(d.out(), fmt.Sprintf("run in %s on %s", container, h.Name))
+	// The argv stays one raw line: a report row would wrap it.
+	_, _ = fmt.Fprintf(d.out(), "  %s\n", strings.Join(RunSSHArgv(h, opts.Ports, RunCommandWith(h, container, rel, opts.Command, opts.Extras())), " "))
 	if opts.Ignore.Slot {
-		fmt.Fprintln(d.out(), "would take a lease past the host's max_runs (--ignore slot)")
+		ui.WriteDryRun(d.out(), "take a lease past the host's max_runs (--ignore slot)")
 	}
 	if opts.Ignore.RemoteLoad {
-		fmt.Fprintln(d.out(), "would skip the host load check (--ignore remote-load)")
+		ui.WriteDryRun(d.out(), "skip the host load check (--ignore remote-load)")
 	}
 }
 
@@ -1137,11 +1139,11 @@ func (d Deps) releaseClaim(ctx context.Context, h Host, rel, path string) {
 	inspect, clear := h.claimCommand("ls -la", rel), h.claimCommand("rm -rf", rel)
 	switch {
 	case err != nil:
-		fmt.Fprintf(d.errOut(), "dot remote: could not release the claim on %s on %s (%v); it is at %s, so look at it with `%s` and clear it with `%s`\n",
-			rel, h.Name, err, h.claimPath(rel), inspect, clear)
+		ui.WriteWarning(d.errOut(), fmt.Sprintf("remote: could not release the claim on %s on %s (%v); it is at %s, so look at it with `%s` and clear it with `%s`",
+			rel, h.Name, err, h.claimPath(rel), inspect, clear))
 	case failed:
-		fmt.Fprintf(d.errOut(), "dot remote: could not release the claim on %s on %s (%s); it is at %s, so look at it with `%s` and clear it with `%s`\n",
-			rel, h.Name, detail, h.claimPath(rel), inspect, clear)
+		ui.WriteWarning(d.errOut(), fmt.Sprintf("remote: could not release the claim on %s on %s (%s); it is at %s, so look at it with `%s` and clear it with `%s`",
+			rel, h.Name, detail, h.claimPath(rel), inspect, clear))
 	}
 }
 

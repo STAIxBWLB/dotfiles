@@ -187,7 +187,7 @@ func (m *GitModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 				return nil, fmt.Errorf("rechecking legacy git ignore: %w", rerr)
 			}
 			if !stillRemovable {
-				fmt.Fprintf(rc.out(), "  "+ui.MarkWarn+" git: kept %s (changed during apply; remove by hand)\n", legacyIgnorePath(rc))
+				fmt.Fprintf(rc.progressOut(), "  %s git: kept %s (changed during apply; remove by hand)\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkWarn)), legacyIgnorePath(rc))
 				break
 			}
 			if err := os.Remove(legacyIgnorePath(rc)); err != nil {
@@ -200,7 +200,7 @@ func (m *GitModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 		// pattern the user added to the legacy file stops applying with this
 		// apply. Name those patterns explicitly: silently orphaning them can
 		// re-expose files the user ignored on purpose (credentials included).
-		fmt.Fprintf(rc.out(), "  "+ui.MarkWarn+" git: kept %s (local edits; git no longer reads it)\n", legacyIgnorePath(rc))
+		fmt.Fprintf(rc.progressOut(), "  %s git: kept %s (local edits; git no longer reads it)\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkWarn)), legacyIgnorePath(rc))
 		for _, line := range legacyIgnoreCustomLines(rc) {
 			fmt.Fprintf(rc.out(), "      orphaned pattern: %s\n", line)
 		}
@@ -220,7 +220,7 @@ func (m *GitModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 			messages = append(messages, fmt.Sprintf("configured git hook.coauthor-guard in %s", result.Status.GitConfigPath))
 		}
 		if result.Warning != "" {
-			fmt.Fprintf(rc.out(), "  "+ui.MarkWarn+" git: %s\n", result.Warning)
+			fmt.Fprintf(rc.progressOut(), "  %s git: %s\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkWarn)), result.Warning)
 		}
 	}
 

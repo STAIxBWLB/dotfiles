@@ -14,6 +14,7 @@ import (
 
 	"github.com/STAIxBWLB/dotfiles/internal/admission"
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // Exit statuses a job adds to the command's own.
@@ -341,16 +342,17 @@ func (d Deps) acquireJob(ctx context.Context, h Host, p JobProfile, wait time.Du
 func (d Deps) describeJob(h Host, p JobProfile, name string, inputs []string, outDir string, opts JobOptions) {
 	fmt.Fprintf(d.out(), "job %s, profile %s on %s\n", name, p.Name, h.Name)
 	for _, input := range inputs {
-		fmt.Fprintf(d.out(), "would stage %s as in/%s\n", input, filepath.Base(input))
+		ui.WriteDryRun(d.out(), fmt.Sprintf("stage %s as in/%s", input, filepath.Base(input)))
 	}
 	if !opts.LocalOnly {
-		fmt.Fprintf(d.out(), "would check %s, then run in %s:\n  %s\n", h.Name, jobDirLabel(h, p, name),
-			strings.Join(jobSSH(h, JobRunCommand(h, p, name, opts.Command)), " "))
+		ui.WriteDryRun(d.out(), fmt.Sprintf("check %s, then run in %s", h.Name, jobDirLabel(h, p, name)))
+		// The argv stays one raw line: a report row would wrap it.
+		_, _ = fmt.Fprintf(d.out(), "  %s\n", strings.Join(jobSSH(h, JobRunCommand(h, p, name, opts.Command)), " "))
 	}
 	if !opts.RemoteOnly && p.Fallback == FallbackLocal {
-		fmt.Fprintf(d.out(), "would run locally in %s under dot admit when the host cannot take it\n", filepath.Join(p.LocalRoot, name))
+		ui.WriteDryRun(d.out(), fmt.Sprintf("run locally in %s under dot admit when the host cannot take it", filepath.Join(p.LocalRoot, name)))
 	}
-	fmt.Fprintf(d.out(), "would collect out/ into %s\n", outDir)
+	ui.WriteDryRun(d.out(), fmt.Sprintf("collect out/ into %s", outDir))
 }
 
 // runRemoteJob is the host side: stage in/, run, collect out/, then delete
@@ -424,7 +426,7 @@ func (d Deps) runRemoteJob(ctx context.Context, h Host, p JobProfile, name strin
 	_, pullErr := d.capture(context.WithoutCancel(ctx), []string{rsyncPath, "-a", "-s", "-e", jobRSH, h.SSH + ":" + remoteDir + "/out/", outDir + "/"}, nil)
 	if exit == 0 && pullErr == nil {
 		if _, err := d.capture(context.WithoutCancel(ctx), jobSSH(h, "rm -rf "+dir), nil); err != nil {
-			fmt.Fprintf(d.errOut(), "dot remote: could not delete %s (%v)\n", label, err)
+			ui.WriteWarning(d.errOut(), fmt.Sprintf("remote: could not delete %s (%v)", label, err))
 		}
 		return nil
 	}
@@ -485,7 +487,7 @@ func (d Deps) runLocalJob(ctx context.Context, p JobProfile, name string, inputs
 	}
 	if exit == 0 && sig == 0 {
 		if err := os.RemoveAll(work); err != nil {
-			fmt.Fprintf(d.errOut(), "dot remote: could not delete %s (%v)\n", work, err)
+			ui.WriteWarning(d.errOut(), fmt.Sprintf("remote: could not delete %s (%v)", work, err))
 		}
 		return nil
 	}

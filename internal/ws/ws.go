@@ -18,6 +18,7 @@ import (
 
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
 	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // Roots bundles the two parallel workspace roots (both pointing at the "work" dir).
@@ -135,7 +136,7 @@ func Mkdir(runner *exec.Runner, roots Roots, rel string) ([]string, error) {
 		if err := runner.MkdirAll(pair.abs, 0755); err != nil {
 			return msgs, fmt.Errorf("%s: mkdir %s: %w", pair.side.Name(), pair.abs, err)
 		}
-		msgs = append(msgs, fmt.Sprintf("  ✓ %s: created %s", pair.side.Name(), pair.abs))
+		msgs = append(msgs, fmt.Sprintf("  %s %s: created %s", ui.MarkerColumn(ui.RenderMarker(ui.MarkPresent)), pair.side.Name(), pair.abs))
 	}
 	return msgs, nil
 }
@@ -184,7 +185,7 @@ func Move(ctx context.Context, runner *exec.Runner, roots Roots, srcRel, dstRel 
 		if _, err := runner.Run(ctx, "mv", pair.srcAbs, pair.dstAbs); err != nil {
 			return msgs, fmt.Errorf("%s: mv: %w", pair.side.Name(), err)
 		}
-		msgs = append(msgs, fmt.Sprintf("  ✓ %s: moved %s → %s", pair.side.Name(), pair.srcAbs, pair.dstAbs))
+		msgs = append(msgs, fmt.Sprintf("  %s %s: moved %s → %s", ui.MarkerColumn(ui.RenderMarker(ui.MarkPresent)), pair.side.Name(), pair.srcAbs, pair.dstAbs))
 	}
 	return msgs, nil
 }
@@ -197,7 +198,7 @@ func Remove(ctx context.Context, runner *exec.Runner, roots Roots, rel string, r
 	}
 	presence := DirPresence(roots, rel)
 	if presence == SideNone {
-		return []string{fmt.Sprintf("  ⋯ %s: does not exist on either side", rel)}, nil
+		return []string{fmt.Sprintf("  %s %s: does not exist on either side", ui.MarkerColumn(ui.RenderMarker(ui.MarkAbsent)), rel)}, nil
 	}
 	workAbs, gdriveAbs := roots.ResolvePair(rel)
 	var msgs []string
@@ -213,12 +214,12 @@ func Remove(ctx context.Context, runner *exec.Runner, roots Roots, rel string, r
 			if _, err := runner.Run(ctx, "rm", "-rf", pair.abs); err != nil {
 				return msgs, fmt.Errorf("%s: rm -rf: %w", pair.side.Name(), err)
 			}
-			msgs = append(msgs, fmt.Sprintf("  ✓ %s: removed %s (recursive)", pair.side.Name(), pair.abs))
+			msgs = append(msgs, fmt.Sprintf("  %s %s: removed %s (recursive)", ui.MarkerColumn(ui.RenderMarker(ui.MarkPresent)), pair.side.Name(), pair.abs))
 		} else {
 			if err := runner.Remove(pair.abs); err != nil {
 				return msgs, fmt.Errorf("%s: remove %s: %w (pass --recursive for non-empty)", pair.side.Name(), pair.abs, err)
 			}
-			msgs = append(msgs, fmt.Sprintf("  ✓ %s: removed %s", pair.side.Name(), pair.abs))
+			msgs = append(msgs, fmt.Sprintf("  %s %s: removed %s", ui.MarkerColumn(ui.RenderMarker(ui.MarkPresent)), pair.side.Name(), pair.abs))
 		}
 	}
 	return msgs, nil

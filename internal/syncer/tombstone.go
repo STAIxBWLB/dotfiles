@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 const (
@@ -524,8 +525,8 @@ func propagateDeletes(ctx context.Context, runner *exec.Runner, cfg *Config, con
 	}
 	defer os.RemoveAll(sourceRoot)
 	args := deletePassArgs(cfg, conflict, listFile, sourceRoot, dryRun)
-	fmt.Fprintf(cfg.out(), "  Delete: %d path(s) → %s (quarantined under %s)\n",
-		len(tombstones), cfg.Target.RsyncDest(), conflictsDirName)
+	fmt.Fprintf(cfg.progressOut(), "  %s Delete: %d path(s) → %s (quarantined under %s)\n",
+		ui.MarkerColumn(ui.RenderMarker(ui.MarkPending)), len(tombstones), cfg.Target.RsyncDest(), conflictsDirName)
 	if dryRun {
 		for _, rel := range tombstones {
 			fmt.Fprintf(cfg.out(), "    %q → %q\n", rel, filepath.ToSlash(filepath.Join(conflict.PushBackupRel(), rel)))

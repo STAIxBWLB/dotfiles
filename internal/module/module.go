@@ -42,6 +42,13 @@ func (rc *RunContext) out() io.Writer {
 	return rc.Out
 }
 
+// progressOut is out() under the invocation's color policy, so a row that
+// carries a rendered marker loses its role color on a pipe. out() itself stays
+// raw: child process output is forwarded through it.
+func (rc *RunContext) progressOut() io.Writer {
+	return ui.Output(rc.out())
+}
+
 // CheckResult holds the result of a module's Check operation.
 type CheckResult struct {
 	Satisfied bool
@@ -150,17 +157,17 @@ func RunAll(ctx context.Context, modules []Module, rc *RunContext) error {
 	for _, m := range modules {
 		check, err := m.Check(ctx, rc)
 		if err != nil {
-			fmt.Fprintf(rc.out(), "  %s %s: check error: %v\n", ui.MarkerColumn(ui.MarkWarn), m.Name(), err)
+			fmt.Fprintf(rc.progressOut(), "  %s %s: check error: %v\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkWarn)), m.Name(), err)
 			errors = append(errors, fmt.Sprintf("%s: %v", m.Name(), err))
 			continue
 		}
 		if check.Satisfied {
-			fmt.Fprintf(rc.out(), "  %s %s: already satisfied\n", ui.MarkerColumn(ui.MarkPresent), m.Name())
+			fmt.Fprintf(rc.progressOut(), "  %s %s: already satisfied\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkPresent)), m.Name())
 			continue
 		}
 
 		for _, c := range check.Changes {
-			fmt.Fprintf(rc.out(), "  %s %s: %s\n", ui.MarkerColumn(ui.MarkNext), m.Name(), c.Description)
+			fmt.Fprintf(rc.progressOut(), "  %s %s: %s\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkNext)), m.Name(), c.Description)
 		}
 
 		if rc.DryRun {
@@ -169,13 +176,13 @@ func RunAll(ctx context.Context, modules []Module, rc *RunContext) error {
 
 		result, err := m.Apply(ctx, rc)
 		if err != nil {
-			fmt.Fprintf(rc.out(), "  %s %s: %v\n", ui.MarkerColumn(ui.MarkFail), m.Name(), err)
+			fmt.Fprintf(rc.progressOut(), "  %s %s: %v\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkFail)), m.Name(), err)
 			errors = append(errors, fmt.Sprintf("%s: %v", m.Name(), err))
 			continue
 		}
 		if result.Changed {
 			for _, msg := range result.Messages {
-				fmt.Fprintf(rc.out(), "  %s %s: %s\n", ui.MarkerColumn(ui.MarkPresent), m.Name(), msg)
+				fmt.Fprintf(rc.progressOut(), "  %s %s: %s\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkPresent)), m.Name(), msg)
 			}
 		}
 	}

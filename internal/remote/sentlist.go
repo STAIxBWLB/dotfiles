@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // What a run sent to a mirror is the only record that can say which files left
@@ -162,8 +164,8 @@ func (d Deps) recordSent(h Host, mirror, rel, checkout string, listing []byte) {
 	}
 	ierr := d.invalidateSent(h, rel)
 	if ierr == nil {
-		fmt.Fprintf(d.errOut(), "dot remote: could not record what this run sent to %s on %s (%v), so it discarded the older record and the next run there reconciles the mirror instead\n",
-			mirror, h.Name, err)
+		ui.WriteWarning(d.errOut(), fmt.Sprintf("remote: could not record what this run sent to %s on %s (%v), so it discarded the older record and the next run there reconciles the mirror instead",
+			mirror, h.Name, err))
 		return
 	}
 	// Both the removal and the emptying the fallback offers were refused, so the
@@ -171,12 +173,12 @@ func (d Deps) recordSent(h Host, mirror, rel, checkout string, listing []byte) {
 	// a listing this one never sent. With no state directory there is no file to
 	// name, and no older record for it to describe either.
 	if sentPath := d.sentPath(h, rel); sentPath != "" {
-		fmt.Fprintf(d.errOut(), "dot remote: could not record what this run sent to %s on %s (%v), and could not discard the older record (%v): delete %s before the next run there, which otherwise subtracts from a listing this run did not send\n",
-			mirror, h.Name, err, ierr, sentPath)
+		ui.WriteWarning(d.errOut(), fmt.Sprintf("remote: could not record what this run sent to %s on %s (%v), and could not discard the older record (%v): delete %s before the next run there, which otherwise subtracts from a listing this run did not send",
+			mirror, h.Name, err, ierr, sentPath))
 		return
 	}
-	fmt.Fprintf(d.errOut(), "dot remote: could not record what this run sent to %s on %s (%v), and could not discard the older record (%v), so the next run there still subtracts from a listing this run did not send\n",
-		mirror, h.Name, err, ierr)
+	ui.WriteWarning(d.errOut(), fmt.Sprintf("remote: could not record what this run sent to %s on %s (%v), and could not discard the older record (%v), so the next run there still subtracts from a listing this run did not send",
+		mirror, h.Name, err, ierr))
 }
 
 // invalidateSent makes one mirror's record unusable, so the next run reconciles

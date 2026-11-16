@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 const (
@@ -819,8 +820,8 @@ func propagatePeerHomeDeletes(ctx context.Context, runner *exec.Runner, cfg *Con
 	}
 	defer os.RemoveAll(sourceRoot)
 	args := peerHomeDeletePassArgs(cfg, listFile, sourceRoot, stamp, dryRun)
-	fmt.Fprintf(cfg.out(), "  Delete: %d tracked home path(s) → %s (quarantined under %s)\n",
-		len(tombstones), peerHomeRemoteRoot(cfg), PeerHomeConflictRoot)
+	fmt.Fprintf(cfg.progressOut(), "  %s Delete: %d tracked home path(s) → %s (quarantined under %s)\n",
+		ui.MarkerColumn(ui.RenderMarker(ui.MarkPending)), len(tombstones), peerHomeRemoteRoot(cfg), PeerHomeConflictRoot)
 	if dryRun {
 		for _, rel := range tombstones {
 			fmt.Fprintf(cfg.out(), "    %q → %q\n", rel, peerHomeRemoteBackupRel(stamp)+"/"+rel)
