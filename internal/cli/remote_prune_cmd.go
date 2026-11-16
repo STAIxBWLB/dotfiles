@@ -12,7 +12,7 @@ import (
 func newRemotePruneCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "prune [--yes]",
-		Short: "List, and with --yes remove, what runs left behind on the host",
+		Short: "List or remove what runs left behind on the host",
 		Long: `List what runs left behind on the host: mirrors whose local checkout
 (remote.local_root/<path>) no longer exists, verify refs a killed verify did
 not delete, and containers carrying the host's prefix that are not running.

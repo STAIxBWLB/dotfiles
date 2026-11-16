@@ -7,8 +7,9 @@ import (
 )
 
 // helpExamples holds the Example text for each runnable command outside
-// dot ai, dot sync, dot peer and dot remote, keyed by the path below "dot".
-// The ai subtree has its own table in ai_examples.go. Several of these
+// dot ai, keyed by the path below "dot"; sync_examples.go adds the dot sync,
+// dot peer and dot remote entries. The ai subtree has its own table in
+// ai_examples.go. Several of these
 // commands are built in loops, so one table keeps their examples together.
 var helpExamples = map[string][]string{
 	"":                      {"dot", "dot usecase"},
@@ -138,9 +139,10 @@ var generatedHelp = map[string]struct{ short, long string }{
 	},
 }
 
-// applyHelpMetadata fills Example on every command outside dot ai, dot sync,
-// dot peer and dot remote that has none, and restates the generated help and
-// completion text. Call it after Cobra's generated commands exist.
+// applyHelpMetadata fills Example on every command outside dot ai that has
+// none, from helpExamples (which sync_examples.go extends for dot sync, dot
+// peer and dot remote), and restates the generated help and completion text.
+// Call it after Cobra's generated commands exist.
 func applyHelpMetadata(root *cobra.Command) {
 	var walk func(c *cobra.Command)
 	walk = func(c *cobra.Command) {

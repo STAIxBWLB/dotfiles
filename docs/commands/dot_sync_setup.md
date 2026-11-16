@@ -1,6 +1,6 @@
 ## dot sync setup
 
-Install rsync (if missing) and manage the opt-in sync schedulers
+Install rsync and manage the opt-in sync schedulers
 
 ### Synopsis
 
@@ -13,12 +13,20 @@ interval flag to opt in.
   --pull-interval=DUR    Deploy automatic `dot sync pull --mode=MODE`.
   --push-mode=MODE       Automatic push mode: clean or force (default clean).
   --pull-mode=MODE       Automatic intake mode: clean or force (default clean).
-  --owner=NAME           Record the machine allowed to run this scheduler; use self for this machine.
+  --owner=NAME           Record the machine allowed to run this scheduler; use
+                         self for this machine.
 
 Idempotent — re-run safely after an interval change to reload the unit.
 
 ```
 dot sync setup [flags]
+```
+
+### Examples
+
+```
+  dot sync setup
+  dot sync setup --push-interval 15m --owner self
 ```
 
 ### Options
@@ -41,7 +49,7 @@ dot sync setup [flags]
       --dry-run         show what would be done without executing
       --home string     override home directory (for admin setup of other users)
       --store string    sync store under <workspace>/.dotfiles/<store>/; "sync" is the cloud mirror, "peer" the other Mac (default "sync")
-  -V, --verbose         Show rsync progress output
+  -V, --verbose         show rsync progress output
       --yes             unattended mode (skip all prompts)
 ```
 

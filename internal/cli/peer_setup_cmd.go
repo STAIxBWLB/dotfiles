@@ -27,7 +27,8 @@ host-path list.
 Use a host name that survives a network change: an SSH config alias that
 maps to the other machine's private-network address (for example its
 Cloudflare WARP IPv6, with HostKeyAlias), so the profile target does not
-change when the address does. A laptop needs one that works without an inbound port.`,
+change when the address does. A laptop needs one that works without an
+inbound port.`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			p := printerFrom(c)
 			if strings.TrimSpace(host) == "" {

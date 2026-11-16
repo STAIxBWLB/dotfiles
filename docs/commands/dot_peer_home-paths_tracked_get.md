@@ -6,6 +6,12 @@ Read the tracked peer host-path list
 dot peer home-paths tracked get [flags]
 ```
 
+### Examples
+
+```
+  dot peer home-paths tracked get --json
+```
+
 ### Options
 
 ```
@@ -27,5 +33,5 @@ dot peer home-paths tracked get [flags]
 
 ### SEE ALSO
 
-* [dot peer home-paths tracked](dot_peer_home-paths_tracked.md)	 - Read or replace the tracked host-path list (deletes propagate, conflicts quarantine)
+* [dot peer home-paths tracked](dot_peer_home-paths_tracked.md)	 - Read or replace the tracked host-path list
 

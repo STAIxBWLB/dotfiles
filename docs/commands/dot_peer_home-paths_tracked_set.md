@@ -6,6 +6,12 @@ Replace the tracked peer host-path list from stdin
 dot peer home-paths tracked set [flags]
 ```
 
+### Examples
+
+```
+  dot peer home-paths tracked set < tracked.txt
+```
+
 ### Options
 
 ```
@@ -27,5 +33,5 @@ dot peer home-paths tracked set [flags]
 
 ### SEE ALSO
 
-* [dot peer home-paths tracked](dot_peer_home-paths_tracked.md)	 - Read or replace the tracked host-path list (deletes propagate, conflicts quarantine)
+* [dot peer home-paths tracked](dot_peer_home-paths_tracked.md)	 - Read or replace the tracked host-path list
 

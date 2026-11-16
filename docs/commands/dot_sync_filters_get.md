@@ -6,6 +6,13 @@ Read one editable filter file
 dot sync filters get <include|exclude|ignore|allow> [flags]
 ```
 
+### Examples
+
+```
+  dot sync filters get exclude
+  dot sync filters get allow --json
+```
+
 ### Options
 
 ```
@@ -23,11 +30,11 @@ dot sync filters get <include|exclude|ignore|allow> [flags]
       --filter-mode string   override config filter mode for this run: include or exclude
       --home string          override home directory (for admin setup of other users)
       --store string         sync store under <workspace>/.dotfiles/<store>/; "sync" is the cloud mirror, "peer" the other Mac (default "sync")
-  -V, --verbose              Show rsync progress output
+  -V, --verbose              show rsync progress output
       --yes                  unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO
 
-* [dot sync filters](dot_sync_filters.md)	 - Show the effective filter layers or reset them from templates
+* [dot sync filters](dot_sync_filters.md)	 - Show or reset the effective filter layers
 

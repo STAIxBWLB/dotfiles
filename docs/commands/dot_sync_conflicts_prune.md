@@ -6,6 +6,13 @@ Remove old conflict backups from selected local/remote trees
 dot sync conflicts prune [flags]
 ```
 
+### Examples
+
+```
+  dot sync conflicts prune --older-than 7
+  dot sync conflicts prune --all --remote-only --store=peer
+```
+
 ### Options
 
 ```
@@ -24,7 +31,7 @@ dot sync conflicts prune [flags]
       --dry-run         show what would be done without executing
       --home string     override home directory (for admin setup of other users)
       --store string    sync store under <workspace>/.dotfiles/<store>/; "sync" is the cloud mirror, "peer" the other Mac (default "sync")
-  -V, --verbose         Show rsync progress output
+  -V, --verbose         show rsync progress output
       --yes             unattended mode (skip all prompts)
 ```
 

@@ -20,13 +20,10 @@ This list contains relative paths the operator added to the workspace-local
 sync config. Use it for owned-but-shared-out folders that must never be
 propagated through the workspace-authoritative mirror flow.
 
-The list feeds a per-run dynamic excludes file passed to rsync.
-
-  dot sync shared             # alias for list
-  dot sync shared list
-  dot sync shared add <path>...
-  dot sync shared remove <path>...
-  dot sync shared clear`,
+The list feeds a per-run dynamic excludes file passed to rsync. Without a
+subcommand it lists, the same as 'list'.`,
+		Example: `  dot sync shared list
+  dot sync shared add projects/shared-with-partner`,
 		RunE: runSyncSharedList,
 	}
 	cmd.AddCommand(
@@ -45,7 +42,7 @@ The list feeds a per-run dynamic excludes file passed to rsync.
 		&cobra.Command{
 			Use:          "remove <path>...",
 			Aliases:      []string{"rm"},
-			Short:        "Remove one or more paths from the manual shared-excludes list",
+			Short:        "Remove paths from the shared-excludes list",
 			Args:         cobra.MinimumNArgs(1),
 			RunE:         runSyncSharedRemove,
 			SilenceUsage: true,

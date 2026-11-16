@@ -1,6 +1,6 @@
 ## dot peer git realign
 
-Move HEAD and index to the descendant commit the files already match
+Move HEAD to the descendant commit the files match
 
 ### Synopsis
 
@@ -82,6 +82,13 @@ before those candidates are compared, so it is judged with the commit there
 
 ```
 dot peer git realign [--apply [--fetch]] [--rescue [--no-push]] [--candidate-refs <pattern>]... [<repo>...] [flags]
+```
+
+### Examples
+
+```
+  dot peer git realign
+  dot peer git realign --apply --fetch
 ```
 
 ### Options

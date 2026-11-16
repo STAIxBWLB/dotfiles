@@ -1,6 +1,6 @@
 ## dot peer sync
 
-Exchange workspace and host paths with the peer (both directions)
+Exchange workspace and host paths with the peer
 
 ### Synopsis
 
@@ -28,6 +28,13 @@ on a laptop.
 
 ```
 dot peer sync [flags]
+```
+
+### Examples
+
+```
+  dot peer sync
+  dot peer sync --pull-only
 ```
 
 ### Options

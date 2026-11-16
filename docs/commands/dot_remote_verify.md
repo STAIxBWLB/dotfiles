@@ -1,6 +1,6 @@
 ## dot remote verify
 
-Run a repo's gate on its exact commit in a fresh checkout on the host
+Verify an exact commit in a fresh host checkout
 
 ### Synopsis
 
@@ -17,7 +17,14 @@ remote.projects.<path>.base, or the remote's default branch. The pushed ref is
 deleted when the job ends. verify and run of one checkout exclude each other.
 
 ```
-dot remote verify [PATH] [--dirty] [-- COMMAND [ARG...]] [flags]
+dot remote verify [<path>] [--dirty] [-- <command> [<arg>...]] [flags]
+```
+
+### Examples
+
+```
+  dot remote verify
+  dot remote verify --dirty -- make test
 ```
 
 ### Options

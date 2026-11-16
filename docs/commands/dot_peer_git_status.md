@@ -6,6 +6,13 @@ Classify every workspace repo against its recorded commit
 dot peer git status [<repo>...] [flags]
 ```
 
+### Examples
+
+```
+  dot peer git status
+  dot peer git status --json
+```
+
 ### Options
 
 ```

@@ -20,21 +20,20 @@ func newSyncInboxCmd() *cobra.Command {
 re-intake of one path, or clear the imports + tombstones manifests
 entirely.
 
-  dot sync inbox                  # alias for list
-  dot sync inbox list
-  dot sync inbox forget <relpath> # next intake re-stages this path
-  dot sync inbox clear            # empty imports + tombstones`,
+Without a subcommand it lists, the same as 'list'.`,
+		Example: `  dot sync inbox list
+  dot sync inbox forget notes/todo.md`,
 		RunE: runSyncInboxList,
 	}
 	cmd.AddCommand(
 		&cobra.Command{
 			Use:   "list",
-			Short: "Show staged run-dirs, imports manifest entries, and tombstones",
+			Short: "Show staged run-dirs, imports and tombstones",
 			RunE:  runSyncInboxList,
 		},
 		&cobra.Command{
 			Use:          "forget <relpath>",
-			Short:        "Drop a path from imports.manifest so the next intake re-stages it",
+			Short:        "Drop a path so the next intake re-stages it",
 			Args:         cobra.ExactArgs(1),
 			RunE:         runSyncInboxForget,
 			SilenceUsage: true,

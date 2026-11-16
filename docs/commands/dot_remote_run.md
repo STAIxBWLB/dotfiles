@@ -1,6 +1,6 @@
 ## dot remote run
 
-Mirror a checkout to the host and run a command in a container there
+Mirror a checkout and run a command on the host
 
 ### Synopsis
 
@@ -24,7 +24,14 @@ with every capability removed before the command runs. The host must use
 cgroup v2 and let the runtime grant CAP_SYS_ADMIN with AppArmor unconfined.
 
 ```
-dot remote run [PATH] -- COMMAND [ARG...] [flags]
+dot remote run [<path>] -- <command> [<arg>...] [flags]
+```
+
+### Examples
+
+```
+  dot remote run -- make test
+  dot remote run ~/workspace/work/app -- cargo test
 ```
 
 ### Options

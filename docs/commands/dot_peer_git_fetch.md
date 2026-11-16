@@ -1,6 +1,6 @@
 ## dot peer git fetch
 
-Fetch every workspace repo's upstream, then show where each repo stands
+Fetch every repo's upstream, then show where it stands
 
 ### Synopsis
 
@@ -18,6 +18,13 @@ repo and does not stop the others. Under --dry-run nothing is fetched.
 
 ```
 dot peer git fetch [<repo>...] [flags]
+```
+
+### Examples
+
+```
+  dot peer git fetch
+  dot peer git fetch work/dev/app
 ```
 
 ### Options

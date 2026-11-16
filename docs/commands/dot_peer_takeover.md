@@ -1,6 +1,6 @@
 ## dot peer takeover
 
-Take the coordinator role while the other Mac is away (unplanned switch)
+Take the coordinator role while the other Mac is away
 
 ### Synopsis
 
@@ -29,6 +29,12 @@ After the switch, fetch and realign repos with `dot peer git realign --apply`.
 
 ```
 dot peer takeover [flags]
+```
+
+### Examples
+
+```
+  dot peer takeover
 ```
 
 ### Options

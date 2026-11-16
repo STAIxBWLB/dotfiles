@@ -1,9 +1,15 @@
 ## dot sync inbox forget
 
-Drop a path from imports.manifest so the next intake re-stages it
+Drop a path so the next intake re-stages it
 
 ```
 dot sync inbox forget <relpath> [flags]
+```
+
+### Examples
+
+```
+  dot sync inbox forget notes/todo.md
 ```
 
 ### Options
@@ -21,7 +27,7 @@ dot sync inbox forget <relpath> [flags]
       --dry-run         show what would be done without executing
       --home string     override home directory (for admin setup of other users)
       --store string    sync store under <workspace>/.dotfiles/<store>/; "sync" is the cloud mirror, "peer" the other Mac (default "sync")
-  -V, --verbose         Show rsync progress output
+  -V, --verbose         show rsync progress output
       --yes             unattended mode (skip all prompts)
 ```
 

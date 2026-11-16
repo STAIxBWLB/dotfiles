@@ -15,7 +15,7 @@ import (
 func newSyncPullCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pull",
-		Short: "Restore/update baseline-tracked mirror payloads into the workspace",
+		Short: "Restore baseline-tracked mirror payloads",
 		Long: `Pull applies mirror-side changes only for paths listed in
 .dotfiles/sync/baseline.manifest. Baseline is expected to be tracked in
 Git, so a second machine can git pull the index and then restore binary
@@ -216,17 +216,16 @@ func newSyncFetchCmd() *cobra.Command {
 		Long: `Fetch pulls the named files or directories (workspace-relative paths)
 from the sync target into the workspace — the on-demand entry point when a
 specific file, folder, program, or event needs the binaries backing a path
-without running a full pull. Other tools can shell out to it:
-
-  dot sync fetch projects/oda/koica-tiu/06-proposal
-  dot sync fetch admin/scan.pdf research/data --dry-run
+without running a full pull. Other tools can shell out to it.
 
 Safety: newer local files are never overwritten (--update), overwrites are
 backed up under .sync-conflicts/, nothing is deleted, and the exclude layers
 still apply — .git and non-allowed secrets can never be imported. Paths
 missing on the target, and paths a sync filter keeps out (submodules, .git,
-secrets, excludes, shared folders), are reported and skipped. An absolute path is accepted
-when it lies under the workspace.`,
+secrets, excludes, shared folders), are reported and skipped. An absolute path
+is accepted when it lies under the workspace.`,
+		Example: `  dot sync fetch projects/oda/koica-tiu/06-proposal
+  dot sync fetch admin/scan.pdf research/data --dry-run`,
 		Args:         cobra.MinimumNArgs(1),
 		RunE:         runSyncFetch,
 		SilenceUsage: true,

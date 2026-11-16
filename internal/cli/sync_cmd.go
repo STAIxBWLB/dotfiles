@@ -76,20 +76,21 @@ Workspace is authoritative. Push sends local creates and updates to the
 target; pull restores baseline-tracked payloads from it. New target-origin
 files still stage into inbox/gdrive for manual routing.
 
-	Getting started:
-	  dot sync setup       Check rsync and manage the opt-in schedulers
-	  dot sync target      Show or set the sync target
-	  dot sync resume      Clear the paused gate
-	  dot sync push        Push workspace → target (use --mode for clean/force)
-	  dot sync pull        Restore baseline-tracked payloads from target
+Getting started:
+  dot sync setup       Check rsync and manage the opt-in schedulers
+  dot sync target      Show or set the sync target
+  dot sync resume      Clear the paused gate
+  dot sync push        Push workspace → target (use --mode for clean/force)
+  dot sync pull        Restore baseline-tracked payloads from target
 
-	Maintenance:
-	  dot sync status      Show filters, last pull/push/intake, conflicts, paused state, scheduler
-	  dot sync filters     Show effective filter layers or reset them from templates
-	  dot sync conflicts   List or prune timestamped backup directories
-	  dot sync names       Plan or apply staged NFD filename normalization
-	  dot sync pause       Stop managed schedulers + set paused gate
-	  dot sync resume      Clear paused gate and re-arm installed schedulers
+Maintenance:
+  dot sync status      Show filters, last sync times, conflicts, paused state
+                       and scheduler
+  dot sync filters     Show effective filter layers or reset them
+  dot sync conflicts   List or prune timestamped backup directories
+  dot sync names       Plan or apply staged NFD filename normalization
+  dot sync pause       Stop managed schedulers and set the paused gate
+  dot sync resume      Clear the paused gate and re-arm installed schedulers
 
 Run without a subcommand to print this help.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -99,7 +100,7 @@ Run without a subcommand to print this help.`,
 	}
 	cmd.PersistentFlags().String("store", syncer.DefaultProfile,
 		"sync store under <workspace>/.dotfiles/<store>/; \"sync\" is the cloud mirror, \"peer\" the other Mac")
-	cmd.PersistentFlags().BoolP("verbose", "V", false, "Show rsync progress output")
+	cmd.PersistentFlags().BoolP("verbose", "V", false, "show rsync progress output")
 	cmd.AddCommand(
 		newSyncPullCmd(),
 		newSyncPushCmd(),

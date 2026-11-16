@@ -1,6 +1,6 @@
 ## dot remote prune
 
-List, and with --yes remove, what runs left behind on the host
+List or remove what runs left behind on the host
 
 ### Synopsis
 
@@ -16,6 +16,13 @@ never removed: their out/ may be the only copy of what the job made.
 
 ```
 dot remote prune [--yes] [flags]
+```
+
+### Examples
+
+```
+  dot remote prune
+  dot remote prune --yes
 ```
 
 ### Options

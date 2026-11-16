@@ -1,6 +1,6 @@
 ## dot remote src
 
-Clone or analyze third-party source on the host, never on this machine
+Clone or analyze third-party source on the host
 
 ### Synopsis
 
@@ -10,13 +10,17 @@ src_root/NAME with it. Untrusted code is cloned and analyzed only on the host:
 nothing local is sent, nothing comes back but output, and no cache volume is
 mounted, so it cannot reach the caches trusted builds reuse.
 
-  dot remote src -- git clone https://example.com/x.git x
-  dot remote src x -- rg -n unsafe
-
 A NAME the host has no clone of exits 66 (EX_NOINPUT).
 
 ```
-dot remote src [NAME] -- COMMAND [ARG...] [flags]
+dot remote src [<name>] -- <command> [<arg>...] [flags]
+```
+
+### Examples
+
+```
+  dot remote src -- git clone https://example.com/x.git x
+  dot remote src x -- rg -n unsafe
 ```
 
 ### Options

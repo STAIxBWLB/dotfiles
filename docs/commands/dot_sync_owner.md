@@ -50,6 +50,13 @@ config resets the baseline. Point the old alias at the new host name in
 dot sync owner [--rename <old> <new>] [flags]
 ```
 
+### Examples
+
+```
+  dot sync owner --set-self
+  dot sync owner --rename old-mac new-mac
+```
+
 ### Options
 
 ```
@@ -70,7 +77,7 @@ dot sync owner [--rename <old> <new>] [flags]
       --dry-run         show what would be done without executing
       --home string     override home directory (for admin setup of other users)
       --store string    sync store under <workspace>/.dotfiles/<store>/; "sync" is the cloud mirror, "peer" the other Mac (default "sync")
-  -V, --verbose         Show rsync progress output
+  -V, --verbose         show rsync progress output
       --yes             unattended mode (skip all prompts)
 ```
 

@@ -6,6 +6,12 @@ Plan or apply Unicode NFD filename normalization
 dot sync names normalize [flags]
 ```
 
+### Examples
+
+```
+  dot sync names normalize
+```
+
 ### Options
 
 ```
@@ -22,11 +28,11 @@ dot sync names normalize [flags]
       --filter-mode string   override config filter mode for this run: include or exclude
       --home string          override home directory (for admin setup of other users)
       --store string         sync store under <workspace>/.dotfiles/<store>/; "sync" is the cloud mirror, "peer" the other Mac (default "sync")
-  -V, --verbose              Show rsync progress output
+  -V, --verbose              show rsync progress output
       --yes                  unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO
 
-* [dot sync names](dot_sync_names.md)	 - Maintain workspace filenames (Unicode NFD, trailing whitespace)
+* [dot sync names](dot_sync_names.md)	 - Maintain workspace filenames
 

@@ -21,13 +21,9 @@ workspace, push backups under the mirror. For SSH targets, push backups are
 listed and pruned on the remote target under <target>/.sync-conflicts; the
 peer profile also includes ~/.dot-peer-conflicts from its host-path pass.
 
-  dot sync conflicts                       # alias for list
-  dot sync conflicts list
-  dot sync conflicts prune                 # remove backups older than 30 days
-  dot sync conflicts prune --older-than 7
-  dot sync conflicts prune --all           # remove every backup
-  dot sync conflicts prune --all --remote-only --store=peer
-                                             # preserve this machine's backups`,
+Without a subcommand it lists, the same as 'list'.`,
+		Example: `  dot sync conflicts list
+  dot sync conflicts prune --older-than 7`,
 		RunE: runSyncConflictsList,
 	}
 	prune := &cobra.Command{

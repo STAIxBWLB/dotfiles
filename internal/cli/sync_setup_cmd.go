@@ -19,7 +19,7 @@ var preferredMachineName = syncer.PreferredMachineName
 func newSyncSetupCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "setup",
-		Short: "Install rsync (if missing) and manage the opt-in sync schedulers",
+		Short: "Install rsync and manage the opt-in sync schedulers",
 		Long: `One-time setup. Verifies rsync is available (offers to install via brew/apt
 if not), then configures the platform's user-scheduler (launchd LaunchAgent on
 macOS, systemd user-timer on Linux). Automatic sync is off by default; pass an
@@ -29,7 +29,8 @@ interval flag to opt in.
   --pull-interval=DUR    Deploy automatic ` + "`dot sync pull --mode=MODE`" + `.
   --push-mode=MODE       Automatic push mode: clean or force (default clean).
   --pull-mode=MODE       Automatic intake mode: clean or force (default clean).
-  --owner=NAME           Record the machine allowed to run this scheduler; use self for this machine.
+  --owner=NAME           Record the machine allowed to run this scheduler; use
+                         self for this machine.
 
 Idempotent — re-run safely after an interval change to reload the unit.`,
 		RunE:         runSyncSetup,

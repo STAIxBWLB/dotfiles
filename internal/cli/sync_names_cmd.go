@@ -18,7 +18,7 @@ const nfdCLIPlanLimit = 20
 func newSyncNamesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "names",
-		Short: "Maintain workspace filenames (Unicode NFD, trailing whitespace)",
+		Short: "Maintain workspace filenames",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()

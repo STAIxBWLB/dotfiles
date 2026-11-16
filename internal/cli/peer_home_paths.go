@@ -55,7 +55,7 @@ func newPeerHomePathsCmd() *cobra.Command {
 func newPeerHomeTrackedCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "tracked",
-		Short:        "Read or replace the tracked host-path list (deletes propagate, conflicts quarantine)",
+		Short:        "Read or replace the tracked host-path list",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE:         func(cmd *cobra.Command, _ []string) error { return cmd.Help() },

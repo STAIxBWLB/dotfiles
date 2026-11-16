@@ -6,6 +6,13 @@ Show local peer profile and scheduler status
 dot peer status [flags]
 ```
 
+### Examples
+
+```
+  dot peer status
+  dot peer status --json
+```
+
 ### Options
 
 ```

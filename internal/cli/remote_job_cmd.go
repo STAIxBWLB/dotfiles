@@ -16,7 +16,7 @@ import (
 func newRemoteJobCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "job",
-		Short: "Run file-in, file-out jobs on a host's job profile, or locally when it is busy",
+		Short: "Run file-in, file-out jobs remotely or locally",
 		Long: `A job sends named input files to the host, runs a command in an isolated job
 directory there, and brings the files it wrote back. When the host cannot take
 the job, the same command runs on this machine under 'dot admit'.
@@ -32,7 +32,7 @@ with its own image: build or pull it with 'dot remote setup --profile P'.`,
 
 func newRemoteJobRunCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "run -o DIR [-i FILE]... [--name N] [--remote-only | --local-only] -- COMMAND [ARG...]",
+		Use:   "run -o <dir> [-i <file>]... [--name <name>] [--remote-only|--local-only] -- <command> [<arg>...]",
 		Short: "Stage files, run a command in a job directory, collect out/",
 		Long: `Stage each -i FILE in the job's in/, run COMMAND with the job directory as its
 working directory, and collect out/ into -o DIR. Write COMMAND with relative

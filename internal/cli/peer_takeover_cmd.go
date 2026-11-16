@@ -12,7 +12,7 @@ import (
 func newPeerTakeoverCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "takeover",
-		Short: "Take the coordinator role while the other Mac is away (unplanned switch)",
+		Short: "Take the coordinator role while the other Mac is away",
 		Args:  cobra.NoArgs,
 		Long: `Unplanned coordinator switch, run on the Mac that becomes active while
 the current coordinator is unreachable:

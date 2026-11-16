@@ -1,6 +1,6 @@
 ## dot sync pull
 
-Restore/update baseline-tracked mirror payloads into the workspace
+Restore baseline-tracked mirror payloads
 
 ### Synopsis
 
@@ -17,6 +17,13 @@ backing up the local version into .sync-conflicts/<ts>/from-workspace/.
 
 ```
 dot sync pull [flags]
+```
+
+### Examples
+
+```
+  dot sync pull
+  dot sync pull --mode clean
 ```
 
 ### Options
@@ -37,7 +44,7 @@ dot sync pull [flags]
       --dry-run         show what would be done without executing
       --home string     override home directory (for admin setup of other users)
       --store string    sync store under <workspace>/.dotfiles/<store>/; "sync" is the cloud mirror, "peer" the other Mac (default "sync")
-  -V, --verbose         Show rsync progress output
+  -V, --verbose         show rsync progress output
       --yes             unattended mode (skip all prompts)
 ```
 

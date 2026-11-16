@@ -6,6 +6,12 @@ Set the Paused gate so pull/push/sync refuse to run
 dot sync pause [flags]
 ```
 
+### Examples
+
+```
+  dot sync pause
+```
+
 ### Options
 
 ```
@@ -21,7 +27,7 @@ dot sync pause [flags]
       --dry-run         show what would be done without executing
       --home string     override home directory (for admin setup of other users)
       --store string    sync store under <workspace>/.dotfiles/<store>/; "sync" is the cloud mirror, "peer" the other Mac (default "sync")
-  -V, --verbose         Show rsync progress output
+  -V, --verbose         show rsync progress output
       --yes             unattended mode (skip all prompts)
 ```
 
