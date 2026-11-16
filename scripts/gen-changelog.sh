@@ -21,7 +21,7 @@ dir=docs/releases
       echo
       echo "## $tag"
       echo
-      # Drop a missing final newline difference and trailing blank lines.
-      sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$dir/$tag.md"
+      # $(...) strips every trailing newline; printf adds exactly one back.
+      printf '%s\n' "$(cat "$dir/$tag.md")"
     done
 } >"$out"
