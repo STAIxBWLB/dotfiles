@@ -19,7 +19,7 @@ import (
 func newAppsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "apps",
-		Short: "macOS app install and settings backup/restore",
+		Short: "Install macOS apps and back up their settings",
 		Long: `Manage macOS cask applications and their user settings.
 
 Subcommands:
@@ -122,7 +122,7 @@ func runAppsList(cmd *cobra.Command, _ []string) error {
 func newAppsInstallCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "install [token...]",
-		Short: "Install macOS cask apps (interactive by default; args skip the picker)",
+		Short: "Install macOS cask apps",
 		Long: `Install macOS cask applications.
 
 Modes:
@@ -131,8 +131,10 @@ Modes:
   - --recommended         : install the catalog's recommended set.
   - --all                 : install every cask in the catalog.
   - --select              : open the checkbox picker even when state is set.
-  - no args + interactive : open the checkbox picker, preselected from saved state.
-  - no args + --yes       : use saved state (falls back to catalog recommended).
+  - no args + interactive : open the checkbox picker, preselected from saved
+                            state.
+  - no args + --yes       : use saved state (falls back to catalog
+                            recommended).
 
 Casks whose .app already exists under /Applications (e.g. installed via the
 App Store or downloaded directly) are skipped by default. Pass --force to
@@ -143,12 +145,12 @@ state file so subsequent 'dot apply' runs honor it.`,
 		Args: cobra.ArbitraryArgs,
 		RunE: runAppsInstall,
 	}
-	c.Flags().Bool("defaults", false, "Install the catalog's default set regardless of saved state")
-	c.Flags().Bool("recommended", false, "Install the catalog's recommended set regardless of saved state")
-	c.Flags().Bool("all", false, "Install every app in the catalog")
-	c.Flags().Bool("select", false, "Force the interactive picker even when state has a list")
-	c.Flags().Bool("no-save", false, "Do not persist the interactive selection back to state")
-	c.Flags().Bool("force", false, "Reinstall even when the .app already exists under /Applications")
+	c.Flags().Bool("defaults", false, "install the catalog's default set regardless of saved state")
+	c.Flags().Bool("recommended", false, "install the catalog's recommended set regardless of saved state")
+	c.Flags().Bool("all", false, "install every app in the catalog")
+	c.Flags().Bool("select", false, "force the interactive picker even when state has a list")
+	c.Flags().Bool("no-save", false, "do not persist the interactive selection back to state")
+	c.Flags().Bool("force", false, "reinstall even when the .app already exists under /Applications")
 	return c
 }
 
@@ -265,8 +267,8 @@ func newAppsStatusCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE:  runAppsStatus,
 	}
-	c.Flags().String("from", "", "Backup root to inspect (overrides configured BackupDir)")
-	c.Flags().String("host", "", "Hostname to inspect (default: this host)")
+	c.Flags().String("from", "", "backup root to inspect (overrides configured BackupDir)")
+	c.Flags().String("host", "", "hostname to inspect (default: this host)")
 	return c
 }
 

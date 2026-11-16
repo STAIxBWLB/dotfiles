@@ -22,7 +22,7 @@ import (
 func newWatchdogSetupCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "setup",
-		Short: "Install the watchdog reaper agent, WARP heal daemon, monit supervision, Beszel agent, and optional power hardening (macOS)",
+		Short: "Install the watchdog agents and supervision (macOS)",
 		Long: `Install the watchdog on this Mac: the user-domain reaper LaunchAgent,
 plus the root WARP heal LaunchDaemon when watchdog.warp is enabled, the
 monit supervision agent when watchdog.monit is enabled, and the Beszel
@@ -212,7 +212,7 @@ func runWatchdogStatus(cmd *cobra.Command, _ []string) error {
 func newWatchdogNotifyCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:          "notify <level> <message>",
-		Short:        "Send a watchdog alert (monit invokes this; run it by hand to test alerts)",
+		Short:        "Send a watchdog alert (monit runs this)",
 		Args:         cobra.ExactArgs(2),
 		RunE:         runWatchdogNotify,
 		SilenceUsage: true,

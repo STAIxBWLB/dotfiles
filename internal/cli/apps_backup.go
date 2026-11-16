@@ -21,7 +21,7 @@ import (
 func newAppsBackupCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "backup [token...]",
-		Short: "Advanced: snapshot only macOS app settings (dot backup is the front door)",
+		Short: "Snapshot only macOS app settings",
 		Long: `Back up macOS application settings listed in the embedded manifest.
 
 Modes:
@@ -35,14 +35,15 @@ Modes:
                             saved selection) come pre-ticked. You can also
                             type extra tokens; each is validated against the
                             manifest before being accepted.
-  - no args + --yes       : use saved state (falls back to manifest ∩ installed).`,
+  - no args + --yes       : use saved state (falls back to manifest ∩
+                            installed).`,
 		Args: cobra.ArbitraryArgs,
 		RunE: runAppsBackup,
 	}
-	c.Flags().String("to", "", "Backup root (overrides configured BackupDir)")
-	c.Flags().Bool("all", false, "Back up every manifest entry (default: manifest ∩ installed casks)")
-	c.Flags().Bool("select", false, "Force the interactive picker even when state has a list")
-	c.Flags().Bool("no-save", false, "Do not persist the interactive selection back to state")
+	c.Flags().String("to", "", "backup root (overrides configured BackupDir)")
+	c.Flags().Bool("all", false, "back up every manifest entry (default: manifest ∩ installed casks)")
+	c.Flags().Bool("select", false, "force the interactive picker even when state has a list")
+	c.Flags().Bool("no-save", false, "do not persist the interactive selection back to state")
 	return c
 }
 
@@ -319,13 +320,13 @@ func splitCommaList(s string) []string {
 func newAppsRestoreCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "restore [token...]",
-		Short: "Advanced: restore only macOS app settings (dot restore is the front door)",
+		Short: "Restore only macOS app settings",
 		Args:  cobra.ArbitraryArgs,
 		RunE:  runAppsRestore,
 	}
-	c.Flags().String("from", "", "Backup root (overrides configured BackupDir)")
-	c.Flags().String("host", "", "Source hostname to restore from (default: this host)")
-	c.Flags().Bool("all", false, "Restore every manifest entry")
+	c.Flags().String("from", "", "backup root (overrides configured BackupDir)")
+	c.Flags().String("host", "", "source hostname to restore from (default: this host)")
+	c.Flags().Bool("all", false, "restore every manifest entry")
 	return c
 }
 

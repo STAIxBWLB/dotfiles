@@ -23,29 +23,36 @@ commands (dot profile restore / dot ai restore) to mix versions.
 dot restore [flags]
 ```
 
+### Examples
+
+```
+  dot restore
+  dot restore --scope profile --apply
+```
+
 ### Options
 
 ```
-      --apply             Run 'dot apply' after the profile restore
-      --from string       Backup root (overrides configured BackupRoot)
+      --apply             run 'dot apply' after the profile restore
+      --from string       backup root (overrides configured BackupRoot)
   -h, --help              help for restore
-      --host string       Source hostname to restore from (default: this host)
-      --include-age-key   Restore ~/.ssh/age_key* from the profile snapshot
-      --include-auth      Restore AI auth tokens from the AI snapshot
-      --scope string      Comma-separated domains to restore (profile,apps,ai,secrets)
-      --version string    Snapshot version for selected profile/AI domains (default: latest; must exist in each selected domain)
+      --host string       source hostname to restore from (default: this host)
+      --include-age-key   restore ~/.ssh/age_key* from the profile snapshot
+      --include-auth      restore AI auth tokens from the AI snapshot
+      --scope string      comma-separated domains to restore (profile,apps,ai,secrets)
+      --version string    snapshot version for selected profile/AI domains (default: latest; must exist in each selected domain)
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii           Use ASCII markers regardless of locale
-      --color string    Color output: auto, always or never (default "auto")
-      --config string   Path to custom config YAML
-      --dry-run         Show what would be done without executing
-      --home string     Override home directory (for admin setup of other users)
-      --verbose         Show library and debug logs on stderr
-      --yes             Unattended mode (skip all prompts)
+      --ascii           use ASCII markers regardless of locale
+      --color string    color output: auto, always or never (default "auto")
+      --config string   path to custom config YAML
+      --dry-run         show what would be done without executing
+      --home string     override home directory (for admin setup of other users)
+      --verbose         show library and debug logs on stderr
+      --yes             unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO

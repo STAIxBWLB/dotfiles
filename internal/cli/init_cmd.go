@@ -18,23 +18,24 @@ func newInitCmd() *cobra.Command {
 		Short: "Interactive setup for dot",
 		Long: `Collect user preferences and save them to the dot state file.
 
-Use --from to import settings from another machine's exported config:
-  dot init --from ~/workspace/secrets/dotfiles-config.yaml
-
-Use --check-only to scan the environment without writing anything, or
+Use --from to import settings from another machine's exported config. Use
+--check-only to scan the environment without writing anything, or
 --detect to write a config generated from the detected system without
 prompts (--force overwrites an existing one).`,
+		Example: `  dot init
+  dot init --from ~/workspace/secrets/dotfiles-config.yaml
+  dot init --detect`,
 		RunE: runInit,
 	}
-	cmd.Flags().String("from", "", "Import settings from an exported config file (identity & preferences as defaults)")
+	cmd.Flags().String("from", "", "import settings from an exported config file (identity & preferences as defaults)")
 	addInitDetectFlags(cmd)
 	return cmd
 }
 
 func addInitDetectFlags(cmd *cobra.Command) {
-	cmd.Flags().Bool("check-only", false, "Only run environment checks, don't write config")
-	cmd.Flags().Bool("detect", false, "Write a config generated from the detected system, without prompts")
-	cmd.Flags().Bool("force", false, "With --detect, overwrite an existing config file")
+	cmd.Flags().Bool("check-only", false, "only run environment checks, don't write config")
+	cmd.Flags().Bool("detect", false, "write a config generated from the detected system, without prompts")
+	cmd.Flags().Bool("force", false, "with --detect, overwrite an existing config file")
 }
 
 func runInit(cmd *cobra.Command, _ []string) error {

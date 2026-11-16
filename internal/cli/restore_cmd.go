@@ -43,13 +43,13 @@ commands (dot profile restore / dot ai restore) to mix versions.`,
 		Args: cobra.NoArgs,
 		RunE: runOnestopRestore,
 	}
-	c.Flags().String("from", "", "Backup root (overrides configured BackupRoot)")
-	c.Flags().String("host", "", "Source hostname to restore from (default: this host)")
-	c.Flags().String("version", "", "Snapshot version for selected profile/AI domains (default: latest; must exist in each selected domain)")
-	c.Flags().String("scope", "", "Comma-separated domains to restore (profile,apps,ai,secrets)")
-	addAgeKeyFlag(c, "Restore ~/.ssh/age_key* from the profile snapshot")
-	c.Flags().Bool("include-auth", false, "Restore AI auth tokens from the AI snapshot")
-	c.Flags().Bool("apply", false, "Run 'dot apply' after the profile restore")
+	c.Flags().String("from", "", "backup root (overrides configured BackupRoot)")
+	c.Flags().String("host", "", "source hostname to restore from (default: this host)")
+	c.Flags().String("version", "", "snapshot version for selected profile/AI domains (default: latest; must exist in each selected domain)")
+	c.Flags().String("scope", "", "comma-separated domains to restore (profile,apps,ai,secrets)")
+	addAgeKeyFlag(c, "restore ~/.ssh/age_key* from the profile snapshot")
+	c.Flags().Bool("include-auth", false, "restore AI auth tokens from the AI snapshot")
+	c.Flags().Bool("apply", false, "run 'dot apply' after the profile restore")
 	return c
 }
 

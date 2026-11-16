@@ -45,10 +45,10 @@ Also available as 'dotfiles' for back-compat.`,
 	root.Version = resolvedVer + " (" + resolvedCommit + ")"
 
 	// Persistent flags for all subcommands
-	root.PersistentFlags().Bool("yes", false, "Unattended mode (skip all prompts)")
-	root.PersistentFlags().Bool("dry-run", false, "Show what would be done without executing")
-	root.PersistentFlags().String("config", "", "Path to custom config YAML")
-	root.PersistentFlags().String("home", "", "Override home directory (for admin setup of other users)")
+	root.PersistentFlags().Bool("yes", false, "unattended mode (skip all prompts)")
+	root.PersistentFlags().Bool("dry-run", false, "show what would be done without executing")
+	root.PersistentFlags().String("config", "", "path to custom config YAML")
+	root.PersistentFlags().String("home", "", "override home directory (for admin setup of other users)")
 
 	// Existing commands
 	root.AddCommand(newApplyCmd())
@@ -118,6 +118,7 @@ Also available as 'dotfiles' for back-compat.`,
 	configurePresentation(root)
 	configureUsage(root)
 	configureRootGroups(root)
+	applyHelpMetadata(root)
 	return root
 }
 
@@ -235,10 +236,10 @@ func scopeProfileFlags(root *cobra.Command) {
 		for _, sub := range c.Commands() {
 			name := strings.TrimSpace(path + " " + sub.Name())
 			if readers[name] {
-				sub.Flags().String("profile", "", "Profile name (minimal, full, server)")
+				sub.Flags().String("profile", "", "profile name (minimal, full, server)")
 				switch name {
 				case "apply", "diff":
-					sub.Flags().StringSlice("module", nil, "Run specific modules only")
+					sub.Flags().StringSlice("module", nil, "run specific modules only")
 				}
 			}
 			walk(sub, name)
@@ -251,9 +252,9 @@ func scopeProfileFlags(root *cobra.Command) {
 // handlers. Local verbose flags keep their existing names and meanings.
 func configurePresentation(root *cobra.Command) {
 	mode := ui.ColorAuto
-	root.PersistentFlags().Bool("ascii", false, "Use ASCII markers regardless of locale")
-	root.PersistentFlags().Var(&mode, "color", "Color output: auto, always or never")
-	root.PersistentFlags().Bool("verbose", false, "Show library and debug logs on stderr")
+	root.PersistentFlags().Bool("ascii", false, "use ASCII markers regardless of locale")
+	root.PersistentFlags().Var(&mode, "color", "color output: auto, always or never")
+	root.PersistentFlags().Bool("verbose", false, "show library and debug logs on stderr")
 	bindPresentation(root)
 	configureHelp(root)
 }

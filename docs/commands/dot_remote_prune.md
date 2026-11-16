@@ -28,15 +28,15 @@ dot remote prune [--yes] [flags]
 ### Options inherited from parent commands
 
 ```
-      --ascii           Use ASCII markers regardless of locale
-      --color string    Color output: auto, always or never (default "auto")
-      --config string   Path to custom config YAML
-      --dry-run         Show what would be done without executing
-      --home string     Override home directory (for admin setup of other users)
+      --ascii           use ASCII markers regardless of locale
+      --color string    color output: auto, always or never (default "auto")
+      --config string   path to custom config YAML
+      --dry-run         show what would be done without executing
+      --home string     override home directory (for admin setup of other users)
       --host string     remote host to use (default: the matching project's host, then remote.default)
-      --verbose         Show library and debug logs on stderr
+      --verbose         show library and debug logs on stderr
       --wait duration   retry a held lease for this long before deferring (default 0: defer at once)
-      --yes             Unattended mode (skip all prompts)
+      --yes             unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO

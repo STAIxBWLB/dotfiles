@@ -21,8 +21,9 @@ import (
 func newProfileCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "profile",
-		Short: "Snapshot and restore dot profile state (config, app lists, secrets)",
-		Long: `Manage per-host profile snapshots under <backup-root>/profiles/<hostname>/<version>/.
+		Short: "Snapshot and restore dot profile state",
+		Long: `Manage per-host profile snapshots under
+<backup-root>/profiles/<hostname>/<version>/.
 
 Each snapshot captures:
   - config.yaml          → ~/.config/dotfiles/config.yaml
@@ -47,17 +48,18 @@ The shared backup root is resolved via --to/--from, the user state
 func newProfileRootCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "root [path]",
-		Short: "Show or set the shared backup root for profiles and app-settings",
+		Short: "Show or set the shared backup root",
 		Long: `Display or change the backup root directory.
 
-With no arguments, prints the current effective root (state → auto-detect → default).
-With a path argument, saves it to state. Use --detect to auto-discover a Dropbox
-or Google Drive secrets folder, or --reset to clear the saved value and fall back to auto-detection.`,
+With no arguments, prints the current effective root (state → auto-detect →
+default). With a path argument, saves it to state. Use --detect to
+auto-discover a Dropbox or Google Drive secrets folder, or --reset to clear the
+saved value and fall back to auto-detection.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: runProfileRoot,
 	}
-	c.Flags().Bool("detect", false, "Auto-detect Dropbox/Google Drive secrets folder and save")
-	c.Flags().Bool("reset", false, "Clear saved root (revert to auto-detect / default)")
+	c.Flags().Bool("detect", false, "auto-detect Dropbox/Google Drive secrets folder and save")
+	c.Flags().Bool("reset", false, "clear saved root (revert to auto-detect / default)")
 	return c
 }
 
@@ -226,13 +228,13 @@ func isSafePathSegment(s string) bool {
 func newProfileBackupCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "backup",
-		Short: "Advanced: snapshot only the profile (dot backup is the front door)",
+		Short: "Snapshot only the profile",
 		Args:  cobra.NoArgs,
 		RunE:  runProfileBackup,
 	}
-	c.Flags().String("to", "", "Backup root (overrides configured BackupRoot)")
-	c.Flags().String("tag", "", "Human-friendly label stored in meta.yaml")
-	addAgeKeyFlag(c, "Copy ~/.ssh/age_key* into the snapshot")
+	c.Flags().String("to", "", "backup root (overrides configured BackupRoot)")
+	c.Flags().String("tag", "", "human-friendly label stored in meta.yaml")
+	addAgeKeyFlag(c, "copy ~/.ssh/age_key* into the snapshot")
 	return c
 }
 
@@ -275,15 +277,15 @@ func runProfileBackup(cmd *cobra.Command, _ []string) error {
 func newProfileRestoreCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "restore",
-		Short: "Advanced: restore only a profile snapshot (dot restore is the front door)",
+		Short: "Restore only a profile snapshot",
 		Args:  cobra.NoArgs,
 		RunE:  runProfileRestore,
 	}
-	c.Flags().String("from", "", "Backup root (overrides configured BackupRoot)")
-	c.Flags().String("host", "", "Source hostname to restore from (default: this host)")
-	c.Flags().String("version", "", "Specific version to restore (default: latest)")
-	addAgeKeyFlag(c, "Restore ~/.ssh/age_key* from the snapshot if present")
-	c.Flags().Bool("no-state", false, "Skip copying config.yaml back to ~/.config/dotfiles/")
+	c.Flags().String("from", "", "backup root (overrides configured BackupRoot)")
+	c.Flags().String("host", "", "source hostname to restore from (default: this host)")
+	c.Flags().String("version", "", "specific version to restore (default: latest)")
+	addAgeKeyFlag(c, "restore ~/.ssh/age_key* from the snapshot if present")
+	c.Flags().Bool("no-state", false, "skip copying config.yaml back to ~/.config/dotfiles/")
 	return c
 }
 
@@ -371,8 +373,8 @@ func newProfileListCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE:  runProfileList,
 	}
-	c.Flags().String("from", "", "Backup root (overrides configured BackupRoot)")
-	c.Flags().String("host", "", "Hostname to list (default: this host)")
+	c.Flags().String("from", "", "backup root (overrides configured BackupRoot)")
+	c.Flags().String("host", "", "hostname to list (default: this host)")
 	return c
 }
 
@@ -430,13 +432,13 @@ func runProfileList(cmd *cobra.Command, _ []string) error {
 func newProfilePruneCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "prune",
-		Short: "Delete older profile snapshots (profiles/ only), keeping the newest N",
+		Short: "Delete older profile snapshots, keeping the newest N",
 		Args:  cobra.NoArgs,
 		RunE:  runProfilePrune,
 	}
-	c.Flags().String("from", "", "Backup root (overrides configured BackupRoot)")
-	c.Flags().String("host", "", "Hostname to prune (default: this host)")
-	c.Flags().Int("keep", 5, "Number of most recent snapshots to keep")
+	c.Flags().String("from", "", "backup root (overrides configured BackupRoot)")
+	c.Flags().String("host", "", "hostname to prune (default: this host)")
+	c.Flags().Int("keep", 5, "number of most recent snapshots to keep")
 	return c
 }
 

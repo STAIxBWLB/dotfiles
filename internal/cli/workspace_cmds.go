@@ -49,7 +49,7 @@ func newStopCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolP("force", "f", false, "Skip confirmation")
+	cmd.Flags().BoolP("force", "f", false, "skip confirmation")
 	return cmd
 }
 
@@ -155,8 +155,8 @@ func newRegisterCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().String("layout", "", "Default layout for this project")
-	cmd.Flags().String("theme", "", "Default theme for this project")
+	cmd.Flags().String("layout", "", "default layout for this project")
+	cmd.Flags().String("theme", "", "default theme for this project")
 	return cmd
 }
 
@@ -229,7 +229,7 @@ func newLayoutsDoctorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
 		Short: "Check the tools workspace layouts need",
-		Long:  "Check required and optional workspace tools. The final summary counts their results.\nExit 1 when a required tool is missing; optional tools produce warnings only.",
+		Long:  "Check required and optional workspace tools. The final summary counts their\nresults. Exit 1 when a required tool is missing; optional tools produce\nwarnings only.",
 		RunE:  runLayoutsDoctor,
 	}
 }

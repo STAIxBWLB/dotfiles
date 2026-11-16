@@ -20,7 +20,7 @@ import (
 func newWatchdogUninstallCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "uninstall",
-		Short: "Remove the watchdog reaper agent, WARP heal daemon, monit supervision, and Beszel agent plist (macOS)",
+		Short: "Remove the watchdog agents and supervision (macOS)",
 		Long: `Unload and remove the reaper LaunchAgent, the monit agent and monitrc,
 the Beszel agent LaunchAgent, and, when installed, the root WARP heal
 LaunchDaemon. The secrets-managed Beszel env file

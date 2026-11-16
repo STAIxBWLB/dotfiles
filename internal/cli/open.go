@@ -25,9 +25,9 @@ If the project is not registered, you'll be prompted to register it.`,
 		Args: cobra.ExactArgs(1),
 		RunE: runOpen,
 	}
-	cmd.Flags().String("layout", "", "Layout to use (dev, claude, monitor, ahub, ahub-compact); a running session keeps its layout")
-	cmd.Flags().String("theme", "", "Theme to use (default, dracula, nord, catppuccin, tokyo-night)")
-	cmd.Flags().Bool("install-optional", false, "Also install optional tools (lazygit, btop, yazi, eza)")
+	cmd.Flags().String("layout", "", "layout to use (dev, claude, monitor, ahub, ahub-compact); a running session keeps its layout")
+	cmd.Flags().String("theme", "", "theme to use (default, dracula, nord, catppuccin, tokyo-night)")
+	cmd.Flags().Bool("install-optional", false, "also install optional tools (lazygit, btop, yazi, eza)")
 	return cmd
 }
 

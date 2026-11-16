@@ -28,7 +28,7 @@ func newStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Show full environment status at a glance",
-		Long:  "Unified dashboard: system, user, modules, secrets, sync, and workspace projects.\nThe final summary counts enabled module checks; other sections are context.\nThis view exits 0 when it can produce the report, even when modules need changes.",
+		Long:  "Unified dashboard: system, user, modules, secrets, sync, and workspace projects.\nThe final summary counts enabled module checks; other sections are context.\nThis view exits 0 when it can produce the report, even when modules need\nchanges.",
 		RunE:  runStatus,
 	}
 }

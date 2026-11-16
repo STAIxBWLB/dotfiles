@@ -54,7 +54,7 @@ func newUsecaseCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "usecase",
 		Short: "Show detailed use cases and workflows",
-		Long:  "Walk through common workflows with real commands: first-time setup, daily use, sync, workspace, upgrades, troubleshooting.",
+		Long:  "Walk through common workflows with real commands: first-time setup, daily\nuse, sync, workspace, upgrades, troubleshooting.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			printUsecases(cmd)
 			return nil

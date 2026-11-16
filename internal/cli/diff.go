@@ -19,13 +19,14 @@ func newDiffCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "diff",
 		Short: "Show pending changes without applying",
-		Long: `Show what would change if 'dot apply' were run (dry-run with verbose change details).
+		Long: `Show what would change if 'dot apply' were run (dry-run with verbose change
+details).
 
 --summary lists each module's pending change descriptions without the
 commands.`,
 		RunE: runDiff,
 	}
-	cmd.Flags().Bool("summary", false, "List pending changes per module without the commands")
+	cmd.Flags().Bool("summary", false, "list pending changes per module without the commands")
 	return cmd
 }
 

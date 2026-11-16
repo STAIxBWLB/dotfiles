@@ -86,10 +86,10 @@ func newWsInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Clone configured workspace repos recursively",
-		Long: `Clone each configured workspace repo (e.g. work, vault) into <workspace.path>/<name>
-with --recurse-submodules. The repo named "vault" clones into the configured
-vault location instead (workspace.vault; detected as <workspace.path>/work/vault
-or <workspace.path>/vault when unset).
+		Long: `Clone each configured workspace repo (e.g. work, vault) into
+<workspace.path>/<name> with --recurse-submodules. The repo named "vault"
+clones into the configured vault location instead (workspace.vault; detected
+as <workspace.path>/work/vault or <workspace.path>/vault when unset).
 
 Targets that are missing, empty, or contain only a .gdrive symlink are cloned
 without --force (the .gdrive symlink is preserved). Populated targets are
@@ -98,7 +98,7 @@ repo is re-cloned.`,
 		Args: cobra.NoArgs,
 		RunE: runWsInit,
 	}
-	cmd.Flags().Bool("force", false, "Re-clone over populated targets (destructive)")
+	cmd.Flags().Bool("force", false, "re-clone over populated targets (destructive)")
 	return cmd
 }
 
@@ -248,7 +248,7 @@ func newWsRmCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE:  runWsRm,
 	}
-	cmd.Flags().BoolP("recursive", "r", false, "Remove non-empty directories")
+	cmd.Flags().BoolP("recursive", "r", false, "remove non-empty directories")
 	return cmd
 }
 

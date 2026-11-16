@@ -45,6 +45,13 @@ flags (Go -p 2 -parallel 2; browser workers=1) remain the caller's choice.
 dot admit [--class heavy|maintenance] [--wait 30m] [--json] [--ignore pressure,slot,uncovered,remote-load|all] -- <command> [args...] [flags]
 ```
 
+### Examples
+
+```
+  dot admit -- cargo test
+  dot admit --class maintenance --wait 30m -- ./reindex.sh
+```
+
 ### Options
 
 ```
@@ -52,26 +59,26 @@ dot admit [--class heavy|maintenance] [--wait 30m] [--json] [--ignore pressure,s
   -h, --help               help for admit
       --ignore string      rules to step past for this run: pressure, slot, uncovered, remote-load, or all
       --json               print the outcome as JSON
-      --no-limit-threads   Keep inherited worker settings instead of limiting Cargo, Rust tests and Go to 2
-      --project string     Checkout whose slot and working directory to use (defaults to current directory)
+      --no-limit-threads   keep inherited worker settings instead of limiting Cargo, Rust tests and Go to 2
+      --project string     checkout whose slot and working directory to use (defaults to current directory)
       --wait duration      maximum time to wait for the slot before deferring (default 30m0s)
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii           Use ASCII markers regardless of locale
-      --color string    Color output: auto, always or never (default "auto")
-      --config string   Path to custom config YAML
-      --dry-run         Show what would be done without executing
-      --home string     Override home directory (for admin setup of other users)
-      --verbose         Show library and debug logs on stderr
-      --yes             Unattended mode (skip all prompts)
+      --ascii           use ASCII markers regardless of locale
+      --color string    color output: auto, always or never (default "auto")
+      --config string   path to custom config YAML
+      --dry-run         show what would be done without executing
+      --home string     override home directory (for admin setup of other users)
+      --verbose         show library and debug logs on stderr
+      --yes             unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO
 
 * [dot](dot.md)	 - User environment & workspace management tool
 * [dot admit relax](dot_admit_relax.md)	 - Set or clear a temporary override of the admission limits
-* [dot admit status](dot_admit_status.md)	 - Show admission owners, pressure evidence, effective limits and hysteresis state
+* [dot admit status](dot_admit_status.md)	 - Show admission owners, pressure and effective limits
 

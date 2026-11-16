@@ -123,7 +123,7 @@ func newSecretsInitCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&scaffold, "scaffold", false, "Create empty ~/.config/shell/90-secrets.sh template (0600) if missing")
+	cmd.Flags().BoolVar(&scaffold, "scaffold", false, "create empty ~/.config/shell/90-secrets.sh template (0600) if missing")
 	return cmd
 }
 
@@ -131,7 +131,7 @@ func newSecretsInitCmd() *cobra.Command {
 func newSecretsRestoreCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "restore <source>",
-		Short: "Advanced: decrypt only secrets (dot restore is the front door)",
+		Short: "Decrypt only secrets",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ses, err := secretsSessionFrom(cmd)

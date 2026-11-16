@@ -13,7 +13,7 @@ import (
 func newCleanCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "clean [path]",
-		Short: "Remove junk directories (node_modules, caches, venvs) from workspace",
+		Short: "Remove junk directories from the workspace",
 		Long: `Scan for and remove directories that waste disk space and cause
 cloud sync problems: node_modules, __pycache__, .venv,
 build caches, and .DS_Store files.
@@ -27,7 +27,7 @@ The _sys/ subtree is ALWAYS protected and will never be touched.`,
 		Args:    cobra.MaximumNArgs(1),
 		RunE:    runClean,
 	}
-	cmd.Flags().Bool("all", false, "Include risky patterns (dist/, build/, out/, target/)")
+	cmd.Flags().Bool("all", false, "include risky patterns (dist/, build/, out/, target/)")
 	return cmd
 }
 
