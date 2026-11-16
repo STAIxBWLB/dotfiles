@@ -117,6 +117,7 @@ Also available as 'dotfiles' for back-compat.`,
 
 	configurePresentation(root)
 	configureUsage(root)
+	configureRootGroups(root)
 	return root
 }
 
@@ -254,13 +255,7 @@ func configurePresentation(root *cobra.Command) {
 	root.PersistentFlags().Var(&mode, "color", "Color output: auto, always or never")
 	root.PersistentFlags().Bool("verbose", false, "Show library and debug logs on stderr")
 	bindPresentation(root)
-	defaultHelp := root.HelpFunc()
-	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		if err := withPresentation(cmd, func() error { defaultHelp(cmd, args); return nil }); err != nil {
-			fmt.Fprintln(cmd.ErrOrStderr(), "dot:", err)
-			defaultHelp(cmd, args)
-		}
-	})
+	configureHelp(root)
 }
 
 // bindPresentation scopes the registered handlers rather than relying on a

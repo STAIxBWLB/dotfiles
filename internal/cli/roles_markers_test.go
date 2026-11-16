@@ -178,7 +178,7 @@ func TestApplyUsesASCIIMarkersUnderCLocale(t *testing.T) {
 func TestInvalidThemeDoesNotHideHelp(t *testing.T) {
 	t.Setenv("DOT_COLOR_THEME", "invalid")
 	out, stderr, err := runDotForTest("--help")
-	if err != nil || !strings.Contains(out, "Usage:") || !strings.Contains(stderr, "DOT_COLOR_THEME") {
+	if err != nil || !strings.Contains(out, "Usage") || !strings.Contains(stderr, "DOT_COLOR_THEME") {
 		t.Fatalf("help hidden by theme error: %q, %q, %v", out, stderr, err)
 	}
 }
@@ -194,7 +194,7 @@ func TestInvalidThemeWarnsAndRunsRunAndRunECommands(t *testing.T) {
 	}{
 		{"Run", []string{"version", "--color=always"}, "dot dev (test)"},
 		{"RunE", []string{"usecase", "--color=always"}, "dot Use Cases"},
-		{"RunE help", []string{"peer", "--color=always"}, "Usage:"},
+		{"RunE help", []string{"peer", "--color=always"}, "Usage"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			out, stderr, err := runDotForTest(tc.args...)

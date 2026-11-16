@@ -12,7 +12,7 @@ import (
 // usageMarkers are the headings cobra prints when it emits a usage block. Root
 // sets SilenceUsage (root.go:29), so a failing command must show none of them:
 // a usage dump behind an error buries the error in a screen of flags.
-var usageMarkers = []string{"Usage:", "Available Commands:", "Global Flags:"}
+var usageMarkers = []string{"Usage:", "Available Commands:", "Global Flags:", " Usage\n", " Global flags\n"}
 
 // failingArgs is a command that reaches a RunE error deterministically and
 // writes nothing outside the temp HOME it is given: the profile is validated
@@ -120,7 +120,7 @@ func TestExitContract(t *testing.T) {
 		home := t.TempDir()
 		before := treeDigest(t, home)
 		out, stderr, code := runIsolated(t, bin, home, "--help", "--home", home)
-		if code != 0 || stderr != "" || !strings.Contains(out, "Usage:") {
+		if code != 0 || stderr != "" || !strings.Contains(out, "Usage") {
 			t.Fatalf("help/home flag parsing: exit=%d stdout=%s stderr=%s", code, out, stderr)
 		}
 		if treeDigest(t, home) != before {
