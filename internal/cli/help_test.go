@@ -184,3 +184,17 @@ func TestRootHelpShowsUngroupedCommand(t *testing.T) {
 		t.Fatalf("ungrouped command missing: %s", out.String())
 	}
 }
+
+func TestHelpDedentsMultilineExamples(t *testing.T) {
+	root := NewRootCmd("dev", "test")
+	root.AddCommand(&cobra.Command{Use: "probe", Example: "  dot probe\n  dot probe --verbose\n    nested", Run: func(*cobra.Command, []string) {}})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"probe", "--help", "--color=never"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "  dot probe\n  dot probe --verbose\n    nested\n") {
+		t.Fatalf("example indentation: %q", out.String())
+	}
+}

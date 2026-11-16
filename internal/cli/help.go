@@ -114,13 +114,37 @@ func renderHelp(cmd *cobra.Command) error {
 	}
 	if cmd.Example != "" {
 		p.Section("Examples")
-		ui.WriteHanging(p.Out, "  ", strings.TrimSpace(cmd.Example))
+		ui.WriteHanging(p.Out, "  ", dedentHelpExample(cmd.Example))
 	}
 	if len(cmd.Aliases) > 0 {
 		p.Section("Aliases")
 		ui.WriteHanging(p.Out, "  ", strings.Join(cmd.Aliases, ", "))
 	}
 	return nil
+}
+
+func dedentHelpExample(text string) string {
+	lines := strings.Split(strings.Trim(text, "\r\n"), "\n")
+	var common string
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		common = line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+		break
+	}
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		for !strings.HasPrefix(line, common) {
+			common = common[:len(common)-1]
+		}
+	}
+	for i, line := range lines {
+		lines[i] = strings.TrimPrefix(line, common)
+	}
+	return strings.Join(lines, "\n")
 }
 
 // reflowHelpLong joins prose lines while preserving paragraph and example boundaries.
