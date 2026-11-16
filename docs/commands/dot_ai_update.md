@@ -15,13 +15,20 @@ explicitly pending; no blanket plugin, marketplace, or skill update runs.
 dot ai update [flags]
 ```
 
+### Examples
+
+```
+  dot ai update --check
+  dot ai update --tool claude,codex
+```
+
 ### Options
 
 ```
-      --check          Inspect installed and available versions without mutation
+      --check          inspect installed and available versions without mutation
   -h, --help           help for update
-      --json           Emit machine-readable JSON
-      --tool strings   Limit to saved selections (claude,codex,kimi,qwen,grok,opencode,gencode,pi,antigravity,ripwire,ocr,gsd,ponytail)
+      --json           emit machine-readable JSON
+      --tool strings   limit to saved selections (claude,codex,kimi,qwen,grok,opencode,gencode,pi,antigravity,ripwire,ocr,gsd,ponytail)
 ```
 
 ### Options inherited from parent commands

@@ -1,18 +1,25 @@
 ## dot ai tools list
 
-List selectable tooling or inspect installed CLIs and settings
+List selectable tooling or inspect installed CLIs
 
 ```
 dot ai tools list [flags]
 ```
 
+### Examples
+
+```
+  dot ai tools list
+  dot ai tools list --details
+```
+
 ### Options
 
 ```
-      --details        Show detected CLIs, portable settings and app casks instead of the catalog
+      --details        show detected CLIs, portable settings and app casks instead of the catalog
   -h, --help           help for list
-      --include-auth   Show auth/local-secret paths in the detailed inventory
-      --json           Print the selectable catalog as JSON
+      --include-auth   show auth/local-secret paths in the detailed inventory
+      --json           print the selectable catalog as JSON
 ```
 
 ### Options inherited from parent commands

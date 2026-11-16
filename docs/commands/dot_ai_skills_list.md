@@ -6,14 +6,21 @@ List SKILL.md files and metadata status
 dot ai skills list [flags]
 ```
 
+### Examples
+
+```
+  dot ai skills list
+  dot ai skills list --tool claude --json
+```
+
 ### Options
 
 ```
   -h, --help               help for list
-      --json               Print JSON
-      --root stringArray   Explicit skill root to scan; may be repeated and replaces default roots
-      --strict             Treat legacy skills without schema_version/frontmatter as validation failures
-      --tool string        Comma-separated default skill roots to scan (claude,codex,agents,gemini,antigravity)
+      --json               print JSON
+      --root stringArray   explicit skill root to scan; may be repeated and replaces default roots
+      --strict             treat legacy skills without schema_version/frontmatter as validation failures
+      --tool string        comma-separated default skill roots to scan (claude,codex,agents,gemini,antigravity)
 ```
 
 ### Options inherited from parent commands
@@ -30,5 +37,5 @@ dot ai skills list [flags]
 
 ### SEE ALSO
 
-* [dot ai skills](dot_ai_skills.md)	 - Diagnose AI Markdown skills (read-only; the Maru app manages runtime symlinks)
+* [dot ai skills](dot_ai_skills.md)	 - Diagnose AI Markdown skills (read-only)
 

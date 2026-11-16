@@ -6,6 +6,12 @@ List registered agents targets and drift
 dot ai agents list [flags]
 ```
 
+### Examples
+
+```
+  dot ai agents list
+```
+
 ### Options
 
 ```

@@ -11,8 +11,14 @@ periodically lose their credentials. 'status' reports which servers need
 re-auth, 'login' authenticates them, and 'relogin' clears stale credentials
 before logging in again.
 
-Server names containing spaces must be quoted:
+Server names containing spaces must be quoted.
+
+### Examples
+
+```
+  dot ai auth status
   dot ai auth relogin "claude.ai Canva"
+```
 
 ### Options
 

@@ -21,7 +21,8 @@ func newAIAgentsCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "agents",
 		Short: "Manage the shared AI agents instruction SSOT",
-		Long:  "Manage ~/.config/dotfiles/agents/AGENTS.md and copy-render it to Claude, Codex, and optional AI coding tool targets.",
+		Long: `Manage ~/.config/dotfiles/agents/AGENTS.md and copy-render it to Claude,
+Codex, and optional AI coding tool targets.`,
 	}
 	c.AddCommand(newAIAgentsListCmd(false))
 	c.AddCommand(newAIAgentsListCmd(true))
@@ -123,8 +124,8 @@ func newAIAgentsInitCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().String("from-current", "", "Seed AGENTS.md from an existing tool target")
-	c.Flags().Bool("force", false, "Overwrite an existing SSOT after backing it up")
+	c.Flags().String("from-current", "", "seed AGENTS.md from an existing tool target")
+	c.Flags().Bool("force", false, "overwrite an existing SSOT after backing it up")
 	return c
 }
 
@@ -171,10 +172,10 @@ func newAIAgentsAuthorCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().String("from-current", "", "Pull from a live tool target before authoring")
-	c.Flags().Bool("non-interactive", false, "Update one section without the wizard")
-	c.Flags().String("section", "", "Section name for --non-interactive")
-	c.Flags().String("value", "", "Section value for --non-interactive")
+	c.Flags().String("from-current", "", "pull from a live tool target before authoring")
+	c.Flags().Bool("non-interactive", false, "update one section without the wizard")
+	c.Flags().String("section", "", "section name for --non-interactive")
+	c.Flags().String("value", "", "section value for --non-interactive")
 	return c
 }
 
@@ -199,8 +200,8 @@ func newAIAgentsShowCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().String("rendered", "", "Print SSOT rendered for one tool")
-	c.Flags().Bool("with-line-numbers", false, "Prefix output with line numbers")
+	c.Flags().String("rendered", "", "print SSOT rendered for one tool")
+	c.Flags().Bool("with-line-numbers", false, "prefix output with line numbers")
 	return c
 }
 
@@ -252,8 +253,8 @@ func newAIAgentsApplyCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().String("tool", "", "Comma-separated tool IDs to apply")
-	c.Flags().Bool("force", false, "Overwrite a target changed outside the last dot-managed apply after backing it up")
+	c.Flags().String("tool", "", "comma-separated tool IDs to apply")
+	c.Flags().Bool("force", false, "overwrite a target changed outside the last dot-managed apply after backing it up")
 	return c
 }
 
@@ -294,7 +295,7 @@ func newAIAgentsPullCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().String("from", "", "Tool ID to pull from")
+	c.Flags().String("from", "", "tool ID to pull from")
 	return c
 }
 
@@ -325,7 +326,7 @@ func newAIAgentsDiffCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().String("tool", "", "Comma-separated tool IDs to diff")
+	c.Flags().String("tool", "", "comma-separated tool IDs to diff")
 	return c
 }
 

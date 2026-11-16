@@ -41,7 +41,7 @@ func newAIHudStatusCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().String("tool", "", "Comma-separated tool IDs (claude,codex)")
+	c.Flags().String("tool", "", "comma-separated tool IDs (claude,codex)")
 	return c
 }
 
@@ -77,9 +77,9 @@ func newAIHudApplyCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().String("tool", "", "Comma-separated tool IDs (claude,codex)")
-	c.Flags().Bool("persist", false, "Persist modules.ai.hud=true for future dot apply runs")
-	c.Flags().Bool("force", false, "Take over a statusLine currently owned by another tool")
+	c.Flags().String("tool", "", "comma-separated tool IDs (claude,codex)")
+	c.Flags().Bool("persist", false, "persist modules.ai.hud=true for future dot apply runs")
+	c.Flags().Bool("force", false, "take over a statusLine currently owned by another tool")
 	return c
 }
 
@@ -111,7 +111,7 @@ func newAICoauthoredGuardStatusCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().String("mode", aisettings.CoauthorGuardBlock, "Guard mode: off, warn, or block")
+	c.Flags().String("mode", aisettings.CoauthorGuardBlock, "guard mode: off, warn, or block")
 	return c
 }
 
@@ -166,9 +166,9 @@ func newAICoauthoredGuardApplyCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().String("mode", aisettings.CoauthorGuardBlock, "Guard mode: off, warn, or block")
-	c.Flags().Bool("persist", false, "Persist modules.git.coauthor_guard for future dot apply runs")
-	c.Flags().Bool("apply-agents", false, "Reapply agents SSOT to live tool targets after updating the instruction")
+	c.Flags().String("mode", aisettings.CoauthorGuardBlock, "guard mode: off, warn, or block")
+	c.Flags().Bool("persist", false, "persist modules.git.coauthor_guard for future dot apply runs")
+	c.Flags().Bool("apply-agents", false, "reapply agents SSOT to live tool targets after updating the instruction")
 	return c
 }
 

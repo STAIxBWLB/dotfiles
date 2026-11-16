@@ -6,12 +6,18 @@ Remove the weekly AI update LaunchAgent
 dot ai update schedule disable [flags]
 ```
 
+### Examples
+
+```
+  dot ai update schedule disable
+```
+
 ### Options
 
 ```
   -h, --help            help for disable
-      --json            Emit scheduler status as JSON
-      --wait duration   Maximum time to wait for the maintenance slot and host recovery when enabling (at most 10m) (default 6m0s)
+      --json            emit scheduler status as JSON
+      --wait duration   maximum time to wait for the maintenance slot and host recovery when enabling (at most 10m) (default 6m0s)
 ```
 
 ### Options inherited from parent commands

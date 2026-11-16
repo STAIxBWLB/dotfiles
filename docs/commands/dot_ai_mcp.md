@@ -16,6 +16,12 @@ Memory audit/archive and legacy retirement stay under 'dot ai memory' and
 dot ai mcp [flags]
 ```
 
+### Examples
+
+```
+  dot ai mcp --help
+```
+
 ### Options
 
 ```

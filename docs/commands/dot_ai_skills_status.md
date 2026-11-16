@@ -6,14 +6,21 @@ Show configured skills SSOT symlink status
 dot ai skills status [flags]
 ```
 
+### Examples
+
+```
+  dot ai skills status
+  dot ai skills status --json
+```
+
 ### Options
 
 ```
   -h, --help              help for status
-      --json              Print JSON
-      --provider string   Skills SSOT provider: maru or path (defaults to maru)
-      --ssot string       Skills SSOT root path (defaults to ~/.maru/skills for provider=maru)
-      --tool string       Comma-separated managed targets (claude,codex); auto-detected when omitted
+      --json              print JSON
+      --provider string   skills SSOT provider: maru or path (defaults to maru)
+      --ssot string       skills SSOT root path (defaults to ~/.maru/skills for provider=maru)
+      --tool string       comma-separated managed targets (claude,codex); auto-detected when omitted
 ```
 
 ### Options inherited from parent commands
@@ -30,5 +37,5 @@ dot ai skills status [flags]
 
 ### SEE ALSO
 
-* [dot ai skills](dot_ai_skills.md)	 - Diagnose AI Markdown skills (read-only; the Maru app manages runtime symlinks)
+* [dot ai skills](dot_ai_skills.md)	 - Diagnose AI Markdown skills (read-only)
 

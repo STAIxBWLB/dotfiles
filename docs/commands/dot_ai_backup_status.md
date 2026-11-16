@@ -6,13 +6,19 @@ Show AI settings live/backup status
 dot ai backup status [flags]
 ```
 
+### Examples
+
+```
+  dot ai backup status
+```
+
 ### Options
 
 ```
-      --from string    Backup root to inspect
+      --from string    backup root to inspect
   -h, --help           help for status
-      --host string    Hostname to inspect (default: this host)
-      --include-auth   Include auth/local-secret paths in status
+      --host string    hostname to inspect (default: this host)
+      --include-auth   include auth/local-secret paths in status
 ```
 
 ### Options inherited from parent commands
@@ -29,5 +35,5 @@ dot ai backup status [flags]
 
 ### SEE ALSO
 
-* [dot ai backup](dot_ai_backup.md)	 - Advanced: snapshot only AI settings (dot backup is the front door)
+* [dot ai backup](dot_ai_backup.md)	 - Snapshot only AI settings (dot backup is the front door)
 

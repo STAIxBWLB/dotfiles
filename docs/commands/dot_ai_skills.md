@@ -1,6 +1,6 @@
 ## dot ai skills
 
-Diagnose AI Markdown skills (read-only; the Maru app manages runtime symlinks)
+Diagnose AI Markdown skills (read-only)
 
 ### Options
 

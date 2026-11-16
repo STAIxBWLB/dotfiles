@@ -1,6 +1,6 @@
 ## dot ai session
 
-Launch controlled agents with adaptive policy and native continuation
+Launch controlled agents with adaptive policy
 
 ### Options
 
@@ -23,5 +23,5 @@ Launch controlled agents with adaptive policy and native continuation
 ### SEE ALSO
 
 * [dot ai](dot_ai.md)	 - AI CLI/config helpers and settings backup/restore
-* [dot ai session start](dot_ai_session_start.md)	 - Launch an eligible agent or supervise checkpointed JSONL turns
+* [dot ai session start](dot_ai_session_start.md)	 - Launch an agent or supervise checkpointed JSONL turns
 

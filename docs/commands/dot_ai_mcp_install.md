@@ -6,6 +6,12 @@ Register one installed family tool's MCP integration
 dot ai mcp install <amem|vmem|ares> [flags]
 ```
 
+### Examples
+
+```
+  dot ai mcp install amem
+```
+
 ### Options
 
 ```

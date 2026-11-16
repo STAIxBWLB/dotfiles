@@ -1,16 +1,22 @@
 ## dot ai policy diff
 
-Preview selected policy overlays without changing native settings
+Preview policy overlays without changing settings
 
 ```
 dot ai policy diff [flags]
+```
+
+### Examples
+
+```
+  dot ai policy diff
 ```
 
 ### Options
 
 ```
   -h, --help   help for diff
-      --json   Emit a versioned JSON report
+      --json   emit a versioned JSON report
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +33,5 @@ dot ai policy diff [flags]
 
 ### SEE ALSO
 
-* [dot ai policy](dot_ai_policy.md)	 - Inspect, resolve and reconcile adaptive AI operating policies
+* [dot ai policy](dot_ai_policy.md)	 - Inspect, resolve and reconcile AI operating policies
 

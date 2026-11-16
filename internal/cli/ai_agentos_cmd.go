@@ -16,7 +16,7 @@ import (
 func newAISkillsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "skills",
-		Short: "Diagnose AI Markdown skills (read-only; the Maru app manages runtime symlinks)",
+		Short: "Diagnose AI Markdown skills (read-only)",
 	}
 	cmd.AddCommand(newAISkillsListCmd())
 	cmd.AddCommand(newAISkillsValidateCmd())
@@ -79,10 +79,10 @@ func newAISkillsValidateCmd() *cobra.Command {
 }
 
 func addSkillScanFlags(c *cobra.Command) {
-	c.Flags().String("tool", "", "Comma-separated default skill roots to scan (claude,codex,agents,gemini,antigravity)")
-	c.Flags().StringArray("root", nil, "Explicit skill root to scan; may be repeated and replaces default roots")
-	c.Flags().Bool("json", false, "Print JSON")
-	c.Flags().Bool("strict", false, "Treat legacy skills without schema_version/frontmatter as validation failures")
+	c.Flags().String("tool", "", "comma-separated default skill roots to scan (claude,codex,agents,gemini,antigravity)")
+	c.Flags().StringArray("root", nil, "explicit skill root to scan; may be repeated and replaces default roots")
+	c.Flags().Bool("json", false, "print JSON")
+	c.Flags().Bool("strict", false, "treat legacy skills without schema_version/frontmatter as validation failures")
 }
 
 func scanSkillsFromCmd(cmd *cobra.Command) (*aisettings.SkillScanReport, bool, bool, error) {
@@ -123,7 +123,7 @@ func newAISkillsStatusCmd() *cobra.Command {
 		},
 	}
 	addSkillManageFlags(c)
-	c.Flags().Bool("json", false, "Print JSON")
+	c.Flags().Bool("json", false, "print JSON")
 	return c
 }
 
@@ -161,9 +161,9 @@ func newAISkillsPathCmd() *cobra.Command {
 }
 
 func addSkillManageFlags(c *cobra.Command) {
-	c.Flags().String("provider", "", "Skills SSOT provider: maru or path (defaults to maru)")
-	c.Flags().String("ssot", "", "Skills SSOT root path (defaults to ~/.maru/skills for provider=maru)")
-	c.Flags().String("tool", "", "Comma-separated managed targets (claude,codex); auto-detected when omitted")
+	c.Flags().String("provider", "", "skills SSOT provider: maru or path (defaults to maru)")
+	c.Flags().String("ssot", "", "skills SSOT root path (defaults to ~/.maru/skills for provider=maru)")
+	c.Flags().String("tool", "", "comma-separated managed targets (claude,codex); auto-detected when omitted")
 }
 
 func skillsOptionsFromCmd(cmd *cobra.Command) (aisettings.SkillsOptions, error) {

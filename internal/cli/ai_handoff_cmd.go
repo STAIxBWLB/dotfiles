@@ -9,8 +9,8 @@ import (
 )
 
 func newAIHandoffCmd() *cobra.Command {
-	c := &cobra.Command{Use: "handoff", Short: "Share explicit local development notes across selected agents"}
-	show := &cobra.Command{Use: "show", Short: "Read repository handoffs with freshness checks (results remain claims)", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	c := &cobra.Command{Use: "handoff", Short: "Share local development notes across selected agents"}
+	show := &cobra.Command{Use: "show", Short: "Read repository handoffs with freshness checks", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		project, _ := cmd.Flags().GetString("project")
 		report, err := aihandoff.Show(cmd.Context(), homeFromCmd(cmd), project)
 		if err != nil {
@@ -33,9 +33,9 @@ func newAIHandoffCmd() *cobra.Command {
 		}
 		return nil
 	}}
-	show.Flags().String("project", ".", "Git repository or worktree directory")
-	show.Flags().Bool("json", false, "Print JSON")
-	record := &cobra.Command{Use: "record", Short: "Record a selected agent's explicit summary and artifact fingerprints", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	show.Flags().String("project", ".", "git repository or worktree directory")
+	show.Flags().Bool("json", false, "print JSON")
+	record := &cobra.Command{Use: "record", Short: "Record an agent's summary and artifact fingerprints", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		selection, err := effectiveToolingForCmd(cmd)
 		if err != nil {
 			return err
@@ -69,12 +69,12 @@ func newAIHandoffCmd() *cobra.Command {
 		}
 		return nil
 	}}
-	record.Flags().String("project", ".", "Git repository or worktree directory")
-	record.Flags().String("agent", "", "Selected agent ID producing the note")
-	record.Flags().String("kind", "progress", "Note kind: plan, progress, review, validation, learning")
-	record.Flags().String("summary-file", "", "UTF-8 curated summary file, at most 32 KiB")
-	record.Flags().StringArray("artifact", nil, "Repository-relative artifact to fingerprint (repeatable, at most 16, total hash budget 32 MiB)")
-	record.Flags().String("result", "unverified", "Producer claim: unverified, passed, failed")
+	record.Flags().String("project", ".", "git repository or worktree directory")
+	record.Flags().String("agent", "", "selected agent ID producing the note")
+	record.Flags().String("kind", "progress", "note kind: plan, progress, review, validation, learning")
+	record.Flags().String("summary-file", "", "curated UTF-8 summary file, at most 32 KiB")
+	record.Flags().StringArray("artifact", nil, "repository-relative artifact to fingerprint (repeatable, at most 16, total hash budget 32 MiB)")
+	record.Flags().String("result", "unverified", "producer claim: unverified, passed, failed")
 	c.AddCommand(show, record)
 	return c
 }

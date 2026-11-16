@@ -1,17 +1,24 @@
 ## dot ai handoff show
 
-Read repository handoffs with freshness checks (results remain claims)
+Read repository handoffs with freshness checks
 
 ```
 dot ai handoff show [flags]
+```
+
+### Examples
+
+```
+  dot ai handoff show
+  dot ai handoff show --json
 ```
 
 ### Options
 
 ```
   -h, --help             help for show
-      --json             Print JSON
-      --project string   Git repository or worktree directory (default ".")
+      --json             print JSON
+      --project string   git repository or worktree directory (default ".")
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +35,5 @@ dot ai handoff show [flags]
 
 ### SEE ALSO
 
-* [dot ai handoff](dot_ai_handoff.md)	 - Share explicit local development notes across selected agents
+* [dot ai handoff](dot_ai_handoff.md)	 - Share local development notes across selected agents
 

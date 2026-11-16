@@ -6,13 +6,20 @@ Apply coauthor guard instruction and Git commit-msg hook
 dot ai coauthor-guard apply [flags]
 ```
 
+### Examples
+
+```
+  dot ai coauthor-guard apply --mode warn
+  dot ai coauthor-guard apply --mode block --persist
+```
+
 ### Options
 
 ```
-      --apply-agents   Reapply agents SSOT to live tool targets after updating the instruction
+      --apply-agents   reapply agents SSOT to live tool targets after updating the instruction
   -h, --help           help for apply
-      --mode string    Guard mode: off, warn, or block (default "block")
-      --persist        Persist modules.git.coauthor_guard for future dot apply runs
+      --mode string    guard mode: off, warn, or block (default "block")
+      --persist        persist modules.git.coauthor_guard for future dot apply runs
 ```
 
 ### Options inherited from parent commands

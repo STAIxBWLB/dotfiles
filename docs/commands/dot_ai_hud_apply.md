@@ -6,13 +6,20 @@ Apply dot-native HUD settings to Claude Code and Codex
 dot ai hud apply [flags]
 ```
 
+### Examples
+
+```
+  dot ai hud apply
+  dot ai hud apply --tool claude --persist
+```
+
 ### Options
 
 ```
-      --force         Take over a statusLine currently owned by another tool
+      --force         take over a statusLine currently owned by another tool
   -h, --help          help for apply
-      --persist       Persist modules.ai.hud=true for future dot apply runs
-      --tool string   Comma-separated tool IDs (claude,codex)
+      --persist       persist modules.ai.hud=true for future dot apply runs
+      --tool string   comma-separated tool IDs (claude,codex)
 ```
 
 ### Options inherited from parent commands

@@ -20,13 +20,20 @@ no stale-credential state, so the oauth column only classifies the transport;
 dot ai auth status [flags]
 ```
 
+### Examples
+
+```
+  dot ai auth status
+  dot ai auth status --tool codex --json
+```
+
 ### Options
 
 ```
   -h, --help          help for status
-      --json          Emit machine-readable JSON
-      --probe         Also stream live state ('claude mcp list' / 'codex doctor')
-      --tool string   CLI owning the MCP servers (claude or codex) (default "claude")
+      --json          emit machine-readable JSON
+      --probe         also stream live state ('claude mcp list' / 'codex doctor')
+      --tool string   the CLI owning the MCP servers (claude or codex) (default "claude")
 ```
 
 ### Options inherited from parent commands

@@ -1,16 +1,22 @@
 ## dot ai policy rollback
 
-Remove unchanged owned policy overlays; preserve native defaults
+Remove unchanged owned policy overlays
 
 ```
 dot ai policy rollback [flags]
+```
+
+### Examples
+
+```
+  dot ai policy rollback
 ```
 
 ### Options
 
 ```
   -h, --help   help for rollback
-      --json   Emit a versioned JSON report
+      --json   emit a versioned JSON report
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +33,5 @@ dot ai policy rollback [flags]
 
 ### SEE ALSO
 
-* [dot ai policy](dot_ai_policy.md)	 - Inspect, resolve and reconcile adaptive AI operating policies
+* [dot ai policy](dot_ai_policy.md)	 - Inspect, resolve and reconcile AI operating policies
 

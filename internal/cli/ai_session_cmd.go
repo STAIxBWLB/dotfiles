@@ -19,16 +19,17 @@ import (
 )
 
 func newAISessionCmd() *cobra.Command {
-	c := &cobra.Command{Use: "session", Short: "Launch controlled agents with adaptive policy and native continuation"}
-	start := &cobra.Command{Use: "start", Short: "Launch an eligible agent or supervise checkpointed JSONL turns", Long: `Start a native agent with the resolved model, effort and automatic-review flags.
+	c := &cobra.Command{Use: "session", Short: "Launch controlled agents with adaptive policy"}
+	start := &cobra.Command{Use: "start", Short: "Launch an agent or supervise checkpointed JSONL turns", Long: `Start a native agent with the resolved model, effort and automatic-review flags.
 Use --task for an interactive session, or --input FILE (or -) for a trusted
-supervisor's JSONL turns. Managed turns re-evaluate workload at safe boundaries;
-continuations require a curated checkpoint. Same-provider turns use native resume;
-Claude/Codex handoffs start a new session from scope and completed-effect evidence.
-Manual native/Orca sessions are not taken over. Heavy commands still use dot admit.`, Args: cobra.NoArgs, RunE: runAISessionStart}
+supervisor's JSONL turns. Managed turns re-evaluate workload at safe
+boundaries; continuations require a curated checkpoint. Same-provider turns
+use native resume; Claude/Codex handoffs start a new session from scope and
+completed-effect evidence. Manual native/Orca sessions are not taken over.
+Heavy commands still use dot admit.`, Args: cobra.NoArgs, RunE: runAISessionStart}
 	addPolicyRequestFlags(start)
-	start.Flags().String("input", "", "Trusted JSONL turn stream file, or - for stdin")
-	start.Flags().Bool("fixed", false, "Freeze the initial configuration for this session")
+	start.Flags().String("input", "", "trusted JSONL turn stream file, or - for stdin")
+	start.Flags().Bool("fixed", false, "freeze the initial configuration for this session")
 	c.AddCommand(start)
 	return c
 }

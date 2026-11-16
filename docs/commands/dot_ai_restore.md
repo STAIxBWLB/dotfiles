@@ -1,20 +1,27 @@
 ## dot ai restore
 
-Advanced: restore only AI settings (dot restore is the front door)
+Restore only AI settings (dot restore is the front door)
 
 ```
 dot ai restore [flags]
 ```
 
+### Examples
+
+```
+  dot ai restore
+  dot ai restore --host laptop --version latest
+```
+
 ### Options
 
 ```
-      --from string      Backup root (overrides configured BackupRoot)
+      --from string      backup root (overrides configured BackupRoot)
   -h, --help             help for restore
-      --host string      Source hostname to restore from (default: this host)
-      --include-auth     Restore auth/local-secret files from the snapshot
-      --reapply-agents   After restore, reapply the agents SSOT to tool targets
-      --version string   Specific version to restore, or "latest" (default: latest)
+      --host string      source hostname to restore from (default: this host)
+      --include-auth     restore auth/local-secret files from the snapshot
+      --reapply-agents   after restore, reapply the agents SSOT to tool targets
+      --version string   specific version to restore, or "latest" (default: latest)
 ```
 
 ### Options inherited from parent commands

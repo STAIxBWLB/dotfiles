@@ -6,6 +6,12 @@ Show one MCP integration's registration and version health
 dot ai mcp status <amem|vmem|ares> [flags]
 ```
 
+### Examples
+
+```
+  dot ai mcp status amem
+```
+
 ### Options
 
 ```

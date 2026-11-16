@@ -15,11 +15,11 @@ import (
 )
 
 func newAISetupCmd() *cobra.Command {
-	c := &cobra.Command{Use: "setup", Short: "Select agent CLIs, development add-ons, instructions and shared skills", Args: cobra.NoArgs, RunE: runAISetup}
-	c.Flags().String("agents", "", "Selected agent IDs, comma separated (empty selects none)")
-	c.Flags().String("tools", "", "Selected add-on IDs: ripwire,ocr,gsd,ponytail")
-	c.Flags().String("skills", "", "Selected Maru skill names or IDs, comma separated")
-	c.Flags().Bool("non-interactive", false, "Require explicit or saved selections without prompting")
+	c := &cobra.Command{Use: "setup", Short: "Select agent CLIs, add-ons, instructions and skills", Args: cobra.NoArgs, RunE: runAISetup}
+	c.Flags().String("agents", "", "selected agent IDs, comma separated (empty selects none)")
+	c.Flags().String("tools", "", "selected add-on IDs: ripwire,ocr,gsd,ponytail")
+	c.Flags().String("skills", "", "selected Maru skill names or IDs, comma separated")
+	c.Flags().Bool("non-interactive", false, "require explicit or saved selections without prompting")
 	return c
 }
 

@@ -1,18 +1,19 @@
 ## dot ai family
 
-Install agent-hub family tools side by side, one directory per version
+Install agent-hub family tools side by side
 
 ### Synopsis
 
 Install ahub, amem, vmem, acon, ares side by side.
 
-Each version gets its own npm prefix under ~/.local/share/dotfiles/tools/<id>/<version>/.
-A 'current' link names the active version and 'previous' the one before it;
+Each version gets its own npm prefix under
+~/.local/share/dotfiles/tools/<id>/<version>/. A 'current' link names the
+active version and 'previous' the one before it;
 ~/.local/bin/<bin> points through 'current'. Activation is one rename: new
 sessions start the new version, running processes keep the files they started
 with and are listed, and nothing is stopped. Versions other than current and
-previous are removed once no running process uses them. 'dot ai family rollback <id>'
-makes previous current again.
+previous are removed once no running process uses them.
+'dot ai family rollback <id>' makes previous current again.
 
 For ahub this is the global CLI only: 'ahub upgrade' still runs each project's
 daemon from ~/.agenthub/releases. After ahub activates, run the printed

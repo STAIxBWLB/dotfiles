@@ -6,12 +6,19 @@ Print the raw or rendered agents SSOT
 dot ai agents show [flags]
 ```
 
+### Examples
+
+```
+  dot ai agents show
+  dot ai agents show --rendered codex
+```
+
 ### Options
 
 ```
   -h, --help                help for show
-      --rendered string     Print SSOT rendered for one tool
-      --with-line-numbers   Prefix output with line numbers
+      --rendered string     print SSOT rendered for one tool
+      --with-line-numbers   prefix output with line numbers
 ```
 
 ### Options inherited from parent commands

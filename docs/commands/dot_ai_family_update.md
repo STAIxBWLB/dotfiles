@@ -6,17 +6,25 @@ Move installed family tools to the registry's latest version
 
 Move each named family tool, or with no ids every installed one, to the
 registry's latest version. A tool that is not installed is reported and
-skipped, and one already newer than the registry's latest is left as is. With --dry-run nothing is written: each tool is shown as already
-current or with the version it would move to.
+skipped, and one already newer than the registry's latest is left as is.
+With --dry-run nothing is written: each tool is shown as already current or
+with the version it would move to.
 
 ```
 dot ai family update [id...] [flags]
 ```
 
+### Examples
+
+```
+  dot ai family update
+  dot ai family update ahub --dry-run
+```
+
 ### Options
 
 ```
-      --adopt   Repoint an existing ~/.local/bin/<bin> symlink from another install; that install is left in place
+      --adopt   repoint an existing ~/.local/bin/<bin> symlink, leaving the other install in place
   -h, --help    help for update
 ```
 
@@ -34,5 +42,5 @@ dot ai family update [id...] [flags]
 
 ### SEE ALSO
 
-* [dot ai family](dot_ai_family.md)	 - Install agent-hub family tools side by side, one directory per version
+* [dot ai family](dot_ai_family.md)	 - Install agent-hub family tools side by side
 

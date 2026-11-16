@@ -1,19 +1,26 @@
 ## dot ai setup
 
-Select agent CLIs, development add-ons, instructions and shared skills
+Select agent CLIs, add-ons, instructions and skills
 
 ```
 dot ai setup [flags]
 ```
 
+### Examples
+
+```
+  dot ai setup
+  dot ai setup --non-interactive --agents claude,codex
+```
+
 ### Options
 
 ```
-      --agents string     Selected agent IDs, comma separated (empty selects none)
+      --agents string     selected agent IDs, comma separated (empty selects none)
   -h, --help              help for setup
-      --non-interactive   Require explicit or saved selections without prompting
-      --skills string     Selected Maru skill names or IDs, comma separated
-      --tools string      Selected add-on IDs: ripwire,ocr,gsd,ponytail
+      --non-interactive   require explicit or saved selections without prompting
+      --skills string     selected Maru skill names or IDs, comma separated
+      --tools string      selected add-on IDs: ripwire,ocr,gsd,ponytail
 ```
 
 ### Options inherited from parent commands

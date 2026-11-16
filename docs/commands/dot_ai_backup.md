@@ -1,18 +1,25 @@
 ## dot ai backup
 
-Advanced: snapshot only AI settings (dot backup is the front door)
+Snapshot only AI settings (dot backup is the front door)
 
 ```
 dot ai backup [flags]
+```
+
+### Examples
+
+```
+  dot ai backup
+  dot ai backup --tag before-upgrade
 ```
 
 ### Options
 
 ```
   -h, --help           help for backup
-      --include-auth   Include auth/local-secret files
-      --tag string     Human-friendly label stored in meta.yaml
-      --to string      Backup root (overrides configured BackupRoot)
+      --include-auth   include auth/local-secret files
+      --tag string     human-friendly label stored in meta.yaml
+      --to string      backup root (overrides configured BackupRoot)
 ```
 
 ### Options inherited from parent commands

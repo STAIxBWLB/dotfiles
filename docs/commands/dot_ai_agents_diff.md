@@ -6,11 +6,18 @@ Show rendered-vs-live diff for agents targets
 dot ai agents diff [flags]
 ```
 
+### Examples
+
+```
+  dot ai agents diff
+  dot ai agents diff --tool codex
+```
+
 ### Options
 
 ```
   -h, --help          help for diff
-      --tool string   Comma-separated tool IDs to diff
+      --tool string   comma-separated tool IDs to diff
 ```
 
 ### Options inherited from parent commands

@@ -6,11 +6,17 @@ Compare owned overlays with selected policy and report drift
 dot ai policy status [flags]
 ```
 
+### Examples
+
+```
+  dot ai policy status
+```
+
 ### Options
 
 ```
   -h, --help   help for status
-      --json   Emit a versioned JSON report
+      --json   emit a versioned JSON report
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +33,5 @@ dot ai policy status [flags]
 
 ### SEE ALSO
 
-* [dot ai policy](dot_ai_policy.md)	 - Inspect, resolve and reconcile adaptive AI operating policies
+* [dot ai policy](dot_ai_policy.md)	 - Inspect, resolve and reconcile AI operating policies
 
