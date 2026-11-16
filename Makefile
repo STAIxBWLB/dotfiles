@@ -1,4 +1,4 @@
-.PHONY: build test lint clean install docs
+.PHONY: build test lint clean install docs changelog
 
 VERSION ?= dev
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
@@ -16,6 +16,9 @@ lint:
 
 docs:
 	go run ./tools/gendocs docs/commands
+
+changelog:
+	bash scripts/gen-changelog.sh
 
 clean:
 	rm -rf bin/

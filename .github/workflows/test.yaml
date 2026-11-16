@@ -52,6 +52,13 @@ jobs:
         run: |
           bash scripts/check-release-notes.sh --self-test
           bash scripts/check-release-notes.sh
+      - name: Changelog drift check
+        run: |
+          bash scripts/gen-changelog.sh
+          if [ -n "$(git status --porcelain CHANGELOG.md)" ]; then
+            echo "::error::CHANGELOG.md is out of date - run 'make changelog' and commit the result"
+            exit 1
+          fi
 
   lint:
     needs: decision
