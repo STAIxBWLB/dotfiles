@@ -355,7 +355,7 @@ func newAIAuditCmd() *cobra.Command {
 
 func newAIAuditTailCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "tail [N]",
+		Use:   "tail [<count>]",
 		Short: "Print the last N dot ai audit events as JSONL",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

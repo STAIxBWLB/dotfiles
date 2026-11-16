@@ -248,7 +248,7 @@ func runWatchdogNotify(cmd *cobra.Command, args []string) error {
 
 func newWatchdogLogCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:          "log [N]",
+		Use:          "log [<count>]",
 		Short:        "Tail the watchdog JSON-lines event log",
 		Args:         cobra.MaximumNArgs(1),
 		RunE:         runWatchdogLog,

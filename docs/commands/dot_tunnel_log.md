@@ -3,7 +3,7 @@
 Tail the Cloudflare Tunnel daemon error log
 
 ```
-dot tunnel log [N] [flags]
+dot tunnel log [<count>] [flags]
 ```
 
 ### Examples
