@@ -1,13 +1,18 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/STAIxBWLB/dotfiles/internal/exec"
+	"github.com/STAIxBWLB/dotfiles/internal/watchdog"
 )
 
 // seedWatchdogSnapshot writes the resolved config the setup would have
@@ -225,5 +230,29 @@ func TestWatchdogSetup_DryRunExplains(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "would install and load") {
 		t.Fatalf("dry-run setup output = %q", out.String())
+	}
+}
+
+// Dry-run mode only describes the kill, so the caller prints it as a dry-run
+// row. Enforce mode is not exercised here: it would signal a real process.
+func TestActOnCandidate_DryRunReportsAPreview(t *testing.T) {
+	home := t.TempDir()
+	runner := exec.NewRunner(false, nil)
+	mgr := watchdog.NewManager(runner, home)
+	notifier := watchdog.NewNotifier(watchdog.NotifySettings{}, runner, "linux")
+	c := watchdog.Candidate{Process: watchdog.Process{PID: 4242}, Reason: "test"}
+
+	action, preview, err := actOnCandidate(context.Background(), watchdog.ReaperSettings{Mode: watchdog.ModeDryRun}, c, time.Now(), mgr, runner, notifier)
+	if err != nil {
+		t.Fatalf("actOnCandidate: %v", err)
+	}
+	if !preview {
+		t.Fatal("a dry-run action was not reported as a preview")
+	}
+	if strings.Contains(action, "would") || strings.Contains(action, "dry-run") {
+		t.Fatalf("the action carries the dry-run wording the row adds: %q", action)
+	}
+	if action != "kill" {
+		t.Fatalf("action = %q, want kill", action)
 	}
 }

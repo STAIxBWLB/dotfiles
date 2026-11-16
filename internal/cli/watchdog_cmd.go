@@ -112,13 +112,17 @@ func runWatchdogReap(cmd *cobra.Command, _ []string) error {
 	}
 	notifier := watchdog.NewNotifier(watchdog.ResolveNotify(wcfg.Notify, mgr.Home), runner, runtime.GOOS)
 	for _, c := range candidates {
-		action, aerr := actOnCandidate(ctx, settings, c, now, mgr, runner, notifier)
+		action, preview, aerr := actOnCandidate(ctx, settings, c, now, mgr, runner, notifier)
 		if aerr != nil {
 			return aerr
 		}
 		if !scheduled {
 			p := printerFrom(cmd)
-			p.Line("%s pid %d (%.0f%% CPU, %s): %s", action, c.Process.PID, c.Process.CPU, c.Reason, c.Process.Args)
+			if preview {
+				p.DryRun("%s pid %d (%.0f%% CPU, %s): %s", action, c.Process.PID, c.Process.CPU, c.Reason, c.Process.Args)
+			} else {
+				p.Line("%s pid %d (%.0f%% CPU, %s): %s", action, c.Process.PID, c.Process.CPU, c.Reason, c.Process.Args)
+			}
 		}
 	}
 	return nil
@@ -126,7 +130,9 @@ func runWatchdogReap(cmd *cobra.Command, _ []string) error {
 
 // actOnCandidate records the candidate and applies the mode's action. The
 // log write comes first in both modes, so even a failed kill leaves a record.
-func actOnCandidate(ctx context.Context, settings watchdog.ReaperSettings, c watchdog.Candidate, now time.Time, mgr *watchdog.Manager, runner *exec.Runner, notifier *watchdog.Notifier) (string, error) {
+// preview is true when the action was only described (dry-run mode), so the
+// caller prints it as a dry-run row.
+func actOnCandidate(ctx context.Context, settings watchdog.ReaperSettings, c watchdog.Candidate, now time.Time, mgr *watchdog.Manager, runner *exec.Runner, notifier *watchdog.Notifier) (string, bool, error) {
 	event := watchdog.Event{
 		Time:  now,
 		Event: "candidate",
@@ -139,17 +145,17 @@ func actOnCandidate(ctx context.Context, settings watchdog.ReaperSettings, c wat
 		event.Level = "warn"
 		event.Action = watchdog.ModeDryRun
 		if err := watchdog.AppendEvent(mgr.LogPath(), event); err != nil {
-			return "", err
+			return "", false, err
 		}
 		msg := fmt.Sprintf("runaway process pid %d at %.0f%% CPU since %s (dry-run, not killed)", c.Process.PID, c.Process.CPU, c.OverSince.Format(time.RFC3339))
 		if err := notifier.Notify(ctx, "warn", msg); err != nil {
-			return "", err
+			return "", false, err
 		}
-		return "would kill", nil
+		return "kill", true, nil
 	}
 	event.Level = "critical"
 	if err := watchdog.AppendEvent(mgr.LogPath(), event); err != nil {
-		return "", err
+		return "", false, err
 	}
 	sameProcess := func() bool {
 		// An unverifiable identity answers false: skipping the SIGKILL is the
@@ -160,14 +166,14 @@ func actOnCandidate(ctx context.Context, settings watchdog.ReaperSettings, c wat
 	outcome, err := watchdog.Enforce(watchdog.SystemKiller{}, c.Process.PID, settings.KillGrace, time.Sleep, sameProcess)
 	if err != nil {
 		_ = watchdog.AppendEvent(mgr.LogPath(), watchdog.Event{Time: now, Level: "critical", Event: "error", PID: c.Process.PID, Msg: err.Error()})
-		return "", err
+		return "", false, err
 	}
 	_ = watchdog.AppendEvent(mgr.LogPath(), watchdog.Event{Time: now, Level: "critical", Event: "reap", PID: c.Process.PID, CPU: c.Process.CPU, Args: c.Process.Args, Action: outcome})
 	msg := fmt.Sprintf("reaped runaway process pid %d at %.0f%% CPU (%s)", c.Process.PID, c.Process.CPU, outcome)
 	if err := notifier.Notify(ctx, "critical", msg); err != nil {
-		return "", err
+		return "", false, err
 	}
-	return "killed (" + outcome + ")", nil
+	return "killed (" + outcome + ")", false, nil
 }
 
 // loadWatchdogConfig resolves the watchdog section from the active profile
