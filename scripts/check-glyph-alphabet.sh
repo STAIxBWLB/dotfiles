@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Fail the build when a shared UI marker is redefined as an inline Go literal.
+# Fail the build when a shared UI marker is redefined as an inline Go literal,
+# embedded in a longer literal, or when a warning/note/tip/dry-run prefix is
+# hand-written outside internal/ui (scripts/check-output-literals.go).
 set -euo pipefail
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
@@ -49,10 +51,20 @@ for file in "${go_files[@]}"; do
   fi
 done
 
+# Marker glyphs embedded in longer strings, the bullet and info glyphs, and
+# hand-written warning/note/tip/dry-run prefixes need a tokenizer rather than a
+# line pattern, so a Go program measures them. It runs even when the bare-glyph
+# pass above found something, so one run shows the whole residue.
+output_status=0
+(cd "$repo_root" && go run scripts/check-output-literals.go -root "$repo_root") || output_status=$?
+
 if [[ "$findings" -gt 0 ]]; then
   echo "check-glyph-alphabet: inline glyph literal(s); use the internal/ui Mark* constants" >&2
   echo "check-glyph-alphabet: $findings finding(s)" >&2
   exit 1
+fi
+if [[ "$output_status" -ne 0 ]]; then
+  exit "$output_status"
 fi
 
 echo "check-glyph-alphabet: ${#go_files[@]} Go file(s) measured; no inline glyph literals outside internal/ui/markers.go"

@@ -13,6 +13,8 @@ test:
 
 lint:
 	golangci-lint run ./...
+	bash scripts/check-glyph-alphabet.sh
+	bash scripts/check-output-literals-selftest.sh
 
 docs:
 	go run ./tools/gendocs docs/commands

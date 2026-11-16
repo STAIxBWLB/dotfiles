@@ -10,6 +10,7 @@ import (
 	"github.com/STAIxBWLB/dotfiles/internal/aisettings"
 	"github.com/STAIxBWLB/dotfiles/internal/aitooling"
 	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
 // AIModule manages AI CLI/config helper shell configs and Claude settings.
@@ -250,7 +251,9 @@ func (m *AIModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, err
 			}
 			switch {
 			case res.Warning != "":
-				messages = append(messages, "warning: "+res.Warning)
+				// A finding, not a change: messages render as present rows, so the
+				// warning takes the warn marker directly, as git.go does.
+				fmt.Fprintf(rc.progressOut(), "  %s ai: %s\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkWarn)), res.Warning)
 			case res.Changed:
 				messages = append(messages, fmt.Sprintf("updated the amem memory block in the agents SSOT (backup: %s)", res.Backup))
 			}
