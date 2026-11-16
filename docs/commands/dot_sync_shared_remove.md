@@ -1,9 +1,15 @@
 ## dot sync shared remove
 
-Remove one or more paths from the manual shared-excludes list
+Remove paths from the shared-excludes list
 
 ```
 dot sync shared remove <path>... [flags]
+```
+
+### Examples
+
+```
+  dot sync shared remove projects/shared-with-partner
 ```
 
 ### Options
@@ -21,7 +27,7 @@ dot sync shared remove <path>... [flags]
       --dry-run         show what would be done without executing
       --home string     override home directory (for admin setup of other users)
       --store string    sync store under <workspace>/.dotfiles/<store>/; "sync" is the cloud mirror, "peer" the other Mac (default "sync")
-  -V, --verbose         Show rsync progress output
+  -V, --verbose         show rsync progress output
       --yes             unattended mode (skip all prompts)
 ```
 

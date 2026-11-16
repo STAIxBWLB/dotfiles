@@ -13,6 +13,13 @@ exclusion. --json exposes the equivalent versioned structured records.
 dot sync status [flags]
 ```
 
+### Examples
+
+```
+  dot sync status
+  dot sync status --json
+```
+
 ### Options
 
 ```
@@ -30,7 +37,7 @@ dot sync status [flags]
       --dry-run         show what would be done without executing
       --home string     override home directory (for admin setup of other users)
       --store string    sync store under <workspace>/.dotfiles/<store>/; "sync" is the cloud mirror, "peer" the other Mac (default "sync")
-  -V, --verbose         Show rsync progress output
+  -V, --verbose         show rsync progress output
       --yes             unattended mode (skip all prompts)
 ```
 

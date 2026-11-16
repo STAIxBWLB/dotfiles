@@ -24,6 +24,12 @@ else fetches.
 dot peer git [flags]
 ```
 
+### Examples
+
+```
+  dot peer git status
+```
+
 ### Options
 
 ```
@@ -45,7 +51,7 @@ dot peer git [flags]
 ### SEE ALSO
 
 * [dot peer](dot_peer.md)	 - Sync the workspace directly to another machine over SSH
-* [dot peer git fetch](dot_peer_git_fetch.md)	 - Fetch every workspace repo's upstream, then show where each repo stands
-* [dot peer git realign](dot_peer_git_realign.md)	 - Move HEAD and index to the descendant commit the files already match
+* [dot peer git fetch](dot_peer_git_fetch.md)	 - Fetch every repo's upstream, then show where it stands
+* [dot peer git realign](dot_peer_git_realign.md)	 - Move HEAD to the descendant commit the files match
 * [dot peer git status](dot_peer_git_status.md)	 - Classify every workspace repo against its recorded commit
 

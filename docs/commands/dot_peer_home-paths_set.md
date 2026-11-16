@@ -6,6 +6,12 @@ Replace the peer host-path list from stdin
 dot peer home-paths set [flags]
 ```
 
+### Examples
+
+```
+  dot peer home-paths set < home-paths.txt
+```
+
 ### Options
 
 ```

@@ -9,22 +9,22 @@ Machine-to-machine workspace sync, so either Mac can continue the same work.
 This is a sibling of `dot sync`, not a replacement. They answer different
 questions:
 
-  dot sync   workspace -> cloud mirror. One writer. Secrets excluded.
-             For reading the workspace from a phone or another device.
-  dot peer   workspace <-> another machine over ssh. Both directions.
-             Secrets included. Submodule working trees included, because
-             uncommitted work inside a submodule is exactly what Git has
-             not seen and what a second machine still needs.
-             Linked Git worktrees (.claude/worktrees, .qwen/worktrees,
-             .worktrees) are never carried: they are branch checkouts that
-             travel through Git.
+  sync  workspace -> cloud mirror. One writer. Secrets excluded.
+        For reading the workspace from a phone or another device.
+  peer  workspace <-> another machine over ssh. Both directions.
+        Secrets included. Submodule working trees included, because
+        uncommitted work inside a submodule is exactly what Git has
+        not seen and what a second machine still needs.
+        Linked Git worktrees (.claude/worktrees, .qwen/worktrees,
+        .worktrees) are never carried: they are branch checkouts that
+        travel through Git.
 
 Routine one-sided changes transfer directly. A path changed differently on
 both machines is resolved by the configured coordinator, and the losing peer
 payload is quarantined once under .sync-conflicts/ when it exists.
 
 With propagation.delete on, a file removed here is removed on the peer too,
-into that same quarantine, and "dot sync conflicts prune" expires it later.
+into that same quarantine, and 'dot sync conflicts prune' expires it later.
 Only paths recorded in the baseline are eligible: a path the peer created and
 this machine has never seen is not a deletion and is left alone. The set is
 capped by max_delete, so a failed mount cannot present the whole tree as
@@ -40,14 +40,21 @@ A peer that is offline is not an error: the scheduled run probes reachability
 first and exits cleanly when the other machine is away.
 
 One Mac is the coordinator at a time, but the role can move. A planned switch
-(dot peer handover) syncs once, moves ownership with a higher epoch, and
-bootstraps the new coordinator with no baseline. An unplanned switch (dot
-peer takeover) installs the replica the last coordinator pushed after every
-complete run, then fences the returning machine by epoch: the loser adopts
+('dot peer handover') syncs once, moves ownership with a higher epoch, and
+bootstraps the new coordinator with no baseline. An unplanned switch
+('dot peer takeover') installs the replica the last coordinator pushed after
+every complete run, then fences the returning machine by epoch: the loser adopts
 the new owner and removes its scheduler, so two coordinators never run.
 
 ```
 dot peer [flags]
+```
+
+### Examples
+
+```
+  dot peer status
+  dot peer sync
 ```
 
 ### Options
@@ -79,6 +86,6 @@ dot peer [flags]
 * [dot peer init](dot_peer_init.md)	 - Create the peer profile pointing at another machine
 * [dot peer setup](dot_peer_setup.md)	 - Install or remove the periodic peer sync job
 * [dot peer status](dot_peer_status.md)	 - Show local peer profile and scheduler status
-* [dot peer sync](dot_peer_sync.md)	 - Exchange workspace and host paths with the peer (both directions)
-* [dot peer takeover](dot_peer_takeover.md)	 - Take the coordinator role while the other Mac is away (unplanned switch)
+* [dot peer sync](dot_peer_sync.md)	 - Exchange workspace and host paths with the peer
+* [dot peer takeover](dot_peer_takeover.md)	 - Take the coordinator role while the other Mac is away
 

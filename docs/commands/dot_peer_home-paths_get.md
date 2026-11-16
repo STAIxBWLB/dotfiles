@@ -6,6 +6,13 @@ Read the peer host-path list
 dot peer home-paths get [flags]
 ```
 
+### Examples
+
+```
+  dot peer home-paths get
+  dot peer home-paths get --json
+```
+
 ### Options
 
 ```

@@ -1,6 +1,6 @@
 ## dot sync filters reset
 
-Regenerate exclude.txt/include.txt from embedded templates (with backups)
+Regenerate exclude.txt and include.txt from templates
 
 ### Synopsis
 
@@ -13,6 +13,12 @@ any workspace-specific patterns from the backups to ignore.txt afterwards.
 
 ```
 dot sync filters reset [flags]
+```
+
+### Examples
+
+```
+  dot sync filters reset
 ```
 
 ### Options
@@ -31,11 +37,11 @@ dot sync filters reset [flags]
       --filter-mode string   override config filter mode for this run: include or exclude
       --home string          override home directory (for admin setup of other users)
       --store string         sync store under <workspace>/.dotfiles/<store>/; "sync" is the cloud mirror, "peer" the other Mac (default "sync")
-  -V, --verbose              Show rsync progress output
+  -V, --verbose              show rsync progress output
       --yes                  unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO
 
-* [dot sync filters](dot_sync_filters.md)	 - Show the effective filter layers or reset them from templates
+* [dot sync filters](dot_sync_filters.md)	 - Show or reset the effective filter layers
 

@@ -1,6 +1,6 @@
 ## dot sync push
 
-Preview and send workspace changes to mirror under a propagation policy
+Preview and send workspace changes to the mirror
 
 ### Synopsis
 
@@ -10,14 +10,7 @@ copies new and modified files but never deletes mirror-side content. By default
 push prints the upload plan and asks before applying.
 
 Flag --propagate= takes a comma-separated allowlist; absent items are
-disabled. Examples:
-
-  dot sync push                              # preview, then confirm
-  dot sync push --mode=clean                 # apply only if no conflicts
-  dot sync push --mode=force                 # overwrite with backups
-  dot sync push --propagate=create,update,delete   # full sync
-  dot sync push --propagate=create           # additive only
-  dot sync push --propagate=update           # in-place updates only
+disabled.
 
 The per-workspace store (.dotfiles/) and intake staging area
 (inbox/gdrive/) are always excluded so they never round-trip to mirror.
@@ -32,6 +25,13 @@ Dry-run does not transfer files.
 
 ```
 dot sync push [flags]
+```
+
+### Examples
+
+```
+  dot sync push
+  dot sync push --propagate=create,update,delete
 ```
 
 ### Options
@@ -52,7 +52,7 @@ dot sync push [flags]
       --dry-run         show what would be done without executing
       --home string     override home directory (for admin setup of other users)
       --store string    sync store under <workspace>/.dotfiles/<store>/; "sync" is the cloud mirror, "peer" the other Mac (default "sync")
-  -V, --verbose         Show rsync progress output
+  -V, --verbose         show rsync progress output
       --yes             unattended mode (skip all prompts)
 ```
 

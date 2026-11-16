@@ -17,6 +17,12 @@ just heals any missing pieces.
 dot sync init [flags]
 ```
 
+### Examples
+
+```
+  dot sync init
+```
+
 ### Options
 
 ```
@@ -32,7 +38,7 @@ dot sync init [flags]
       --dry-run         show what would be done without executing
       --home string     override home directory (for admin setup of other users)
       --store string    sync store under <workspace>/.dotfiles/<store>/; "sync" is the cloud mirror, "peer" the other Mac (default "sync")
-  -V, --verbose         Show rsync progress output
+  -V, --verbose         show rsync progress output
       --yes             unattended mode (skip all prompts)
 ```
 

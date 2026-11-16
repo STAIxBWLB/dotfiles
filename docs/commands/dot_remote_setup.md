@@ -14,6 +14,13 @@ image. dot ships no image of its own; the servers guide carries a starter.
 dot remote setup [flags]
 ```
 
+### Examples
+
+```
+  dot remote setup
+  dot remote setup --profile dev
+```
+
 ### Options
 
 ```

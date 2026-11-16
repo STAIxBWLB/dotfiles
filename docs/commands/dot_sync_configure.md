@@ -1,9 +1,16 @@
 ## dot sync configure
 
-Set target, owner and scheduler settings in one call (scripting API; setup, target and owner are the interactive front-ends)
+Set target, owner and scheduler settings in one call
 
 ```
 dot sync configure [flags]
+```
+
+### Examples
+
+```
+  dot sync configure --target local:~/Dropbox/work
+  dot sync configure --propagate create,update --json
 ```
 
 ### Options
@@ -31,7 +38,7 @@ dot sync configure [flags]
       --dry-run         show what would be done without executing
       --home string     override home directory (for admin setup of other users)
       --store string    sync store under <workspace>/.dotfiles/<store>/; "sync" is the cloud mirror, "peer" the other Mac (default "sync")
-  -V, --verbose         Show rsync progress output
+  -V, --verbose         show rsync progress output
       --yes             unattended mode (skip all prompts)
 ```
 

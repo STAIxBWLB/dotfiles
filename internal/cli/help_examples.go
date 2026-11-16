@@ -7,8 +7,9 @@ import (
 )
 
 // helpExamples holds the Example text for each runnable command outside
-// dot ai, dot sync, dot peer and dot remote, keyed by the path below "dot".
-// The ai subtree has its own table in ai_examples.go. Several of these
+// dot ai, keyed by the path below "dot"; sync_examples.go adds the dot sync,
+// dot peer and dot remote entries. The ai subtree has its own table in
+// ai_examples.go. Several of these
 // commands are built in loops, so one table keeps their examples together.
 var helpExamples = map[string][]string{
 	"":                      {"dot", "dot usecase"},

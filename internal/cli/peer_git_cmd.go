@@ -135,7 +135,7 @@ func newPeerGitStatusCmd() *cobra.Command {
 func newPeerGitFetchCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "fetch [<repo>...]",
-		Short: "Fetch every workspace repo's upstream, then show where each repo stands",
+		Short: "Fetch every repo's upstream, then show where it stands",
 		Long: `Fetch every workspace repo (submodules included, linked worktrees left out)
 from its upstream remote: the remote HEAD's branch tracks, else origin.
 Peer sync carries the files the other Mac committed but not its refs, so
@@ -180,7 +180,7 @@ func newPeerGitRealignCmd() *cobra.Command {
 	var candidateRefs []string
 	cmd := &cobra.Command{
 		Use:   "realign [--apply [--fetch]] [--rescue [--no-push]] [--candidate-refs <pattern>]... [<repo>...]",
-		Short: "Move HEAD and index to the descendant commit the files already match",
+		Short: "Move HEAD to the descendant commit the files match",
 		Long: `Move each repo's HEAD and index forward to the descendant commit its files
 already match. The default is a preview; --apply moves.
 

@@ -37,6 +37,13 @@ would stop the coordinator's sync. The doctor writes nothing on either Mac.
 dot peer doctor [flags]
 ```
 
+### Examples
+
+```
+  dot peer doctor
+  dot peer doctor --self
+```
+
 ### Options
 
 ```

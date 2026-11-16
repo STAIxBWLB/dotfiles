@@ -1,6 +1,6 @@
 ## dot remote status
 
-Show the host's load, this machine's runs there, mirror sizes and image age
+Show host load, runs, mirrors and image age
 
 ### Synopsis
 
@@ -12,6 +12,13 @@ to confirm.
 
 ```
 dot remote status [flags]
+```
+
+### Examples
+
+```
+  dot remote status
+  dot remote status --json
 ```
 
 ### Options

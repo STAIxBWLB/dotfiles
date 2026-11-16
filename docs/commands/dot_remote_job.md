@@ -1,6 +1,6 @@
 ## dot remote job
 
-Run file-in, file-out jobs on a host's job profile, or locally when it is busy
+Run file-in, file-out jobs remotely or locally
 
 ### Synopsis
 

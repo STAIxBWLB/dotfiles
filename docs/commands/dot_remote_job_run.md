@@ -21,7 +21,14 @@ active from this machine; 69 when the host cannot take the job and
 interrupted.
 
 ```
-dot remote job run -o DIR [-i FILE]... [--name N] [--remote-only | --local-only] -- COMMAND [ARG...] [flags]
+dot remote job run -o <dir> [-i <file>]... [--name <name>] [--remote-only|--local-only] -- <command> [<arg>...] [flags]
+```
+
+### Examples
+
+```
+  dot remote job run -o out -i data.csv -- python3 report.py
+  dot remote job run -o out --local-only -- ./build.sh
 ```
 
 ### Options
@@ -53,5 +60,5 @@ dot remote job run -o DIR [-i FILE]... [--name N] [--remote-only | --local-only]
 
 ### SEE ALSO
 
-* [dot remote job](dot_remote_job.md)	 - Run file-in, file-out jobs on a host's job profile, or locally when it is busy
+* [dot remote job](dot_remote_job.md)	 - Run file-in, file-out jobs remotely or locally
 

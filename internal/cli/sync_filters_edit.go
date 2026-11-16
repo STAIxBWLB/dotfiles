@@ -224,7 +224,7 @@ func writePatternFileAtomic(path string, body []byte) error {
 func newSyncFiltersCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "filters",
-		Short: "Show the effective filter layers or reset them from templates",
+		Short: "Show or reset the effective filter layers",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
@@ -243,7 +243,7 @@ func newSyncFiltersCmd() *cobra.Command {
 		},
 		&cobra.Command{
 			Use:   "reset",
-			Short: "Regenerate exclude.txt/include.txt from embedded templates (with backups)",
+			Short: "Regenerate exclude.txt and include.txt from templates",
 			Long: `Backs up the current exclude.txt and include.txt to *.bak-<timestamp>
 and rewrites them from the embedded templates. Use after upgrading dot to
 pick up refreshed junk rules.

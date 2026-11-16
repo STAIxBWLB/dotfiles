@@ -1,9 +1,15 @@
 ## dot peer home-paths tracked
 
-Read or replace the tracked host-path list (deletes propagate, conflicts quarantine)
+Read or replace the tracked host-path list
 
 ```
 dot peer home-paths tracked [flags]
+```
+
+### Examples
+
+```
+  dot peer home-paths tracked get
 ```
 
 ### Options

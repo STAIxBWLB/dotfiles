@@ -13,6 +13,13 @@ unavailable. Exit 0 when the host can take a job, 69 with the reason when not.
 dot remote job check [flags]
 ```
 
+### Examples
+
+```
+  dot remote job check
+  dot remote job check --json
+```
+
 ### Options
 
 ```
@@ -37,5 +44,5 @@ dot remote job check [flags]
 
 ### SEE ALSO
 
-* [dot remote job](dot_remote_job.md)	 - Run file-in, file-out jobs on a host's job profile, or locally when it is busy
+* [dot remote job](dot_remote_job.md)	 - Run file-in, file-out jobs remotely or locally
 

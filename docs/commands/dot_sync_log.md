@@ -6,6 +6,13 @@ Show the tail of the profile sync log
 dot sync log [flags]
 ```
 
+### Examples
+
+```
+  dot sync log
+  dot sync log --tail 50
+```
+
 ### Options
 
 ```
@@ -23,7 +30,7 @@ dot sync log [flags]
       --dry-run         show what would be done without executing
       --home string     override home directory (for admin setup of other users)
       --store string    sync store under <workspace>/.dotfiles/<store>/; "sync" is the cloud mirror, "peer" the other Mac (default "sync")
-  -V, --verbose         Show rsync progress output
+  -V, --verbose         show rsync progress output
       --yes             unattended mode (skip all prompts)
 ```
 

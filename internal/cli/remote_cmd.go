@@ -208,8 +208,8 @@ func runRemoteSetup(cmd *cobra.Command, _ []string) error {
 
 func newRemoteRunCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "run [PATH] -- COMMAND [ARG...]",
-		Short: "Mirror a checkout to the host and run a command in a container there",
+		Use:   "run [<path>] -- <command> [<arg>...]",
+		Short: "Mirror a checkout and run a command on the host",
 		Long: `Mirror the checkout at PATH (default: the current directory) and run CMD in
 a container with the mirror at /work/<PATH relative to remote.local_root>. One
 CMD argument is a shell script; several are an argv. Caches named in the host's
@@ -296,8 +296,8 @@ func runRemoteRun(cmd *cobra.Command, _ []string) error {
 
 func newRemoteVerifyCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "verify [PATH] [--dirty] [-- COMMAND [ARG...]]",
-		Short: "Run a repo's gate on its exact commit in a fresh checkout on the host",
+		Use:   "verify [<path>] [--dirty] [-- <command> [<arg>...]]",
+		Short: "Verify an exact commit in a fresh host checkout",
 		Long: `Push PATH's exact commit (HEAD, or with --dirty a throwaway commit of the
 working tree) to an owner-only bare repository on the host, check it out fresh
 in a container next to the base branch, and run COMMAND there. Without a
@@ -356,18 +356,17 @@ func runRemoteVerify(cmd *cobra.Command, _ []string) error {
 
 func newRemoteSrcCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "src [NAME] -- COMMAND [ARG...]",
-		Short: "Clone or analyze third-party source on the host, never on this machine",
+		Use:   "src [<name>] -- <command> [<arg>...]",
+		Short: "Clone or analyze third-party source on the host",
 		Long: `Run COMMAND in a container in the host's third-party source area: src_root
 (default ~/dot-remote-src) without NAME, which is where a clone is made, or
 src_root/NAME with it. Untrusted code is cloned and analyzed only on the host:
 nothing local is sent, nothing comes back but output, and no cache volume is
 mounted, so it cannot reach the caches trusted builds reuse.
 
-  dot remote src -- git clone https://example.com/x.git x
-  dot remote src x -- rg -n unsafe
-
 A NAME the host has no clone of exits 66 (EX_NOINPUT).`,
+		Example: `  dot remote src -- git clone https://example.com/x.git x
+  dot remote src x -- rg -n unsafe`,
 		Args:         cobra.ArbitraryArgs,
 		RunE:         runRemoteSrc,
 		SilenceUsage: true,
@@ -465,7 +464,7 @@ func remoteDeferExit(p *Printer, deferred *remote.Deferred, asJSON bool) error {
 func newRemoteStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Show the host's load, this machine's runs there, mirror sizes and image age",
+		Short: "Show host load, runs, mirrors and image age",
 		Long: `Report the host's own load against its limit, the runs this machine holds
 there (mirror path, container, owner, age), the size of every mirror and bare
 repository, and how old the dev image is. A host that cannot answer still shows

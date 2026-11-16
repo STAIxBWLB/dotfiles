@@ -29,6 +29,12 @@ coordinator with `dot peer git realign --apply` (fetch first).
 dot peer handover [<peer>] [flags]
 ```
 
+### Examples
+
+```
+  dot peer handover
+```
+
 ### Options
 
 ```

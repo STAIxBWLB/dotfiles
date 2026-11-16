@@ -14,6 +14,13 @@ host paths.
 dot peer diff [flags]
 ```
 
+### Examples
+
+```
+  dot peer diff
+  dot peer diff --list
+```
+
 ### Options
 
 ```

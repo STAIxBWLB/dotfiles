@@ -9,16 +9,17 @@ workspace, push backups under the mirror. For SSH targets, push backups are
 listed and pruned on the remote target under <target>/.sync-conflicts; the
 peer profile also includes ~/.dot-peer-conflicts from its host-path pass.
 
-  dot sync conflicts                       # alias for list
-  dot sync conflicts list
-  dot sync conflicts prune                 # remove backups older than 30 days
-  dot sync conflicts prune --older-than 7
-  dot sync conflicts prune --all           # remove every backup
-  dot sync conflicts prune --all --remote-only --store=peer
-                                             # preserve this machine's backups
+Without a subcommand it lists, the same as 'list'.
 
 ```
 dot sync conflicts [flags]
+```
+
+### Examples
+
+```
+  dot sync conflicts list
+  dot sync conflicts prune --older-than 7
 ```
 
 ### Options
@@ -36,7 +37,7 @@ dot sync conflicts [flags]
       --dry-run         show what would be done without executing
       --home string     override home directory (for admin setup of other users)
       --store string    sync store under <workspace>/.dotfiles/<store>/; "sync" is the cloud mirror, "peer" the other Mac (default "sync")
-  -V, --verbose         Show rsync progress output
+  -V, --verbose         show rsync progress output
       --yes             unattended mode (skip all prompts)
 ```
 

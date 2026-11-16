@@ -7,20 +7,24 @@ Restore specific files or folders from the target on demand
 Fetch pulls the named files or directories (workspace-relative paths)
 from the sync target into the workspace — the on-demand entry point when a
 specific file, folder, program, or event needs the binaries backing a path
-without running a full pull. Other tools can shell out to it:
-
-  dot sync fetch projects/oda/koica-tiu/06-proposal
-  dot sync fetch admin/scan.pdf research/data --dry-run
+without running a full pull. Other tools can shell out to it.
 
 Safety: newer local files are never overwritten (--update), overwrites are
 backed up under .sync-conflicts/, nothing is deleted, and the exclude layers
 still apply — .git and non-allowed secrets can never be imported. Paths
 missing on the target, and paths a sync filter keeps out (submodules, .git,
-secrets, excludes, shared folders), are reported and skipped. An absolute path is accepted
-when it lies under the workspace.
+secrets, excludes, shared folders), are reported and skipped. An absolute path
+is accepted when it lies under the workspace.
 
 ```
 dot sync fetch <path>... [flags]
+```
+
+### Examples
+
+```
+  dot sync fetch projects/oda/koica-tiu/06-proposal
+  dot sync fetch admin/scan.pdf research/data --dry-run
 ```
 
 ### Options
@@ -39,7 +43,7 @@ dot sync fetch <path>... [flags]
       --dry-run         show what would be done without executing
       --home string     override home directory (for admin setup of other users)
       --store string    sync store under <workspace>/.dotfiles/<store>/; "sync" is the cloud mirror, "peer" the other Mac (default "sync")
-  -V, --verbose         Show rsync progress output
+  -V, --verbose         show rsync progress output
       --yes             unattended mode (skip all prompts)
 ```
 

@@ -44,6 +44,13 @@ before #196 drops the key when it saves; later ones keep top-level keys).
 dot peer setup [flags]
 ```
 
+### Examples
+
+```
+  dot peer setup --interval 15m
+  dot peer setup --off
+```
+
 ### Options
 
 ```
