@@ -150,17 +150,17 @@ func RunAll(ctx context.Context, modules []Module, rc *RunContext) error {
 	for _, m := range modules {
 		check, err := m.Check(ctx, rc)
 		if err != nil {
-			fmt.Fprintf(rc.out(), "  %s %s: check error: %v\n", ui.MarkerColumn(ui.MarkWarn), m.Name(), err)
+			fmt.Fprintf(rc.out(), "  %s %s: check error: %v\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkWarn)), m.Name(), err)
 			errors = append(errors, fmt.Sprintf("%s: %v", m.Name(), err))
 			continue
 		}
 		if check.Satisfied {
-			fmt.Fprintf(rc.out(), "  %s %s: already satisfied\n", ui.MarkerColumn(ui.MarkPresent), m.Name())
+			fmt.Fprintf(rc.out(), "  %s %s: already satisfied\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkPresent)), m.Name())
 			continue
 		}
 
 		for _, c := range check.Changes {
-			fmt.Fprintf(rc.out(), "  %s %s: %s\n", ui.MarkerColumn(ui.MarkNext), m.Name(), c.Description)
+			fmt.Fprintf(rc.out(), "  %s %s: %s\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkNext)), m.Name(), c.Description)
 		}
 
 		if rc.DryRun {
@@ -169,13 +169,13 @@ func RunAll(ctx context.Context, modules []Module, rc *RunContext) error {
 
 		result, err := m.Apply(ctx, rc)
 		if err != nil {
-			fmt.Fprintf(rc.out(), "  %s %s: %v\n", ui.MarkerColumn(ui.MarkFail), m.Name(), err)
+			fmt.Fprintf(rc.out(), "  %s %s: %v\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkFail)), m.Name(), err)
 			errors = append(errors, fmt.Sprintf("%s: %v", m.Name(), err))
 			continue
 		}
 		if result.Changed {
 			for _, msg := range result.Messages {
-				fmt.Fprintf(rc.out(), "  %s %s: %s\n", ui.MarkerColumn(ui.MarkPresent), m.Name(), msg)
+				fmt.Fprintf(rc.out(), "  %s %s: %s\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkPresent)), m.Name(), msg)
 			}
 		}
 	}

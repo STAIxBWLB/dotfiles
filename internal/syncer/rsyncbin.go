@@ -200,7 +200,7 @@ func CheckRsync(runner *exec.Runner) (string, bool) {
 // InstallRsync installs rsync via brew or apt. Progress lines go to out;
 // a nil out means process stdout.
 func InstallRsync(ctx context.Context, runner *exec.Runner, out io.Writer) error {
-	out = outOrStdout(out)
+	out = ui.Output(outOrStdout(out))
 	brew := exec.NewBrew(runner)
 	if brew.IsAvailable() {
 		fmt.Fprintf(out, "  %s Installing rsync via Homebrew...\n", ui.MarkerColumn(ui.RenderMarker(ui.MarkPending)))
