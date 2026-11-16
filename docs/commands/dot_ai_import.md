@@ -6,11 +6,17 @@ Import AI settings from a portable tar.gz archive
 dot ai import <file.tar.gz> [flags]
 ```
 
+### Examples
+
+```
+  dot ai import ai-settings.tar.gz
+```
+
 ### Options
 
 ```
   -h, --help           help for import
-      --include-auth   Import auth/local-secret files from the archive
+      --include-auth   import auth/local-secret files from the archive
 ```
 
 ### Options inherited from parent commands

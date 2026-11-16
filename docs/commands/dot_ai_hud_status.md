@@ -6,11 +6,17 @@ Show Claude Code and Codex HUD status
 dot ai hud status [flags]
 ```
 
+### Examples
+
+```
+  dot ai hud status
+```
+
 ### Options
 
 ```
   -h, --help          help for status
-      --tool string   Comma-separated tool IDs (claude,codex)
+      --tool string   comma-separated tool IDs (claude,codex)
 ```
 
 ### Options inherited from parent commands

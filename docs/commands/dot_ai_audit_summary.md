@@ -6,6 +6,12 @@ Summarize dot ai audit events by type
 dot ai audit summary [flags]
 ```
 
+### Examples
+
+```
+  dot ai audit summary
+```
+
 ### Options
 
 ```

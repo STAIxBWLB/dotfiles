@@ -6,12 +6,19 @@ Copy-render the SSOT to agent tool targets
 dot ai agents apply [flags]
 ```
 
+### Examples
+
+```
+  dot ai agents apply
+  dot ai agents apply --tool claude,codex
+```
+
 ### Options
 
 ```
-      --force         Overwrite a target changed outside the last dot-managed apply after backing it up
+      --force         overwrite a target changed outside the last dot-managed apply after backing it up
   -h, --help          help for apply
-      --tool string   Comma-separated tool IDs to apply
+      --tool string   comma-separated tool IDs to apply
 ```
 
 ### Options inherited from parent commands

@@ -6,12 +6,18 @@ Export AI settings to a portable tar.gz archive
 dot ai export <file.tar.gz> [flags]
 ```
 
+### Examples
+
+```
+  dot ai export ai-settings.tar.gz
+```
+
 ### Options
 
 ```
   -h, --help           help for export
-      --include-auth   Include auth/local-secret files
-      --tag string     Human-friendly label stored in meta.yaml
+      --include-auth   include auth/local-secret files
+      --tag string     human-friendly label stored in meta.yaml
 ```
 
 ### Options inherited from parent commands

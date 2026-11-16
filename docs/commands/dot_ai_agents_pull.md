@@ -6,10 +6,16 @@ Copy one live tool target back into the SSOT
 dot ai agents pull [flags]
 ```
 
+### Examples
+
+```
+  dot ai agents pull --from claude
+```
+
 ### Options
 
 ```
-      --from string   Tool ID to pull from
+      --from string   tool ID to pull from
   -h, --help          help for pull
 ```
 

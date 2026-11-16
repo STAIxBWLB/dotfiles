@@ -6,6 +6,12 @@ Show each family tool's current and previous versions
 dot ai family status [flags]
 ```
 
+### Examples
+
+```
+  dot ai family status
+```
+
 ### Options
 
 ```
@@ -26,5 +32,5 @@ dot ai family status [flags]
 
 ### SEE ALSO
 
-* [dot ai family](dot_ai_family.md)	 - Install agent-hub family tools side by side, one directory per version
+* [dot ai family](dot_ai_family.md)	 - Install agent-hub family tools side by side
 

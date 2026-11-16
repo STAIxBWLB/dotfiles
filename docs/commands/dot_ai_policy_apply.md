@@ -1,17 +1,24 @@
 ## dot ai policy apply
 
-Apply owned native policy overlays and optionally persist the desired policy
+Apply owned policy overlays and optionally persist them
 
 ```
 dot ai policy apply [flags]
+```
+
+### Examples
+
+```
+  dot ai policy apply
+  dot ai policy apply --persist
 ```
 
 ### Options
 
 ```
   -h, --help      help for apply
-      --json      Emit a versioned JSON report
-      --persist   Save the supplied policy into dotfiles user state after applying overlays
+      --json      emit a versioned JSON report
+      --persist   save the supplied policy into dotfiles user state after applying overlays
 ```
 
 ### Options inherited from parent commands
@@ -28,5 +35,5 @@ dot ai policy apply [flags]
 
 ### SEE ALSO
 
-* [dot ai policy](dot_ai_policy.md)	 - Inspect, resolve and reconcile adaptive AI operating policies
+* [dot ai policy](dot_ai_policy.md)	 - Inspect, resolve and reconcile AI operating policies
 

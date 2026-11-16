@@ -6,6 +6,12 @@ Open $EDITOR on the shared AGENTS.md
 dot ai agents edit [flags]
 ```
 
+### Examples
+
+```
+  dot ai agents edit
+```
+
 ### Options
 
 ```

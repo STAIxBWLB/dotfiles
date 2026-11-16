@@ -19,15 +19,16 @@ func familyIDs() string {
 }
 
 func newAIFamilyCmd() *cobra.Command {
-	c := &cobra.Command{Use: "family", Short: "Install agent-hub family tools side by side, one directory per version", Long: `Install ` + familyIDs() + ` side by side.
+	c := &cobra.Command{Use: "family", Short: "Install agent-hub family tools side by side", Long: `Install ` + familyIDs() + ` side by side.
 
-Each version gets its own npm prefix under ~/.local/share/dotfiles/tools/<id>/<version>/.
-A 'current' link names the active version and 'previous' the one before it;
+Each version gets its own npm prefix under
+~/.local/share/dotfiles/tools/<id>/<version>/. A 'current' link names the
+active version and 'previous' the one before it;
 ~/.local/bin/<bin> points through 'current'. Activation is one rename: new
 sessions start the new version, running processes keep the files they started
 with and are listed, and nothing is stopped. Versions other than current and
-previous are removed once no running process uses them. 'dot ai family rollback <id>'
-makes previous current again.
+previous are removed once no running process uses them.
+'dot ai family rollback <id>' makes previous current again.
 
 For ahub this is the global CLI only: 'ahub upgrade' still runs each project's
 daemon from ~/.agenthub/releases. After ahub activates, run the printed
@@ -53,13 +54,14 @@ others, and the command exits non-zero naming each tool that failed.`, RunE: fun
 			return e.FamilyInstall(cmd.Context(), id, version, adopt)
 		})
 	}}
-	install.Flags().String("version", "", "Exact X.Y.Z version to install, with one id (default: the registry's latest)")
-	install.Flags().Bool("all", false, "Install every family tool")
-	install.Flags().Bool("adopt", false, "Repoint an existing ~/.local/bin/<bin> symlink from another install; that install is left in place")
+	install.Flags().String("version", "", "exact X.Y.Z version to install, with one id (default: the registry's latest)")
+	install.Flags().Bool("all", false, "install every family tool")
+	install.Flags().Bool("adopt", false, "repoint an existing ~/.local/bin/<bin> symlink, leaving the other install in place")
 	update := &cobra.Command{Use: "update [id...]", Short: "Move installed family tools to the registry's latest version", Long: `Move each named family tool, or with no ids every installed one, to the
 registry's latest version. A tool that is not installed is reported and
-skipped, and one already newer than the registry's latest is left as is. With --dry-run nothing is written: each tool is shown as already
-current or with the version it would move to.`, RunE: func(cmd *cobra.Command, args []string) error {
+skipped, and one already newer than the registry's latest is left as is.
+With --dry-run nothing is written: each tool is shown as already current or
+with the version it would move to.`, RunE: func(cmd *cobra.Command, args []string) error {
 		adopt, _ := cmd.Flags().GetBool("adopt")
 		e := familyEngine(cmd)
 		if len(args) == 0 {
@@ -79,7 +81,7 @@ current or with the version it would move to.`, RunE: func(cmd *cobra.Command, a
 			return e.FamilyUpdate(cmd.Context(), id, adopt)
 		})
 	}}
-	update.Flags().Bool("adopt", false, "Repoint an existing ~/.local/bin/<bin> symlink from another install; that install is left in place")
+	update.Flags().Bool("adopt", false, "repoint an existing ~/.local/bin/<bin> symlink, leaving the other install in place")
 	status := &cobra.Command{Use: "status", Short: "Show each family tool's current and previous versions", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		for _, r := range familyEngine(cmd).FamilyStatus() {
 			printFamily(cmd, r)
@@ -91,7 +93,8 @@ current or with the version it would move to.`, RunE: func(cmd *cobra.Command, a
 }
 
 func newAIRollbackCmd() *cobra.Command {
-	return &cobra.Command{Use: "rollback <id>", Short: "Make a family tool's previous version current again", Long: `Make the previous version of a family tool (` + familyIDs() + `) current again.
+	return &cobra.Command{Use: "rollback <id>", Short: "Make a family tool's previous version current again", Long: `Make the previous version of a family tool current again
+(` + familyIDs() + `).
 
 Running processes are listed and keep their files; new sessions start the
 restored version. The version it leaves becomes 'previous'.`, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {

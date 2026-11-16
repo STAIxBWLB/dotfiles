@@ -1,6 +1,6 @@
 ## dot ai memory archive
 
-Move stale memory files into an archive (dry run unless --apply)
+Move stale memory files into an archive
 
 ### Synopsis
 
@@ -27,10 +27,17 @@ resolve outside it, the store's own index, and a destination that exists.
 dot ai memory archive <agent> <path>... [flags]
 ```
 
+### Examples
+
+```
+  dot ai memory archive claude old-notes.md
+  dot ai memory archive claude old-notes.md --apply
+```
+
 ### Options
 
 ```
-      --apply   Move the files (default: preview)
+      --apply   move the files (default: preview)
   -h, --help    help for archive
 ```
 

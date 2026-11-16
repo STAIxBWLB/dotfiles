@@ -6,6 +6,13 @@ Print the last N dot ai audit events as JSONL
 dot ai audit tail [N] [flags]
 ```
 
+### Examples
+
+```
+  dot ai audit tail
+  dot ai audit tail 50
+```
+
 ### Options
 
 ```

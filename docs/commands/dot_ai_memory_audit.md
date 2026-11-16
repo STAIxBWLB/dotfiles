@@ -1,6 +1,6 @@
 ## dot ai memory audit
 
-Report the size and drift of each agent's native memory (read-only)
+Report the size and drift of native agent memory
 
 ### Synopsis
 
@@ -34,13 +34,20 @@ a missing file.
 dot ai memory audit [flags]
 ```
 
+### Examples
+
+```
+  dot ai memory audit
+  dot ai memory audit --agent claude,codex --json
+```
+
 ### Options
 
 ```
-      --agent strings   Agents to audit (comma-separated: claude,codex,qwen,grok,jcode)
+      --agent strings   agents to audit (comma-separated: claude,codex,qwen,grok,jcode)
   -h, --help            help for audit
-      --json            Print the report as JSON
-      --show            Also print the lines that match a retired term
+      --json            print the report as JSON
+      --show            also print the lines that match a retired term
 ```
 
 ### Options inherited from parent commands

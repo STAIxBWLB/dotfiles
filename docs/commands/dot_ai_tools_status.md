@@ -6,11 +6,17 @@ Show the saved tooling selection and where installs drifted
 dot ai tools status [flags]
 ```
 
+### Examples
+
+```
+  dot ai tools status
+```
+
 ### Options
 
 ```
   -h, --help   help for status
-      --json   Print JSON
+      --json   print JSON
 ```
 
 ### Options inherited from parent commands

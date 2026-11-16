@@ -48,6 +48,7 @@ they are machine state pi rebuilds itself.`,
 	cmd.AddCommand(newAIMCPCmd())
 	cmd.AddCommand(newAIAuthCmd())
 	cmd.AddCommand(newAIAuditCmd())
+	applyAIExamples(cmd)
 	return cmd
 }
 
@@ -138,9 +139,9 @@ func newAIStatusCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE:  runAIStatus,
 	}
-	c.Flags().String("from", "", "Backup root to inspect")
-	c.Flags().String("host", "", "Hostname to inspect (default: this host)")
-	c.Flags().Bool("include-auth", false, "Include auth/local-secret paths in status")
+	c.Flags().String("from", "", "backup root to inspect")
+	c.Flags().String("host", "", "hostname to inspect (default: this host)")
+	c.Flags().Bool("include-auth", false, "include auth/local-secret paths in status")
 	return c
 }
 
@@ -195,13 +196,13 @@ func runAIStatus(cmd *cobra.Command, _ []string) error {
 func newAIPruneCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "prune",
-		Short: "Delete older AI snapshots (ai-config/ only), keeping the newest N",
+		Short: "Delete older AI snapshots, keeping the newest N",
 		Args:  cobra.NoArgs,
 		RunE:  runAIPrune,
 	}
-	c.Flags().String("from", "", "Backup root (overrides configured BackupRoot)")
-	c.Flags().String("host", "", "Hostname to prune (default: this host)")
-	c.Flags().Int("keep", 5, "Number of most recent snapshots to keep")
+	c.Flags().String("from", "", "backup root (overrides configured BackupRoot)")
+	c.Flags().String("host", "", "hostname to prune (default: this host)")
+	c.Flags().Int("keep", 5, "number of most recent snapshots to keep")
 	return c
 }
 

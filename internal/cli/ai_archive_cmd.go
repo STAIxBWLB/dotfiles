@@ -16,13 +16,13 @@ import (
 func newAIBackupCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "backup",
-		Short: "Advanced: snapshot only AI settings (dot backup is the front door)",
+		Short: "Snapshot only AI settings (dot backup is the front door)",
 		Args:  cobra.NoArgs,
 		RunE:  runAIBackup,
 	}
-	c.Flags().String("to", "", "Backup root (overrides configured BackupRoot)")
-	c.Flags().String("tag", "", "Human-friendly label stored in meta.yaml")
-	c.Flags().Bool("include-auth", false, "Include auth/local-secret files")
+	c.Flags().String("to", "", "backup root (overrides configured BackupRoot)")
+	c.Flags().String("tag", "", "human-friendly label stored in meta.yaml")
+	c.Flags().Bool("include-auth", false, "include auth/local-secret files")
 	c.AddCommand(newAIStatusCmd())
 	return c
 }
@@ -46,15 +46,15 @@ func runAIBackup(cmd *cobra.Command, _ []string) error {
 func newAIRestoreCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "restore",
-		Short: "Advanced: restore only AI settings (dot restore is the front door)",
+		Short: "Restore only AI settings (dot restore is the front door)",
 		Args:  cobra.NoArgs,
 		RunE:  runAIRestore,
 	}
-	c.Flags().String("from", "", "Backup root (overrides configured BackupRoot)")
-	c.Flags().String("host", "", "Source hostname to restore from (default: this host)")
-	c.Flags().String("version", "", `Specific version to restore, or "latest" (default: latest)`)
-	c.Flags().Bool("include-auth", false, "Restore auth/local-secret files from the snapshot")
-	c.Flags().Bool("reapply-agents", false, "After restore, reapply the agents SSOT to tool targets")
+	c.Flags().String("from", "", "backup root (overrides configured BackupRoot)")
+	c.Flags().String("host", "", "source hostname to restore from (default: this host)")
+	c.Flags().String("version", "", `specific version to restore, or "latest" (default: latest)`)
+	c.Flags().Bool("include-auth", false, "restore auth/local-secret files from the snapshot")
+	c.Flags().Bool("reapply-agents", false, "after restore, reapply the agents SSOT to tool targets")
 	return c
 }
 
@@ -123,8 +123,8 @@ func newAIExportCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE:  runAIExport,
 	}
-	c.Flags().String("tag", "", "Human-friendly label stored in meta.yaml")
-	c.Flags().Bool("include-auth", false, "Include auth/local-secret files")
+	c.Flags().String("tag", "", "human-friendly label stored in meta.yaml")
+	c.Flags().Bool("include-auth", false, "include auth/local-secret files")
 	return c
 }
 
@@ -151,7 +151,7 @@ func newAIImportCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE:  runAIImport,
 	}
-	c.Flags().Bool("include-auth", false, "Import auth/local-secret files from the archive")
+	c.Flags().Bool("include-auth", false, "import auth/local-secret files from the archive")
 	return c
 }
 

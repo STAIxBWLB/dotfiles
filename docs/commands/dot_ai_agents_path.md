@@ -6,6 +6,12 @@ Print the absolute agents SSOT directory
 dot ai agents path [flags]
 ```
 
+### Examples
+
+```
+  dot ai agents path
+```
+
 ### Options
 
 ```

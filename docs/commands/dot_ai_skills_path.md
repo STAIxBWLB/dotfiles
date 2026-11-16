@@ -6,13 +6,19 @@ Show skills SSOT and target skill roots
 dot ai skills path [flags]
 ```
 
+### Examples
+
+```
+  dot ai skills path
+```
+
 ### Options
 
 ```
   -h, --help              help for path
-      --provider string   Skills SSOT provider: maru or path (defaults to maru)
-      --ssot string       Skills SSOT root path (defaults to ~/.maru/skills for provider=maru)
-      --tool string       Comma-separated managed targets (claude,codex); auto-detected when omitted
+      --provider string   skills SSOT provider: maru or path (defaults to maru)
+      --ssot string       skills SSOT root path (defaults to ~/.maru/skills for provider=maru)
+      --tool string       comma-separated managed targets (claude,codex); auto-detected when omitted
 ```
 
 ### Options inherited from parent commands
@@ -29,5 +35,5 @@ dot ai skills path [flags]
 
 ### SEE ALSO
 
-* [dot ai skills](dot_ai_skills.md)	 - Diagnose AI Markdown skills (read-only; the Maru app manages runtime symlinks)
+* [dot ai skills](dot_ai_skills.md)	 - Diagnose AI Markdown skills (read-only)
 

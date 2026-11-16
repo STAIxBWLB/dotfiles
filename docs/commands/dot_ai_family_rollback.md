@@ -4,13 +4,20 @@ Make a family tool's previous version current again
 
 ### Synopsis
 
-Make the previous version of a family tool (ahub, amem, vmem, acon, ares) current again.
+Make the previous version of a family tool current again
+(ahub, amem, vmem, acon, ares).
 
 Running processes are listed and keep their files; new sessions start the
 restored version. The version it leaves becomes 'previous'.
 
 ```
 dot ai family rollback <id> [flags]
+```
+
+### Examples
+
+```
+  dot ai family rollback amem
 ```
 
 ### Options
@@ -33,5 +40,5 @@ dot ai family rollback <id> [flags]
 
 ### SEE ALSO
 
-* [dot ai family](dot_ai_family.md)	 - Install agent-hub family tools side by side, one directory per version
+* [dot ai family](dot_ai_family.md)	 - Install agent-hub family tools side by side
 

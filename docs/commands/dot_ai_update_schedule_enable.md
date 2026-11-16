@@ -6,12 +6,18 @@ Install the weekly AI update LaunchAgent
 dot ai update schedule enable [flags]
 ```
 
+### Examples
+
+```
+  dot ai update schedule enable
+```
+
 ### Options
 
 ```
   -h, --help            help for enable
-      --json            Emit scheduler status as JSON
-      --wait duration   Maximum time to wait for the maintenance slot and host recovery when enabling (at most 10m) (default 6m0s)
+      --json            emit scheduler status as JSON
+      --wait duration   maximum time to wait for the maintenance slot and host recovery when enabling (at most 10m) (default 6m0s)
 ```
 
 ### Options inherited from parent commands

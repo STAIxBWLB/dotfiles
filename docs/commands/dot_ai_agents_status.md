@@ -6,6 +6,12 @@ Show detailed agents SSOT drift status
 dot ai agents status [flags]
 ```
 
+### Examples
+
+```
+  dot ai agents status
+```
+
 ### Options
 
 ```

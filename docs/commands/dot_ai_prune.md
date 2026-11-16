@@ -1,18 +1,25 @@
 ## dot ai prune
 
-Delete older AI snapshots (ai-config/ only), keeping the newest N
+Delete older AI snapshots, keeping the newest N
 
 ```
 dot ai prune [flags]
 ```
 
+### Examples
+
+```
+  dot ai prune
+  dot ai prune --keep 3
+```
+
 ### Options
 
 ```
-      --from string   Backup root (overrides configured BackupRoot)
+      --from string   backup root (overrides configured BackupRoot)
   -h, --help          help for prune
-      --host string   Hostname to prune (default: this host)
-      --keep int      Number of most recent snapshots to keep (default 5)
+      --host string   hostname to prune (default: this host)
+      --keep int      number of most recent snapshots to keep (default 5)
 ```
 
 ### Options inherited from parent commands

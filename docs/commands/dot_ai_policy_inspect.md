@@ -1,16 +1,23 @@
 ## dot ai policy inspect
 
-Inspect local agent capabilities and portable policy without changing settings
+Inspect local agent capabilities and portable policy
 
 ```
 dot ai policy inspect [flags]
+```
+
+### Examples
+
+```
+  dot ai policy inspect
+  dot ai policy inspect --json
 ```
 
 ### Options
 
 ```
   -h, --help   help for inspect
-      --json   Emit a versioned JSON report
+      --json   emit a versioned JSON report
 ```
 
 ### Options inherited from parent commands
@@ -27,5 +34,5 @@ dot ai policy inspect [flags]
 
 ### SEE ALSO
 
-* [dot ai policy](dot_ai_policy.md)	 - Inspect, resolve and reconcile adaptive AI operating policies
+* [dot ai policy](dot_ai_policy.md)	 - Inspect, resolve and reconcile AI operating policies
 

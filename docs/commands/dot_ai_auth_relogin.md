@@ -6,12 +6,18 @@ Clear stored credentials and re-authenticate MCP servers
 dot ai auth relogin <server...> [flags]
 ```
 
+### Examples
+
+```
+  dot ai auth relogin "claude.ai Canva"
+```
+
 ### Options
 
 ```
   -h, --help          help for relogin
-      --no-browser    Print the authorization URL instead of opening a browser
-      --tool string   CLI owning the MCP server (claude or codex) (default "claude")
+      --no-browser    print the authorization URL instead of opening a browser
+      --tool string   the CLI owning the MCP server (claude or codex) (default "claude")
 ```
 
 ### Options inherited from parent commands

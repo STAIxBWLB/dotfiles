@@ -21,10 +21,10 @@ Run 'dot ai setup' first. Native providers retain installation ownership.
 Heavy work is serialized by the host resource guard. Unavailable metadata,
 unsupported adapters, resource pressure, authentication and trust remain
 explicitly pending; no blanket plugin, marketplace, or skill update runs.`, Args: cobra.NoArgs, RunE: runAIUpdate}
-	c.Flags().Bool("check", false, "Inspect installed and available versions without mutation")
-	c.Flags().StringSlice("tool", nil, "Limit to saved selections ("+strings.Join(updateTools, ",")+")")
-	c.Flags().Bool("json", false, "Emit machine-readable JSON")
-	c.Flags().Bool("scheduled", false, "Run due weekly maintenance with resource recovery admission")
+	c.Flags().Bool("check", false, "inspect installed and available versions without mutation")
+	c.Flags().StringSlice("tool", nil, "limit to saved selections ("+strings.Join(updateTools, ",")+")")
+	c.Flags().Bool("json", false, "emit machine-readable JSON")
+	c.Flags().Bool("scheduled", false, "run due weekly maintenance with resource recovery admission")
 	_ = c.Flags().MarkHidden("scheduled")
 	c.AddCommand(newAIUpdateScheduleCmd())
 	return c

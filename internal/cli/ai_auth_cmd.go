@@ -27,7 +27,8 @@ periodically lose their credentials. 'status' reports which servers need
 re-auth, 'login' authenticates them, and 'relogin' clears stale credentials
 before logging in again.
 
-Server names containing spaces must be quoted:
+Server names containing spaces must be quoted.`,
+		Example: `  dot ai auth status
   dot ai auth relogin "claude.ai Canva"`,
 	}
 	cmd.AddCommand(newAIAuthStatusCmd())
@@ -54,9 +55,9 @@ no stale-credential state, so the oauth column only classifies the transport;
 		Args: cobra.NoArgs,
 		RunE: runAIAuthStatus,
 	}
-	c.Flags().Bool("json", false, "Emit machine-readable JSON")
-	c.Flags().Bool("probe", false, "Also stream live state ('claude mcp list' / 'codex doctor')")
-	c.Flags().String("tool", "claude", "CLI owning the MCP servers (claude or codex)")
+	c.Flags().Bool("json", false, "emit machine-readable JSON")
+	c.Flags().Bool("probe", false, "also stream live state ('claude mcp list' / 'codex doctor')")
+	c.Flags().String("tool", "claude", "the CLI owning the MCP servers (claude or codex)")
 	return c
 }
 
@@ -249,9 +250,9 @@ func newAIAuthLoginCmd() *cobra.Command {
 		Short: "Authenticate one or more MCP servers",
 		RunE:  runAIAuthLogin,
 	}
-	c.Flags().Bool("all-needed", false, "Log in to every server currently flagged as needing auth")
-	c.Flags().String("tool", "claude", "CLI owning the MCP server (claude or codex)")
-	c.Flags().Bool("no-browser", false, "Print the authorization URL instead of opening a browser")
+	c.Flags().Bool("all-needed", false, "log in to every server currently flagged as needing auth")
+	c.Flags().String("tool", "claude", "the CLI owning the MCP server (claude or codex)")
+	c.Flags().Bool("no-browser", false, "print the authorization URL instead of opening a browser")
 	return c
 }
 
@@ -320,8 +321,8 @@ func newAIAuthReloginCmd() *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		RunE:  runAIAuthRelogin,
 	}
-	c.Flags().String("tool", "claude", "CLI owning the MCP server (claude or codex)")
-	c.Flags().Bool("no-browser", false, "Print the authorization URL instead of opening a browser")
+	c.Flags().String("tool", "claude", "the CLI owning the MCP server (claude or codex)")
+	c.Flags().Bool("no-browser", false, "print the authorization URL instead of opening a browser")
 	return c
 }
 

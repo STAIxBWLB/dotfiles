@@ -65,7 +65,7 @@ func memoryOptionsFromCmd(cmd *cobra.Command) aimemory.Options {
 func newAIMemoryAuditCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "audit",
-		Short: "Report the size and drift of each agent's native memory (read-only)",
+		Short: "Report the size and drift of native agent memory",
 		Long: `Read the native memory of Claude Code, Codex, Qwen, Grok and jcode and report,
 per store: file count and bytes, the always-loaded index against its limit
 (Claude MEMORY.md: 200 lines or 25 KB; Codex memory_summary.md: 10 KB), index
@@ -118,9 +118,9 @@ a missing file.`,
 			return nil
 		},
 	}
-	c.Flags().StringSlice("agent", nil, "Agents to audit (comma-separated: "+strings.Join(aimemory.Agents, ",")+")")
-	c.Flags().Bool("json", false, "Print the report as JSON")
-	c.Flags().Bool("show", false, "Also print the lines that match a retired term")
+	c.Flags().StringSlice("agent", nil, "agents to audit (comma-separated: "+strings.Join(aimemory.Agents, ",")+")")
+	c.Flags().Bool("json", false, "print the report as JSON")
+	c.Flags().Bool("show", false, "also print the lines that match a retired term")
 	return c
 }
 
@@ -253,7 +253,7 @@ func humanBytes(n int64) string {
 func newAIMemoryArchiveCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "archive <agent> <path>...",
-		Short: "Move stale memory files into an archive (dry run unless --apply)",
+		Short: "Move stale memory files into an archive",
 		Long: `Move whole memory files out of the layer an agent loads. Content is never
 edited or deleted, and index files are never touched.
 
@@ -308,7 +308,7 @@ resolve outside it, the store's own index, and a destination that exists.`,
 			return nil
 		},
 	}
-	c.Flags().Bool("apply", false, "Move the files (default: preview)")
+	c.Flags().Bool("apply", false, "move the files (default: preview)")
 	return c
 }
 

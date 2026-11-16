@@ -6,13 +6,20 @@ Authenticate one or more MCP servers
 dot ai auth login [server...] [flags]
 ```
 
+### Examples
+
+```
+  dot ai auth login --all-needed
+  dot ai auth login "claude.ai Canva"
+```
+
 ### Options
 
 ```
-      --all-needed    Log in to every server currently flagged as needing auth
+      --all-needed    log in to every server currently flagged as needing auth
   -h, --help          help for login
-      --no-browser    Print the authorization URL instead of opening a browser
-      --tool string   CLI owning the MCP server (claude or codex) (default "claude")
+      --no-browser    print the authorization URL instead of opening a browser
+      --tool string   the CLI owning the MCP server (claude or codex) (default "claude")
 ```
 
 ### Options inherited from parent commands

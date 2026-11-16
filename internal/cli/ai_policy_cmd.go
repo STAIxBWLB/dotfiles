@@ -49,37 +49,37 @@ func inspectPolicyForCmd(cmd *cobra.Command) ([]aipolicy.Runtime, error) {
 }
 
 func newAIPolicyCmd() *cobra.Command {
-	c := &cobra.Command{Use: "policy", Short: "Inspect, resolve and reconcile adaptive AI operating policies"}
+	c := &cobra.Command{Use: "policy", Short: "Inspect, resolve and reconcile AI operating policies"}
 	for _, operation := range []string{"inspect", "diff", "apply", "status", "rollback"} {
 		op := operation
 		child := &cobra.Command{Use: op, Short: map[string]string{
-			"inspect":  "Inspect local agent capabilities and portable policy without changing settings",
-			"diff":     "Preview selected policy overlays without changing native settings",
-			"apply":    "Apply owned native policy overlays and optionally persist the desired policy",
+			"inspect":  "Inspect local agent capabilities and portable policy",
+			"diff":     "Preview policy overlays without changing settings",
+			"apply":    "Apply owned policy overlays and optionally persist them",
 			"status":   "Compare owned overlays with selected policy and report drift",
-			"rollback": "Remove unchanged owned policy overlays; preserve native defaults",
+			"rollback": "Remove unchanged owned policy overlays",
 		}[op], Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return runAIPolicy(cmd, op) }}
-		child.Flags().Bool("json", false, "Emit a versioned JSON report")
+		child.Flags().Bool("json", false, "emit a versioned JSON report")
 		if op == "apply" {
-			child.Flags().Bool("persist", false, "Save the supplied policy into dotfiles user state after applying overlays")
+			child.Flags().Bool("persist", false, "save the supplied policy into dotfiles user state after applying overlays")
 		}
 		c.AddCommand(child)
 	}
-	resolve := &cobra.Command{Use: "resolve", Short: "Select a validated configuration for one task without launching it", Args: cobra.NoArgs, RunE: runAIPolicyResolve}
+	resolve := &cobra.Command{Use: "resolve", Short: "Select a validated configuration for one task", Args: cobra.NoArgs, RunE: runAIPolicyResolve}
 	addPolicyRequestFlags(resolve)
-	resolve.Flags().Bool("json", false, "Emit the versioned app integration contract")
+	resolve.Flags().Bool("json", false, "emit the versioned app integration contract")
 	c.AddCommand(resolve)
 	return c
 }
 
 func addPolicyRequestFlags(c *cobra.Command) {
-	c.Flags().String("task", "", "Task intent used for automatic workload classification")
+	c.Flags().String("task", "", "task intent used for automatic workload classification")
 	c.Flags().String("workload", "auto", "auto, routine, implementation, deep-analysis, independent-review, documents-teaching, visual-production")
-	c.Flags().String("agent", "", "Explicit agent selection (never silently substituted)")
-	c.Flags().String("project", "", "Task working directory (defaults to current directory)")
-	c.Flags().String("origin", "cli", "Calling surface, such as cli, maru or orca")
-	c.Flags().Bool("unattended", false, "Require a supported unattended approval path")
-	c.Flags().StringSlice("require", nil, "Required validated capabilities")
+	c.Flags().String("agent", "", "explicit agent selection (never silently substituted)")
+	c.Flags().String("project", "", "task working directory (defaults to current directory)")
+	c.Flags().String("origin", "cli", "calling surface, such as cli, maru or orca")
+	c.Flags().Bool("unattended", false, "require a supported unattended approval path")
+	c.Flags().StringSlice("require", nil, "required validated capabilities")
 }
 
 func policyRequest(cmd *cobra.Command) (aipolicy.Request, error) {

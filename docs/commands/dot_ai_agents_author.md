@@ -6,14 +6,21 @@ Interactively or programmatically edit SSOT sections
 dot ai agents author [flags]
 ```
 
+### Examples
+
+```
+  dot ai agents author
+  dot ai agents author --non-interactive --section style --value 'Be brief'
+```
+
 ### Options
 
 ```
-      --from-current string   Pull from a live tool target before authoring
+      --from-current string   pull from a live tool target before authoring
   -h, --help                  help for author
-      --non-interactive       Update one section without the wizard
-      --section string        Section name for --non-interactive
-      --value string          Section value for --non-interactive
+      --non-interactive       update one section without the wizard
+      --section string        section name for --non-interactive
+      --value string          section value for --non-interactive
 ```
 
 ### Options inherited from parent commands

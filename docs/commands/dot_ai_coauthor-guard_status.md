@@ -6,11 +6,17 @@ Show coauthor guard status
 dot ai coauthor-guard status [flags]
 ```
 
+### Examples
+
+```
+  dot ai coauthor-guard status
+```
+
 ### Options
 
 ```
   -h, --help          help for status
-      --mode string   Guard mode: off, warn, or block (default "block")
+      --mode string   guard mode: off, warn, or block (default "block")
 ```
 
 ### Options inherited from parent commands

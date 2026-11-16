@@ -6,11 +6,17 @@ Install or repair the saved tooling selection
 dot ai tools apply [flags]
 ```
 
+### Examples
+
+```
+  dot ai tools apply
+```
+
 ### Options
 
 ```
   -h, --help   help for apply
-      --json   Print JSON
+      --json   print JSON
 ```
 
 ### Options inherited from parent commands

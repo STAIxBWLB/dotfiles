@@ -13,13 +13,20 @@ others, and the command exits non-zero naming each tool that failed.
 dot ai family install <id>... | --all [flags]
 ```
 
+### Examples
+
+```
+  dot ai family install amem
+  dot ai family install --all
+```
+
 ### Options
 
 ```
-      --adopt            Repoint an existing ~/.local/bin/<bin> symlink from another install; that install is left in place
-      --all              Install every family tool
+      --adopt            repoint an existing ~/.local/bin/<bin> symlink, leaving the other install in place
+      --all              install every family tool
   -h, --help             help for install
-      --version string   Exact X.Y.Z version to install, with one id (default: the registry's latest)
+      --version string   exact X.Y.Z version to install, with one id (default: the registry's latest)
 ```
 
 ### Options inherited from parent commands
@@ -36,5 +43,5 @@ dot ai family install <id>... | --all [flags]
 
 ### SEE ALSO
 
-* [dot ai family](dot_ai_family.md)	 - Install agent-hub family tools side by side, one directory per version
+* [dot ai family](dot_ai_family.md)	 - Install agent-hub family tools side by side
 

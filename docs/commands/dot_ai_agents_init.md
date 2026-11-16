@@ -6,11 +6,18 @@ Create the shared agents SSOT
 dot ai agents init [flags]
 ```
 
+### Examples
+
+```
+  dot ai agents init
+  dot ai agents init --from-current claude
+```
+
 ### Options
 
 ```
-      --force                 Overwrite an existing SSOT after backing it up
-      --from-current string   Seed AGENTS.md from an existing tool target
+      --force                 overwrite an existing SSOT after backing it up
+      --from-current string   seed AGENTS.md from an existing tool target
   -h, --help                  help for init
 ```
 

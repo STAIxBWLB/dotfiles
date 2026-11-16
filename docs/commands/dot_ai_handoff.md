@@ -1,6 +1,6 @@
 ## dot ai handoff
 
-Share explicit local development notes across selected agents
+Share local development notes across selected agents
 
 ### Options
 
@@ -23,6 +23,6 @@ Share explicit local development notes across selected agents
 ### SEE ALSO
 
 * [dot ai](dot_ai.md)	 - AI CLI/config helpers and settings backup/restore
-* [dot ai handoff record](dot_ai_handoff_record.md)	 - Record a selected agent's explicit summary and artifact fingerprints
-* [dot ai handoff show](dot_ai_handoff_show.md)	 - Read repository handoffs with freshness checks (results remain claims)
+* [dot ai handoff record](dot_ai_handoff_record.md)	 - Record an agent's summary and artifact fingerprints
+* [dot ai handoff show](dot_ai_handoff_show.md)	 - Read repository handoffs with freshness checks
 
