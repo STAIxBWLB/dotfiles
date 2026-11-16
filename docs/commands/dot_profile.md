@@ -1,10 +1,11 @@
 ## dot profile
 
-Snapshot and restore dot profile state (config, app lists, secrets)
+Snapshot and restore dot profile state
 
 ### Synopsis
 
-Manage per-host profile snapshots under <backup-root>/profiles/<hostname>/<version>/.
+Manage per-host profile snapshots under
+<backup-root>/profiles/<hostname>/<version>/.
 
 Each snapshot captures:
   - config.yaml          → ~/.config/dotfiles/config.yaml
@@ -25,21 +26,21 @@ The shared backup root is resolved via --to/--from, the user state
 ### Options inherited from parent commands
 
 ```
-      --ascii           Use ASCII markers regardless of locale
-      --color string    Color output: auto, always or never (default "auto")
-      --config string   Path to custom config YAML
-      --dry-run         Show what would be done without executing
-      --home string     Override home directory (for admin setup of other users)
-      --verbose         Show library and debug logs on stderr
-      --yes             Unattended mode (skip all prompts)
+      --ascii           use ASCII markers regardless of locale
+      --color string    color output: auto, always or never (default "auto")
+      --config string   path to custom config YAML
+      --dry-run         show what would be done without executing
+      --home string     override home directory (for admin setup of other users)
+      --verbose         show library and debug logs on stderr
+      --yes             unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO
 
 * [dot](dot.md)	 - User environment & workspace management tool
-* [dot profile backup](dot_profile_backup.md)	 - Advanced: snapshot only the profile (dot backup is the front door)
+* [dot profile backup](dot_profile_backup.md)	 - Snapshot only the profile
 * [dot profile list](dot_profile_list.md)	 - List available profile snapshots for this host
-* [dot profile prune](dot_profile_prune.md)	 - Delete older profile snapshots (profiles/ only), keeping the newest N
-* [dot profile restore](dot_profile_restore.md)	 - Advanced: restore only a profile snapshot (dot restore is the front door)
-* [dot profile root](dot_profile_root.md)	 - Show or set the shared backup root for profiles and app-settings
+* [dot profile prune](dot_profile_prune.md)	 - Delete older profile snapshots, keeping the newest N
+* [dot profile restore](dot_profile_restore.md)	 - Restore only a profile snapshot
+* [dot profile root](dot_profile_root.md)	 - Show or set the shared backup root
 

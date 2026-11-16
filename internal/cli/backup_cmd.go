@@ -47,11 +47,11 @@ unattended runs.`,
 		Args: cobra.NoArgs,
 		RunE: runOnestopBackup,
 	}
-	c.Flags().String("to", "", "Backup root (overrides configured BackupRoot)")
-	c.Flags().String("tag", "", "Shared label stored in profile/AI snapshot metadata")
-	c.Flags().String("scope", "", "Comma-separated domains to back up (profile,apps,ai,secrets)")
-	addAgeKeyFlag(c, "Include ~/.ssh/age_key* in the profile snapshot")
-	c.Flags().Bool("include-auth", false, "Include AI auth tokens in the AI snapshot")
+	c.Flags().String("to", "", "backup root (overrides configured BackupRoot)")
+	c.Flags().String("tag", "", "shared label stored in profile/AI snapshot metadata")
+	c.Flags().String("scope", "", "comma-separated domains to back up (profile,apps,ai,secrets)")
+	addAgeKeyFlag(c, "include ~/.ssh/age_key* in the profile snapshot")
+	c.Flags().Bool("include-auth", false, "include AI auth tokens in the AI snapshot")
 	return c
 }
 

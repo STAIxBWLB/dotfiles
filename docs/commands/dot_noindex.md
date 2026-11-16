@@ -26,22 +26,29 @@ finish, so this command is the backstop for everything else.
 dot noindex [path...] [flags]
 ```
 
+### Examples
+
+```
+  dot noindex
+  dot noindex ~/workspace --verbose
+```
+
 ### Options
 
 ```
   -h, --help      help for noindex
-  -v, --verbose   List every directory marked
+  -v, --verbose   list every directory marked
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii           Use ASCII markers regardless of locale
-      --color string    Color output: auto, always or never (default "auto")
-      --config string   Path to custom config YAML
-      --dry-run         Show what would be done without executing
-      --home string     Override home directory (for admin setup of other users)
-      --yes             Unattended mode (skip all prompts)
+      --ascii           use ASCII markers regardless of locale
+      --color string    color output: auto, always or never (default "auto")
+      --config string   path to custom config YAML
+      --dry-run         show what would be done without executing
+      --home string     override home directory (for admin setup of other users)
+      --yes             unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO

@@ -46,7 +46,7 @@ nothing.`,
 	cmd.Flags().Duration("for", admission.RelaxDefaultFor, "how long the override lasts (maximum 24h)")
 	cmd.Flags().String("ignore", "", "rules to step past until the override expires: pressure, slot, uncovered, remote-load, or all")
 	cmd.Flags().StringArray("set", nil, "policy key to layer until the override expires, as <key>=<value> (repeatable)")
-	cmd.Flags().Bool("clear", false, "Remove the temporary override now")
+	cmd.Flags().Bool("clear", false, "remove the temporary override now")
 	return cmd
 }
 

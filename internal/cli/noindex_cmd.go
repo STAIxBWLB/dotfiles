@@ -72,7 +72,7 @@ finish, so this command is the backstop for everything else.`,
 		SilenceUsage: true,
 		RunE:         runNoindex,
 	}
-	cmd.Flags().BoolP("verbose", "v", false, "List every directory marked")
+	cmd.Flags().BoolP("verbose", "v", false, "list every directory marked")
 	cmd.AddCommand(newNoindexSetupCmd(), newNoindexUninstallCmd())
 	return cmd
 }

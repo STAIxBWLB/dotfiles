@@ -15,7 +15,7 @@ import (
 func newAdmitStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Show admission owners, pressure evidence, effective limits and hysteresis state",
+		Short: "Show admission owners, pressure and effective limits",
 		Long: `Report the resource-admission controller's view: active slot owners
 (scope, class, owner, pid, cwd, since, one line per held slot index), the
 effective value of every admission limit with the layer each came from

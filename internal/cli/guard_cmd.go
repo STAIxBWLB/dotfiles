@@ -20,7 +20,7 @@ import (
 func newGuardCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "guard",
-		Short: "Claude Code safety hooks (careful warnings + freeze boundary)",
+		Short: "Manage Claude Code safety hooks",
 		Long: `Manage dot-owned Claude Code PreToolUse safety hooks.
 
 careful warns before destructive shell commands (rm -rf, DROP TABLE,
@@ -242,7 +242,7 @@ func newGuardUnfreezeCmd() *cobra.Command {
 func newGuardStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:          "status",
-		Short:        "Show hook registration, careful/freeze state, and binary health",
+		Short:        "Show hook registration, state and binary health",
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {

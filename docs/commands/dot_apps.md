@@ -1,6 +1,6 @@
 ## dot apps
 
-macOS app install and settings backup/restore
+Install macOS apps and back up their settings
 
 ### Synopsis
 
@@ -22,21 +22,21 @@ Subcommands:
 ### Options inherited from parent commands
 
 ```
-      --ascii           Use ASCII markers regardless of locale
-      --color string    Color output: auto, always or never (default "auto")
-      --config string   Path to custom config YAML
-      --dry-run         Show what would be done without executing
-      --home string     Override home directory (for admin setup of other users)
-      --verbose         Show library and debug logs on stderr
-      --yes             Unattended mode (skip all prompts)
+      --ascii           use ASCII markers regardless of locale
+      --color string    color output: auto, always or never (default "auto")
+      --config string   path to custom config YAML
+      --dry-run         show what would be done without executing
+      --home string     override home directory (for admin setup of other users)
+      --verbose         show library and debug logs on stderr
+      --yes             unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO
 
 * [dot](dot.md)	 - User environment & workspace management tool
-* [dot apps backup](dot_apps_backup.md)	 - Advanced: snapshot only macOS app settings (dot backup is the front door)
-* [dot apps install](dot_apps_install.md)	 - Install macOS cask apps (interactive by default; args skip the picker)
+* [dot apps backup](dot_apps_backup.md)	 - Snapshot only macOS app settings
+* [dot apps install](dot_apps_install.md)	 - Install macOS cask apps
 * [dot apps list](dot_apps_list.md)	 - Show the cask catalog (groups + defaults)
-* [dot apps restore](dot_apps_restore.md)	 - Advanced: restore only macOS app settings (dot restore is the front door)
+* [dot apps restore](dot_apps_restore.md)	 - Restore only macOS app settings
 * [dot apps status](dot_apps_status.md)	 - Show install + backup presence for tracked apps
 

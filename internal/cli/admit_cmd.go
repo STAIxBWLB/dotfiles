@@ -97,8 +97,8 @@ flags (Go -p 2 -parallel 2; browser workers=1) remain the caller's choice.
 	cmd.Flags().Duration("wait", 30*time.Minute, "maximum time to wait for the slot before deferring")
 	cmd.Flags().Bool("json", false, "print the outcome as JSON")
 	cmd.Flags().String("ignore", "", "rules to step past for this run: pressure, slot, uncovered, remote-load, or all")
-	cmd.Flags().Bool("no-limit-threads", false, "Keep inherited worker settings instead of limiting Cargo, Rust tests and Go to 2")
-	cmd.Flags().String("project", "", "Checkout whose slot and working directory to use (defaults to current directory)")
+	cmd.Flags().Bool("no-limit-threads", false, "keep inherited worker settings instead of limiting Cargo, Rust tests and Go to 2")
+	cmd.Flags().String("project", "", "checkout whose slot and working directory to use (defaults to current directory)")
 	cmd.AddCommand(newAdmitStatusCmd())
 	cmd.AddCommand(newAdmitRelaxCmd())
 	return cmd

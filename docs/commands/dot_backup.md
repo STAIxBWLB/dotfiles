@@ -26,27 +26,34 @@ unattended runs.
 dot backup [flags]
 ```
 
+### Examples
+
+```
+  dot backup
+  dot backup --scope profile,apps --tag before-upgrade
+```
+
 ### Options
 
 ```
   -h, --help              help for backup
-      --include-age-key   Include ~/.ssh/age_key* in the profile snapshot
-      --include-auth      Include AI auth tokens in the AI snapshot
-      --scope string      Comma-separated domains to back up (profile,apps,ai,secrets)
-      --tag string        Shared label stored in profile/AI snapshot metadata
-      --to string         Backup root (overrides configured BackupRoot)
+      --include-age-key   include ~/.ssh/age_key* in the profile snapshot
+      --include-auth      include AI auth tokens in the AI snapshot
+      --scope string      comma-separated domains to back up (profile,apps,ai,secrets)
+      --tag string        shared label stored in profile/AI snapshot metadata
+      --to string         backup root (overrides configured BackupRoot)
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii           Use ASCII markers regardless of locale
-      --color string    Color output: auto, always or never (default "auto")
-      --config string   Path to custom config YAML
-      --dry-run         Show what would be done without executing
-      --home string     Override home directory (for admin setup of other users)
-      --verbose         Show library and debug logs on stderr
-      --yes             Unattended mode (skip all prompts)
+      --ascii           use ASCII markers regardless of locale
+      --color string    color output: auto, always or never (default "auto")
+      --config string   path to custom config YAML
+      --dry-run         show what would be done without executing
+      --home string     override home directory (for admin setup of other users)
+      --verbose         show library and debug logs on stderr
+      --yes             unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO

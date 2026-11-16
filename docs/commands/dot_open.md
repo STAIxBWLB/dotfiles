@@ -11,25 +11,32 @@ If the project is not registered, you'll be prompted to register it.
 dot open <project> [flags]
 ```
 
+### Examples
+
+```
+  dot open myproject
+  dot open myproject --layout claude
+```
+
 ### Options
 
 ```
   -h, --help               help for open
-      --install-optional   Also install optional tools (lazygit, btop, yazi, eza)
-      --layout string      Layout to use (dev, claude, monitor, ahub, ahub-compact); a running session keeps its layout
-      --theme string       Theme to use (default, dracula, nord, catppuccin, tokyo-night)
+      --install-optional   also install optional tools (lazygit, btop, yazi, eza)
+      --layout string      layout to use (dev, claude, monitor, ahub, ahub-compact); a running session keeps its layout
+      --theme string       theme to use (default, dracula, nord, catppuccin, tokyo-night)
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii           Use ASCII markers regardless of locale
-      --color string    Color output: auto, always or never (default "auto")
-      --config string   Path to custom config YAML
-      --dry-run         Show what would be done without executing
-      --home string     Override home directory (for admin setup of other users)
-      --verbose         Show library and debug logs on stderr
-      --yes             Unattended mode (skip all prompts)
+      --ascii           use ASCII markers regardless of locale
+      --color string    color output: auto, always or never (default "auto")
+      --config string   path to custom config YAML
+      --dry-run         show what would be done without executing
+      --home string     override home directory (for admin setup of other users)
+      --verbose         show library and debug logs on stderr
+      --yes             unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO

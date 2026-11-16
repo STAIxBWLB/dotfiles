@@ -15,7 +15,7 @@ import (
 func newHubCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "hub <project> [console|status|ui|git|files]",
-		Short: "Open a registered project's agent-hub console, status or dashboard, or its Git or Files window",
+		Short: "Open a project's agent-hub console or window",
 		Long: `Open agent-hub (ahub) for a registered project, at its registered root.
 
   console (default)  Outside tmux, runs 'ahub --project <root> console' in this

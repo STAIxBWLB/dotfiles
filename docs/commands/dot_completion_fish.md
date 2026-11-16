@@ -1,24 +1,23 @@
 ## dot completion fish
 
-Generate the autocompletion script for fish
+Generate the fish completion script
 
 ### Synopsis
 
-Generate the autocompletion script for the fish shell.
+Generate the autocompletion script for fish.
 
-To load completions in your current shell session:
-
-	dot completion fish | source
-
-To load completions for every new session, execute once:
-
-	dot completion fish > ~/.config/fish/completions/dot.fish
-
-You will need to start a new shell for this setup to take effect.
-
+Load it in the current shell session with the first example. To load it in
+every new session, write the script to ~/.config/fish/completions/dot.fish,
+then start a new shell.
 
 ```
 dot completion fish [flags]
+```
+
+### Examples
+
+```
+  dot completion fish | source
 ```
 
 ### Options
@@ -31,16 +30,16 @@ dot completion fish [flags]
 ### Options inherited from parent commands
 
 ```
-      --ascii           Use ASCII markers regardless of locale
-      --color string    Color output: auto, always or never (default "auto")
-      --config string   Path to custom config YAML
-      --dry-run         Show what would be done without executing
-      --home string     Override home directory (for admin setup of other users)
-      --verbose         Show library and debug logs on stderr
-      --yes             Unattended mode (skip all prompts)
+      --ascii           use ASCII markers regardless of locale
+      --color string    color output: auto, always or never (default "auto")
+      --config string   path to custom config YAML
+      --dry-run         show what would be done without executing
+      --home string     override home directory (for admin setup of other users)
+      --verbose         show library and debug logs on stderr
+      --yes             unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO
 
-* [dot completion](dot_completion.md)	 - Generate the autocompletion script for the specified shell
+* [dot completion](dot_completion.md)	 - Generate a shell completion script
 

@@ -1,6 +1,6 @@
 ## dot apps backup
 
-Advanced: snapshot only macOS app settings (dot backup is the front door)
+Snapshot only macOS app settings
 
 ### Synopsis
 
@@ -17,35 +17,43 @@ Modes:
                             saved selection) come pre-ticked. You can also
                             type extra tokens; each is validated against the
                             manifest before being accepted.
-  - no args + --yes       : use saved state (falls back to manifest ∩ installed).
+  - no args + --yes       : use saved state (falls back to manifest ∩
+                            installed).
 
 ```
 dot apps backup [token...] [flags]
 ```
 
+### Examples
+
+```
+  dot apps backup --all
+  dot apps backup raycast
+```
+
 ### Options
 
 ```
-      --all         Back up every manifest entry (default: manifest ∩ installed casks)
+      --all         back up every manifest entry (default: manifest ∩ installed casks)
   -h, --help        help for backup
-      --no-save     Do not persist the interactive selection back to state
-      --select      Force the interactive picker even when state has a list
-      --to string   Backup root (overrides configured BackupDir)
+      --no-save     do not persist the interactive selection back to state
+      --select      force the interactive picker even when state has a list
+      --to string   backup root (overrides configured BackupDir)
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii           Use ASCII markers regardless of locale
-      --color string    Color output: auto, always or never (default "auto")
-      --config string   Path to custom config YAML
-      --dry-run         Show what would be done without executing
-      --home string     Override home directory (for admin setup of other users)
-      --verbose         Show library and debug logs on stderr
-      --yes             Unattended mode (skip all prompts)
+      --ascii           use ASCII markers regardless of locale
+      --color string    color output: auto, always or never (default "auto")
+      --config string   path to custom config YAML
+      --dry-run         show what would be done without executing
+      --home string     override home directory (for admin setup of other users)
+      --verbose         show library and debug logs on stderr
+      --yes             unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO
 
-* [dot apps](dot_apps.md)	 - macOS app install and settings backup/restore
+* [dot apps](dot_apps.md)	 - Install macOS apps and back up their settings
 

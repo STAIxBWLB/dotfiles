@@ -1,33 +1,40 @@
 ## dot apps restore
 
-Advanced: restore only macOS app settings (dot restore is the front door)
+Restore only macOS app settings
 
 ```
 dot apps restore [token...] [flags]
 ```
 
+### Examples
+
+```
+  dot apps restore --all
+  dot apps restore raycast
+```
+
 ### Options
 
 ```
-      --all           Restore every manifest entry
-      --from string   Backup root (overrides configured BackupDir)
+      --all           restore every manifest entry
+      --from string   backup root (overrides configured BackupDir)
   -h, --help          help for restore
-      --host string   Source hostname to restore from (default: this host)
+      --host string   source hostname to restore from (default: this host)
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii           Use ASCII markers regardless of locale
-      --color string    Color output: auto, always or never (default "auto")
-      --config string   Path to custom config YAML
-      --dry-run         Show what would be done without executing
-      --home string     Override home directory (for admin setup of other users)
-      --verbose         Show library and debug logs on stderr
-      --yes             Unattended mode (skip all prompts)
+      --ascii           use ASCII markers regardless of locale
+      --color string    color output: auto, always or never (default "auto")
+      --config string   path to custom config YAML
+      --dry-run         show what would be done without executing
+      --home string     override home directory (for admin setup of other users)
+      --verbose         show library and debug logs on stderr
+      --yes             unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO
 
-* [dot apps](dot_apps.md)	 - macOS app install and settings backup/restore
+* [dot apps](dot_apps.md)	 - Install macOS apps and back up their settings
 

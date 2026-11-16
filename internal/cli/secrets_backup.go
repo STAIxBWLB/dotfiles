@@ -37,7 +37,7 @@ func defaultSecretsBackupDest(cmd *cobra.Command, ses *secretsSession) (string, 
 func newSecretsBackupCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "backup [destination]",
-		Short: "Advanced: copy only encrypted secrets (dot backup is the front door)",
+		Short: "Copy only encrypted secrets",
 		Long: `Copy the encrypted *.age files from the local store to a destination.
 
 With no destination, defaults to <backup-root>/secrets-age/<host> — the

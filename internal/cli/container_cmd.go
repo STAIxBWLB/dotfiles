@@ -24,7 +24,7 @@ import (
 func newContainerCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "container",
-		Short: "Shared container command (apple/container on macOS, docker or podman on Linux)",
+		Short: "Run the shared container backend",
 		Long: `One ` + "`container`" + ` command with Apple container syntax on every host.
 
 On macOS it runs apple/container (Apple silicon, macOS 26+). On Linux a shim
@@ -163,11 +163,11 @@ func runContainerSetup(cmd *cobra.Command, _ []string) error {
 func newContainerStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Show the container backend, shim, DNS defaults and legacy snippet",
+		Short: "Show the container backend, shim and DNS defaults",
 		Args:  cobra.NoArgs,
 		RunE:  runContainerStatus,
 	}
-	cmd.Flags().Bool("probe", false, "Also run container run --rm alpine nslookup example.com")
+	cmd.Flags().Bool("probe", false, "also run container run --rm alpine nslookup example.com")
 	return cmd
 }
 

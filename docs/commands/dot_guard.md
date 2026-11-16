@@ -1,6 +1,6 @@
 ## dot guard
 
-Claude Code safety hooks (careful warnings + freeze boundary)
+Manage Claude Code safety hooks
 
 ### Synopsis
 
@@ -19,6 +19,12 @@ and ~/.claude/plans stay writable while frozen.
 dot guard [flags]
 ```
 
+### Examples
+
+```
+  dot guard --help
+```
+
 ### Options
 
 ```
@@ -28,13 +34,13 @@ dot guard [flags]
 ### Options inherited from parent commands
 
 ```
-      --ascii           Use ASCII markers regardless of locale
-      --color string    Color output: auto, always or never (default "auto")
-      --config string   Path to custom config YAML
-      --dry-run         Show what would be done without executing
-      --home string     Override home directory (for admin setup of other users)
-      --verbose         Show library and debug logs on stderr
-      --yes             Unattended mode (skip all prompts)
+      --ascii           use ASCII markers regardless of locale
+      --color string    color output: auto, always or never (default "auto")
+      --config string   path to custom config YAML
+      --dry-run         show what would be done without executing
+      --home string     override home directory (for admin setup of other users)
+      --verbose         show library and debug logs on stderr
+      --yes             unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO
@@ -43,6 +49,6 @@ dot guard [flags]
 * [dot guard disable](dot_guard_disable.md)	 - Remove guard hook entries and clear guard state
 * [dot guard enable](dot_guard_enable.md)	 - Register guard PreToolUse hooks in ~/.claude/settings.json
 * [dot guard freeze](dot_guard_freeze.md)	 - Deny Edit/Write outside the given directory
-* [dot guard status](dot_guard_status.md)	 - Show hook registration, careful/freeze state, and binary health
+* [dot guard status](dot_guard_status.md)	 - Show hook registration, state and binary health
 * [dot guard unfreeze](dot_guard_unfreeze.md)	 - Clear the freeze boundary (hooks stay registered)
 

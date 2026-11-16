@@ -47,9 +47,9 @@ waits for a busy maintenance slot instead of deferring at once.`,
 			return runUpgrade(cmd, currentVersion)
 		},
 	}
-	cmd.Flags().String("version", "", "Install this exact stable release (X.Y.Z or vX.Y.Z), including downgrades")
-	cmd.Flags().Bool("check", false, "Only check for updates without installing")
-	cmd.Flags().Bool("homebrew", false, "Target the installed Homebrew dot cask or formula")
+	cmd.Flags().String("version", "", "install this exact stable release (X.Y.Z or vX.Y.Z), including downgrades")
+	cmd.Flags().Bool("check", false, "only check for updates without installing")
+	cmd.Flags().Bool("homebrew", false, "target the installed Homebrew dot cask or formula")
 	cmd.Flags().Duration("wait", 0, "wait up to this long for the maintenance slot instead of deferring (e.g. 30m)")
 	return cmd
 }

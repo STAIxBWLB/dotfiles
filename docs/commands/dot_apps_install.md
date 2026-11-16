@@ -1,6 +1,6 @@
 ## dot apps install
 
-Install macOS cask apps (interactive by default; args skip the picker)
+Install macOS cask apps
 
 ### Synopsis
 
@@ -12,8 +12,10 @@ Modes:
   - --recommended         : install the catalog's recommended set.
   - --all                 : install every cask in the catalog.
   - --select              : open the checkbox picker even when state is set.
-  - no args + interactive : open the checkbox picker, preselected from saved state.
-  - no args + --yes       : use saved state (falls back to catalog recommended).
+  - no args + interactive : open the checkbox picker, preselected from saved
+                            state.
+  - no args + --yes       : use saved state (falls back to catalog
+                            recommended).
 
 Casks whose .app already exists under /Applications (e.g. installed via the
 App Store or downloaded directly) are skipped by default. Pass --force to
@@ -26,31 +28,38 @@ state file so subsequent 'dot apply' runs honor it.
 dot apps install [token...] [flags]
 ```
 
+### Examples
+
+```
+  dot apps install --recommended
+  dot apps install raycast
+```
+
 ### Options
 
 ```
-      --all           Install every app in the catalog
-      --defaults      Install the catalog's default set regardless of saved state
-      --force         Reinstall even when the .app already exists under /Applications
+      --all           install every app in the catalog
+      --defaults      install the catalog's default set regardless of saved state
+      --force         reinstall even when the .app already exists under /Applications
   -h, --help          help for install
-      --no-save       Do not persist the interactive selection back to state
-      --recommended   Install the catalog's recommended set regardless of saved state
-      --select        Force the interactive picker even when state has a list
+      --no-save       do not persist the interactive selection back to state
+      --recommended   install the catalog's recommended set regardless of saved state
+      --select        force the interactive picker even when state has a list
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii           Use ASCII markers regardless of locale
-      --color string    Color output: auto, always or never (default "auto")
-      --config string   Path to custom config YAML
-      --dry-run         Show what would be done without executing
-      --home string     Override home directory (for admin setup of other users)
-      --verbose         Show library and debug logs on stderr
-      --yes             Unattended mode (skip all prompts)
+      --ascii           use ASCII markers regardless of locale
+      --color string    color output: auto, always or never (default "auto")
+      --config string   path to custom config YAML
+      --dry-run         show what would be done without executing
+      --home string     override home directory (for admin setup of other users)
+      --verbose         show library and debug logs on stderr
+      --yes             unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO
 
-* [dot apps](dot_apps.md)	 - macOS app install and settings backup/restore
+* [dot apps](dot_apps.md)	 - Install macOS apps and back up their settings
 

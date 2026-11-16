@@ -4,10 +4,10 @@ Clone configured workspace repos recursively
 
 ### Synopsis
 
-Clone each configured workspace repo (e.g. work, vault) into <workspace.path>/<name>
-with --recurse-submodules. The repo named "vault" clones into the configured
-vault location instead (workspace.vault; detected as <workspace.path>/work/vault
-or <workspace.path>/vault when unset).
+Clone each configured workspace repo (e.g. work, vault) into
+<workspace.path>/<name> with --recurse-submodules. The repo named "vault"
+clones into the configured vault location instead (workspace.vault; detected
+as <workspace.path>/work/vault or <workspace.path>/vault when unset).
 
 Targets that are missing, empty, or contain only a .gdrive symlink are cloned
 without --force (the .gdrive symlink is preserved). Populated targets are
@@ -18,23 +18,30 @@ repo is re-cloned.
 dot ws init [flags]
 ```
 
+### Examples
+
+```
+  dot ws init
+  dot ws init --force
+```
+
 ### Options
 
 ```
-      --force   Re-clone over populated targets (destructive)
+      --force   re-clone over populated targets (destructive)
   -h, --help    help for init
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii           Use ASCII markers regardless of locale
-      --color string    Color output: auto, always or never (default "auto")
-      --config string   Path to custom config YAML
-      --dry-run         Show what would be done without executing
-      --home string     Override home directory (for admin setup of other users)
-      --verbose         Show library and debug logs on stderr
-      --yes             Unattended mode (skip all prompts)
+      --ascii           use ASCII markers regardless of locale
+      --color string    color output: auto, always or never (default "auto")
+      --config string   path to custom config YAML
+      --dry-run         show what would be done without executing
+      --home string     override home directory (for admin setup of other users)
+      --verbose         show library and debug logs on stderr
+      --yes             unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO
