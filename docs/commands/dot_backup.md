@@ -18,7 +18,7 @@ Domains:
 
 The wizard confirms the backup root, lets you pick domains, asks the
 per-domain questions (age keys, AI auth tokens, tag), then runs every
-selected domain and prints a ✓/✗ summary. Profile and AI snapshots share
+selected domain and prints a pass/fail summary. Profile and AI snapshots share
 one tag so they can be correlated later. Use --yes with --scope for
 unattended runs.
 
