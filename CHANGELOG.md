@@ -2,6 +2,20 @@
 
 Generated from `docs/releases/` by `make changelog`; do not edit by hand.
 
+## v2.85.1
+
+This release fixes `dot update` for installs that could not move to 2.85.0.
+
+### Fixed
+
+- `dot update` to 2.85.0 failed on standalone installs and on the verified Homebrew path with `release archive contains an unexpected or duplicate member "CHANGELOG.md"`; 2.85.1 archives carry only the files `dot update` accepts. (#465)
+
+### Action needed
+
+- If `dot update` failed with that message, run `dot update` again to install 2.85.1. Homebrew installs that already reached 2.85.0 are unaffected. (#465)
+
+**Full changelog**: https://github.com/STAIxBWLB/dotfiles/compare/v2.85.0...v2.85.1
+
 ## v2.85.0
 
 dot's help and messages now read the same in every command: grouped help with an example for each command, one form for warnings, and one form for dry-run previews.

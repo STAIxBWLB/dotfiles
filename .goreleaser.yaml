@@ -30,6 +30,11 @@ archives:
   - formats:
       - tar.gz
     name_template: "dot_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # dot update rejects any other member (allowedPrebuiltMember); goreleaser's
+    # default list also picks up CHANGELOG*, which broke v2.85.0 updates.
+    files:
+      - LICENSE
+      - README.md
 
 checksum:
   name_template: checksums.txt
