@@ -2,6 +2,30 @@
 
 Generated from `docs/releases/` by `make changelog`; do not edit by hand.
 
+## v2.85.0
+
+dot's help and messages now read the same in every command: grouped help with an example for each command, one form for warnings, and one form for dry-run previews.
+
+### Improved
+
+- `dot --help` and every subcommand's help group commands by purpose, wrap descriptions at the terminal width and use the same colors and markers as dot's reports. (#458)
+- Help for every command is shorter and consistent: one-line descriptions, lowercase flag descriptions, `<placeholder>` usage lines such as `dot remote run [<path>] -- <command> [<arg>...]`, and examples on every command you can run. (#459, #460, #462, #463)
+- Warnings from every command share one form: `dot: warning: <message>` on stderr, a warning marker on a terminal and, where dot knows one, the command that fixes it on the line below. This includes the `dot remote` "could not" diagnostics and the admission notes printed by `dot remote` and `dot admit`. (#451, #453, #454, #455, #461)
+- Dry-run previews from `dot sync`, `dot peer`, `dot remote`, `dot backup`, `dot restore`, `dot watchdog`, `dot guard`, `dot tunnel`, `dot update`, `dot rollback`, `dot secrets`, `dot apps`, `dot noindex`, `dot ai` and `dot admit relax` print the pending marker followed by `would <action>`. (#453, #454, #455, #461)
+- Progress rows from `dot apply`, `dot ws` and `dot sync push`, `fetch` and `pull` use the shared markers, so `--color` and `--ascii` now apply to them too. (#455)
+- An unknown command such as `dot foo` prints the standard usage error followed by the `dot open foo` suggestion, instead of a longer custom message. (#451)
+- `dot open --install-optional` reports a failed optional-tool install on stderr, followed by the full `brew install` command to retry it. (#451)
+
+### Fixed
+
+- A malformed amem memory marker found during `dot apply` showed on a success row; it now shows as a warning. (#461)
+
+### Action needed
+
+- After `dot update` or `brew upgrade dotfiles`, update scripts that match dot's human output. Warnings now start with `dot: warning:` (previously `warning:`, `Warning:`, `admission:` or `dot remote:`). Informational notes that started with `note:` now start with `dot: `, and the `Note:` and `Tip:` lead words are gone. Dry-run lines no longer carry `[dry-run]`, `dry-run:`, `--dry-run:` or `Would`; match `would <action>`, or use `--json` where the command offers it. `--json` output is unchanged. (#451, #453, #454, #455, #461)
+
+**Full changelog**: https://github.com/STAIxBWLB/dotfiles/compare/v2.84.0...v2.85.0
+
 ## v2.84.0
 
 dot's reports now share one look: color you can turn on or off, markers that read without color, a summary line at the end of every check, and exit code 2 when a command is typed wrong.
