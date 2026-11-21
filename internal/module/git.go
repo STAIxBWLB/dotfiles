@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/STAIxBWLB/dotfiles/internal/aisettings"
+	"github.com/STAIxBWLB/dotfiles/internal/fileutil"
 	"github.com/STAIxBWLB/dotfiles/internal/gittransport"
 	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
@@ -237,12 +238,11 @@ func (m *GitModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 	if missing, err := transportFileMissing(rc); err != nil {
 		return nil, err
 	} else if missing {
-		if !rc.DryRun {
-			if _, err := gittransport.Write(rc.HomeDir, gittransport.ModeSSH); err != nil {
-				return nil, fmt.Errorf("writing git transport mode: %w", err)
-			}
+		path := gittransport.Path(rc.HomeDir)
+		if _, err := fileutil.EnsureFileAtomic(rc.Runner, rc.HomeDir, path, []byte(gittransport.Block(gittransport.ModeSSH)), 0o644); err != nil {
+			return nil, fmt.Errorf("writing git transport mode: %w", err)
 		}
-		messages = append(messages, "wrote "+gittransport.Path(rc.HomeDir)+" (ssh mode)")
+		messages = append(messages, "wrote "+path+" (ssh mode)")
 	}
 
 	if mode := rc.Config.Modules.Git.CoauthorGuard; mode != "" && mode != aisettings.CoauthorGuardOff {
