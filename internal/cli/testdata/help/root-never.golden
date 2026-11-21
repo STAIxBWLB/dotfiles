@@ -53,6 +53,7 @@
   "▸ Host\n",
   "  admit      Run one heavy job per repo behind the host-pressure gate\n",
   "  container  Run the shared container backend\n",
+  "  git        Git settings dot manages beyond the config file\n",
   "  tunnel     Manage Cloudflare Tunnel SSH access for this Mac\n",
   "  watchdog   Reap runaway processes and alert on host health\n",
   "\n",

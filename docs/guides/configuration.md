@@ -31,6 +31,21 @@ never writes:
 
 `dot diff` lists the files `dot apply` would rewrite.
 
+## GitHub Transport
+
+With `github_user` set, the managed `~/.config/git/config` includes `~/.config/git/github-transport.inc`, which picks how git reaches GitHub:
+
+- **ssh mode (default):** `https://github.com/` URLs are rewritten to `git@github.com:`.
+- **https mode:** `git@github.com:` and `ssh://git@github.com/` URLs are rewritten to `https://github.com/`. Fetch and push then go through the configured credential helper (for example `gh auth git-credential`).
+
+`dot git transport` probes both transports and writes the mode that works:
+
+- SSH works only when GitHub authenticates your key.
+- HTTPS works when github.com is reachable and git can fill a credential without a prompt.
+- When neither works, the current mode is kept.
+
+Use `--check` to see the probe without writing. On macOS, `dot git transport setup` repeats the probe every 10 minutes (`--interval` to change it), so a blocked SSH endpoint switches remotes to HTTPS and a recovered one switches them back. `dot git transport uninstall` stops it. `dot apply` only writes ssh mode when the file is missing.
+
 ## Container Service
 
 On a host where the container backend is already installed, `dot apply` writes

@@ -41,6 +41,11 @@ self-updates, so update operations defer rather than reinstall.
   `~/.config/git/ignore` it supersedes is removed by `dot apply`, and only
   when the file still matches the last managed content byte for byte; a
   locally edited copy is left alone
+- `~/.config/git/github-transport.inc` — the GitHub transport mode (an ssh
+  or https `url.*.insteadOf` block) that the managed `~/.config/git/config`
+  includes when a GitHub user is configured. `dot git transport` rewrites it
+  atomically when its probe picks the other mode; `dot apply` writes ssh mode
+  only when the file is missing and never replaces an existing mode
 - `~/.config/shell/30-ai.sh`
 - `~/.maru/settings.json` and `~/.maru/sites.json` only during explicit AI
   backup/restore operations
@@ -162,6 +167,10 @@ Dot-owned state trees:
   written by `dot peer setup` on the coordinator and removed by `dot peer
   setup --off`, a handover, a fence demotion and a peer `dot sync owner
   --set`/`--clear` that takes the coordinator role from this Mac.
+- `~/Library/LaunchAgents/com.dotfiles.git-transport.plist` — the macOS
+  user LaunchAgent that runs `dot git transport` at load and every interval,
+  written by `dot git transport setup` and removed by `dot git transport
+  uninstall`, with its log at `~/.local/log/dotfiles-git-transport.log`.
 - `~/Library/LaunchAgents/com.dotfiles.ai.update.plist` — the macOS user
   stable-update job, owned by `dot ai update schedule enable|disable`
 - `dot admit`, the selected-tooling updates and `dot ai update schedule

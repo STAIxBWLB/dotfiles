@@ -2,6 +2,25 @@
 
 Generated from `docs/releases/` by `make changelog`; do not edit by hand.
 
+## v2.86.0
+
+When SSH to GitHub is blocked, git can now switch your GitHub remotes to HTTPS and switch them back once SSH works again.
+
+### New
+
+- `dot git transport` probes SSH and HTTPS to GitHub and points GitHub remotes at the one that works. In https mode, `git@github.com:` URLs go through your credential helper, such as `gh auth git-credential`. When neither transport works, the current mode is kept. Use `--check` to see the result without changing anything. (#468)
+- `dot git transport setup` runs that check every 10 minutes on macOS, so a blocked GitHub SSH endpoint no longer stops fetch and push until someone notices. `dot git transport uninstall` removes it. (#468)
+
+### Improved
+
+- With `github_user` set, `~/.config/git/config` now includes `~/.config/git/github-transport.inc` instead of carrying a fixed `https://github.com/` → `git@github.com:` rewrite. `dot apply` writes the ssh mode there when the file is missing, so nothing changes until `dot git transport` picks https. (#468)
+
+### Action needed
+
+- Run `dot apply` after `dot update` so your git config includes the transport file. On macOS, run `dot git transport setup` if you want the automatic switch. (#468)
+
+**Full changelog**: https://github.com/STAIxBWLB/dotfiles/compare/v2.85.1...v2.86.0
+
 ## v2.85.1
 
 This release fixes `dot update` for installs that could not move to 2.85.0.

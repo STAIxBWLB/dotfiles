@@ -37,6 +37,7 @@
     unstage = reset HEAD --
 
 {{ if .GithubUser -}}
-[url "git@github.com:"]
-    insteadOf = https://github.com/
+# GitHub transport (ssh or https), chosen by `dot git transport`.
+[include]
+    path = github-transport.inc
 {{ end -}}
