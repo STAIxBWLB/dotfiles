@@ -141,3 +141,10 @@ func TestRunWritesOnlyOnChangeAndHonorsCheck(t *testing.T) {
 		t.Fatalf("https probed %d times, want 2 (skipped while ssh is usable)", httpsCalls)
 	}
 }
+
+func TestNeutralGitEnvDropsRepositorySelection(t *testing.T) {
+	got := neutralGitEnv([]string{"HOME=/h", "GIT_DIR=/r/.git", "GIT_CONFIG_PARAMETERS='credential.helper=x'", "GIT_CONFIG_COUNT=1", "PATH=/bin"})
+	if strings.Join(got, " ") != "HOME=/h PATH=/bin" {
+		t.Fatalf("neutralGitEnv = %v", got)
+	}
+}

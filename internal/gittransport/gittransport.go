@@ -176,12 +176,28 @@ func probeHTTPS(ctx context.Context) Result {
 
 	cmd := exec.CommandContext(ctx, "git", "credential", "fill")
 	cmd.Stdin = strings.NewReader("protocol=https\nhost=github.com\n\n")
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=", "SSH_ASKPASS=")
+	// The mode applies to every repository, so the probe must not see one
+	// repository's local credential config: run outside any repository.
+	cmd.Dir = os.TempDir()
+	cmd.Env = append(neutralGitEnv(os.Environ()), "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=", "SSH_ASKPASS=")
 	out, err := cmd.Output()
 	if err != nil || !hasPassword(string(out)) {
 		return Result{Detail: "no non-interactive credential for https://github.com"}
 	}
 	return Result{Usable: true, Detail: "reachable, credential available"}
+}
+
+// neutralGitEnv drops the GIT_* variables a parent git process or hook can
+// set (GIT_DIR, GIT_WORK_TREE, GIT_CONFIG_PARAMETERS, GIT_CONFIG_COUNT and
+// the rest), so the probe reads only the user's global and system config.
+func neutralGitEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, "GIT_") {
+			out = append(out, kv)
+		}
+	}
+	return out
 }
 
 func hasPassword(fill string) bool {

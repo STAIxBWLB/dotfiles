@@ -88,6 +88,9 @@ dot git transport setup on macOS.`,
 		SilenceUsage: true,
 		RunE: func(c *cobra.Command, _ []string) error {
 			home := homeFromCmd(c)
+			if err := requireOwnHome(c, home); err != nil {
+				return err
+			}
 			dryRun, _ := c.Flags().GetBool("dry-run")
 			report, err := newGitTransportProber().Run(c.Context(), home, check || dryRun)
 			if err != nil {
@@ -124,6 +127,25 @@ dot git transport setup on macOS.`,
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print the probe report as JSON")
 	cmd.AddCommand(newGitTransportSetupCmd(), newGitTransportUninstallCmd())
 	return cmd
+}
+
+// requireOwnHome refuses a --home that belongs to another account: the
+// probes run with the invoking user's ssh keys and git credentials, so their
+// result says nothing about the target user's transport.
+func requireOwnHome(c *cobra.Command, home string) error {
+	if sameUserHome(c) {
+		return nil
+	}
+	own, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	a, errA := filepath.EvalSymlinks(home)
+	b, errB := filepath.EvalSymlinks(own)
+	if errA == nil && errB == nil && a == b {
+		return nil
+	}
+	return fmt.Errorf("dot git transport probes with your own ssh keys and git credentials; run it as the user who owns %s (sudo -u <user> dot git transport)", home)
 }
 
 func transportLine(r gittransport.Result) string {
