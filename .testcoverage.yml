@@ -103,6 +103,8 @@ override:
     threshold: 54
   - path: ^internal/ghauth$ # measured 100.0000% (6/6)
     threshold: 99
+  - path: ^internal/gittransport$ # measured 58.4270% (52/89) on darwin at introduction; the live ssh and https probes are not unit tested
+    threshold: 55
   - path: ^internal/guard$ # measured 92.3077% (168/182)
     threshold: 91
   - path: ^internal/module$ # measured 21.9512% (207/943)
