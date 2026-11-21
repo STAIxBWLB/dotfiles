@@ -53,6 +53,7 @@
   "\u001b[1;35m▸ Host\u001b[m\n",
   "  \u001b[34madmit\u001b[m      Run one heavy job per repo behind the host-pressure gate\n",
   "  \u001b[34mcontainer\u001b[m  Run the shared container backend\n",
+  "  \u001b[34mgit\u001b[m        Git settings dot manages beyond the config file\n",
   "  \u001b[34mtunnel\u001b[m     Manage Cloudflare Tunnel SSH access for this Mac\n",
   "  \u001b[34mwatchdog\u001b[m   Reap runaway processes and alert on host health\n",
   "\n",

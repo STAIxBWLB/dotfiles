@@ -46,6 +46,7 @@ dot [flags]
 * [dot config](dot_config.md)	 - Show current configuration
 * [dot container](dot_container.md)	 - Run the shared container backend
 * [dot diff](dot_diff.md)	 - Show pending changes without applying
+* [dot git](dot_git.md)	 - Git settings dot manages beyond the config file
 * [dot guard](dot_guard.md)	 - Manage Claude Code safety hooks
 * [dot hub](dot_hub.md)	 - Open a project's agent-hub console or window
 * [dot init](dot_init.md)	 - Interactive setup for dot

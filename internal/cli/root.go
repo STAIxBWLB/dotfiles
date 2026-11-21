@@ -83,6 +83,9 @@ Also available as 'dotfiles' for back-compat.`,
 	// Watchdog (runaway-process reaper, alerts)
 	root.AddCommand(newWatchdogCmd())
 
+	// GitHub transport fallback (ssh or https) for git remotes (#467)
+	root.AddCommand(newGitCmd())
+
 	// Resource admission (per-repo heavy-job slots + host-pressure gate)
 	root.AddCommand(newAdmitCmd())
 

@@ -1,0 +1,15 @@
+{
+  "before": "",
+  "after": "https",
+  "changed": true,
+  "ssh": {
+    "usable": false,
+    "detail": "Connection reset by 192.0.2.1 port 22"
+  },
+  "https": {
+    "usable": true,
+    "detail": "reachable, credential available"
+  },
+  "file": "@HOME@/.config/git/github-transport.inc",
+  "included": false
+}

@@ -468,3 +468,16 @@ prune ran, by having verify take the mirror claim around push and fetch.
 The same window covers mirrors: claims are per exact mirror path, so a run of a
 nested or parent mirror that another machine starts between prune's listing and
 its `rm -rf` is not excluded either. Same cause, same revisit trigger.
+
+## Git transport is re-probed only on a schedule
+
+`internal/gittransport/gittransport.go` decides the GitHub transport (ssh or
+https) when `dot git transport` runs, and `internal/cli/git_transport_cmd.go`
+schedules that run only through a macOS LaunchAgent. Git resolves
+`url.*.insteadOf` before a transport starts, so a fetch that hits a blocked
+SSH endpoint fails until the next probe, up to one interval later. Linux hosts
+have no schedule and switch only when the command is run by hand.
+
+The block this answers is rare and lasts hours, so a ten-minute lag is
+acceptable. Revisit it if a Linux host needs the switch unattended (add a
+systemd user timer), or if git gains a per-request transport fallback.

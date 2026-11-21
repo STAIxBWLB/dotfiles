@@ -35,6 +35,7 @@ The files `dot` may write are listed in [BOUNDARIES.md](../BOUNDARIES.md), and a
 | `internal/exec` | Command runner with dry-run, and Homebrew helpers |
 | `internal/fileutil` | Backups, locks, downloads and archive extraction for the files `dot` installs |
 | `internal/ghauth` | GitHub CLI authentication for repository clones |
+| `internal/gittransport` | Probes SSH and HTTPS to GitHub and writes the git transport mode (`dot git transport`) |
 | `internal/guard` | Claude Code safety hooks: careful warnings and the edit freeze |
 | `internal/module` | The apply modules: shell, git, packages, terminal, fonts, AI and the rest |
 | `internal/noindex` | Keeps Spotlight out of regenerable build and cache directories |

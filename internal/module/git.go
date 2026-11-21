@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/STAIxBWLB/dotfiles/internal/aisettings"
+	"github.com/STAIxBWLB/dotfiles/internal/gittransport"
 	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
@@ -111,6 +112,20 @@ func legacyIgnoreCustomLines(rc *RunContext) []string {
 	return custom
 }
 
+// transportFileMissing reports whether the GitHub transport mode file the
+// config template includes is absent. Without GithubUser the template
+// includes nothing, so there is nothing to write.
+func transportFileMissing(rc *RunContext) (bool, error) {
+	if rc.Config.GithubUser == "" {
+		return false, nil
+	}
+	_, err := os.Stat(gittransport.Path(rc.HomeDir))
+	if errors.Is(err, fs.ErrNotExist) {
+		return true, nil
+	}
+	return false, err
+}
+
 func (m *GitModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, error) {
 	changes, err := checkTemplatedFiles(rc, m.files(rc))
 	if err != nil {
@@ -124,6 +139,15 @@ func (m *GitModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, er
 	if removable {
 		changes = append(changes, Change{
 			Description: fmt.Sprintf("remove legacy %s (superseded by gitignore.global)", legacyIgnorePath(rc)),
+			Command:     "dot apply --module git",
+		})
+	}
+
+	if missing, err := transportFileMissing(rc); err != nil {
+		return nil, err
+	} else if missing {
+		changes = append(changes, Change{
+			Description: "write " + gittransport.Path(rc.HomeDir) + " (ssh mode)",
 			Command:     "dot apply --module git",
 		})
 	}
@@ -205,6 +229,20 @@ func (m *GitModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 			fmt.Fprintf(rc.out(), "      orphaned pattern: %s\n", line)
 		}
 		fmt.Fprintln(rc.out(), "      move custom patterns into the dotfiles gitignore.global source or a per-repo .gitignore, then remove the file by hand")
+	}
+
+	// The included mode file must exist for GitHub URLs to keep today's ssh
+	// rewrite. Apply stays offline: it never probes and never replaces a mode
+	// that dot git transport chose.
+	if missing, err := transportFileMissing(rc); err != nil {
+		return nil, err
+	} else if missing {
+		if !rc.DryRun {
+			if _, err := gittransport.Write(rc.HomeDir, gittransport.ModeSSH); err != nil {
+				return nil, fmt.Errorf("writing git transport mode: %w", err)
+			}
+		}
+		messages = append(messages, "wrote "+gittransport.Path(rc.HomeDir)+" (ssh mode)")
 	}
 
 	if mode := rc.Config.Modules.Git.CoauthorGuard; mode != "" && mode != aisettings.CoauthorGuardOff {

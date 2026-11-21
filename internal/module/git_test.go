@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/STAIxBWLB/dotfiles/internal/config"
+	"github.com/STAIxBWLB/dotfiles/internal/gittransport"
 )
 
 func gitRunContext(t *testing.T) *RunContext {
@@ -143,5 +144,58 @@ func TestGitModule_ApplyWithoutLegacyIgnore(t *testing.T) {
 	}
 	if _, err := os.Stat(legacyIgnorePath(rc)); !os.IsNotExist(err) {
 		t.Errorf("Apply created a legacy ignore: %v", err)
+	}
+}
+
+func TestGitModule_ConfigTemplateIncludesTransportFile(t *testing.T) {
+	for _, user := range []string{"octocat", ""} {
+		rc, _, _ := twoHomeRunContext(t, &config.Config{GithubUser: user})
+		out, err := rc.Template.Render("git/config.tmpl", rc.Config.TemplateData(rc.HomeDir))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(out), "insteadOf") {
+			t.Errorf("GithubUser=%q: template still carries a static url rewrite:\n%s", user, out)
+		}
+		if got := strings.Contains(string(out), "path = "+gittransport.FileName); got != (user != "") {
+			t.Errorf("GithubUser=%q: include present = %v", user, got)
+		}
+	}
+}
+
+func TestGitModule_ApplyWritesTransportModeOnlyWhenMissing(t *testing.T) {
+	rc, _, _ := twoHomeRunContext(t, &config.Config{GithubUser: "octocat"})
+	m := &GitModule{}
+	if _, err := m.Apply(context.Background(), rc); err != nil {
+		t.Fatal(err)
+	}
+	if mode, _ := gittransport.Current(rc.HomeDir); mode != gittransport.ModeSSH {
+		t.Fatalf("mode after first apply = %q, want ssh", mode)
+	}
+	if _, err := gittransport.Write(rc.HomeDir, gittransport.ModeHTTPS); err != nil {
+		t.Fatal(err)
+	}
+	check, err := m.Check(context.Background(), rc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range check.Changes {
+		if strings.Contains(c.Description, gittransport.FileName) {
+			t.Errorf("check reports %q with the mode file present", c.Description)
+		}
+	}
+	if _, err := m.Apply(context.Background(), rc); err != nil {
+		t.Fatal(err)
+	}
+	if mode, _ := gittransport.Current(rc.HomeDir); mode != gittransport.ModeHTTPS {
+		t.Fatalf("apply replaced the https mode dot git transport chose (now %q)", mode)
+	}
+
+	plain := gitRunContext(t)
+	if _, err := m.Apply(context.Background(), plain); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(gittransport.Path(plain.HomeDir)); !os.IsNotExist(err) {
+		t.Error("apply without GithubUser wrote a transport mode file")
 	}
 }

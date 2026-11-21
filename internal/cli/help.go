@@ -30,7 +30,7 @@ func configureRootGroups(root *cobra.Command) {
 		{"sync", "Sync", "sync peer remote"},
 		{"ai", "AI", "ai guard"},
 		{"backup", "Backup and secrets", "backup restore profile secrets apps"},
-		{"host", "Host", "admit container tunnel watchdog"},
+		{"host", "Host", "admit container git tunnel watchdog"},
 		{"help", "Help", "usecase help completion"},
 	}
 	for _, group := range groups {
