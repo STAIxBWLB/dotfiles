@@ -34,23 +34,23 @@ dot update [flags]
 ### Options
 
 ```
-      --check            only check for updates without installing
-  -h, --help             help for update
-      --homebrew         target the installed Homebrew dot cask or formula
-      --version string   install this exact stable release (X.Y.Z or vX.Y.Z), including downgrades
-      --wait duration    wait up to this long for the maintenance slot instead of deferring (e.g. 30m)
+      --check[=true|false]      only check for updates without installing
+  -h, --help[=true|false]       help for update
+      --homebrew[=true|false]   target the installed Homebrew dot cask or formula
+      --version string          install this exact stable release (X.Y.Z or vX.Y.Z), including downgrades
+      --wait duration           wait up to this long for the maintenance slot instead of deferring (e.g. 30m)
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii           use ASCII markers regardless of locale
-      --color string    color output: auto, always or never (default "auto")
-      --config string   path to custom config YAML
-      --dry-run         show what would be done without executing
-      --home string     override home directory (for admin setup of other users)
-      --verbose         show library and debug logs on stderr
-      --yes             unattended mode (skip all prompts)
+      --ascii[=true|false]     use ASCII markers regardless of locale
+      --color string           color output: auto, always or never (default "auto")
+      --config string          path to custom config YAML
+      --dry-run[=true|false]   show what would be done without executing
+      --home string            override home directory (for admin setup of other users)
+      --verbose[=true|false]   show library and debug logs on stderr
+      --yes[=true|false]       unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO

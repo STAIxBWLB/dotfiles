@@ -25,21 +25,21 @@ dot profile root [path] [flags]
 ### Options
 
 ```
-      --detect   auto-detect Dropbox/Google Drive secrets folder and save
-  -h, --help     help for root
-      --reset    clear saved root (revert to auto-detect / default)
+      --detect[=true|false]   auto-detect Dropbox/Google Drive secrets folder and save
+  -h, --help[=true|false]     help for root
+      --reset[=true|false]    clear saved root (revert to auto-detect / default)
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii           use ASCII markers regardless of locale
-      --color string    color output: auto, always or never (default "auto")
-      --config string   path to custom config YAML
-      --dry-run         show what would be done without executing
-      --home string     override home directory (for admin setup of other users)
-      --verbose         show library and debug logs on stderr
-      --yes             unattended mode (skip all prompts)
+      --ascii[=true|false]     use ASCII markers regardless of locale
+      --color string           color output: auto, always or never (default "auto")
+      --config string          path to custom config YAML
+      --dry-run[=true|false]   show what would be done without executing
+      --home string            override home directory (for admin setup of other users)
+      --verbose[=true|false]   show library and debug logs on stderr
+      --yes[=true|false]       unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO

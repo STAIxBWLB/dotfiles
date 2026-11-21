@@ -16,23 +16,23 @@ dot ai setup [flags]
 ### Options
 
 ```
-      --agents string     selected agent IDs, comma separated (empty selects none)
-  -h, --help              help for setup
-      --non-interactive   require explicit or saved selections without prompting
-      --skills string     selected Maru skill names or IDs, comma separated
-      --tools string      selected add-on IDs: ripwire,ocr,gsd,ponytail
+      --agents string                  selected agent IDs, comma separated (empty selects none)
+  -h, --help[=true|false]              help for setup
+      --non-interactive[=true|false]   require explicit or saved selections without prompting
+      --skills string                  selected Maru skill names or IDs, comma separated
+      --tools string                   selected add-on IDs: ripwire,ocr,gsd,ponytail
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii           use ASCII markers regardless of locale
-      --color string    color output: auto, always or never (default "auto")
-      --config string   path to custom config YAML
-      --dry-run         show what would be done without executing
-      --home string     override home directory (for admin setup of other users)
-      --verbose         show library and debug logs on stderr
-      --yes             unattended mode (skip all prompts)
+      --ascii[=true|false]     use ASCII markers regardless of locale
+      --color string           color output: auto, always or never (default "auto")
+      --config string          path to custom config YAML
+      --dry-run[=true|false]   show what would be done without executing
+      --home string            override home directory (for admin setup of other users)
+      --verbose[=true|false]   show library and debug logs on stderr
+      --yes[=true|false]       unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO

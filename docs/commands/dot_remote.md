@@ -30,21 +30,21 @@ same path removes the one left behind.
 ### Options
 
 ```
-  -h, --help            help for remote
-      --host string     remote host to use (default: the matching project's host, then remote.default)
-      --wait duration   retry a held lease for this long before deferring (default 0: defer at once)
+  -h, --help[=true|false]   help for remote
+      --host string         remote host to use (default: the matching project's host, then remote.default)
+      --wait duration       retry a held lease for this long before deferring (default 0: defer at once)
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii           use ASCII markers regardless of locale
-      --color string    color output: auto, always or never (default "auto")
-      --config string   path to custom config YAML
-      --dry-run         show what would be done without executing
-      --home string     override home directory (for admin setup of other users)
-      --verbose         show library and debug logs on stderr
-      --yes             unattended mode (skip all prompts)
+      --ascii[=true|false]     use ASCII markers regardless of locale
+      --color string           color output: auto, always or never (default "auto")
+      --config string          path to custom config YAML
+      --dry-run[=true|false]   show what would be done without executing
+      --home string            override home directory (for admin setup of other users)
+      --verbose[=true|false]   show library and debug logs on stderr
+      --yes[=true|false]       unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO

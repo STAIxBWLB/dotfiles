@@ -94,24 +94,24 @@ dot peer git realign [--apply [--fetch]] [--rescue [--no-push]] [--candidate-ref
 ### Options
 
 ```
-      --apply                        move HEAD and index (default is a dry-run preview)
+      --apply[=true|false]           move HEAD and index (default is a dry-run preview)
       --candidate-refs stringArray   also take commits of refs matching this for-each-ref pattern as candidates (repeatable), e.g. refs/peer/<mac>/ after fetching that Mac's branches there
-      --fetch                        with --apply, fetch every repo's upstream before judging it, fetch a submodule whose gitlink commit is missing (following a moved URL) and retry it, and fetch a child before judging a candidate that records a commit it lacks
-  -h, --help                         help for realign
-      --no-push                      with --rescue, keep rescue branches local
-      --rescue                       also move diverged and branch-mismatch repos, keeping HEAD on a pushed rescue/<date>-<branch> branch
+      --fetch[=true|false]           with --apply, fetch every repo's upstream before judging it, fetch a submodule whose gitlink commit is missing (following a moved URL) and retry it, and fetch a child before judging a candidate that records a commit it lacks
+  -h, --help[=true|false]            help for realign
+      --no-push[=true|false]         with --rescue, keep rescue branches local
+      --rescue[=true|false]          also move diverged and branch-mismatch repos, keeping HEAD on a pushed rescue/<date>-<branch> branch
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii           use ASCII markers regardless of locale
-      --color string    color output: auto, always or never (default "auto")
-      --config string   path to custom config YAML
-      --dry-run         show what would be done without executing
-      --home string     override home directory (for admin setup of other users)
-      --verbose         show library and debug logs on stderr
-      --yes             unattended mode (skip all prompts)
+      --ascii[=true|false]     use ASCII markers regardless of locale
+      --color string           color output: auto, always or never (default "auto")
+      --config string          path to custom config YAML
+      --dry-run[=true|false]   show what would be done without executing
+      --home string            override home directory (for admin setup of other users)
+      --verbose[=true|false]   show library and debug logs on stderr
+      --yes[=true|false]       unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO

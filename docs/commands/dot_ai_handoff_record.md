@@ -17,7 +17,7 @@ dot ai handoff record [flags]
 ```
       --agent string           selected agent ID producing the note
       --artifact stringArray   repository-relative artifact to fingerprint (repeatable, at most 16, total hash budget 32 MiB)
-  -h, --help                   help for record
+  -h, --help[=true|false]      help for record
       --kind string            note kind: plan, progress, review, validation, learning (default "progress")
       --project string         git repository or worktree directory (default ".")
       --result string          producer claim: unverified, passed, failed (default "unverified")
@@ -27,13 +27,13 @@ dot ai handoff record [flags]
 ### Options inherited from parent commands
 
 ```
-      --ascii           use ASCII markers regardless of locale
-      --color string    color output: auto, always or never (default "auto")
-      --config string   path to custom config YAML
-      --dry-run         show what would be done without executing
-      --home string     override home directory (for admin setup of other users)
-      --verbose         show library and debug logs on stderr
-      --yes             unattended mode (skip all prompts)
+      --ascii[=true|false]     use ASCII markers regardless of locale
+      --color string           color output: auto, always or never (default "auto")
+      --config string          path to custom config YAML
+      --dry-run[=true|false]   show what would be done without executing
+      --home string            override home directory (for admin setup of other users)
+      --verbose[=true|false]   show library and debug logs on stderr
+      --yes[=true|false]       unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO

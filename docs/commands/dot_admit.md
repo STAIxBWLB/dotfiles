@@ -55,25 +55,25 @@ dot admit [--class heavy|maintenance] [--wait 30m] [--json] [--ignore pressure,s
 ### Options
 
 ```
-      --class string       slot class: heavy (per-repo) or maintenance (host-wide) (default "heavy")
-  -h, --help               help for admit
-      --ignore string      rules to step past for this run: pressure, slot, uncovered, remote-load, or all
-      --json               print the outcome as JSON
-      --no-limit-threads   keep inherited worker settings instead of limiting Cargo, Rust tests and Go to 2
-      --project string     checkout whose slot and working directory to use (defaults to current directory)
-      --wait duration      maximum time to wait for the slot before deferring (default 30m0s)
+      --class string                    slot class: heavy (per-repo) or maintenance (host-wide) (default "heavy")
+  -h, --help[=true|false]               help for admit
+      --ignore string                   rules to step past for this run: pressure, slot, uncovered, remote-load, or all
+      --json[=true|false]               print the outcome as JSON
+      --no-limit-threads[=true|false]   keep inherited worker settings instead of limiting Cargo, Rust tests and Go to 2
+      --project string                  checkout whose slot and working directory to use (defaults to current directory)
+      --wait duration                   maximum time to wait for the slot before deferring (default 30m0s)
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii           use ASCII markers regardless of locale
-      --color string    color output: auto, always or never (default "auto")
-      --config string   path to custom config YAML
-      --dry-run         show what would be done without executing
-      --home string     override home directory (for admin setup of other users)
-      --verbose         show library and debug logs on stderr
-      --yes             unattended mode (skip all prompts)
+      --ascii[=true|false]     use ASCII markers regardless of locale
+      --color string           color output: auto, always or never (default "auto")
+      --config string          path to custom config YAML
+      --dry-run[=true|false]   show what would be done without executing
+      --home string            override home directory (for admin setup of other users)
+      --verbose[=true|false]   show library and debug logs on stderr
+      --yes[=true|false]       unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO

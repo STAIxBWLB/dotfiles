@@ -23,23 +23,23 @@ dot remote job check [flags]
 ### Options
 
 ```
-  -h, --help   help for check
-      --json   print the result as JSON
+  -h, --help[=true|false]   help for check
+      --json[=true|false]   print the result as JSON
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii            use ASCII markers regardless of locale
-      --color string     color output: auto, always or never (default "auto")
-      --config string    path to custom config YAML
-      --dry-run          show what would be done without executing
-      --home string      override home directory (for admin setup of other users)
-      --host string      remote host to use (default: the matching project's host, then remote.default)
-      --profile string   job profile (default: the host's only one)
-      --verbose          show library and debug logs on stderr
-      --wait duration    retry a held lease for this long before deferring (default 0: defer at once)
-      --yes              unattended mode (skip all prompts)
+      --ascii[=true|false]     use ASCII markers regardless of locale
+      --color string           color output: auto, always or never (default "auto")
+      --config string          path to custom config YAML
+      --dry-run[=true|false]   show what would be done without executing
+      --home string            override home directory (for admin setup of other users)
+      --host string            remote host to use (default: the matching project's host, then remote.default)
+      --profile string         job profile (default: the host's only one)
+      --verbose[=true|false]   show library and debug logs on stderr
+      --wait duration          retry a held lease for this long before deferring (default 0: defer at once)
+      --yes[=true|false]       unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO

@@ -60,25 +60,25 @@ dot sync owner [--rename <old> <new>] [flags]
 ### Options
 
 ```
-      --clear        remove the ownership restriction
-  -h, --help         help for owner
-      --local-only   with --rename, leave the peer alone
-      --rename       record a machine rename <old> <new> in every profile, here and on the peer
-      --set string   set ownership to a specific machine name
-      --set-self     claim ownership for this machine
+      --clear[=true|false]        remove the ownership restriction
+  -h, --help[=true|false]         help for owner
+      --local-only[=true|false]   with --rename, leave the peer alone
+      --rename[=true|false]       record a machine rename <old> <new> in every profile, here and on the peer
+      --set string                set ownership to a specific machine name
+      --set-self[=true|false]     claim ownership for this machine
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii           use ASCII markers regardless of locale
-      --color string    color output: auto, always or never (default "auto")
-      --config string   path to custom config YAML
-      --dry-run         show what would be done without executing
-      --home string     override home directory (for admin setup of other users)
-      --store string    sync store under <workspace>/.dotfiles/<store>/; "sync" is the cloud mirror, "peer" the other Mac (default "sync")
-  -V, --verbose         show rsync progress output
-      --yes             unattended mode (skip all prompts)
+      --ascii[=true|false]     use ASCII markers regardless of locale
+      --color string           color output: auto, always or never (default "auto")
+      --config string          path to custom config YAML
+      --dry-run[=true|false]   show what would be done without executing
+      --home string            override home directory (for admin setup of other users)
+      --store string           sync store under <workspace>/.dotfiles/<store>/; "sync" is the cloud mirror, "peer" the other Mac (default "sync")
+  -V, --verbose[=true|false]   show rsync progress output
+      --yes[=true|false]       unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO

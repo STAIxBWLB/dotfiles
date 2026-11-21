@@ -38,25 +38,25 @@ dot apps install [token...] [flags]
 ### Options
 
 ```
-      --all           install every app in the catalog
-      --defaults      install the catalog's default set regardless of saved state
-      --force         reinstall even when the .app already exists under /Applications
-  -h, --help          help for install
-      --no-save       do not persist the interactive selection back to state
-      --recommended   install the catalog's recommended set regardless of saved state
-      --select        force the interactive picker even when state has a list
+      --all[=true|false]           install every app in the catalog
+      --defaults[=true|false]      install the catalog's default set regardless of saved state
+      --force[=true|false]         reinstall even when the .app already exists under /Applications
+  -h, --help[=true|false]          help for install
+      --no-save[=true|false]       do not persist the interactive selection back to state
+      --recommended[=true|false]   install the catalog's recommended set regardless of saved state
+      --select[=true|false]        force the interactive picker even when state has a list
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii           use ASCII markers regardless of locale
-      --color string    color output: auto, always or never (default "auto")
-      --config string   path to custom config YAML
-      --dry-run         show what would be done without executing
-      --home string     override home directory (for admin setup of other users)
-      --verbose         show library and debug logs on stderr
-      --yes             unattended mode (skip all prompts)
+      --ascii[=true|false]     use ASCII markers regardless of locale
+      --color string           color output: auto, always or never (default "auto")
+      --config string          path to custom config YAML
+      --dry-run[=true|false]   show what would be done without executing
+      --home string            override home directory (for admin setup of other users)
+      --verbose[=true|false]   show library and debug logs on stderr
+      --yes[=true|false]       unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO

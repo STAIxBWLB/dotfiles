@@ -36,19 +36,19 @@ dot noindex [path...] [flags]
 ### Options
 
 ```
-  -h, --help      help for noindex
-  -v, --verbose   list every directory marked
+  -h, --help[=true|false]      help for noindex
+  -v, --verbose[=true|false]   list every directory marked
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii           use ASCII markers regardless of locale
-      --color string    color output: auto, always or never (default "auto")
-      --config string   path to custom config YAML
-      --dry-run         show what would be done without executing
-      --home string     override home directory (for admin setup of other users)
-      --yes             unattended mode (skip all prompts)
+      --ascii[=true|false]     use ASCII markers regardless of locale
+      --color string           color output: auto, always or never (default "auto")
+      --config string          path to custom config YAML
+      --dry-run[=true|false]   show what would be done without executing
+      --home string            override home directory (for admin setup of other users)
+      --yes[=true|false]       unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO
