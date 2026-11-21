@@ -16,22 +16,22 @@ dot ai coauthor-guard apply [flags]
 ### Options
 
 ```
-      --apply-agents   reapply agents SSOT to live tool targets after updating the instruction
-  -h, --help           help for apply
-      --mode string    guard mode: off, warn, or block (default "block")
-      --persist        persist modules.git.coauthor_guard for future dot apply runs
+      --apply-agents[=true|false]   reapply agents SSOT to live tool targets after updating the instruction
+  -h, --help[=true|false]           help for apply
+      --mode string                 guard mode: off, warn, or block (default "block")
+      --persist[=true|false]        persist modules.git.coauthor_guard for future dot apply runs
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii           use ASCII markers regardless of locale
-      --color string    color output: auto, always or never (default "auto")
-      --config string   path to custom config YAML
-      --dry-run         show what would be done without executing
-      --home string     override home directory (for admin setup of other users)
-      --verbose         show library and debug logs on stderr
-      --yes             unattended mode (skip all prompts)
+      --ascii[=true|false]     use ASCII markers regardless of locale
+      --color string           color output: auto, always or never (default "auto")
+      --config string          path to custom config YAML
+      --dry-run[=true|false]   show what would be done without executing
+      --home string            override home directory (for admin setup of other users)
+      --verbose[=true|false]   show library and debug logs on stderr
+      --yes[=true|false]       unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO

@@ -28,22 +28,22 @@ dot remote prune [--yes] [flags]
 ### Options
 
 ```
-  -h, --help   help for prune
-      --json   print the report as JSON
+  -h, --help[=true|false]   help for prune
+      --json[=true|false]   print the report as JSON
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii           use ASCII markers regardless of locale
-      --color string    color output: auto, always or never (default "auto")
-      --config string   path to custom config YAML
-      --dry-run         show what would be done without executing
-      --home string     override home directory (for admin setup of other users)
-      --host string     remote host to use (default: the matching project's host, then remote.default)
-      --verbose         show library and debug logs on stderr
-      --wait duration   retry a held lease for this long before deferring (default 0: defer at once)
-      --yes             unattended mode (skip all prompts)
+      --ascii[=true|false]     use ASCII markers regardless of locale
+      --color string           color output: auto, always or never (default "auto")
+      --config string          path to custom config YAML
+      --dry-run[=true|false]   show what would be done without executing
+      --home string            override home directory (for admin setup of other users)
+      --host string            remote host to use (default: the matching project's host, then remote.default)
+      --verbose[=true|false]   show library and debug logs on stderr
+      --wait duration          retry a held lease for this long before deferring (default 0: defer at once)
+      --yes[=true|false]       unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO

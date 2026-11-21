@@ -34,28 +34,28 @@ dot remote job run -o <dir> [-i <file>]... [--name <name>] [--remote-only|--loca
 ### Options
 
 ```
-  -h, --help                help for run
-  -i, --input stringArray   input file staged in in/ (repeatable; base names must be unique)
-      --json                print the defer or unavailable record as JSON
-      --local-only          skip the host and run on this machine under dot admit
-      --name string         job name, [a-z0-9][a-z0-9-]{0,63} (default: a timestamp)
-  -o, --out string          directory out/ is collected into (created if missing)
-      --remote-only         exit 69 instead of running locally when the host cannot take the job
+  -h, --help[=true|false]          help for run
+  -i, --input stringArray          input file staged in in/ (repeatable; base names must be unique)
+      --json[=true|false]          print the defer or unavailable record as JSON
+      --local-only[=true|false]    skip the host and run on this machine under dot admit
+      --name string                job name, [a-z0-9][a-z0-9-]{0,63} (default: a timestamp)
+  -o, --out string                 directory out/ is collected into (created if missing)
+      --remote-only[=true|false]   exit 69 instead of running locally when the host cannot take the job
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii            use ASCII markers regardless of locale
-      --color string     color output: auto, always or never (default "auto")
-      --config string    path to custom config YAML
-      --dry-run          show what would be done without executing
-      --home string      override home directory (for admin setup of other users)
-      --host string      remote host to use (default: the matching project's host, then remote.default)
-      --profile string   job profile (default: the host's only one)
-      --verbose          show library and debug logs on stderr
-      --wait duration    retry a held lease for this long before deferring (default 0: defer at once)
-      --yes              unattended mode (skip all prompts)
+      --ascii[=true|false]     use ASCII markers regardless of locale
+      --color string           color output: auto, always or never (default "auto")
+      --config string          path to custom config YAML
+      --dry-run[=true|false]   show what would be done without executing
+      --home string            override home directory (for admin setup of other users)
+      --host string            remote host to use (default: the matching project's host, then remote.default)
+      --profile string         job profile (default: the host's only one)
+      --verbose[=true|false]   show library and debug logs on stderr
+      --wait duration          retry a held lease for this long before deferring (default 0: defer at once)
+      --yes[=true|false]       unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO

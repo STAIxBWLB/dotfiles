@@ -41,24 +41,24 @@ dot peer sync [flags]
 
 ```
       --approve-deletes string   run one reviewed deletion set over max_delete, named by the digest a refused run prints
-  -h, --help                     help for sync
-      --json                     print the itemized plan as JSON
-      --list                     print every planned action (with --dry-run: exactly what a run would do)
-      --pull-only                receive peer changes without pushing
-      --push-only                send local changes without pulling first
-      --skip-home                workspace only; skip the host-path pass
+  -h, --help[=true|false]        help for sync
+      --json[=true|false]        print the itemized plan as JSON
+      --list[=true|false]        print every planned action (with --dry-run: exactly what a run would do)
+      --pull-only[=true|false]   receive peer changes without pushing
+      --push-only[=true|false]   send local changes without pulling first
+      --skip-home[=true|false]   workspace only; skip the host-path pass
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --ascii           use ASCII markers regardless of locale
-      --color string    color output: auto, always or never (default "auto")
-      --config string   path to custom config YAML
-      --dry-run         show what would be done without executing
-      --home string     override home directory (for admin setup of other users)
-      --verbose         show library and debug logs on stderr
-      --yes             unattended mode (skip all prompts)
+      --ascii[=true|false]     use ASCII markers regardless of locale
+      --color string           color output: auto, always or never (default "auto")
+      --config string          path to custom config YAML
+      --dry-run[=true|false]   show what would be done without executing
+      --home string            override home directory (for admin setup of other users)
+      --verbose[=true|false]   show library and debug logs on stderr
+      --yes[=true|false]       unattended mode (skip all prompts)
 ```
 
 ### SEE ALSO
