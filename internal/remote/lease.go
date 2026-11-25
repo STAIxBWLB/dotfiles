@@ -155,7 +155,9 @@ func hostBusyReason(host Host, holder *admission.Lease) string {
 // probe, exactly as `dot admit` treats it: the job keeps running.
 func heartbeat(slots ...*admission.Slot) func() {
 	stop := make(chan struct{})
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		ticker := time.NewTicker(admission.DefaultHeartbeatInterval)
 		defer ticker.Stop()
 		for {
@@ -171,7 +173,10 @@ func heartbeat(slots ...*admission.Slot) func() {
 			}
 		}
 	}()
-	return func() { close(stop) }
+	return func() {
+		close(stop)
+		<-done
+	}
 }
 
 func minDuration(a, b time.Duration) time.Duration {

@@ -1,0 +1,7 @@
+{
+  "outcome": "deferred",
+  "scope": "remote-host:buildbox",
+  "class": "remote",
+  "reason": "host load unreadable on buildbox (starting ssh: exec: \"ssh\": executable file not found in $PATH); missing telemetry is not health (remote.hosts.buildbox.max_load_ratio)",
+  "retry_after": 60
+}

@@ -84,6 +84,11 @@ type Lease struct {
 	Host string `json:"host,omitempty"`
 	// Container is the actual container of a remote path/src lease.
 	Container string `json:"container,omitempty"`
+	// Program and CommandPID describe a remote hold's local command. PID
+	// continues to identify the holder for stale-lease reclamation.
+	Program    string   `json:"program,omitempty"`
+	CommandPID int      `json:"command_pid,omitempty"`
+	GPUs       []string `json:"gpus,omitempty"`
 }
 
 // Store owns the admission state root (~/.local/state/dot/admission/): the
@@ -586,6 +591,13 @@ func (sl *Slot) Heartbeat() error {
 	sl.lease.HeartbeatAt = sl.store.now()
 	sl.lease.Deadline = sl.lease.HeartbeatAt.Add(sl.store.HeartbeatStaleAfter())
 	return writeLease(sl.dir, sl.lease)
+}
+
+// SetCommandPID records the child PID without changing the lease owner.
+// Call it before starting the heartbeat.
+func (sl *Slot) SetCommandPID(pid int) error {
+	sl.lease.CommandPID = pid
+	return sl.Heartbeat()
 }
 
 // UpdateIdentity rewires the lease to a different process incarnation —

@@ -137,6 +137,8 @@ func goldenCases() []goldenCase {
 		{surface: "peer git status", args: []string{"peer", "git", "status", "--json"}, fixture: goldenPeerGitFixture},
 		{surface: "peer diff", args: []string{"peer", "diff", "--json"}, fixture: goldenPeerPlanFixture},
 		{surface: "peer sync", args: []string{"peer", "sync", "--json"}, fixture: goldenPeerPlanFixture},
+		{surface: "remote hold", args: []string{"remote", "hold", "--json", "--", "true"}, wantExit: ExitDeferred, fixture: goldenRemoteFixture},
+		{surface: "remote hold", variant: "dry-run", args: []string{"remote", "hold", "--json", "--dry-run", "--", "true"}, fixture: goldenRemoteFixture},
 		{surface: "remote job check", args: []string{"remote", "job", "check", "--json"}, wantExit: 69, fixture: goldenRemoteFixture},
 		{surface: "remote job run", args: []string{"remote", "job", "run", "--json", "--remote-only", "-o", "@ROOT@", "--name", "golden", "--", "true"}, wantExit: 69, fixture: goldenRemoteFixture},
 		{surface: "remote run", args: []string{"remote", "run", "--json", "@ROOT@", "--", "true"}, wantExit: ExitDeferred, fixture: goldenRemoteFixture},
