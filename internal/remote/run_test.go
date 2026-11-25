@@ -28,6 +28,8 @@ type fakeExec struct {
 	t *testing.T
 	// loads is what the load probe reads.
 	loads string
+	// gpus is what the nvidia-smi probe reads.
+	gpus string
 	// probeErr makes the load probe fail instead of answering.
 	probeErr error
 	// preflight is what the host answers about the claim, the container and the
@@ -82,6 +84,9 @@ func (f *fakeExec) execute(_ context.Context, argv []string, stdin io.Reader, st
 		fmt.Fprint(stdout, strings.ReplaceAll(string(fed), "\x00", "\n"))
 		return 0, 0, nil
 	case len(argv) > 0 && argv[0] == "rsync":
+		return 0, 0, nil
+	case strings.Contains(command, "nvidia-smi"):
+		fmt.Fprint(stdout, f.gpus)
 		return 0, 0, nil
 	case strings.Contains(command, "loadavg"):
 		if f.probeErr != nil {

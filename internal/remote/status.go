@@ -189,6 +189,10 @@ func activeRuns(cfg Config, h Host, leases []admission.Lease, now time.Time) []A
 		if lease.Class != admission.ClassRemote || lease.Host != h.Name {
 			continue
 		}
+		// A hold's per-device leases show on its host row as its GPUs.
+		if strings.HasPrefix(lease.Scope, "remote-gpu:") {
+			continue
+		}
 		run := ActiveRun{
 			Kind:      "path",
 			Scope:     lease.Scope,

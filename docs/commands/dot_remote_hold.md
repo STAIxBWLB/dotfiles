@@ -8,8 +8,14 @@ Reserve one of the host's max_runs slots and check the host's load,
 then run COMMAND locally with its input and output attached. The slot is
 released when COMMAND exits. The host defaults to remote.default.
 
-A held slot or a host at its load limit defers with exit 75. With --dry-run,
-show the slot and the host load without reserving capacity.
+With --gpus N, one nvidia-smi probe picks N devices with at least
+--gpu-min-free-mb MiB free that no other dot lease on this machine holds,
+leases each one, and passes their UUIDs to COMMAND as DOT_REMOTE_GPUS
+(comma-separated).
+
+A held slot, a host at its load limit or too few eligible GPUs defers with
+exit 75 and COMMAND does not start. With --dry-run, show the slot, the host
+load and the GPU probe without reserving capacity.
 
 ```
 dot remote hold -- <command> [<arg>...] [flags]
@@ -20,13 +26,16 @@ dot remote hold -- <command> [<arg>...] [flags]
 ```
   dot remote hold -- sleep 60
   dot remote hold --dry-run --json -- sleep 60
+  dot remote hold --gpus 1 --gpu-min-free-mb 40000 -- ./train.sh
 ```
 
 ### Options
 
 ```
-  -h, --help[=true|false]   help for hold
-      --json[=true|false]   print the defer or dry-run record as JSON
+      --gpu-min-free-mb int   free memory in MiB a GPU needs to be leased
+      --gpus int              lease this many GPUs and pass them as DOT_REMOTE_GPUS
+  -h, --help[=true|false]     help for hold
+      --json[=true|false]     print the defer or dry-run record as JSON
 ```
 
 ### Options inherited from parent commands

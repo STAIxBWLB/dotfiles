@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -30,6 +31,10 @@ type HoldOptions struct {
 	Wait    time.Duration
 	DryRun  bool
 	JSON    bool
+	// GPUs is how many devices to lease; 0 leases none and skips the probe.
+	GPUs int
+	// GPUMinFreeMB is the free memory a device needs to be eligible.
+	GPUMinFreeMB int
 }
 
 // Hold reserves one host slot while Command runs locally.
@@ -43,27 +48,12 @@ func (d Deps) Hold(ctx context.Context, h Host, opts HoldOptions) (err error) {
 	if len(opts.Command) == 0 || opts.Command[0] == "" {
 		return errors.New("hold requires a command after --")
 	}
+	if opts.GPUs < 0 || opts.GPUMinFreeMB < 0 {
+		return errors.New("--gpus and --gpu-min-free-mb must not be negative")
+	}
 	program := filepath.Base(opts.Command[0])
 	if opts.DryRun {
-		load := d.ProbeLoad(ctx, h)
-		reason := h.LoadDefer(load, false)
-		if opts.JSON {
-			return json.NewEncoder(d.out()).Encode(struct {
-				Outcome string   `json:"outcome"`
-				Scope   string   `json:"scope"`
-				Class   string   `json:"class"`
-				Program string   `json:"program"`
-				MaxRuns int      `json:"max_runs"`
-				Load    HostLoad `json:"load"`
-				Verdict string   `json:"verdict,omitempty"`
-			}{"dry-run", HostScope(h.Name), admission.ClassRemote, program, h.MaxRuns, load, reason})
-		}
-		ui.WriteDryRun(d.out(), fmt.Sprintf("hold one of %d %s slots for %s", h.MaxRuns, HostScope(h.Name), program))
-		fmt.Fprintln(d.out(), load.String())
-		if reason != "" {
-			fmt.Fprintf(d.out(), "would defer: %s\n", reason)
-		}
-		return nil
+		return d.holdDryRun(ctx, h, opts, program)
 	}
 	if d.Store == nil {
 		if d.StoreErr != nil {
@@ -80,6 +70,7 @@ func (d Deps) Hold(ctx context.Context, h Host, opts HoldOptions) (err error) {
 		return err
 	}
 	self.Program = program
+	deadline := time.Now().Add(opts.Wait)
 	slot, err := AcquireHost(ctx, d.Store, self, h, opts.Wait, false)
 	if err != nil {
 		return err
@@ -91,6 +82,18 @@ func (d Deps) Hold(ctx context.Context, h Host, opts HoldOptions) (err error) {
 			return deferFor(HostScope(h.Name), reason, time.Minute)
 		}
 	}
+	var gpuUUIDs []string
+	var gpuSlots []*admission.Slot
+	if opts.GPUs > 0 {
+		gpuSlots, gpuUUIDs, err = d.acquireGPUs(ctx, h, self, opts.GPUs, opts.GPUMinFreeMB, deadline)
+		if err != nil {
+			return err
+		}
+		defer releaseSlots(gpuSlots)
+		if err := slot.SetGPUs(gpuUUIDs); err != nil {
+			return err
+		}
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -98,6 +101,9 @@ func (d Deps) Hold(ctx context.Context, h Host, opts HoldOptions) (err error) {
 	// Keep the child in the foreground process group so it can read the tty.
 	cmd := exec.CommandContext(ctx, opts.Command[0], opts.Command[1:]...) // #nosec G204 -- explicit local command
 	cmd.Dir = opts.Cwd
+	if len(gpuUUIDs) > 0 {
+		cmd.Env = append(os.Environ(), "DOT_REMOTE_GPUS="+strings.Join(gpuUUIDs, ","))
+	}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = d.in(), d.out(), d.errOut()
 	cmd.Cancel = func() error {
 		return cancelHold(ctx, func() bool {
@@ -113,7 +119,7 @@ func (d Deps) Hold(ctx context.Context, h Host, opts HoldOptions) (err error) {
 		_ = cmd.Wait()
 		return err
 	}
-	stop := heartbeat(slot)
+	stop := heartbeat(append([]*admission.Slot{slot}, gpuSlots...)...)
 	defer stop()
 	err = cmd.Wait()
 	var exit *exec.ExitError
@@ -125,6 +131,67 @@ func (d Deps) Hold(ctx context.Context, h Host, opts HoldOptions) (err error) {
 		return &ExitCode{Code: code, Err: err}
 	}
 	return err
+}
+
+// holdDryRun reports the slot, the host load and, with --gpus, the probe and
+// the devices a hold would lease. It takes nothing.
+func (d Deps) holdDryRun(ctx context.Context, h Host, opts HoldOptions, program string) error {
+	load := d.ProbeLoad(ctx, h)
+	reason := h.LoadDefer(load, false)
+	var gpus []GPU
+	var pick []string
+	gpuErr := ""
+	if opts.GPUs > 0 {
+		probed, err := d.ProbeGPUs(ctx, h)
+		if err != nil {
+			gpuErr = err.Error()
+		} else {
+			gpus = probed
+			held := heldGPUs(d.Store, h.Name)
+			for _, uuid := range eligibleGPUs(gpus, opts.GPUMinFreeMB) {
+				if len(pick) < opts.GPUs && !held[uuid] {
+					pick = append(pick, uuid)
+				}
+			}
+		}
+		if reason == "" && len(pick) < opts.GPUs {
+			reason = fmt.Sprintf("%d of %d requested GPUs eligible with %d MB free", len(pick), opts.GPUs, opts.GPUMinFreeMB)
+			if gpuErr != "" {
+				reason = gpuErr
+			}
+		}
+	}
+	if opts.JSON {
+		return json.NewEncoder(d.out()).Encode(struct {
+			Outcome  string   `json:"outcome"`
+			Scope    string   `json:"scope"`
+			Class    string   `json:"class"`
+			Program  string   `json:"program"`
+			MaxRuns  int      `json:"max_runs"`
+			Load     HostLoad `json:"load"`
+			Probe    []GPU    `json:"gpu_probe,omitempty"`
+			ProbeErr string   `json:"gpu_probe_error,omitempty"`
+			GPUs     []string `json:"gpus,omitempty"`
+			Verdict  string   `json:"verdict,omitempty"`
+		}{"dry-run", HostScope(h.Name), admission.ClassRemote, program, h.MaxRuns, load, gpus, gpuErr, pick, reason})
+	}
+	ui.WriteDryRun(d.out(), fmt.Sprintf("hold one of %d %s slots for %s", h.MaxRuns, HostScope(h.Name), program))
+	fmt.Fprintln(d.out(), load.String())
+	if opts.GPUs > 0 {
+		if gpuErr != "" {
+			fmt.Fprintf(d.out(), "GPU probe unavailable (%s)\n", gpuErr)
+		}
+		for _, g := range gpus {
+			fmt.Fprintf(d.out(), "GPU %s %d MB free\n", g.UUID, g.FreeMB)
+		}
+		if len(pick) > 0 {
+			fmt.Fprintf(d.out(), "would lease GPUs %s\n", strings.Join(pick, ", "))
+		}
+	}
+	if reason != "" {
+		fmt.Fprintf(d.out(), "would defer: %s\n", reason)
+	}
+	return nil
 }
 
 // cancelHold forwards cancellation to the child, except for Ctrl-C from a
