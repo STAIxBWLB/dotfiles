@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"github.com/charmbracelet/x/term"
 
 	"github.com/STAIxBWLB/dotfiles/internal/admission"
 	probeexec "github.com/STAIxBWLB/dotfiles/internal/exec"
@@ -97,11 +100,10 @@ func (d Deps) Hold(ctx context.Context, h Host, opts HoldOptions) (err error) {
 	cmd.Dir = opts.Cwd
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = d.in(), d.out(), d.errOut()
 	cmd.Cancel = func() error {
-		var sig Interrupt
-		if errors.As(context.Cause(ctx), &sig) {
-			return cmd.Process.Signal(syscall.Signal(sig))
-		}
-		return cmd.Process.Signal(syscall.SIGTERM)
+		return cancelHold(ctx, func() bool {
+			file, ok := cmd.Stdin.(term.File)
+			return ok && term.IsTerminal(file.Fd())
+		}, cmd.Process.Signal)
 	}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("starting %s: %w", program, err)
@@ -123,4 +125,18 @@ func (d Deps) Hold(ctx context.Context, h Host, opts HoldOptions) (err error) {
 		return &ExitCode{Code: code, Err: err}
 	}
 	return err
+}
+
+// cancelHold forwards cancellation to the child, except for Ctrl-C from a
+// terminal. The tty already signals the foreground group, including the child.
+func cancelHold(ctx context.Context, stdinIsTerminal func() bool, send func(os.Signal) error) error {
+	sig := syscall.SIGTERM
+	var interrupt Interrupt
+	if errors.As(context.Cause(ctx), &interrupt) {
+		sig = syscall.Signal(interrupt)
+	}
+	if sig == syscall.SIGINT && stdinIsTerminal() {
+		return os.ErrProcessDone
+	}
+	return send(sig)
 }

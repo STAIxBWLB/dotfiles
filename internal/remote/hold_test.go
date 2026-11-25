@@ -135,6 +135,37 @@ func TestHoldChecksLoadAndDryRunTakesNothing(t *testing.T) {
 	}
 }
 
+func TestCancelHoldTerminalSignalForwarding(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		signal   syscall.Signal
+		terminal bool
+		want     syscall.Signal
+	}{
+		{"terminal Ctrl-C", syscall.SIGINT, true, 0},
+		{"pipe SIGINT", syscall.SIGINT, false, syscall.SIGINT},
+		{"terminal SIGTERM", syscall.SIGTERM, true, syscall.SIGTERM},
+		{"pipe SIGTERM", syscall.SIGTERM, false, syscall.SIGTERM},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancelCause(context.Background())
+			cancel(Interrupt(tc.signal))
+			var forwarded os.Signal
+			err := cancelHold(ctx, func() bool { return tc.terminal }, func(sig os.Signal) error {
+				forwarded = sig
+				return nil
+			})
+			if tc.want == 0 {
+				if forwarded != nil || !errors.Is(err, os.ErrProcessDone) {
+					t.Fatalf("forwarded %v, err %v; want no second signal", forwarded, err)
+				}
+			} else if forwarded != tc.want || err != nil {
+				t.Fatalf("forwarded %v, err %v; want %v", forwarded, err, tc.want)
+			}
+		})
+	}
+}
+
 func TestHoldForwardsInterruptAndReleases(t *testing.T) {
 	for _, sig := range []syscall.Signal{syscall.SIGINT, syscall.SIGTERM} {
 		t.Run(sig.String(), func(t *testing.T) {
