@@ -444,10 +444,13 @@ dot remote hold --gpus 1 --gpu-min-free-mb 40000 -- \
 with its input and output attached, and releases everything when the command
 exits. With `--gpus N`, one ssh probe (`nvidia-smi --query-gpu=uuid,memory.free`)
 picks N devices with at least `--gpu-min-free-mb` MiB free that no other `dot`
-lease on this machine holds, takes one lease per device (in UUID order, so two
-holders never deadlock), and passes the UUIDs to the command in
-`DOT_REMOTE_GPUS`, comma-separated. `--dry-run` prints the slot, the host load,
-the probe result and the devices it would lease, and takes nothing.
+lease on this machine holds, takes one lease per device in UUID order, and
+passes the UUIDs to the command in `DOT_REMOTE_GPUS`, comma-separated. When it
+gets fewer than N, it gives back the ones it took and retries, so two holders
+never keep each other's partial sets. A hold waiting for GPUs keeps its host
+slot for up to `--wait`, so `run` and `verify` on that host may defer
+meanwhile. `--dry-run` prints the slot, the host load, the probe result and the
+devices it would lease, and takes nothing.
 
 The held slot and its GPUs show as a `[hold]` row in `dot remote status` and
 `dot admit status`, with the program name, its pid and the GPU UUIDs. If the

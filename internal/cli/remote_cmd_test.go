@@ -377,3 +377,16 @@ func TestRemoteRunTakesTheHostFromTheProjectEntryOfTheDefaultCheckout(t *testing
 		t.Errorf("the dry run did not target the project's host:\n%s", out)
 	}
 }
+
+func TestRemoteHoldGPUMinFreeNeedsGPUs(t *testing.T) {
+	root := NewRootCmd("dev", "test")
+	var out, stderr bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"remote", "hold", "--gpu-min-free-mb", "40000", "--", "true"})
+	err := root.Execute()
+	var usage *UsageError
+	if !errors.As(err, &usage) || !strings.Contains(err.Error(), "--gpus") {
+		t.Fatalf("hold --gpu-min-free-mb without --gpus = %T %v", err, err)
+	}
+}

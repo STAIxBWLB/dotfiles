@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/STAIxBWLB/dotfiles/internal/admission"
 )
 
 const fakeGPUs = "GPU-b, 50000\nGPU-a, 50000\nGPU-c, 100\n"
@@ -24,10 +26,61 @@ func TestParseGPUs(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ParseGPUs = %+v, want %+v", got, want)
 	}
-	for _, bad := range []string{"", "GPU-a\n", "GPU-a, lots\n", "NVIDIA-SMI has failed\n"} {
+	for _, bad := range []string{"", "GPU-a\n", "NVIDIA-SMI has failed\n"} {
 		if _, err := ParseGPUs(bad); err == nil {
 			t.Errorf("ParseGPUs(%q) accepted", bad)
 		}
+	}
+	// An unreadable free-memory value (MIG, degraded device) makes only that
+	// device ineligible.
+	mixed, err := ParseGPUs("GPU-m, [N/A]\nGPU-a, 50000\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(mixed, []GPU{{"GPU-a", 50000}, {"GPU-m", -1}}) ||
+		!reflect.DeepEqual(eligibleGPUs(mixed, 0), []string{"GPU-a"}) {
+		t.Fatalf("mixed probe = %+v", mixed)
+	}
+}
+
+func TestGPUDeferAndProbeErrorsNameTheNextStep(t *testing.T) {
+	f := newRunFixture(t)
+	deps := f.deps()
+	deps.Exec = (&fakeExec{t: t, gpus: "GPU-a, 10\n"}).execute
+	err := deps.Hold(context.Background(), f.host, HoldOptions{Command: []string{"/missing/command"}, GPUs: 1, GPUMinFreeMB: 40000})
+	requireGPUDefer(t, f.host, err)
+	for _, want := range []string{"at least 40000 MiB free", "dot remote status", "--wait", "--gpu-min-free-mb"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("defer reason %q lacks %q", err, want)
+		}
+	}
+	deps.Exec = (&fakeExec{t: t, gpus: "bash: nvidia-smi: command not found\n"}).execute
+	err = deps.Hold(context.Background(), f.host, HoldOptions{Command: []string{"/missing/command"}, GPUs: 1})
+	requireGPUDefer(t, f.host, err)
+	if !strings.Contains(err.Error(), "ssh "+f.host.SSH+" nvidia-smi") {
+		t.Errorf("probe failure %q does not say how to check nvidia-smi", err)
+	}
+	if held := f.leases(); len(held) != 0 {
+		t.Fatalf("leases left: %+v", held)
+	}
+}
+
+func TestHeldGPUsSkipsExpiredLeases(t *testing.T) {
+	f := newRunFixture(t)
+	self := selfLease(t, f.root)
+	self.Host = f.host.Name
+	for _, uuid := range []string{"GPU-a", "GPU-b"} {
+		if _, _, err := f.store.AcquireWithOptions(context.Background(), GPUScope(f.host.Name, uuid), "remote", self, admission.AcquireOptions{Capacity: 1}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	held, err := heldGPUs(f.store, f.host.Name, time.Now())
+	if err != nil || !held["GPU-a"] || !held["GPU-b"] {
+		t.Fatalf("live leases = %v (%v)", held, err)
+	}
+	later := f.leases()[0].Deadline.Add(time.Second)
+	if held, err := heldGPUs(f.store, f.host.Name, later); err != nil || len(held) != 0 {
+		t.Fatalf("expired leases counted: %v (%v)", held, err)
 	}
 }
 

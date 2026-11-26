@@ -329,6 +329,14 @@ func runRemoteHold(cmd *cobra.Command, args []string) error {
 	if wait < 0 {
 		return usageError(cmd, errors.New("--wait must not be negative"))
 	}
+	gpus, _ := cmd.Flags().GetInt("gpus")
+	minFree, _ := cmd.Flags().GetInt("gpu-min-free-mb")
+	if gpus < 0 || minFree < 0 {
+		return usageError(cmd, errors.New("--gpus and --gpu-min-free-mb must not be negative"))
+	}
+	if cmd.Flags().Changed("gpu-min-free-mb") && gpus == 0 {
+		return usageError(cmd, errors.New("--gpu-min-free-mb needs --gpus N: pass how many GPUs to lease"))
+	}
 	_, host, deps, err := remoteSession(cmd, "")
 	if err != nil {
 		return err
@@ -339,11 +347,6 @@ func runRemoteHold(cmd *cobra.Command, args []string) error {
 	}
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	asJSON, _ := cmd.Flags().GetBool("json")
-	gpus, _ := cmd.Flags().GetInt("gpus")
-	minFree, _ := cmd.Flags().GetInt("gpu-min-free-mb")
-	if gpus < 0 || minFree < 0 {
-		return usageError(cmd, errors.New("--gpus and --gpu-min-free-mb must not be negative"))
-	}
 	err = deps.Hold(cmd.Context(), host, remote.HoldOptions{
 		Command: args, Cwd: cwd, Wait: wait, DryRun: dryRun, JSON: asJSON,
 		GPUs: gpus, GPUMinFreeMB: minFree,

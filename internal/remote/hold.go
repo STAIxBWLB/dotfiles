@@ -147,7 +147,10 @@ func (d Deps) holdDryRun(ctx context.Context, h Host, opts HoldOptions, program 
 			gpuErr = err.Error()
 		} else {
 			gpus = probed
-			held := heldGPUs(d.Store, h.Name)
+			held, herr := heldGPUs(d.Store, h.Name, d.now())
+			if herr != nil {
+				gpuErr = "reading this machine's GPU leases: " + herr.Error()
+			}
 			for _, uuid := range eligibleGPUs(gpus, opts.GPUMinFreeMB) {
 				if len(pick) < opts.GPUs && !held[uuid] {
 					pick = append(pick, uuid)
@@ -155,7 +158,7 @@ func (d Deps) holdDryRun(ctx context.Context, h Host, opts HoldOptions, program 
 			}
 		}
 		if reason == "" && len(pick) < opts.GPUs {
-			reason = fmt.Sprintf("%d of %d requested GPUs eligible with %d MB free", len(pick), opts.GPUs, opts.GPUMinFreeMB)
+			reason = fmt.Sprintf("%d of %d requested GPUs eligible with at least %d MiB free", len(pick), opts.GPUs, opts.GPUMinFreeMB)
 			if gpuErr != "" {
 				reason = gpuErr
 			}
