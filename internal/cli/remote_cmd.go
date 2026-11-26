@@ -303,13 +303,21 @@ func newRemoteHoldCmd() *cobra.Command {
 then run COMMAND locally with its input and output attached. The slot is
 released when COMMAND exits. The host defaults to remote.default.
 
-A held slot or a host at its load limit defers with exit 75. With --dry-run,
-show the slot and the host load without reserving capacity.`,
+With --gpus N, one nvidia-smi probe picks N devices with at least
+--gpu-min-free-mb MiB free that no other dot lease on this machine holds,
+leases each one, and passes their UUIDs to COMMAND as DOT_REMOTE_GPUS
+(comma-separated).
+
+A held slot, a host at its load limit or too few eligible GPUs defers with
+exit 75 and COMMAND does not start. With --dry-run, show the slot, the host
+load and the GPU probe without reserving capacity.`,
 		Args:         cobra.ArbitraryArgs,
 		RunE:         runRemoteHold,
 		SilenceUsage: true,
 	}
 	cmd.Flags().Bool("json", false, "print the defer or dry-run record as JSON")
+	cmd.Flags().Int("gpus", 0, "lease this many GPUs and pass them as DOT_REMOTE_GPUS")
+	cmd.Flags().Int("gpu-min-free-mb", 0, "free memory in MiB a GPU needs to be leased")
 	return cmd
 }
 
@@ -320,6 +328,14 @@ func runRemoteHold(cmd *cobra.Command, args []string) error {
 	wait, _ := cmd.Flags().GetDuration("wait")
 	if wait < 0 {
 		return usageError(cmd, errors.New("--wait must not be negative"))
+	}
+	gpus, _ := cmd.Flags().GetInt("gpus")
+	minFree, _ := cmd.Flags().GetInt("gpu-min-free-mb")
+	if gpus < 0 || minFree < 0 {
+		return usageError(cmd, errors.New("--gpus and --gpu-min-free-mb must not be negative"))
+	}
+	if cmd.Flags().Changed("gpu-min-free-mb") && gpus == 0 {
+		return usageError(cmd, errors.New("--gpu-min-free-mb needs --gpus N: pass how many GPUs to lease"))
 	}
 	_, host, deps, err := remoteSession(cmd, "")
 	if err != nil {
@@ -333,6 +349,7 @@ func runRemoteHold(cmd *cobra.Command, args []string) error {
 	asJSON, _ := cmd.Flags().GetBool("json")
 	err = deps.Hold(cmd.Context(), host, remote.HoldOptions{
 		Command: args, Cwd: cwd, Wait: wait, DryRun: dryRun, JSON: asJSON,
+		GPUs: gpus, GPUMinFreeMB: minFree,
 	})
 	return remoteDeferred(cmd, printerFrom(cmd), err)
 }

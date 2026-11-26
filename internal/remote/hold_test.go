@@ -258,8 +258,14 @@ func TestHoldProcess(t *testing.T) {
 	host := testHost()
 	host.MaxRuns = 1
 	deps := Deps{Store: admission.NewStore(root, probeexec.NewProbeRunner())}
+	gpus := 0
+	if out := os.Getenv("DOT_TEST_HOLD_GPUS"); out != "" {
+		fake := &fakeExec{t: t, gpus: out}
+		deps.Exec, gpus = fake.execute, 1
+	}
 	if err := deps.Hold(context.Background(), host, HoldOptions{
 		Command: []string{"/bin/sh", "-c", "echo ready; read -r unused"},
+		GPUs:    gpus,
 	}); err != nil {
 		t.Fatal(err)
 	}

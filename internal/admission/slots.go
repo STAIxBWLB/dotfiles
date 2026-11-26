@@ -600,6 +600,12 @@ func (sl *Slot) SetCommandPID(pid int) error {
 	return sl.Heartbeat()
 }
 
+// SetGPUs records the devices a remote hold leased beside this lease.
+func (sl *Slot) SetGPUs(uuids []string) error {
+	sl.lease.GPUs = append([]string(nil), uuids...)
+	return sl.Heartbeat()
+}
+
 // UpdateIdentity rewires the lease to a different process incarnation —
 // concretely, the child workload the wrapper just started. Without this the
 // lease would track the wrapper: a SIGKILLed wrapper would let the lease

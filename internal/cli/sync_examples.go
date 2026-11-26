@@ -54,7 +54,7 @@ var syncExamples = map[string][]string{
 	"peer status":                 {"dot peer status", "dot peer status --json"},
 	"peer sync":                   {"dot peer sync", "dot peer sync --pull-only"},
 	"peer takeover":               {"dot peer takeover"},
-	"remote hold":                 {"dot remote hold -- sleep 60", "dot remote hold --dry-run --json -- sleep 60"},
+	"remote hold":                 {"dot remote hold -- sleep 60", "dot remote hold --dry-run --json -- sleep 60", "dot remote hold --gpus 1 --gpu-min-free-mb 40000 -- ./train.sh"},
 	"remote job check":            {"dot remote job check", "dot remote job check --json"},
 	"remote job run":              {"dot remote job run -o out -i data.csv -- python3 report.py", "dot remote job run -o out --local-only -- ./build.sh"},
 	"remote prune":                {"dot remote prune", "dot remote prune --yes"},
