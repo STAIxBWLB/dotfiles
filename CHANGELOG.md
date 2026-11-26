@@ -2,6 +2,18 @@
 
 Generated from `docs/releases/` by `make changelog`; do not edit by hand.
 
+## v2.87.0
+
+Tools that start their own containers on a remote host, such as `ares`, can now hold a host slot and GPUs through `dot remote hold`, so they count toward the host's limits and show in status.
+
+### New
+
+- `dot remote hold -- COMMAND` takes one of the host's `max_runs` slots, checks the host load, runs COMMAND on this machine and frees the slot when it exits. A busy or overloaded host exits 75 without starting COMMAND, and `--dry-run` shows what it would take. (#473)
+- `dot remote hold --gpus N --gpu-min-free-mb MB` also picks N GPUs on the host with enough free memory that no other `dot` hold from this machine is using, and passes their UUIDs to COMMAND in `DOT_REMOTE_GPUS`. Too few free GPUs exits 75. `ares` does not read `DOT_REMOTE_GPUS` yet. (#474)
+- `dot remote status` and `dot admit status` list each hold with its program, pid, start time and GPUs. (#473, #474)
+
+**Full changelog**: https://github.com/STAIxBWLB/dotfiles/compare/v2.86.1...v2.87.0
+
 ## v2.86.1
 
 Help output now shows on/off flags as `--flag[=true|false]`, following an update of the flag library.
