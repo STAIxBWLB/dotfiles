@@ -144,8 +144,8 @@ type Manifest struct {
 	Supported string
 	// Tools are the MCP tools the release serves, nil when not published.
 	Tools []Tool
-	// Source is "manifest" (`<tool> manifest --json`), "package.json" (the
-	// installed package's version only) or "" (nothing found).
+	// Source identifies the probe: "manifest", "--version", "package.json",
+	// or "" when none reported a version.
 	Source string
 }
 
@@ -173,18 +173,35 @@ const manifestLimit = 1 << 20
 // vmem) or the command itself (ares names itself "ares"). When that fails, is
 // not JSON, names another tool or carries no stable version, it reads the version from the
 // installed package.json named pkg, found by resolving bin's link and walking
-// up. A missing manifest is never an error: the result is then partial or zero.
+// up. arev reports its version through `--version` instead of a manifest.
+// A missing manifest is never an error: the result is then partial or zero.
 func Read(ctx context.Context, bin, pkg string) Manifest {
 	if bin == "" {
 		return Manifest{}
 	}
-	if m, ok := fromCommand(ctx, bin, pkg); ok {
+	if pkg == "@staix/agent-review" {
+		if version := fromVersionFlag(ctx, bin); version != "" {
+			return Manifest{Version: version, Source: "--version"}
+		}
+	} else if m, ok := fromCommand(ctx, bin, pkg); ok {
 		return m
 	}
 	if v := fromPackageJSON(bin, pkg); v != "" {
 		return Manifest{Version: v, Source: "package.json"}
 	}
 	return Manifest{}
+}
+
+func fromVersionFlag(ctx context.Context, bin string) string {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, "--version")
+	var out bytes.Buffer
+	cmd.Stdout = &limited{&out}
+	if cmd.Run() != nil {
+		return ""
+	}
+	return Find(out.String())
 }
 
 func fromCommand(ctx context.Context, bin, pkg string) (Manifest, bool) {

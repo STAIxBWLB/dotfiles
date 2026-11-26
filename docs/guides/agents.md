@@ -36,7 +36,7 @@ separately from installation status. Missing authentication or trust remains a
 user action; setup does not copy credentials or approve hooks. A saved selection
 that still lists the retired `claude-mem` add-on is read without it.
 
-The agent-hub family tools ahub, amem, vmem, acon and ares install side by side
+The agent-hub family tools ahub, amem, vmem, acon, ares and arev install side by side
 with `dot ai family install <id>... [--version X.Y.Z]` (`--all` for every one),
 and `dot ai family update [id...]` moves each installed tool to the registry's
 latest version; `--dry-run` on either shows which tools are already current and
@@ -55,8 +55,10 @@ is never replaced). After amem, vmem or ares activates, dot prints the
 `<tool> setup <target> --root ...` line that registers that release with an
 agent; it does not run it. After ahub activates, dot prints the `ahub setup`
 line that moves the shared Claude plugin to the same version; it does not run
-it either. For ahub, acon and ares it also notes when `bun`, their runtime, is
-not on PATH.
+it either. For arev, `arev setup <host>` previews registering `arev mcp` and
+installing the review skill. Run `arev setup <host> --apply` to make those
+changes. For ahub, acon, ares and arev, dot notes when Bun is missing from
+PATH. arev requires Bun 1.4.4 or newer.
 
 ```bash
 dot ai family install --all       # every family tool, latest release

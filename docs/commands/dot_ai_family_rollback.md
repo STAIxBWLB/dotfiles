@@ -5,7 +5,7 @@ Make a family tool's previous version current again
 ### Synopsis
 
 Make the previous version of a family tool current again
-(ahub, amem, vmem, acon, ares).
+(ahub, amem, vmem, acon, ares, arev).
 
 Running processes are listed and keep their files; new sessions start the
 restored version. The version it leaves becomes 'previous'.

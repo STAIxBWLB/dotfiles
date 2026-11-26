@@ -325,3 +325,42 @@ func TestFamilyInstallAres(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestFamilyInstallArev(t *testing.T) {
+	e := testEngine(t)
+	calls := 0
+	fakeFamilyNPM(t, e, &calls)
+	ctx := context.Background()
+
+	r, err := e.FamilyInstall(ctx, "arev", "0.1.0", false)
+	if err != nil || r.Status != "activated" || calls != 1 ||
+		!hasNote(r, "arev setup <host> (a preview; add --apply to write)") ||
+		!hasNote(r, "dot did not run it") || !hasNote(r, "arev runs on bun, which is not on PATH") {
+		t.Fatalf("install = %+v, %v", r, err)
+	}
+	root := filepath.Join(e.FamilyRoot(), "arev")
+	link := filepath.Join(e.opts.HomeDir, ".local", "bin", "arev")
+	if got := readLinkAbs(link); got != filepath.Join(root, "current", "bin", "arev") {
+		t.Fatalf("PATH entry = %q", got)
+	}
+	root, err = filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packageBin := filepath.Join("lib", "node_modules", "@staix", "agent-review", "bin", "arev.js")
+	if got, err := filepath.EvalSymlinks(link); err != nil || got != filepath.Join(root, "0.1.0", packageBin) {
+		t.Fatalf("installed binary = %q, %v", got, err)
+	}
+	fakeBinary(t, e, "bun")
+	r, err = e.FamilyInstall(ctx, "arev", "0.2.0", false)
+	if err != nil || r.Previous != "0.1.0" || hasNote(r, "bun, which is not on PATH") {
+		t.Fatalf("upgrade = %+v, %v", r, err)
+	}
+	r, err = e.FamilyRollback(ctx, "arev")
+	if err != nil || r.Current != "0.1.0" || r.Previous != "0.2.0" {
+		t.Fatalf("rollback = %+v, %v", r, err)
+	}
+	if got, err := filepath.EvalSymlinks(link); err != nil || got != filepath.Join(root, "0.1.0", packageBin) {
+		t.Fatalf("rolled-back binary = %q, %v", got, err)
+	}
+}
