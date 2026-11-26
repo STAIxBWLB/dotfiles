@@ -458,6 +458,12 @@ Exit status: the command's own; 75 when the slot is held, the host load is at
 or over `max_load_ratio`, or too few GPUs are eligible after `--wait` (the
 command does not start and no lease is kept); 128+signal when interrupted.
 
+Interrupting: from a terminal, Ctrl-C reaches the command directly and `hold`
+does not send it a second SIGINT, so the command's own cleanup is not cut
+short. When stdin is a terminal, a SIGINT sent to the `dot` process from
+elsewhere is not passed on either; send SIGTERM to stop a hold from another
+shell. With stdin from a pipe or file, `hold` forwards both signals.
+
 The GPU lease covers work launched from this machine only. `ares` does not read
 `DOT_REMOTE_GPUS` yet, so until it does, the study's own GPU allow-list still
 picks the device; `hold` still provides the host slot and the visibility.
