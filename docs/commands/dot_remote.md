@@ -50,6 +50,7 @@ same path removes the one left behind.
 ### SEE ALSO
 
 * [dot](dot.md)	 - User environment & workspace management tool
+* [dot remote hold](dot_remote_hold.md)	 - Reserve a remote host slot while running a local command
 * [dot remote job](dot_remote_job.md)	 - Run file-in, file-out jobs remotely or locally
 * [dot remote prune](dot_remote_prune.md)	 - List or remove what runs left behind on the host
 * [dot remote run](dot_remote_run.md)	 - Mirror a checkout and run a command on the host

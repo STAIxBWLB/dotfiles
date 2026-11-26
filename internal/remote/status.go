@@ -14,14 +14,17 @@ import (
 type ActiveRun struct {
 	// Kind is "path" for a run's or verify's own mirror path, "src" for a
 	// `dot remote src` clone, or "host" for the shared per-host lease every job
-	// also holds.
-	Kind      string    `json:"kind"`
-	Scope     string    `json:"scope"`
-	Owner     string    `json:"owner"`
-	PID       int       `json:"pid"`
-	Since     time.Time `json:"since"`
-	Container string    `json:"container,omitempty"`
-	Session   string    `json:"session,omitempty"`
+	// also holds. A host slot for an external runner has kind "hold".
+	Kind       string    `json:"kind"`
+	Scope      string    `json:"scope"`
+	Owner      string    `json:"owner"`
+	PID        int       `json:"pid"`
+	Since      time.Time `json:"since"`
+	Container  string    `json:"container,omitempty"`
+	Session    string    `json:"session,omitempty"`
+	Program    string    `json:"program,omitempty"`
+	CommandPID int       `json:"command_pid,omitempty"`
+	GPUs       []string  `json:"gpus,omitempty"`
 }
 
 // DirSize is one directory under a remote root.
@@ -197,6 +200,10 @@ func activeRuns(cfg Config, h Host, leases []admission.Lease, now time.Time) []A
 		}
 		if strings.HasPrefix(lease.Scope, "remote-host:") {
 			run.Kind = "host"
+			if lease.Program != "" {
+				run.Kind = "hold"
+				run.Program, run.CommandPID, run.GPUs = lease.Program, lease.CommandPID, lease.GPUs
+			}
 		} else if strings.HasPrefix(lease.Scope, "remote-src:") {
 			run.Kind = "src"
 		} else if strings.HasPrefix(lease.Scope, "remote-job:") {

@@ -166,6 +166,10 @@ func runAdmitStatus(cmd *cobra.Command, _ []string) error {
 		if l.Session != "" {
 			line += " (" + l.Session + ")" // e.g. an admitted job's purpose
 		}
+		if l.Program != "" {
+			line += " [hold]"
+			line = appendHoldDetails(line, l.Program, l.CommandPID, l.GPUs)
+		}
 		p.Line("%s", line)
 		p.Line("    cwd %s", l.CWD)
 	}

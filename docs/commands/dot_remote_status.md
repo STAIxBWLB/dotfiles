@@ -5,7 +5,8 @@ Show host load, runs, mirrors and image age
 ### Synopsis
 
 Report the host's own load against its limit, the runs this machine holds
-there (mirror path, container, owner, age), the size of every mirror and bare
+there (mirror path, container, owner, age), external commands holding slots
+(program, PID, start time), the size of every mirror and bare
 repository, and how old the dev image is. A host that cannot answer still shows
 the local half: the leases this machine holds are facts the host does not have
 to confirm.

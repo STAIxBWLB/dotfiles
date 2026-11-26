@@ -50,6 +50,7 @@ same path removes the one left behind.
 	cmd.AddCommand(newRemoteSetupCmd())
 	cmd.AddCommand(newRemoteRunCmd())
 	cmd.AddCommand(newRemoteVerifyCmd())
+	cmd.AddCommand(newRemoteHoldCmd())
 	cmd.AddCommand(newRemoteSrcCmd())
 	cmd.AddCommand(newRemoteStatusCmd())
 	cmd.AddCommand(newRemotePruneCmd())
@@ -294,6 +295,48 @@ func runRemoteRun(cmd *cobra.Command, _ []string) error {
 	return err
 }
 
+func newRemoteHoldCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "hold -- <command> [<arg>...]",
+		Short: "Reserve a remote host slot while running a local command",
+		Long: `Reserve one of the host's max_runs slots and check the host's load,
+then run COMMAND locally with its input and output attached. The slot is
+released when COMMAND exits. The host defaults to remote.default.
+
+A held slot or a host at its load limit defers with exit 75. With --dry-run,
+show the slot and the host load without reserving capacity.`,
+		Args:         cobra.ArbitraryArgs,
+		RunE:         runRemoteHold,
+		SilenceUsage: true,
+	}
+	cmd.Flags().Bool("json", false, "print the defer or dry-run record as JSON")
+	return cmd
+}
+
+func runRemoteHold(cmd *cobra.Command, args []string) error {
+	if cmd.ArgsLenAtDash() != 0 || len(args) == 0 {
+		return usageError(cmd, errors.New("pass a command after --: dot remote hold -- COMMAND [ARG...]"))
+	}
+	wait, _ := cmd.Flags().GetDuration("wait")
+	if wait < 0 {
+		return usageError(cmd, errors.New("--wait must not be negative"))
+	}
+	_, host, deps, err := remoteSession(cmd, "")
+	if err != nil {
+		return err
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	asJSON, _ := cmd.Flags().GetBool("json")
+	err = deps.Hold(cmd.Context(), host, remote.HoldOptions{
+		Command: args, Cwd: cwd, Wait: wait, DryRun: dryRun, JSON: asJSON,
+	})
+	return remoteDeferred(cmd, printerFrom(cmd), err)
+}
+
 func newRemoteVerifyCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "verify [<path>] [--dirty] [-- <command> [<arg>...]]",
@@ -466,7 +509,8 @@ func newRemoteStatusCmd() *cobra.Command {
 		Use:   "status",
 		Short: "Show host load, runs, mirrors and image age",
 		Long: `Report the host's own load against its limit, the runs this machine holds
-there (mirror path, container, owner, age), the size of every mirror and bare
+there (mirror path, container, owner, age), external commands holding slots
+(program, PID, start time), the size of every mirror and bare
 repository, and how old the dev image is. A host that cannot answer still shows
 the local half: the leases this machine holds are facts the host does not have
 to confirm.`,
@@ -511,12 +555,13 @@ func runRemoteStatus(cmd *cobra.Command, _ []string) error {
 	} else {
 		p.KV("Gate", "admitting")
 	}
-	p.KV("Runs", fmt.Sprintf("%d held, at most %d", countRuns(status.Active, "host"), status.MaxRuns))
+	p.KV("Runs", fmt.Sprintf("%d held, at most %d", countRuns(status.Active, "host")+countRuns(status.Active, "hold"), status.MaxRuns))
 	for _, run := range status.Active {
 		line := fmt.Sprintf("  [%s] %s %s pid %d since %s", run.Kind, run.Scope, run.Owner, run.PID, run.Since.Format("2006-01-02 15:04"))
 		if run.Container != "" {
 			line += " container " + run.Container
 		}
+		line = appendHoldDetails(line, run.Program, run.CommandPID, run.GPUs)
 		p.Line("%s", line)
 	}
 	if status.SizesUnavailable != "" {
@@ -531,6 +576,19 @@ func runRemoteStatus(cmd *cobra.Command, _ []string) error {
 	p.Blank()
 	p.Line("%s", admission.UncoveredNote)
 	return nil
+}
+
+func appendHoldDetails(line, program string, pid int, gpus []string) string {
+	if program != "" {
+		line += " command " + program
+		if pid > 0 {
+			line += fmt.Sprintf(" (command pid %d)", pid)
+		}
+	}
+	if len(gpus) > 0 {
+		line += " GPUs " + strings.Join(gpus, ", ")
+	}
+	return line
 }
 
 func statusImageLine(status remote.Status) string {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/STAIxBWLB/dotfiles/internal/remote"
 	"github.com/STAIxBWLB/dotfiles/internal/ui"
 )
 
@@ -221,8 +222,20 @@ func executeWithSignals(cmd *cobra.Command) error {
 	if parent == nil {
 		parent = context.Background()
 	}
-	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	ctx, cancel := context.WithCancelCause(parent)
+	defer cancel(nil)
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(signals)
+	go func() {
+		select {
+		case received := <-signals:
+			if sig, ok := received.(syscall.Signal); ok {
+				cancel(remote.Interrupt(sig))
+			}
+		case <-ctx.Done():
+		}
+	}()
 	return cmd.ExecuteContext(ctx)
 }
 
