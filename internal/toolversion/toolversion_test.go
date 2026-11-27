@@ -134,3 +134,11 @@ func TestReadWithNothingPublishedIsZero(t *testing.T) {
 		t.Fatalf("read a foreign manifest: %+v", got)
 	}
 }
+
+func TestReadArevVersionFlag(t *testing.T) {
+	bin := script(t, t.TempDir(), "[ \"$#\" = 1 ] && [ \"$1\" = --version ] || exit 2\necho 0.1.0\n")
+	got := Read(context.Background(), bin, "@staix/agent-review")
+	if want := (Manifest{Version: "0.1.0", Source: "--version"}); !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+}

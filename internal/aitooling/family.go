@@ -15,7 +15,7 @@ import (
 	"github.com/STAIxBWLB/dotfiles/internal/toolversion"
 )
 
-// Family tools (#319, #335, #318, #356): ahub, amem, vmem, acon and ares install side by side, one npm prefix per
+// Family tools (#319, #335, #318, #356, #477): ahub, amem, vmem, acon, ares and arev install side by side, one npm prefix per
 // version under ~/.local/share/dotfiles/tools/<id>/<version>/. The `current` link names the active
 // version and `previous` the one before it; ~/.local/bin/<bin> points through `current`. Switching
 // `current` is one rename: new sessions start the new version and running ones keep their files.
@@ -32,6 +32,7 @@ func FamilyTools() []FamilyTool {
 		{"vmem", "@staix/vault-mem", "vmem"},
 		{"acon", "@staix/agent-console", "acon"},
 		{"ares", "@staix/agent-research", "ares"},
+		{"arev", "@staix/agent-review", "arev"},
 	}
 }
 
@@ -264,13 +265,16 @@ func (e *Engine) familyActivate(ctx context.Context, t FamilyTool, version strin
 		}
 		r.Notes = append(r.Notes, note)
 	}
+	if t.ID == "arev" {
+		r.Notes = append(r.Notes, "to register arev mcp and install the review skill, run: arev setup <host> (a preview; add --apply to write). dot did not run it")
+	}
 	if t.ID == "ahub" {
 		// `ahub setup` writes the shared Claude plugin, outside what dot may write (docs/BOUNDARIES.md).
 		// The version's own bin, not the PATH link, which may still name another install.
 		bin := filepath.Join(toolDir, version, "bin", t.Binary)
 		r.Notes = append(r.Notes, fmt.Sprintf("to move the shared Claude plugin to %s, run: %s setup, then restart Claude sessions. dot did not run it", version, bin))
 	}
-	if (t.ID == "ahub" || t.ID == "ares" || t.ID == "acon") && e.find("bun") == "" {
+	if (t.ID == "ahub" || t.ID == "ares" || t.ID == "acon" || t.ID == "arev") && e.find("bun") == "" {
 		r.Notes = append(r.Notes, t.ID+" runs on bun, which is not on PATH; install bun before starting it")
 	}
 	return r, nil

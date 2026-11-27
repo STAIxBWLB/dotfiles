@@ -4,7 +4,7 @@ Install agent-hub family tools side by side
 
 ### Synopsis
 
-Install ahub, amem, vmem, acon, ares side by side.
+Install ahub, amem, vmem, acon, ares, arev side by side.
 
 Each version gets its own npm prefix under
 ~/.local/share/dotfiles/tools/<id>/<version>/. A 'current' link names the

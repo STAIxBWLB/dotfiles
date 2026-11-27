@@ -222,7 +222,7 @@ var useSections = []useSection{
 		{"dot ai setup", "Choose the agents and add-ons this machine runs"},
 		{"dot ai tools status", "Show what the saved selection installs and where it drifted"},
 		{"dot ai agents apply", "Write the shared agent instructions to every selected agent"},
-		{"dot ai family install --all", "Install the agent-hub family (ahub, amem, vmem, acon, ares)"},
+		{"dot ai family install --all", "Install the agent-hub family (" + familyIDs() + ")"},
 		{"dot ai family update", "Move installed family tools to their latest release"},
 		{"dot ai policy status", "Show the adaptive work policy each agent runs under"},
 		{"dot admit -- make test", "Run a heavy job in this repository's resource slot"},
