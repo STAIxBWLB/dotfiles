@@ -2,6 +2,22 @@
 
 Generated from `docs/releases/` by `make changelog`; do not edit by hand.
 
+## v2.88.0
+
+`dot ai family` now installs `arev`, the review CLI, with the other agent family tools, and `dot remote hold --dry-run` explains its GPU verdicts in full.
+
+### New
+
+- `dot ai family install --all` now includes `arev` (`@staix/agent-review`). Install it alone with `dot ai family install arev`; `dot ai family status` and `dot ai family rollback` handle it like the other tools. After install, dot prints `arev setup <host>`, which previews the setup; run it with `--apply` to register arev's MCP server and install its review skill. dot runs neither. (#479)
+
+### Fixed
+
+- `dot remote hold --dry-run --gpus N` only said how many GPUs were eligible. It now names the GPUs left out because another `dot` hold has them and suggests `dot remote status`, `--wait` or a lower `--gpu-min-free-mb`. (#480)
+- `dot remote hold --dry-run` reported GPUs it "would lease" even when it could not read the lease store. It now says the leases could not be read and points to `dot admit status`, alongside any host-load verdict. (#480)
+- `dot remote hold --gpus N` with N greater than the host's GPU count retried until `--wait` ran out. It now exits 75 at once, naming the device count. (#480)
+
+**Full changelog**: https://github.com/STAIxBWLB/dotfiles/compare/v2.87.0...v2.88.0
+
 ## v2.87.0
 
 Tools that start their own containers on a remote host, such as `ares`, can now hold a host slot and GPUs through `dot remote hold`, so they count toward the host's limits and show in status.
