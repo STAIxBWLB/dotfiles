@@ -15,8 +15,7 @@ in the result, they keep the files they started with, and new sessions get the
 new version.
 
 Workspace context for Grok and agy: Grok reads the agents SSOT through its
-Claude compat (`~/.claude/CLAUDE.md`), so dot renders no Grok instructions file
-and removes a dot-rendered `~/.grok/AGENTS.md`. agy gets `~/.gemini/GEMINI.md`
+Claude compat (`~/.claude/CLAUDE.md`). agy gets `~/.gemini/GEMINI.md`
 from `dot ai agents apply --tool antigravity`. To configure amem for Antigravity,
 run `amem setup agy --apply` inside each repository that uses it.
 
