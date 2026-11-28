@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -95,7 +96,7 @@ func eligibleGPUs(gpus []GPU, minFreeMB int) []string {
 func heldGPUs(store *admission.Store, host string, now time.Time) (map[string]bool, error) {
 	held := map[string]bool{}
 	if store == nil {
-		return held, nil
+		return held, errors.New("the lease store is not open")
 	}
 	leases, err := store.ListLeases()
 	if err != nil {
@@ -123,6 +124,10 @@ func (d Deps) acquireGPUs(ctx context.Context, h Host, self admission.Lease, n, 
 		var reason string
 		if err != nil {
 			reason = err.Error()
+		} else if n > len(gpus) {
+			// More devices than the host has can never succeed: defer now.
+			return nil, nil, deferFor(GPUScope(h.Name, "*"), fmt.Sprintf(
+				"%d GPUs requested but %s has %d. Lower --gpus to at most %d", n, h.Name, len(gpus), len(gpus)), backoff)
 		} else {
 			eligible := eligibleGPUs(gpus, minFreeMB)
 			var slots []*admission.Slot
