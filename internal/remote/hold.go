@@ -199,6 +199,8 @@ func (d Deps) holdDryRun(ctx context.Context, h Host, opts HoldOptions, program 
 	if opts.GPUs > 0 {
 		if gpuErr != "" && len(gpus) == 0 {
 			fmt.Fprintf(d.out(), "GPU probe unavailable (%s)\n", gpuErr)
+		} else if gpuErr != "" && gpuErr != reason {
+			fmt.Fprintf(d.out(), "GPU leases unknown: %s\n", gpuErr)
 		}
 		for _, g := range gpus {
 			fmt.Fprintf(d.out(), "GPU %s %d MiB free\n", g.UUID, g.FreeMB)

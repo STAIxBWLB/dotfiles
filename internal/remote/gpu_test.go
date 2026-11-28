@@ -280,6 +280,19 @@ func TestHoldGPUDryRunLeaseReadFailureLeasesNothing(t *testing.T) {
 	if strings.Contains(out, "would lease") || !strings.Contains(out, "could not read this machine's GPU leases") || !strings.Contains(out, "dot admit status") {
 		t.Fatalf("dry-run = %s", out)
 	}
+
+	// Host load over the gate: the load reason wins the verdict, but the
+	// lease failure is still named.
+	f.host.MaxLoadRatio = 0.5
+	f.exec.loads = "8.00 0 0 1/100 1\n4\n"
+	f.out.Reset()
+	if err := deps.Hold(context.Background(), f.host, HoldOptions{Command: []string{"true"}, DryRun: true, GPUs: 1, GPUMinFreeMB: 40000}); err != nil {
+		t.Fatal(err)
+	}
+	out = f.out.String()
+	if strings.Contains(out, "would lease") || !strings.Contains(out, "could not read this machine's GPU leases") || !strings.Contains(out, "dot admit status") || !strings.Contains(out, "would defer") {
+		t.Fatalf("dry-run over load = %s", out)
+	}
 }
 
 func TestHoldGPUsOverDeviceCountDefersAtOnce(t *testing.T) {
