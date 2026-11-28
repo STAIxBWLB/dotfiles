@@ -56,17 +56,6 @@ func (m *AIModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, err
 		return nil, err
 	}
 
-	// Cursor and Grok were dropped from the agents registry (Grok reads
-	// ~/.claude/CLAUDE.md through its Claude compat). Only a dot-rendered
-	// file (managed header) is removed: the file could be user-authored.
-	for _, retired := range retiredAgentsTargets(rc.HomeDir) {
-		if aisettings.IsManagedAgentsFile(retired) {
-			changes = append(changes, Change{
-				Description: fmt.Sprintf("remove legacy %s", retired),
-				Command:     fmt.Sprintf("rm %q", retired),
-			})
-		}
-	}
 	if (rc.Config.Modules.AI.Tooling == nil && rc.Config.Modules.AI.AgentsSSOT) || (rc.Config.Modules.AI.Tooling != nil && len(rc.Config.Modules.AI.Tooling.Agents) > 0) {
 		manager := aisettings.NewAgentsManager(rc.Runner, rc.HomeDir, rc.ExplicitHome)
 		manager.Out = rc.out()
@@ -195,14 +184,6 @@ func (m *AIModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, err
 	}
 	messages = append(messages, fileMessages...)
 
-	for _, retired := range retiredAgentsTargets(rc.HomeDir) {
-		if aisettings.IsManagedAgentsFile(retired) {
-			if err := rc.Runner.Remove(retired); err != nil {
-				return nil, fmt.Errorf("removing legacy %s: %w", retired, err)
-			}
-			messages = append(messages, fmt.Sprintf("removed legacy %s", retired))
-		}
-	}
 	if mode := rc.Config.Modules.Git.CoauthorGuard; mode != "" && mode != aisettings.CoauthorGuardOff {
 		manager := aisettings.NewCoauthorGuardManager(rc.Runner, rc.HomeDir, rc.ExplicitHome)
 		result, err := manager.Apply(aisettings.CoauthorGuardOptions{Mode: mode, DryRun: rc.DryRun, ApplyAgents: rc.Config.Modules.AI.AgentsSSOT && rc.Config.Modules.AI.Tooling == nil})
@@ -305,10 +286,4 @@ func toolingStatusSatisfied(item aitooling.ItemResult) bool {
 		return item.Installed != ""
 	}
 	return false
-}
-
-// retiredAgentsTargets lists fan-out targets of tools dropped from the agents
-// registry. Check and Apply remove each one only if dot rendered it.
-func retiredAgentsTargets(home string) []string {
-	return []string{filepath.Join(home, ".cursor", "AGENTS.md"), filepath.Join(home, ".grok", "AGENTS.md")}
 }
