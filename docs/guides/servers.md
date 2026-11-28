@@ -458,8 +458,9 @@ The held slot and its GPUs show as a `[hold]` row in `dot remote status` and
 its pid is gone, as for `run`.
 
 Exit status: the command's own; 75 when the slot is held, the host load is at
-or over `max_load_ratio`, or too few GPUs are eligible after `--wait` (the
-command does not start and no lease is kept); 128+signal when interrupted.
+or over `max_load_ratio`, the `nvidia-smi` probe fails or is missing, `--gpus`
+exceeds the host's device count (at once, even with `--wait`), or too few GPUs
+are eligible after `--wait` (the command does not start and no lease is kept); 128+signal when interrupted.
 
 Interrupting: from a terminal, Ctrl-C reaches the command directly and `hold`
 does not send it a second SIGINT, so the command's own cleanup is not cut

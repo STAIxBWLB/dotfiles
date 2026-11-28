@@ -148,20 +148,36 @@ func (d Deps) holdDryRun(ctx context.Context, h Host, opts HoldOptions, program 
 		} else {
 			gpus = probed
 			held, herr := heldGPUs(d.Store, h.Name, d.now())
+			eligible := eligibleGPUs(gpus, opts.GPUMinFreeMB)
+			var heldOut []string
 			if herr != nil {
-				gpuErr = "reading this machine's GPU leases: " + herr.Error()
+				gpuErr = "could not read this machine's GPU leases (" + herr.Error() + "); check the lease store with `dot admit status`"
+			} else {
+				for _, uuid := range eligible {
+					if held[uuid] {
+						heldOut = append(heldOut, uuid)
+					} else if len(pick) < opts.GPUs {
+						pick = append(pick, uuid)
+					}
+				}
 			}
-			for _, uuid := range eligibleGPUs(gpus, opts.GPUMinFreeMB) {
-				if len(pick) < opts.GPUs && !held[uuid] {
-					pick = append(pick, uuid)
+			if reason == "" {
+				switch {
+				case herr != nil:
+					reason = gpuErr
+				case opts.GPUs > len(gpus):
+					reason = fmt.Sprintf("%d GPUs requested but %s has %d. Lower --gpus to at most %d", opts.GPUs, h.Name, len(gpus), len(gpus))
+				case len(pick) < opts.GPUs:
+					reason = fmt.Sprintf("%d of %d GPUs on %s have at least %d MiB free", len(eligible), len(gpus), h.Name, opts.GPUMinFreeMB)
+					if len(heldOut) > 0 {
+						reason += fmt.Sprintf(", %s held by other dot leases", strings.Join(heldOut, ", "))
+					}
+					reason += fmt.Sprintf("; %d requested. See who holds them with `dot remote status`, wait with --wait, or lower --gpu-min-free-mb", opts.GPUs)
 				}
 			}
 		}
-		if reason == "" && len(pick) < opts.GPUs {
-			reason = fmt.Sprintf("%d of %d requested GPUs eligible with at least %d MiB free", len(pick), opts.GPUs, opts.GPUMinFreeMB)
-			if gpuErr != "" {
-				reason = gpuErr
-			}
+		if reason == "" && gpuErr != "" {
+			reason = gpuErr
 		}
 	}
 	if opts.JSON {
@@ -181,11 +197,13 @@ func (d Deps) holdDryRun(ctx context.Context, h Host, opts HoldOptions, program 
 	ui.WriteDryRun(d.out(), fmt.Sprintf("hold one of %d %s slots for %s", h.MaxRuns, HostScope(h.Name), program))
 	fmt.Fprintln(d.out(), load.String())
 	if opts.GPUs > 0 {
-		if gpuErr != "" {
+		if gpuErr != "" && len(gpus) == 0 {
 			fmt.Fprintf(d.out(), "GPU probe unavailable (%s)\n", gpuErr)
+		} else if gpuErr != "" && gpuErr != reason {
+			fmt.Fprintf(d.out(), "GPU leases unknown: %s\n", gpuErr)
 		}
 		for _, g := range gpus {
-			fmt.Fprintf(d.out(), "GPU %s %d MB free\n", g.UUID, g.FreeMB)
+			fmt.Fprintf(d.out(), "GPU %s %d MiB free\n", g.UUID, g.FreeMB)
 		}
 		if len(pick) > 0 {
 			fmt.Fprintf(d.out(), "would lease GPUs %s\n", strings.Join(pick, ", "))

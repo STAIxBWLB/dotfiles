@@ -179,7 +179,6 @@ func TestHoldGPUDryRunShowsProbeAndTakesNothing(t *testing.T) {
 	f := newRunFixture(t)
 	f.exec.gpus = fakeGPUs
 	deps := f.deps()
-	deps.Store = nil
 	if err := deps.Hold(context.Background(), f.host, HoldOptions{Command: []string{"true"}, DryRun: true, JSON: true, GPUs: 2, GPUMinFreeMB: 40000}); err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +195,7 @@ func TestHoldGPUDryRunShowsProbeAndTakesNothing(t *testing.T) {
 	if err := deps.Hold(context.Background(), f.host, HoldOptions{Command: []string{"true"}, DryRun: true, GPUs: 3, GPUMinFreeMB: 40000}); err != nil {
 		t.Fatal(err)
 	}
-	if out := f.out.String(); !strings.Contains(out, "GPU GPU-c 100 MB free") || !strings.Contains(out, "would lease GPUs GPU-a, GPU-b") || !strings.Contains(out, "would defer") {
+	if out := f.out.String(); !strings.Contains(out, "GPU GPU-c 100 MiB free") || !strings.Contains(out, "would lease GPUs GPU-a, GPU-b") || !strings.Contains(out, "would defer") {
 		t.Fatalf("dry-run text = %s", out)
 	}
 }
@@ -247,5 +246,66 @@ func requireGPUDefer(t *testing.T, host Host, err error) {
 	deferErr, ok := err.(*Deferred)
 	if !ok || deferErr.Outcome.Scope != GPUScope(host.Name, "*") {
 		t.Fatalf("Hold = %v, want a GPU defer", err)
+	}
+}
+
+func TestHoldGPUDryRunNamesHeldDevicesAndNextStep(t *testing.T) {
+	f := newRunFixture(t)
+	f.host.MaxRuns = 2
+	_, stop := startGPUHold(t, f, fakeGPUs)
+	defer func() { _ = stop() }()
+	deps := f.deps()
+	deps.Exec = (&fakeExec{t: t, gpus: fakeGPUs}).execute
+	f.out.Reset()
+	if err := deps.Hold(context.Background(), f.host, HoldOptions{Command: []string{"true"}, DryRun: true, GPUs: 2, GPUMinFreeMB: 40000}); err != nil {
+		t.Fatal(err)
+	}
+	out := f.out.String()
+	for _, want := range []string{"GPU-a held by other dot leases", "dot remote status", "--wait", "--gpu-min-free-mb"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("dry-run %q lacks %q", out, want)
+		}
+	}
+}
+
+func TestHoldGPUDryRunLeaseReadFailureLeasesNothing(t *testing.T) {
+	f := newRunFixture(t)
+	f.exec.gpus = fakeGPUs
+	deps := f.deps()
+	deps.Store = nil
+	if err := deps.Hold(context.Background(), f.host, HoldOptions{Command: []string{"true"}, DryRun: true, GPUs: 1, GPUMinFreeMB: 40000}); err != nil {
+		t.Fatal(err)
+	}
+	out := f.out.String()
+	if strings.Contains(out, "would lease") || !strings.Contains(out, "could not read this machine's GPU leases") || !strings.Contains(out, "dot admit status") {
+		t.Fatalf("dry-run = %s", out)
+	}
+
+	// Host load over the gate: the load reason wins the verdict, but the
+	// lease failure is still named.
+	f.host.MaxLoadRatio = 0.5
+	f.exec.loads = "8.00 0 0 1/100 1\n4\n"
+	f.out.Reset()
+	if err := deps.Hold(context.Background(), f.host, HoldOptions{Command: []string{"true"}, DryRun: true, GPUs: 1, GPUMinFreeMB: 40000}); err != nil {
+		t.Fatal(err)
+	}
+	out = f.out.String()
+	if strings.Contains(out, "would lease") || !strings.Contains(out, "could not read this machine's GPU leases") || !strings.Contains(out, "dot admit status") || !strings.Contains(out, "would defer") {
+		t.Fatalf("dry-run over load = %s", out)
+	}
+}
+
+func TestHoldGPUsOverDeviceCountDefersAtOnce(t *testing.T) {
+	f := newRunFixture(t)
+	deps := f.deps()
+	deps.Exec = (&fakeExec{t: t, gpus: fakeGPUs}).execute
+	start := time.Now()
+	err := deps.Hold(context.Background(), f.host, HoldOptions{Command: []string{"/missing/command"}, GPUs: 4, Wait: time.Minute})
+	requireGPUDefer(t, f.host, err)
+	if time.Since(start) > 10*time.Second || !strings.Contains(err.Error(), "has 3") {
+		t.Fatalf("defer %v after %s", err, time.Since(start))
+	}
+	if held := f.leases(); len(held) != 0 {
+		t.Fatalf("leases left: %+v", held)
 	}
 }
